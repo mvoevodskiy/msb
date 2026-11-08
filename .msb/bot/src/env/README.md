@@ -50,7 +50,9 @@ comment одной queued mutation. Skip/blank сохраняют старое �
 из [services.mjs](services.mjs) сохраняет19прежних key/label и12hint flags. Для
 Deepgram используется существующий STT resolver с process/bot/shared/empty
 приоритетами; остальные строки описывают только processenvpresence. Ошибка
-чтения STT даёт безопасный unknown, не отказ текстового хода. Наличие значения
+чтения STT даёт безопасный unknown, не отказ текстового хода. Если сам perbot
+файл optionalcustommetadata недоступен, knownrows сохраняются, customrows
+заменяются постоянной нейтральной пометкой; UI/writer errors остаются прежними. Наличие значения
 не обещает API/auth/backend работоспособность; универсального $NAME shell claim
 нет. Внутренние PULT quicksettings исключены, ordinary service quickkeys
 сохраняют custom путь. Globalcustom visibility и полный oldtool catalog отдельны.

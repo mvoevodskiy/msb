@@ -71,3 +71,9 @@ Runtimefix:42service GREEN,113related PASS; Sol независимо79PASS
 customrows пропустить с постоянной safeunknown пометкой. UIreader/writers/auth
 не менять; rawexception/path/value не попадут в prompt. Не считать shared-only
 EACCES тест достаточным доказательством этого другого связанного пути.
+Per-bot read regression c6917e2:45tests42PASS/3RED→45GREEN,
+116relatedPASS, Sol independently45PASS. Catch изолирован в optionalprompt
+metadata, UIreader/writer/auth не меняются. Параллельный targetgate b2749a6
+не принят: core462PASS/0FAIL/33cancelled, первый cancellation в старом
+menu-handlers /compact test. Причина проверяется отдельно;620Docker не заменяет
+targetgate. b2749a6 на JAR1 не устанавливался, финальный gate будет нового SHA.

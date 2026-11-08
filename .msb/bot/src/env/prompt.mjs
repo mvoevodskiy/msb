@@ -19,9 +19,15 @@ export async function envCapabilityPrompt(env = process.env) {
     else if (row.hint) note = `в ${row.source} ключ не задан (добавь через /settings → 🔑).`;
     return note ? [`- ${row.key}: ${row.label} — ${note}`] : [];
   });
-  const custom = (await listEnvEntries(env)).filter(row => !PROTECTED_KEYS.has(row.key)
+  // Descriptions are optional context. A read failure must not hide known
+  // process/STT rows or abort a text turn; UI/writer errors remain unchanged.
+  let entries, customUnavailable = false;
+  try { entries = await listEnvEntries(env); }
+  catch { entries = []; customUnavailable = true; }
+  const custom = entries.filter(row => !PROTECTED_KEYS.has(row.key)
     && !ENV_SERVICE_KEYS.has(row.key) && !INTERNAL.has(row.key) && profile.envValue(env, row.key));
   const lines = [...services, ...custom.map(row => `- ${row.key}: ${row.comment || 'добавлен через /settings'}`)];
+  if (customUnavailable) lines.push('Дополнительные имена и описания ключей сейчас недоступны.');
   if (!lines.length) return '';
   return ['## Сервисы и ключи',
     'Это сведения о настройках. Наличие ключа не подтверждает авторизацию, доступность API или встроенного инструмента.',
