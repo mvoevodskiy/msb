@@ -1,36 +1,54 @@
-Env name normalization/limits: прежний reachable input без нового loader
+Правила имени env: восстановление прежнего ввода, без нового загрузчика
 
-Baselinecfd429c. Oldmaster00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
-.msb/bot/vendor/deobfuscated.js,readableblob73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11.
-Читать git show BLOB | sed -n '119135,119177p;54513,54566p;54603,54610p'.
-Name stage:trim→upper→strip[^A-Z0-9_],normalizedlength<2 и>40 оставляют name
-pending с прежним сообщением. Затем protected check,затем value stage. _A/1A/
-A-B→AB поддержаны;singleA/41chars rejected. lK проверяетvalue,непервуюбуквуkey;
-s1 вызываетlK иприсваиваетprocess.env послеcommit. Непустоеоднострочноеvalue
-для_A/1A проходило весь writer. Не вводить иной UX/стандарт имён по вкусу.
+Основа этапа — cfd429c. Эталон — master
+00f081f2220d0e6d3a186e8e1bb447b57acd6ebf, исторический файл
+.msb/bot/vendor/deobfuscated.js, readable blob
+73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11. Читать:
+ git show BLOB | sed -n '119135,119177p;54513,54566p;54603,54610p'
 
-Новоеядро:forms/env иsetEnvKey требуютпервым[A-Z],нонеимеютUImin/max.
-Это lost working input для_A/1A иотсутствие прежних length/sanitize retries.
-FixUIдолжен восстановить этиоперации/отказыдоvalue,проверятьprotected после
-нормализации и сохранять началоTTL. Low-levelwriter допускает onlyuppercase
-ASCIIletters/digits/underscore без leadingletter requirement;CR/LF/= ипрочие
-injection charactersпо-прежнему запрещены. Старые >40charfilekeys не удалять
-илимигрировать;UImax не добавлять скрытым ограничениемexistingstoredata.
+Прежняя последовательность
+nF сначала выполняет trim, uppercase и удаление символов вне A-Z/0-9/_.
+Длина нормализованного имени должна быть от 2 до 40. При ошибке остаются
+шаг имени и начальный срок формы. Затем проверяются защищённые ключи,
+и только потом начинается ввод значения. Примеры: _a→_A, 1a→1A, a-b→AB.
+Одиночная A и 41 буква отклоняются прежними сообщениями. lK проверяет
+значение, а не начальную букву ключа; s1 сохраняет файл и обновляет process.env.
+Для _A и 1A обычное непустое однострочное значение проходило весь writer.
 
-Материальные границы
-TargetLinux257:EnvironmentFile сохраняет_A/AA,не1A. Послеruntimeassignment
-actualNode→child/Bashchild сохраняетвсе3. Sanitized evidence рядом. Это важнее
-одногоJSобъекта:valid_Aподдержанвstartup/children,1Aподдержанruntime,нонеполным
-restart. Trackedoldunit такжеEnvironmentFileperbot;bulkglobalfile→processenv
-loader не найден(oldg9/zyиспользуютrowsдляUI/metadata/redaction,неhydration).
-Поэтомуэтотfixвозвращает старыйUI/writer/runtime,не обещает1Aafterrestart и
-не добавляет новыйstartup/global auth import. Globalvisibility/bootstrap остаются
-отдельным этапом,неприниматьэтуграницузаfullenvparity.
+Расхождение нового ядра
+Форма и setEnvKey требуют [A-Z] первым символом, поэтому теряют прежние
+имена с начальным _ или цифрой. Форма не соблюдает прежние min/max и sanitize.
+Исправление возвращает эти операции, сообщения и retries до шага значения.
+Защищённость проверяется после нормализации; обход через пробелы недопустим.
+Writer разрешает только uppercase ASCII, цифры и _, без требования к первой
+букве. Разделители =, CR/LF/NUL, пробелы и другие injection characters остаются
+запрещены. UI-предел 40 не становится ограничением API существующих длинных
+записей; их удаление уже восстановлено в cfd429c. Данные не мигрируются.
 
-Проверки:productioncreateBot name→value→description/skip→store→processenv;
-_A/1A/2boundary/sanitize40/41/emptyretry,protectednormalizedname,исходныйTTL,
-state/provider/session/model/effort сохранены. Directstoreinjection negative;
-actualrunAgentTurn→CLIenv snapshot обоих движков сsynthetickey. Fakefixtures
-неподключаютrealCLI/API/auth;realLinuxparser/shellproof отдельно.
-ДоfixобязательныйRED,затемnarrowfix,regressionиотдельныйcommit.
-Rollbackвозвращаетnameinputregressions;данные.env code-onlyrollback не отменяет.
+Подтверждённые границы Linux
+В отдельном процессе с systemd 257 EnvironmentFile пропускает _A/AA,
+но не 1A. После runtime assignment фактические Node-child и Bash-child
+сохраняют все три имени. Обезличенное доказательство:
+env-name-linux-evidence.json. У теста не было доступа к private HOME/сети,
+его временная служба удалена, службы бота/helper не менялись.
+
+Tracked old unit также использует per-bot EnvironmentFile. Bulk loader
+общего файла в process.env не найден: g9/zy читают его для UI, metadata и
+redaction. Поэтому этот этап восстанавливает прежний UI/writer/runtime,
+не обещает 1A после рестарта и не добавляет новый импорт bootstrap/global auth.
+Полная область видимости и активация global env — отдельный пункт аудита.
+Одного JS-объекта было бы недостаточно для вывода о совместимости.
+
+Проверки
+Production createBot: name→value→description/skip→store→process.env;
+нормализация, min/40/41, повторный ввод, normalized protected key, общий TTL.
+Проверяются неизменность provider/session/model/effort и отсутствие рестарта.
+Прямой store запрещает injection characters. Production runAgentTurn→CLI env
+проверен для Claude/Codex с synthetic именами; fake fixture возвращает boolean,
+не дамп секретов. Эти проверки не равны live login или restart загрузке 1A.
+
+Этапы: 8d507dc — контракт; 7ee5831 — 1 PASS / 16 RED из 17 тестов.
+После узкого fix — 17 name PASS, 121 связанных PASS, без skip/todo.
+Независимый reviewer: name/protected/auth/profile — 42 PASS, findings нет.
+Полный Docker/target Linux и живая приёмка относятся к финальному экспорту.
+Откат fix возвращает ошибки имени; code-only rollback не возвращает данные env.

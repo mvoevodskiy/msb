@@ -56,3 +56,11 @@ service claims и global visibility не подменяются этим спи�
 resolve читает currentkeynames,безvalue/registry/migration. Unknown/ambiguousref
 не меняет текущие экран/форму и не пишет.env. [Контракт](../../tests/reference/parity-env-callback-contract.txt),
 [transport/restart/owner tests](../../tests/env-callbacks.test.mjs).
+
+Имя в форме нормализуется как в old nF: trim/uppercase, удаление символов вне
+A-Z/0-9/_, затем предел 2–40. Ошибка сохраняет шаг имени и начало TTL; protected
+проверяется после нормализации. Writer допускает прежние `_A`/`1A`, запрещает
+injection characters и не вводит UI-предел в API для существующих длинных keys.
+[Контракт](../../tests/reference/parity-env-name-contract.txt),
+[проверки формы/CLI](../../tests/env-name.test.mjs). Загрузка `1A` при рестарте
+имеет отдельную границу EnvironmentFile; этот fix не добавляет dotenv loader.

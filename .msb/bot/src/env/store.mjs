@@ -98,7 +98,7 @@ export async function listEnvEntries(env = process.env) {
 }
 
 export async function setEnvKey(key, value, env = process.env, { internal = false, comment } = {}) {
-  if (!/^[A-Z][A-Z0-9_]*$/.test(key)) {
+  if (!/^[A-Z0-9_]+$/.test(key)) {
     throw new Error('Ключ: только A-Z, цифры и _');
   }
   validateEnvValue(value);

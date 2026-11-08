@@ -28,9 +28,14 @@ export async function handleEnvValueInput({ kind, ctx, text, pending, chatId }) 
 }
 
 export async function handleEnvNameInput({ ctx, text, pending, chatId }) {
-  const key = text.trim().toUpperCase();
-  if (!/^[A-Z][A-Z0-9_]*$/.test(key)) {
-    await ctx.reply('Имя ключа: только A-Z, цифры и _.');
+  // Old nF: normalize first, keep name stage on bounds errors.
+  const key = text.trim().toUpperCase().replace(/[^A-Z0-9_]/g, '');
+  if (key.length < 2) {
+    await ctx.reply('Имя переменной должно быть минимум 2 символа (A-Z, 0-9, _). Попробуйте снова:');
+    return;
+  }
+  if (key.length > 40) {
+    await ctx.reply('Имя слишком длинное (максимум 40 символов). Попробуй короче:');
     return;
   }
   if (await refuseProtected({ key, ctx, pending, chatId })) return;
