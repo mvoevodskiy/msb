@@ -27,7 +27,8 @@ base «▸ ~/workspace — текущий» илибезстрелки. Перв
 либо«📂 ~/workspace»→project:__default__. Projectbuttons «✓ NAME» илиNAME,
 callbackproject:NAME. Pagination◀️/n/N/noop/▶️→projects:page:n. Завершение:
 «➕ Новый проект», затем «« Назад»/menu:back изменю, «✖ Закрыть»/menu:close
-изкоманды. menu:projects /page callbacks используют тотжеrenderer.
+изкоманды. menu:projects /page callbacks используют тотжеrenderer;page всегдаBack(true),
+первыйcommandсписокClose(false). Emptycommand —createonly, emptymenu —create+Back.
 Select success «📍 Переключился на проект <code>NAME</code>», default success
 «📂 Переключился на базовый workspace (<code>~/workspace</code>)».
 Missing «❌ Проект <code>NAME</code> не найден.» сHTMLescaping.
@@ -43,14 +44,14 @@ Menu input119337–354:trim/lowercase, strict^[a-z0-9_-]{1,40}$. Invalid сох�
 Проектнойформе не добавлятьenv/authTTL. Reached slash очищает её, registered
 commands сохраняют прежнюю приоритетную обработку; команда не станетименем.
 Valid создаётmemory/knowledge, запускаетgitinit, выбираетпроект, сбрасывает
-ccSessionId. Successnq3705–3716:«✔ Проект <b>NAME</b> создан и активирован.»
+ccSessionId. Successnq3705–3716:«✔ Проект <code>NAME</code> создан и активирован.»
 и«Пиши задачу — агент уже в нём.»; explicit/projectnew включаетpath.
 Oldgitinit былfire-and-forget, поэтомуsuccess не доказываетrepohealth. Новый
 код не запускаетshellснепровереннымименем/невыдаётgitуспехбезпроверки.
 Command/projectnew112288–341 имеет отдельноеold правило:удаляетневалидныеASCII
 символы, rejects толькоempty, не вводитьmenu40/lowercase вэтотстарыйпуть.
 /project безаргумента показываеттекущийпроект/путь; existingname/default выбор
-следуют112288–112400. Прочитатьточныеdefaultaliases передреализацией.
+следуют112288–112400:послеsanitize home/default — возвратbase;workspace неalias.
 
 Исполнение/контекст
 NativeClaude IJ19514–19523 захватывает_A какchildcwd. Новыйselectedcwd должен
