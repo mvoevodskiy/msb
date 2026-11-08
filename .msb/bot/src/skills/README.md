@@ -38,7 +38,7 @@ root-bound ссылки этой неоднозначности не имеют.
 [Read tests](../../tests/skills-read.test.mjs) проходят production bot/route, а
 [native tests](../../tests/skills-native.test.mjs) используют настоящий overlay и
 подменённый локальный CLI. Одна Add-подсказка не доказывает установку: installer
-prompt/marker/write/final-response — отдельный обязательный этап перед приёмкой.
+prompt/marker/write/final-response связан ниже; native/live приёмка ещё обязательна.
 Exported old cp/nHA не доказаны как direct native CC prompt; blanket injection
 полных body не добавлять. Полнота native providers/OC и live проверяется отдельно.
 
@@ -66,5 +66,42 @@ observer handle с failure. Это не гарантия reap неизвестн
 [production UI](../../tests/skills-openclaw.test.mjs). Длинный список доставляет
 [общий view transport](../telegram/view-delivery.mjs): все записи, balanced HTML,
 короткие имена в одном code span, Back только на последней части. Обычный список
-сохраняется byte-exact, дополнительных кнопок/пагинации/footer нет. Installer,
+сохраняется byte-exact, дополнительных кнопок/пагинации/footer нет.
 OC brain/live/full release остаются непроверенными.
+
+
+## INSTALL_SKILL: прежний model marker
+
+[Runner](../agent/turn.mjs) добавляет [инструкцию/формат](install-protocol.mjs) и
+возвращает [captured target](install-target.mjs). [Processor](response-markers.mjs)
+вызывается только на возвращённом model final text в Telegram, перед plan,
+доставкой и журналом. Read-only screens не исполняют markers. Complete firstblock
+парсится со старыми пределами; остальные complete blocks убираются. Flag0 strip,
+incomplete marker literal, старые invalid/failure/success тексты сохранены.
+Успех подставляется только после реальной записи. Infrastructure exception и abort
+не запускают writer; returned CC partial text допускается, OC partial error — нет.
+
+[Writer](install-writer.mjs) пишет user-global native skill: Claude прежний
+HOME/.claude/skills, Codex собственный HOME/.agents/skills. Add project advice
+не меняет writer scope. Claude/OC используют прежнее условное зеркало в уже
+существующем HOME/.openclaw; Codex его не создаёт. Старый OA/vB/RW учитывает
+[наблюдённый OC state](../../shared/engine-policy.mjs), не только bool flag.
+Unknown provider не получает чужую папку или выдуманный результат. Ни native auth,
+ни config/profile не мигрируются, MCP marker/backend сюда не добавлен.
+
+Предыдущие bytes сначала публикуются в .bak через свой exclusive temp; только
+потом аналогично заменяется SKILL.md. Ошибка backup сохраняет старый файл.
+Publication заменяет link entry, не внешний target; symlink самого native-root
+поддержан, выход дочерней skill directory наружу отклонён. Aliasing roots пишутся
+один раз физически, сохраняя old two-engine result. Собственные temps чистятся;
+existing mode сохраняется. Нет гарантии atomic containment против concurrent
+parent replacement, общей primary/mirror транзакции или concurrent install lock.
+Сигнал проверяется до/между мутациями, уже принятая filesystem operation дренируется.
+Ошибка metadata необязательного OC home пропускает только зеркало, как old exists.
+
+[62 installer cases](../../tests/skills-install.test.mjs),
+[filesystem](../../tests/skills-install-files.test.mjs), [policy](../../tests/skills-install-policy.test.mjs).
+Два из cases проводят весь actual bot→runner→protocol double→writer→response/journal;
+это не native CLI/model proof. Native0.166 discovery/parsed frontmatter, provider
+application и target/live приёмка перед выпуском остаются отдельным gate. Полные
+skill bodies из unproven cp/nHA в prompt не внедряются, фоновые записи не расширены.

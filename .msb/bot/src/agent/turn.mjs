@@ -14,6 +14,8 @@ import { buildSystemPrompt } from './system-prompt.mjs';
 import { readSessionContext } from './context.mjs';
 import { claimFirstSession, releaseFirstSession } from '../../shared/session-starts.mjs';
 import {applySessionResult} from './session-result.mjs';
+import {captureSkillInstallTarget} from '../skills/install-target.mjs';
+import {skillInstallPrompt} from '../skills/install-protocol.mjs';
 
 /**
  * runAgentTurn: prompt/signal → выбранный CLI → результат и guarded session/usage.
@@ -22,6 +24,7 @@ import {applySessionResult} from './session-result.mjs';
  * native dispatch → [provider runner](../../../../overlay/bot/ext/shim/run-turn.mjs).
  * Captured project cwd → [projects](../projects/paths.mjs); base context stays global.
  * Контекст → [system prompt](./system-prompt.mjs), [metadata](./context.mjs);
+ * Skill install [target](../skills/install-target.mjs)/[protocol](../skills/install-protocol.mjs) captured with provider snapshot, final execution belongs to Telegram.
  * владелец записи сессии → [result transaction](./session-result.mjs) / [state](../state.mjs),
  * [first-start token](../../shared/session-starts.mjs), [description ledger](../sessions/ledger.mjs).
  * Проверки: [polling/session fences](../../tests/turn-lifecycle.test.mjs),
@@ -37,9 +40,10 @@ export async function runAgentTurn({
 } = {}) {
   const aborted = () => ({ ok: false, error: 'aborted', text: 'Остановлено.' });
   if (signal?.aborted) return aborted();
-  let state, firstSession, baseWorkspace, contextNow;
+  let state, firstSession, baseWorkspace, contextNow, skillInstall;
   await updateState(s => {
     state = { ...s };
+    skillInstall=captureSkillInstallTarget(state,env);
     baseWorkspace = projectLocations(env).workspace;
     contextNow = Date.now();
     if (signal?.aborted || !hasClaudeAuth(env, s) || s.engine === 'oc' || s.ccSessionId) return NO_STATE_WRITE;
@@ -70,7 +74,7 @@ export async function runAgentTurn({
   const model = resolveModel(state);
   const effort = resolveEffort(state, cliVersion);
   const permissionMode = resolvePermMode(state, cliVersion);
-  const systemPrompt = await buildSystemPrompt({ env, workspace:baseWorkspace, cwd, timezone:state.timezone || 'UTC', now:contextNow, extra: conversationalModePrompt(state) });
+  const systemPrompt = await buildSystemPrompt({ env, workspace:baseWorkspace, cwd, timezone:state.timezone || 'UTC', now:contextNow, extra: [conversationalModePrompt(state),skillInstallPrompt(skillInstall)].filter(Boolean).join('\n\n') });
 
   if (signal?.aborted) return aborted();
 
@@ -125,7 +129,7 @@ export async function runAgentTurn({
         ? `(ход без текста; последний инструмент: ${lastTool})`
         : '(пустой ответ)');
 
-  return { ok: !result.isError, text, result };
+  return { ok: !result.isError, text, result, skillInstall };
   } finally {
     if (firstSession) await updateState(s => releaseFirstSession(s, firstSession) ? s : NO_STATE_WRITE, env).catch(() => {});
   }

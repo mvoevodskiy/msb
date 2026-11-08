@@ -2,6 +2,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
+import {spawnSync} from 'node:child_process';
+import os from 'node:os';
+import {fileURLToPath} from 'node:url';
 import {fixture} from './menu-fixture.mjs';
 import {loadState,saveState} from '../../src/state.mjs';
 export const payload={name:'fixture-skill',description:'When reviewing',body:'# Review\nUse the checklist.'};
@@ -26,4 +29,10 @@ export async function installFixture(t,{provider='codex',text=block(payload),bef
   await f.bot.stop();
  },final:()=>[...f.edits,...f.messages].filter(value=>value.includes('fixture-end')).at(-1)||'',
  async exists(file){try{await fs.stat(file);return true;}catch(error){if(error.code==='ENOENT')return false;throw error;}}};
+}
+
+export function installIngressProbe(provider) {
+ const script=fileURLToPath(new URL('../fixtures/skills-install-ingress.mjs',import.meta.url));
+ const child=spawnSync(process.execPath,[script,provider],{env:{PATH:path.dirname(process.execPath),TMPDIR:os.tmpdir()},encoding:'utf8',timeout:8000});assert.equal(child.status,0,child.stderr);
+ const line=child.stdout.split('\n').find(value=>value.startsWith('SKILL_INGRESS='));assert.ok(line,child.stdout);return JSON.parse(line.slice('SKILL_INGRESS='.length));
 }

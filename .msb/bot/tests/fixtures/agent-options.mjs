@@ -95,6 +95,12 @@ try {
       ccSessionId:provider==='claude'?'fixture-existing-project-session':'ext:codex:0199a213-81c0-7800-8aa1-bbab2a035a51',timezone:'UTC'});
     stateBefore=(await loadState()).state;
   }
+  if(['skills-cc-only','skills-oc-present','skills-oc-observed'].includes(envScenario))process.env.JARVIS_CC_ONLY='1';
+  if(envScenario==='skills-msb-cc-only')process.env.MSB_CC_ONLY='1';
+  if(envScenario==='skills-oc-present' || envScenario==='skills-oc-observed') {
+    const saved=(await loadState()).state;await saveState({...saved,ocModel:'fixture-legacy-oc'});
+    if(envScenario==='skills-oc-observed'){await loadState();await saveState(saved);}
+  }
   let out;
   try { out=await runAgentTurn({ prompt: 'synthetic options task' }); }
   catch(error) { out={ok:false,error:error.code || 'exception',text:String(error.message)}; }

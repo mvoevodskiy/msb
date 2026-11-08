@@ -331,3 +331,26 @@ oldsource, не запускать весь bundle. New atomic temp/rename до�
 symlink. Не claim atomic containment против concurrent parent replacement или
 общую транзакцию primary+mirror, Nodepathoperations этого не доказывают.
 JAR1остаётся830e3f6; RED checkpoint невыкладывать, pushнет.
+
+
+INSTALL_SKILL local restoration (послеc3958e6, до release)
+35originalcases3PASS32assertRED→GREEN. Дополнительноfilesystem/legacyOApresence/
+canonicalflag/mirrorfailure/OCsuccess-vs-partial/model-body-vs-plan и полный actual
+bot→runner→fakechild→writer→processedreply+journal. Всего62installer cases:
+41production/producer/chain +9filesystem +12policy. Finalfocused105PASS,0FAIL/
+cancelled/skip:62installer+43regression(plan/modes/paths/turnlifecycle/projectraces).
+Раннийquoteexpected тест потерял slash вJS literal; исправлен поoldL8A, formatter
+не ослаблялся. AliasednativeRoot новыйcandidate терялbackup:56cases55PASS1RED→
+GREEN черезsamephysicaltarget publication once; logicaltwoengineresult сохранён.
+OptionalOCstatEACCES нашcandidateошибочносчиталprimaryfailure:8PASS1EACCES→GREEN;
+теперькакoldexists пропускаетmirror, sourcebackup errors остаютсястрогими.
+
+Передпервымawaitподготовкиprompt runner захватываетprovider/home/OCeligibility
+вstate snapshot, отдаётdescriptor отдельно отmodeltext. Значенияenv/auth невыдаются.
+SharedlegacyOA/vB/RWpolicystateobserver readonly, perbotprofile memory; canonical
+MSB_CC_ONLY сохраняетсуществующийalias. Codex .agents user-only; Claude/OC old
+.claude+conditional.openclaw. ActualOCbrain и separatebackgroundfinishнеподключались.
+Processor толькоTelegramreturnedfinal beforeplan/history, неUIviews и неexceptions.
+NativeCLI/model невызывались. Полнотуnativefrontmatter/discovery/application и
+samecommit targetLinux/live ещёнужно проверить до JAR1; онпо-прежнему830e3f6.
+Solboundedread-onlyreview блокирующихновыхfindings0; ограниченияIOвыше сохраняются.

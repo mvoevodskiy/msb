@@ -55,3 +55,12 @@ token, не history metadata или авторизация. Переключен
 read/modify/write env; scope/валидация остаются у вызывающих. Обе стороны
 импортируют одну копию shared. [Контракт](../tests/reference/parity-env-write-contract.txt),
 [проверки порядка/ошибок](../tests/env-write-order.test.mjs).
+
+
+[engine-policy.mjs](engine-policy.mjs) сохраняет old OA/vB/RW: наличие legacy OC
+state делает Claude-only preference неэффективным; [loadState](../src/state.mjs)
+запоминает обнаружение на время процесса отдельно для каждого bot profile. На диск
+новых полей не пишется. MSB_CC_ONLY — действующий canonical alias, JARVIS_CC_ONLY
+совместим. [Skill target](../src/skills/install-target.mjs) захватывает эту eligibility
+вместе с provider/home. Это не включение OS engine/helper и не разрешение native
+Codex через существующий отдельный guard. [Проверки](../tests/skills-install-policy.test.mjs).

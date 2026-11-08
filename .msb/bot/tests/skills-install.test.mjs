@@ -1,6 +1,6 @@
 /** Old reachable model marker -> real worker/file/processed reply; synthetic model and private HOME only. */
 import test from 'node:test';import assert from 'node:assert/strict';import fs from 'node:fs/promises';import path from 'node:path';
-import {installFixture,payload,block,installed,invalid,failed,skillPath} from './helpers/skills-install-fixture.mjs';
+import {installFixture,payload,block,installed,invalid,failed,skillPath,installIngressProbe} from './helpers/skills-install-fixture.mjs';
 import {loadState,saveState} from '../src/state.mjs';
 import {agentOptionsProbe} from './helpers/agent-options.mjs';
 const write=async(file,text)=>{await fs.mkdir(path.dirname(file),{recursive:true});await fs.writeFile(file,text);};
@@ -11,7 +11,7 @@ for(const provider of ['claude','codex'])test('skill install: '+provider+' write
 });
 test('skill install: trims and normalizes the old payload, including quoted description and literal dollar replacement text',async t=>{
  const data={name:'  MiXeD-Skill  ',description:'  Use  \n "quotes"  ',body:'  # Body\n$& and $1  '},f=await installFixture(t,{text:block(data)});await f.run();
- assert.equal(await f.exists(skillPath(f.home,'codex','mixed-skill')),true);assert.equal(await fs.readFile(skillPath(f.home,'codex','mixed-skill'),'utf8'),'---\nname: mixed-skill\ndescription: "Use \"quotes\""\n---\n\n# Body\n$& and $1\n');assert.ok(f.final().includes(installed('mixed-skill')));
+ assert.equal(await f.exists(skillPath(f.home,'codex','mixed-skill')),true);assert.equal(await fs.readFile(skillPath(f.home,'codex','mixed-skill'),'utf8'),'---\nname: mixed-skill\ndescription: "Use \\"quotes\\""\n---\n\n# Body\n$& and $1\n');assert.ok(f.final().includes(installed('mixed-skill')));
 });
 for(const [label,value]of [['invalid json','{oops'],['array',[]],['short name',{...payload,name:'a'}],['long name',{...payload,name:'a'.repeat(50)}],['traversal',{...payload,name:'../escape'}],['empty description',{...payload,description:' '}],['long description',{...payload,description:'d'.repeat(201)}],['empty body',{...payload,body:' '}],['long body',{...payload,body:'b'.repeat(60001)}]])test('skill install: '+label+' gives the old invalid-payload response with no native writes',async t=>{
  const f=await installFixture(t,{text:block(value)});await f.run();assert.ok(f.final().includes(invalid));assert.equal(f.final().includes('INSTALL_SKILL'),false);assert.equal(await f.exists(path.join(f.home,'.agents')),false);assert.equal(await f.exists(path.join(f.home,'.claude')),false);
@@ -79,4 +79,26 @@ for(const name of ['a1','a'.repeat(49)])test('skill install: old inclusive name/
 });
 test('skill install: incomplete markers remain literal text and never create a file',async t=>{
  const f=await installFixture(t,{text:'[INSTALL_SKILL]{"name":"fixture-skill"}'});await f.run();assert.equal(await f.exists(skillPath(f.home)),false);assert.ok(f.final().includes('[INSTALL_SKILL]'));assert.equal(f.final().includes('Поставил навык'),false);
+});
+
+
+test('skill install: mirror failure reports failure after a successful primary write without claiming a joint transaction',async t=>{
+ const f=await installFixture(t,{provider:'claude'});await fs.mkdir(path.join(f.home,'.openclaw'));await fs.writeFile(path.join(f.home,'.openclaw/skills'),'blocking mirror root');await f.run();assert.equal(await f.exists(skillPath(f.home,'claude')),true);assert.ok(f.final().includes(failed));assert.equal(f.final().includes('на обоих движках'),false);
+});
+
+
+test('skill install: successful OC final text retains the old Claude primary and existing OpenClaw mirror',async t=>{
+ const f=await installFixture(t,{provider:'oc'});await fs.mkdir(path.join(f.home,'.openclaw'));await f.run();for(const provider of ['claude','oc'])assert.equal(await f.exists(skillPath(f.home,provider)),true);assert.equal(await f.exists(skillPath(f.home,'codex')),false);assert.ok(f.final().includes(installed(payload.name,false,true)));
+});
+test('skill install: OC partial-error output cannot execute the old success-only marker workflow',async t=>{
+ const f=await installFixture(t,{provider:'oc',ok:false});await f.run();for(const name of ['.agents','.claude','.openclaw'])assert.equal(await f.exists(path.join(f.home,name)),false);assert.equal(f.final().includes('Поставил навык'),false);
+});
+
+for(const provider of ['claude','codex'])test('skill install: complete actual '+provider+' bot/runner/finalizer chain writes the returned marker and journals its processed result',()=>{
+ const out=installIngressProbe(provider);assert.equal(out.calls.length,1);assert.equal(out.calls[0].provider,provider);assert.equal(out.calls[0].cwd,out.workspace);assert.ok(out.calls[0].args.join(' ').includes('[INSTALL_SKILL]'));assert.ok(out.content?.includes('name: fixture-skill'));assert.ok(out.content?.includes('# Review\nUse the checklist.'));assert.ok(out.final.includes(installed()));assert.equal(out.final.includes('INSTALL_SKILL'),false);assert.ok(out.diary.includes('Поставил навык'));assert.equal(out.diary.includes('INSTALL_SKILL'),false);
+});
+
+
+test('skill install: a plan-looking marker inside installed skill body does not create an approval card',async t=>{
+ const data={...payload,body:'Instructions containing [КНОПКИ: plan] as data.'},f=await installFixture(t,{text:block(data)});await f.run();assert.equal(await f.exists(skillPath(f.home)),true);assert.ok(f.final().includes(installed()));assert.equal(f.messageOptions.some(options=>options.reply_markup),false);assert.equal(f.editOptions.some(options=>options.reply_markup),false);
 });

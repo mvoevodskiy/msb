@@ -10,6 +10,7 @@ import {resetCliConversation} from '../sessions/selection.mjs';
  * Индикация → [progress](./progress.mjs), итог → [response](./response.mjs),
  * План/комментарий → [plan actions](./plan-actions.mjs) → тот же inbox; final marker → [plan](./plan.mjs).
  * журнал Пульта → [history](./history.mjs), STT → [voice](./voice.mjs).
+ * Model skill markers → [processor](../skills/response-markers.mjs) before plan/delivery/history, never UI metadata.
  * Prepared skills views/chunks → [view delivery](./view-delivery.mjs), context reply retained.
  * Skills command read options/OC loading → [read presentation](./skills-read.mjs), native OC reader is injectable.
  * Проверки: [inbox lifecycle](../../tests/inbox-lifecycle.test.mjs),
@@ -28,6 +29,7 @@ import { createPlanActions } from './plan-actions.mjs';
 import { parsePlanResponse } from './plan.mjs';
 import { deliverTurnResponse } from './response.mjs';
 import { deliverView } from './view-delivery.mjs';
+import { processSkillMarkers } from '../skills/response-markers.mjs';
 import { registerProjectCommands } from './project-commands.mjs';
 import {prepareSkillRead,skillReadOptions} from './skills-read.mjs';
 import {readOpenClawSkills as nativeOpenClawSkills} from '../skills/openclaw.mjs';
@@ -524,12 +526,14 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       outcome = out.ok ? 'ok' : 'error';
       await progress.stop();
       if (signal.aborted || out.error === 'aborted') { await stopped(); return; }
+      const replyText=out.skillInstall?.providerId==='oc' && !out.ok?out.text:await processSkillMarkers(out.text,out.skillInstall,{signal});
+      signal.throwIfAborted();
       turn.completed = true;
       responseReady = true;
-      await deliverTurnResponse(ctx, status.message_id, out.text, out.ok ? {
+      await deliverTurnResponse(ctx, status.message_id, replyText, out.ok ? {
         elapsedMs: performance.now() - startedAt, costUsd: out.result?.costUsd, context: out.result?.context,
       } : {});
-      deliveredText = parsePlanResponse(out.text)?.cleanText ?? out.text; delivered = true;
+      deliveredText = parsePlanResponse(replyText)?.cleanText ?? replyText; delivered = true;
     } catch (err) {
       await progress?.stop();
       if (signal.aborted) await stopped().catch(() => {});

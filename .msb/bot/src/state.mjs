@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import {observeOpenClawState} from '../shared/engine-policy.mjs';
 import { getClaudeModel, cleanClaudeModelId, compareCliVersion } from './agent/models.mjs';
 import { claudeEffortFlag } from './agent/effort.mjs';
 import path from 'node:path';
@@ -10,6 +11,7 @@ import { ensureDir, statePath } from './paths.mjs';
  * ccSessionId, ccModel, ccEffort, permissionMode, extAuthBypass.
  * Алиасы model/effort/permMode читаются для старых записей.
  * loadState.exists — IO metadata, не поле профиля; updateState передаёт его mutator вторым аргументом.
+ * [Legacy OC observation](../shared/engine-policy.mjs) is in-memory/read-only; no extra profile fields.
  * Вход: [Telegram](./telegram/bot.mjs), [agent](./agent/turn.mjs); записи только updateState.
  * Путь/profile → [paths](./paths.mjs), env CRUD → [env/store](./env/store.mjs).
  * Отдельные provider IDs/model/effort → [ext store](../../../overlay/bot/ext/store.mjs);
@@ -24,7 +26,9 @@ export async function loadState(env = process.env) {
   try {
     const raw = await fs.readFile(file, 'utf8');
     const state = JSON.parse(raw);
-    return { file, state: normalizeState(state && typeof state === 'object' ? state : {}), exists: true };
+    const normalized=normalizeState(state && typeof state === 'object' ? state : {});
+    observeOpenClawState(normalized,env);
+    return { file, state:normalized, exists:true };
   } catch (err) {
     if (err?.code === 'ENOENT') return { file, state: {}, exists: false };
     throw err;
