@@ -20,6 +20,10 @@ Telegram, Deepgram и CLI. Ожидания не подгоняются под �
 | Настройки → Движки → Codex | core renderer/router → provider view → existing callback | [engine-menu](../../../../overlay/bot/ext/tests/reference/engine-menu.test.mjs) |
 | Context, MAX, forms и shared profile | [Agent](../../src/agent/README.md), [Telegram](../../src/telegram/README.md), [Shared](../../shared/README.md) | [codex-context](../codex-context.test.mjs), [menu-handlers](../menu-handlers.test.mjs), [runtime-profile](../runtime-profile.test.mjs) |
 
+Пояснения к ранним commits текущего аудита, old provenance, RED→GREEN и границы:
+[parity-audit-notes.txt](parity-audit-notes.txt). Это история проверок, не замена
+навигации у исходников и не утверждение полного паритета.
+
 ## Основа эталона
 
 Исходный open-core: `0bc2c9493063043bca866ca8ead6ee2aec6f3457`.

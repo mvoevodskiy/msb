@@ -1,0 +1,182 @@
+Пояснения к уже завершённым commits пошагового аудита07.11.2026
+
+Назначение
+Tracked дополнение к ранним кратким commit bodies по поручению владельца;
+не переписывает принятые SHA. Это история причин/доказательств, не отдельная
+карта файлов. Текущие связи ищутся от index.js/main по imports/заголовкам.
+Будущие commits описываются самостоятельно по AGENTS.md (правило8324c12).
+
+Общие базы и чтение эталона
+Old master00f081f2220d0e6d3a186e8e1bb447b57acd6ebf. Закрытый .iia/bot/index.js
+совпадал с vendor blob a3285b1062653226c4c4665d4efdb79803a47220. Исторический
+readable/deobfuscated blob73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11:
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11
+Ниже номера строк именно этого blob, не текущих source files. Provenance и
+границы — README.md этого каталога. Old код не нужен для запуска тестов и
+не включается в runtime/test snapshot; новая реализация не копирует bundle.
+New baseline аудита — b5a781d3f178f142f014f05ce0efe2ff5813c0da,
+ветка codex/open-core-reference-tests. Не путать local commit, isolated PASS,
+установленный artifact и live acceptance. Push в этом аудите не выполнялся.
+
+1. Навигация и холодный старт —1e38fe3
+Это документация исходников, не восстановление old runtime. Main/bot/router/
+agent/state получили рядом с кодом ответственность, owner состояния и ссылки
+на ближайший вызов/проверку. docs/CODEMAP.md стал совместимым переходом, а не
+второй поддерживаемой таблицей всего репозитория.465relative links проверены;
+исполняемые части изменённых файлов совпали после удаления новых заголовков.
+Независимый холодный reviewer прошёл от index до input/runner/tests и нашёл
+одну отсутствовавшую contract-ссылку; она добавлена. Это не подтверждение
+модульности/полного паритета каждого файла. Отмена — revert1e38fe3, только docs.
+
+2. Обычные reply/selected quote и queued quotes —78046f8 →f12f863
+Old119818–119870: $2(message,botId) даёт referent, передаваемый в NB отдельно от
+content. MU110294–110323 оборачивает каждый content своим referent через aF
+перед queued merge; Z8A сохраняет «Сообщение i/N». New buildReplyContext уже был,
+но обычный текст его обходил: использовался лишь voice/forwarded batch.
+78046f8 добавил2RED production-ingress checks в inbox-lifecycle.test.mjs.
+f12f863 подключил тот же formatter к обычному тексту, ввёл отдельные raw text
+и prompt у queue entry. Цитаты каждого queued reply не смешиваются; schedule
+parser и формы не получают цитату как команду. Journal хранит прежний raw input.
+40targeted PASS; итоговый ingress/forms/voice/polling70PASS после следующего fix.
+JAR1 принял этот behavior в3131916: controlled Codex reply вернул nonce из
+цитаты; raw journal его не получил. Это не live-проверка всех медиа/providers.
+Code rollback — revertf12f863 (RED-тест78046f8 снова падает); данные не откатывает.
+
+3. Reply словом «стоп» —605647c →ea3db7e
+Old119452–119466: exact lower-case compare + reply_to_message прерывает active
+и завершает ветвь, оставляет FIFO aB и collector _5. Idle reply потребляется;
+обычное «стоп» без reply идёт агенту. Ветка после env/auth, до timezone119467+.
+New трактовал reply-стоп как обычный prompt.605647c закрепил3RED;
+ea3db7e использует общий abort/presentation lifecycle без второго runner,
+сохраняет очередь/collector. Slash /stop остаётся отдельной полной отменой.
+70targeted PASS, включая сохранение открытого collector; холодное review50PASS
+до добавления последнего collector case. JAR13131916: active sleep остановлен,
+queued задача выполнилась; journal status ok/aborted/ok. Реальных voice не было.
+Откат — revertea3db7e, код only; caller tests605647c сноваRED.
+
+4. Сохранность автономных задач —f1f90e6 →3131916
+Old Rz→ir24883,24928–24949 фиксирует результат одного action. U44393–4408
+через oA обновляет ID в свежей file transaction, сохраняя соседние ID. New
+scheduler ждал runner и сохранял весь старый listTasks snapshot. addTask(B)
+во время A терялся; same-PID tmp write конфликтовал, removed task воскресала.
+f1f90e6 воспроизводит5RED.3131916 переиспользует shared/file-lock.mjs для JSON
+transaction; перед запуском перечитывает candidate, saveTaskResult CAS сохраняет
+лишь execution fields неизменённой задачи. Lock не удерживается на время CLI.
+6persistence cases, включая3independent processes; paths/compact guard13PASS.
+Terra review подтвердил границы. На JAR1 реальных задач0, новые не создавались.
+Не обещается cross-process execution lease/exactly-once. saveAllTasks остаётся
+явной полной заменой, не incremental CRUD. Interval должен считаться от старта
+каждой задачи (Rz24757–24759,ir24883,lwA36099–36122); tick-wide now и shutdown
+остаются отдельными findings, не выдаются за исправленные здесь.
+Выпуск3131916: Linux197core+78overlay+15reference+13release=303PASS,
+130runtimefiles hash/mode совпали,96Pult/helper files не менялись. Auth/env/
+active session/model/effort сохранены; толькоusage/updatedAt менялись live.
+Откат коду до этапа — revert3131916; tasks.json это не откатывает. Предыдущий
+artifact b5a781d сохранён release tooling на сервере; операторская команда
+rollback конкретного deployment находится вне исходного репозитория.
+
+5. Подтверждение удаления env и выход из формы —cc4c097 →dc8f22c
+Old53558–53592 settings:env снимает input, delete:KEY проверяет protected keys
+и показывает «Удалить KEY?» с «🗑 Да, удалить»→confirm-delete и «« Нет»→список;
+только confirm-delete меняет файл. New делал обратное: delete удалял сразу,
+confirm-delete был no-op. Back/старый Cancel оставляли ожидание значения и
+следующая задача могла записаться в env. cc4c097:3RED. dc8f22c восстанавливает
+экран подтверждения screens/settings.mjs, действия routes/settings.mjs и
+явный выход в update-hook; protected keys остаются защищёнными backend.
+47targeted menu/env/screens/engine-menu PASS. Тесты берут actual keyboard;
+synthetic keys, настоящие Deepgram/Codex/env не затрагивались. Старые masked
+previews/сервисы сохранены; env messages не стали автоматически удаляться.
+Code rollback — revertdc8f22c; подтверждённо удалённые данные не восстанавливает.
+
+6. Выделение текстовых forms и fixture —0ada725/c178774
+Это структурное изменение нового ядра. Один createBot по-прежнему владеет
+polling/pending/очередью; forms.mjs dispatch вызывает маленькие auth/env/Pult
+adapters. Timezone после reply-stop сохранён, тексты и early pending-delete
+у project/bot/source/Pult не менялись. Restart injected для теста, default600ms
+прежний.67targeted ingress/forms/polling/voice PASS. c178774 вынес неизменённый
+fake Grammy HOME fixture в tests/helpers/menu-fixture.mjs:41menu PASS; это
+позволяет держать auth/Pult checks отдельно вместо роста смешанного test file.
+Откатывать в обратном порядке зависимостей: новые adapters/fixtures уже вызываются
+позднейшими тестами/fixes; isolated revert без их оценки не считается rollback.
+
+7. Docker Linux feedback —74241e3/d405921
+Нет old-продуктового аналога: это изоляция проверок, разрешённая владельцем.
+Dockerfile22-bookworm pin по digest, dependencies из committed lock, source из
+clean Git export. Offline/read-only run без hostHOME/SSH/auth, только synthetic
+HOME/results writable. /tmp exec нужен fake CLI; noexec давал инфраструктурный
+EACCES, а не допустимый behavioralRED. Исправленный запуск snapshot74241e3:
+202core+78overlay+15reference+13release=308PASS, syntax/deps/profile/snapshotPASS.
+Node контейнера22.23.2 (Linuxarm64), JAR1Node22.23.4. Этот PASS не заменяет
+целевой Linux artifact gate; workflow/полные команды в tools/release/README.md.
+Откат — revertd405921/74241e3, runtime приложения не меняется.
+
+8. Deadline и unknown slash env/Claude input —cf9e5a9 →5939f77
+Old dK54726–54730: строго now-startedAt>600000, проверка при следующем text.
+119119–119199 env,119397–119415 auth: expired text потребляется с прежним
+предупреждением, не сохраняется/не уходит модели. Name→value→comment держит
+первый clock. Quickenv53804–53816 пользуется тем же iE/startedAt. cK54723–54724
+использует trimStart().startsWith('/'); registered commands работают раньше.
+New pending Map не имел срока, unknown slash молча оставлял ввод открытым.
+cf9e5a9:8RED+1untimed-timezonePASS.5939f77 добавляет PendingInputs с now injection,
+advance сохраняет clock, notice проверяется до сохранения/model admission;
+76targeted PASS. Только env/auth timed; /status не стал сбрасывать форму,
+voice её не читает. Начало новой формы обновляет срок. No new TTL у Pult/
+project/bot/MCP/source/timezone. Timeout не таймер и не live sleep10мин.
+Откат — revert5939f77 с учётом следующих shared imports; повторная проверкаобязательна.
+
+9. Provider/IP input scope и late input —3c1b5ad →6db099b
+Существующие ext/auth и local-ssh хранили chatId и TTL, но handlers игнорировали
+chatId, getters удаляли expired и возвращали null: поздний key шёл core как task.
+3c1b5ad:7RED+1Codex guidancePASS.6db099b проверяет scope до expiry, includeExpired
+позволяет consumed notice в исходном чате, чистые строки/TTL вынесены в shared/
+input-notices. Core/overlay stores не объединены.68targeted PASS с запрещёнными
+fixture writes до installer. Это локальный precursor, недостаточный сам по себе:
+последующее независимое review нашло notification/callback границы (пункт12).
+Code rollback — revert6db099b; не меняет реальные login/секреты.
+
+10. Claude shape/normalization/setup-token route —d321787 →900a5ff
+Old119416–119455 удаляет whitespace и best-effort именно token message до
+validation; reject length<20 либо non-sk- length<50, pending остаётся для retry.
+New принимал пустой/короткий text, выставлял auth flags/restart; широкий sk-ant-
+считал API key, включая setup-token sk-ant-oat*. Экран нового ядра уже предлагал
+API key и setup-token; сохраняем оба существующих ввода. d321787:5RED.
+900a5ff восстанавливает old normalization/validation/retry и token-only deletion;
+одна классификация: sk-ant-api*→ANTHROPIC_API_KEY, OAT/legacy→CLAUDE_CODE_OAUTH_TOKEN
+для файла/processenv. Старые success/restart и существующие auth flags сохранены;
+не удаляется другой credential, не меняются active provider/session/model/effort.
+61targeted PASS. Prefix и локальные auth flags не доказывают реальный login;
+live Claude auth отсутствует. Порядок при одновременных API/OAuth не проверен.
+Если env записан, а state write упал, не заявляется atomic rollback всех данных.
+Code rollback — revert900a5ff; созданные значения не откатывает.
+
+11. Pult form Back/preset и переход ownership —f012e1d →aa36d11
+Сам Пульт — уже принятая часть нового open-core, а не old master; old-аналог
+не выдумывается. Инвариант явной отмены формы подтверждён env53558–53562.
+Actual существующие Back root/listen и presets в routes/system.mjs не снимали
+pending. f012e1d:12RED+1unrelatedenvPASS. aa36d11 завершает только совпадающий
+Pult input; пять Pult starts переключают ownership через existing update-hook.
+73targeted PASS; fake только ответ /run, IPC file в synthetic HOME. Тексты/
+кнопки/helpers/actions прежние, никакого реального reload/services/HTTP.
+Local stage зависел от следующей callback scope защиты до выпуска. Откат —
+revertaa36d11; не восстанавливает config, полученный прежними сохранениями.
+
+12. Ошибка Telegram и callback scope —3c9f242 →41a7e6e
+Независимый Sol воспроизвёл: sendMessage(expired) throws → общий hook catch →
+origHandleUpdate с поздним key. Back/Pult start другого чата также стирал origin
+auth/IP cursor. Old119397–119415 завершал token branch до model; соответствующего
+overlay fallback там не было.3c9f242:10RED+1noform-commandPASS через actualhook.
+41a7e6e вводит safe input notice и scoped clear(userId,{chatId}), включая отдельный
+SSH Back; callback без chat не снимает курсоры. Consumed input не становится
+prompt из-за ошибки транспорта; обычные команды по-прежнему доходят core.
+92targeted PASS; независимое повторное review19boundary/scopePASS и оба findings
+закрыты. No network/installers/nativeauth/JAR1. Store остаётся один на userId;
+это не реализация нескольких параллельных provider prompts. Code rollback —
+revert41a7e6e, что возвращает подтверждённый риск; не делать isolated production
+rollback без оценки. Секреты/config этот кодовый revert не возвращает.
+
+Граница документа
+Числа выше относятся к конкретным этапам, не складываются в один общий PASS.
+Локальные forms/Docker stages после3131916 этим документом не объявляются уже
+установленными на JAR1. Финальный artifact gate/live выполняются отдельно.
+Не проверены все20семейств, всеproviders, реальный Claude login и все missing
+transfers. Новых продуктовых функций/кнопок/редизайна эта серия не заявляет.
