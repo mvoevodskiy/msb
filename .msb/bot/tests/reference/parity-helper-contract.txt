@@ -1,0 +1,20 @@
+Existing open-core helper protocol; not an invented old-master OS control path.
+Accepted baseline e232629c5e93846316dfd6b7281b518590a67ce9:
+- bot engines/client.mjs submits {v:1,id,action,bot_id} to profile engine/request.
+- usr-local-lib/msb-engine/ipc.py take_request lstat-checks regular file/owner/size,
+  then open/read/unlink. cli.py cmd_run takes one file/source under root flock.
+- systemd/msb-engine.path PathExists watches the fixed path. The helper lock does
+  not lock producers. Results are keyed by id in state.requests (last32) or last.
+- rename(tmp,request) silently replaced unconsumed data, including the helper's
+  read→unlink interval. 1bf1e42 pins4RED through deterministic occupied slots and
+  independent publishers. No second helper protocol or OS migration is needed.
+Restoration invariant: successful publication must not destroy another pending
+ID. Publish a complete regular file atomically without replacement, wait a bounded
+period for the old slot, explicitly refuse if still occupied; clean only own tmp.
+Busy/refusal means this newly generated ID was never published. Publication does
+not prove execution. Do not silently retry an action whose result timed out.
+Existing helper/action list/root permissions/data stay unchanged. A writer that
+still replaces request can violate this invariant; no exactly-once claim is made.
+A filesystem that cannot provide no-replace publication must fail, never fall back
+to replacing rename. Status fixture consumers must actually unlink the request,
+just like the helper, while retaining their result keyed by id.

@@ -18,8 +18,12 @@ async function pultFixture(t) {
     if (String(file) !== '/run/msb-engine/state.json') return readFile(file, ...args);
     let request;
     try { request = JSON.parse(await readFile(path.join(f.home, '.msb/engine/request'), 'utf8')); } catch {}
-    if (request && !requests.some(r => r.id === request.id)) requests.push(request);
-    return JSON.stringify({ pult: { state: 'running' }, last: request ? { id: request.id, code: 'OK', result: 'done' } : null });
+    if (request) {
+      if (!requests.some(r => r.id === request.id)) requests.push(request);
+      await fs.unlink(path.join(f.home, '.msb/engine/request'));
+    }
+    const last = requests.at(-1);
+    return JSON.stringify({ pult: { installed: true, enabled: true, active: true }, last: last ? { id: last.id, code: 'OK', result: 'done' } : null });
   });
   t.after(() => { clearPendingAuth(42); clearPendingLocalIp(42); });
   return { ...f, turns, requests, async waitForTurn() {

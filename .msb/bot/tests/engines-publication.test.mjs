@@ -85,3 +85,10 @@ test('engine publication: independent publishers all reach the existing one-file
   assert.deepEqual(new Set(received), new Set(published));
   assert.deepEqual(await fs.readdir(engineDir(f.env)), []);
 });
+
+test('engine publication: unsupported no-replace primitive fails and cleans temp instead of using replacing rename', async t => {
+  const f = await fixture(t);
+  t.mock.method(fs, 'link', async () => { throw Object.assign(Error('fixture link unsupported'), { code: 'EOPNOTSUPP' }); });
+  await assert.rejects(f.publish(), { code: 'EOPNOTSUPP' });
+  assert.deepEqual(await fs.readdir(engineDir(f.env)), []);
+});
