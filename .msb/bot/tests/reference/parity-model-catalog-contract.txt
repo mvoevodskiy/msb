@@ -1,0 +1,64 @@
+Каталог моделей Claude: контракт восстановления old → open-core
+
+Базы
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf, readable blob
+73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11. Исторический путь:
+.msb/bot/vendor/deobfuscated.js. Читать git show BLOB | sed -n 'START,ENDp'.
+New accepted baseline c76d8a34f9e327dd02ff50d634476fd6e4224497.
+Это данные и логика закреплённого референса, не обещание текущего доступа
+к коммерческим моделям или права обновлять CLI/авторизацию/ОС.
+
+Семейства и конкретные версии
+V1 412–644: aliases opus/sonnet/haiku передаются CLI именно как aliases,
+не превращаются в фиксированные 4.6/4.6/4.5, как делал new resolveModel.
+Pinned keys: opus55,opus5,opus48,opus47,opus46; sonnet55,sonnet5,sonnet46;
+haiku55; fable51,fable5. Их CLI IDs, подписи, effort/default/minCli — в V1.
+Retired opusplan → opus по Fq 311–316 / T0A 55430–55434; сохранять native ID.
+Raw неизвестный CLI model в xn 20827+ не запрещён: --model получает B без [1m].
+Не превращать старый raw ID в другой выбранный продукт незаметной записью state.
+
+Jq/pU/lU/GC 145–177 и thresholds 409–411 разрешают показ версии aliases:
+Opus: CLI>=2.1.280 →5.5; >=2.1.219 →5; >=2.1.154 →4.8; иначе4.7.
+Sonnet: >=2.1.284 →5.5; >=2.1.197 →5; иначе4.6.
+Haiku: >=2.1.293 →5.5; иначе4.5. Без читаемой CLI версии wW 227–247
+не объявляет alias конкретной pinned-моделью; само значение alias сохраняется.
+k5 327–343: minCcCli делает pinned model locked при unknown/invalid/too-old.
+Нельзя открыть locked option оптимистическим fallback или записью state.
+
+D0A 52460–52505 / Xy 55153–55169: family Fable,Opus,Sonnet,Haiku; два столбца.
+Alias family выбирает свой alias, Fable — первую unlocked pinned, иначе первую
+locked. Selected mark у текущего alias; «📌 Версии» отмечена при pinned choice.
+Текст поясняет автоматическое обновление alias/фиксацию version и сохранение беседы.
+z0A 52508–52540: реальные pinned rows по порядку family; две колонки; selected
+mark/locks; Back settings:model. Family Back menu:agent. Никаких новых кнопок.
+Callbacks 55089–55105: settings:model:ver, settings:model:set:<key>, legacy
+settings:model:fable:<key> и settings:model:fableok:<key>. Lock guard120868–120884
+показывает ровно один alert «<label> откроется после обновления системы.» ДО
+обычного ack, без записи state или перерисовки прежней карточки.
+Setter Ey52406–52414 / I253126–53145,53190–53220 сохраняет CLI model, не теряет
+беседу, parked slots/effort и first-start reservation. Fable в этой базе one-tap;
+подтверждение снято в2.0.111 (7643–7655), не возвращать его по имени new :ask.
+New :fable:ask — только совместимость прежней ссылки, не новый confirm flow.
+
+Версия CLI и границы провайдеров
+Ml/iL/oKA/sKA/SB10525–10648: локальный --version, timeout5s, первый token;
+fingerprint realpath+mtime+size+inode. Known неизменного fingerprint кешируется;
+unknown повторяется от15s с doubling до300s; смена fingerprint до15s временно
+unknown; если fingerprint недоступен, старый cache сохраняется.
+Адаптировать к async query без shell и с ограниченным stdout. Native Claude
+resolver должен исключить PATH shim и symlink на него; version Codex нельзя
+выдавать за Claude. Не читать auth/историю, не устанавливать/обновлять CLI.
+Проверить coalescing запросов и смену бинаря: старый ответ не побеждает новый.
+Read-only экран использует существующий callback scope/task lifecycle; мутация
+и lock guard сохраняют порядок. Cold mutation guard ограничен5s как old;
+async subprocess сам по себе не доказывает, что Telegram polling не ждёт handler.
+
+Совместимость нового ядра
+Codex/Cursor/Qwen используют свои модели, store и native settings. Старые Claude
+buttons aliases/pinned/native IDs не должны попасть в модель другого provider.
+New overlay guard покрывал opus/sonnet как слова, но не opus46/claude-opus-4-6.
+Сохранить native Codex full access, separate sessions и выбранный владельцем low.
+CLI effort/UI должны пользоваться тем же catalogue metadata: old FY250–274,
+DC275–287,yW792–807,nU809–817; не перезаписывать raw effort или native session.
+Модули/заголовки/README ведут по imports к ответственности и проверке, без
+ещё одной карты файлов. Реальные внешние авторизации — отдельная граница приёмки.
