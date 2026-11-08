@@ -40,7 +40,7 @@ test('OC skills: description keeps the old 90 encoded-unit budget without splitt
  const f=await openClawSkillsFixture(t,[{name:'Entity',description:'a'.repeat(88)+'<'},{name:'Astral',description:'b'.repeat(89)+'🧠'},{name:'Valid',description:'&'.repeat(30)}]);await f.message('/skills');await called(f);const text=f.messages.at(-1);assert.ok(text.includes('<code>Entity</code> — '+'a'.repeat(88)));assert.equal(text.includes('&l\n'),false);assert.ok(text.includes('<code>Astral</code> — '+'b'.repeat(89)));assert.equal(text.isWellFormed(),true);assert.ok(text.includes('<code>Valid</code> — '+'&amp;'.repeat(18)));assertBalanced(assert,text);
 });
 test('OC skills: native child gets the old HB environment filter while the parent remains unchanged',async t=>{
- const f=await openClawSkillsFixture(t);for(const k of ['JARVIS_CC_ONLY','BOT_TOKEN','ANTHROPIC_API_KEY','IIA_ANTHROPIC_API_KEY','CLAUDE_CODE_OAUTH_TOKEN','SYNC_KEY','SYNC_URL','GIT_DIR','NPM_CONFIG_PREFIX','GITHUB_TOKEN'])process.env[k]='fixture-'+k;
+ const f=await openClawSkillsFixture(t);for(const k of ['JARVIS_CC_ONLY','BOT_TOKEN','ANTHROPIC_API_KEY','IIA_ANTHROPIC_API_KEY','MSB_ANTHROPIC_API_KEY','CLAUDE_CODE_OAUTH_TOKEN','SYNC_KEY','SYNC_URL','GIT_DIR','NPM_CONFIG_PREFIX','GITHUB_TOKEN'])process.env[k]='fixture-'+k;
  await f.message('/skills');const [call]=await called(f);for(const [k,present]of Object.entries(call.present)){assert.equal(present,k==='GITHUB_TOKEN',k);assert.equal(process.env[k],'fixture-'+k);}assert.equal(call.cwd,process.cwd());
 });
 test('OC skills: input form survives reading and no Claude/Codex session or source files change',async t=>{
@@ -67,4 +67,8 @@ for(const callback of [false,true])test('OC skills: long '+(callback?'callback':
  f.bot.api.editMessageText=async(chat,id,text,...args)=>{assert.ok(visibleHtml(text).length<=4096,'Telegram edit text capacity exceeded');return edit(chat,id,text,...args);};
  if(callback)await f.callback('menu:skills');else await f.message('/skills');await called(f);
  const textParts=[...f.edits.filter(x=>x!==OC_LOADING),...f.messages],all=textParts.join('\n');assert.ok(textParts.length>1);for(const text of textParts){assert.ok(visibleHtml(text).length<=4096);assertBalanced(assert,text);}for(const name of names)assert.ok(all.includes('<code>'+name+'</code>'),name);assert.deepEqual(f.messageOptions.at(-1).reply_markup.inline_keyboard,BACK);assert.equal(all.includes('⏱'),false);
+});
+
+test('OC skills: stale CLI folder/card/content/Add actions cannot open another engine files or fabricate OC actions',async t=>{
+ const f=await openClawSkillsFixture(t),before=await state();for(const data of ['skills:folder:workspace','skills:view:foreign','skills:content:foreign','skills:add:workspace']){await f.callback(data);assert.equal(last(f),'⚠️ Навык не найден');}assert.deepEqual(await f.readCalls(),[]);assert.deepEqual(await state(),before);
 });

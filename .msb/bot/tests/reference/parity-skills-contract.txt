@@ -256,3 +256,20 @@ reapвсехopaque descendants илиD-state иНЕатомарноедоказ�
 Modelturn/Claudeabort/locks не меняются. Никакихguardian/service/OSизменений.
 ВсеsignalsвPIDreusecasesподмененыspies,реальныхkillнет. Terrare-reviewblocking0.
 JAR1пока830e3f6, ничего невыкладывалось/pushнет,OCдоставка/installerещёвработе.
+
+
+OC basic read checkpoint (после84fdacd, ещё НЕрелиз)
+Oldrw/Ks/uRA/aw29845–29955,YC112090–112125 восстановлены в отдельных reader,
+formatter и read-presentation, общих для command/callback. Нет новых кнопок,
+Claude fallback или OC service/auth setup; pending/provider/profile не меняются.
+ChildHB фильтр учитывает новый canonical MSB_ANTHROPIC_API_KEY alias (newauthform
+создаёт его изANTHROPIC_API_KEY); Solreview synthetic proof и отдельный11case suite:
+10PASS/1assertRED→11GREEN. Parent env сохраняется, значения в отчёт не выводятся.
+Observed-leader-exit/finite-observer-cleanup применены кOC как кCodex84fdacd;
+не выдавать это за all-descendants reap либо atomic PGID ownership.
+Basic+regression165cases163PASS/2longRED передcanonicalfix; новыйcanonicalcase
+увеличивает набор до166:164PASS/2knownlongERR_ASSERTION,0cancelled/skip.
+Два long production tests из8024ee0 пока намеренноRED,
+они не исключены/не skipped; отдельное исправление доставки следует за этим
+checkpoint. Addadvice не является работающей установкой: INSTALL_SKILL pipeline
+ещё не подключён. JAR1 остаётся830e3f6, локальные навыки не выкладывались, pushнет.

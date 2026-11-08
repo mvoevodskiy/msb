@@ -1,14 +1,18 @@
 /**
  * Captured provider/project -> read-only skills catalog; no cross-provider fallback.
- * [Claude reader](./claude-catalog.mjs), native adapters via bot msb.skillsProvider seam.
+ * [Claude reader](./claude-catalog.mjs), [OC reader](./openclaw.mjs), native CLI adapters via msb.skillsProvider.
  * [Routes](../telegram/routes/skills.mjs), [provider checks](../../tests/skills-native.test.mjs).
  */
 import {selectedSessionProvider} from '../../shared/session-starts.mjs';
 import {projectLocations,resolveProjectCwd} from '../projects/paths.mjs';
 import {readClaudeSkills} from './claude-catalog.mjs';
+import {readOpenClawSkills} from './openclaw.mjs';
 
-export async function skillCatalog(state,{env=process.env,readProvider,signal}={}) {
-  if(state.engine==='oc')return {ok:false,kind:'oc',entries:[]};
+export async function skillCatalog(state,{env=process.env,readProvider,readOpenClaw=readOpenClawSkills,signal}={}) {
+  if(state.engine==='oc') {
+    let skills;try{skills=await readOpenClaw({env,signal});}catch{skills=[];}
+    return {ok:Array.isArray(skills)&&skills.length>0,kind:'oc',skills:Array.isArray(skills)?skills:[],entries:[]};
+  }
   const provider=selectedSessionProvider(state);
   if(provider==='claude')return {ok:true,kind:'cli',entries:await readClaudeSkills(state,env)};
   if(!provider || !readProvider)return {ok:false,kind:'cli',entries:[]};

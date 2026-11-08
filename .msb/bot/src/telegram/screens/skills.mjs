@@ -1,6 +1,6 @@
 /**
  * Read-only catalog -> old top/folder/card/content/advice views; no metadata writes.
- * [Catalog](../../skills/catalog.mjs), [identity](../../skills/reference.mjs),
+ * [OC grouped view](./openclaw-skills.mjs), [catalog](../../skills/catalog.mjs), [identity](../../skills/reference.mjs),
  * [route](../routes/skills.mjs), [production UI checks](../../../tests/skills-read.test.mjs).
  */
 import {InlineKeyboard} from 'grammy';
@@ -8,12 +8,14 @@ import {escapeHtml} from '../edit.mjs';
 import {clipUtf16} from '../../history/clip.mjs';
 import {skillCatalog} from '../../skills/catalog.mjs';
 import {skillReference} from '../../skills/reference.mjs';
+import {formatOpenClawSkills} from './openclaw-skills.mjs';
 const visible=entries=>entries.filter(row=>row.name!=='system');
 export function skillsUnavailableScreen() {
   return {text:'🧩 <b>Навыки агента</b>\n\nНе удалось получить список навыков от движка — попробуй позже.',
     keyboard:new InlineKeyboard().text('« Назад','skills:back-menu')};
 }
 export function skillsTopScreen(catalog,state) {
+  if(catalog.kind==='oc')return {text:formatOpenClawSkills(catalog.skills || []),keyboard:new InlineKeyboard().text('« Назад','skills:back-menu')};
   if(!catalog.ok)return skillsUnavailableScreen();
   const rows=visible(catalog.entries),workspace=rows.filter(row=>row.source==='workspace'),project=rows.filter(row=>row.source==='project');
   const keyboard=new InlineKeyboard().text(`📂 workspace (${workspace.length})`,'skills:folder:workspace').row();

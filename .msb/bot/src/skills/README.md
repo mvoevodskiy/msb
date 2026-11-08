@@ -41,3 +41,27 @@ root-bound ссылки этой неоднозначности не имеют.
 prompt/marker/write/final-response — отдельный обязательный этап перед приёмкой.
 Exported old cp/nHA не доказаны как direct native CC prompt; blanket injection
 полных body не добавлять. Полнота native providers/OC и live проверяется отдельно.
+
+## OpenClaw: прежний отдельный список
+
+[Reader](openclaw.mjs) запускает только `openclaw skills list --json --eligible`,
+наследуя cwd процесса, как старый rw. Child env копируется с прежним HB-фильтром;
+родительские ключи не меняются. `createBot` позволяет внедрить reader для тестов;
+по умолчанию он native, а обычные fixtures используют unavailable-result, чтобы
+не вызвать установленный на компьютере OpenClaw. Авторизация/сервис не настраиваются.
+
+[Read presentation](../telegram/skills-read.mjs) разделяется командой/callback:
+OC typing best effort, loading edit без fallback, итог через прежний show/reply.
+[Grouped formatter](../telegram/screens/openclaw-skills.mjs) сохраняет старые
+JSON-envelope приоритеты, группы/сортировку/Back, empty против all-system и учёт
+userInvocable false. Карточки/Add относятся к CLI; stale действия под OC не
+открывают чужие файлы. Новых кнопок нет. HTML полей экранируется, description
+сохраняет old encoded90 budget без обрыва entity/surrogate.
+
+Native IO ограничен 12s/4MiB; close обычно ожидается. После observed leader exit
+групповые сигналы прекращаются; конечный grace освобождает только наши потоки и
+observer handle с failure. Это не гарантия reap неизвестных/escaped descendants
+или атомарного контроля OS PGID. Native CLI internal side effects этим не доказаны.
+[Process tests](../../tests/openclaw-skills-reader.test.mjs),
+[production UI](../../tests/skills-openclaw.test.mjs). Доставка oversized списка
+пока отдельный RED; installer/OC brain/live/full release остаются непроверенными.

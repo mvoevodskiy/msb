@@ -14,7 +14,7 @@ import { saveState } from '../../src/state.mjs';
 import {isSkillReadCallback} from '../../src/telegram/routes/skills.mjs';
 import { installUpdateHook } from '../../../../overlay/bot/ext/install.mjs';
 
-export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixture' }), { overlay = true, now = Date.now, runtimeProfile = 'msb', claudeCliVersion = '2.1.154', nativeSkills = false } = {}) {
+export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixture' }), { overlay = true, now = Date.now, runtimeProfile = 'msb', claudeCliVersion = '2.1.154', nativeSkills = false, nativeOpenClawSkills = false } = {}) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-menu-'));
   const workspace = path.join(home, 'workspace');
   await fs.mkdir(workspace);
@@ -65,7 +65,7 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
       return step(0);
     }
   }
-  bot = createBot({ botToken: 'fake', botId: 'default', adminId: 42, workspace, timezone: 'Europe/Moscow' }, { bot: new Harness(), runTurn, now, restart: () => restartRequests.push(0) });
+  bot = createBot({ botToken: 'fake', botId: 'default', adminId: 42, workspace, timezone: 'Europe/Moscow' }, { bot: new Harness(), runTurn, readOpenClawSkills: nativeOpenClawSkills ? undefined : async () => [], now, restart: () => restartRequests.push(0) });
   if (overlay) installUpdateHook(Harness, { ADMIN_ID: '42' });
   if (!nativeSkills) bot[Symbol.for('msb.skillsProvider')] = async () => ({ok:false});
   await saveState({ engine: 'cc', extAuthBypass: 'codex', ccSessionId: 'ext:codex:0199a213-81c0-7800-8aa1-bbab2a035a53', dailySpendLimit: 10 });

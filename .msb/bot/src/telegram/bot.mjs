@@ -10,6 +10,7 @@ import {resetCliConversation} from '../sessions/selection.mjs';
  * Индикация → [progress](./progress.mjs), итог → [response](./response.mjs),
  * План/комментарий → [plan actions](./plan-actions.mjs) → тот же inbox; final marker → [plan](./plan.mjs).
  * журнал Пульта → [history](./history.mjs), STT → [voice](./voice.mjs).
+ * Skills command read options/OC loading → [read presentation](./skills-read.mjs), native OC reader is injectable.
  * Проверки: [inbox lifecycle](../../tests/inbox-lifecycle.test.mjs),
  * [polling/stop](../../tests/turn-lifecycle.test.mjs), [forms/menu](../../tests/menu-handlers.test.mjs).
  */
@@ -26,6 +27,8 @@ import { createPlanActions } from './plan-actions.mjs';
 import { parsePlanResponse } from './plan.mjs';
 import { deliverTurnResponse } from './response.mjs';
 import { registerProjectCommands } from './project-commands.mjs';
+import {prepareSkillRead,skillReadOptions} from './skills-read.mjs';
+import {readOpenClawSkills as nativeOpenClawSkills} from '../skills/openclaw.mjs';
 import { beginTurnHistory } from './history.mjs';
 import { runAgentTurn } from '../agent/turn.mjs';
 import { compactSession } from '../agent/compact.mjs';
@@ -41,7 +44,7 @@ import { describeSpendLimit } from './screens/shared.mjs';
 /**
  * @param {ReturnType<import('../config.mjs').readConfig>} cfg
  */
-export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgentTurn, now = Date.now, restart = () => setTimeout(() => process.exit(0), 600) } = {}) {
+export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgentTurn, readOpenClawSkills = nativeOpenClawSkills, now = Date.now, restart = () => setTimeout(() => process.exit(0), 600) } = {}) {
   bot.api.config.use(presentationAwareRetry(autoRetry()));
 
   /** Active turns outlive the polling handler; keep ownership until delivery finishes. */
@@ -102,6 +105,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   };
 
   bot.use(adminGuard(cfg.adminId));
+  bot[Symbol.for('msb.openClawSkillsReader')]=readOpenClawSkills;
   bot[Symbol.for('msb.cancelPendingInput')] = (chatId) => pending.delete(chatId);
   bot.use(async (ctx, next) => {
     if (/^\/(?:start|settings|stop)(?:@[\w_]+)?(?:\s|$)/.test(ctx.message?.text || '')) cancelCallbackRenders(bot, ctx.chat?.id);
@@ -252,7 +256,8 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     const task=runCallbackScope(scope,async()=>{
       const {skillsScreen}=await import('./screens.mjs');
       const {state}=await loadState();if(!scope.isCurrent())return;
-      const view=await skillsScreen(state,process.env,{readProvider:bot[Symbol.for('msb.skillsProvider')],signal:scope.signal});
+      if(!await prepareSkillRead(bot,state,{chatId:ctx.chat.id,signal:scope.signal}))return;
+      const view=await skillsScreen(state,process.env,skillReadOptions(bot,scope.signal));
       if(scope.isCurrent())await scope.render(()=>ctx.reply(view.text,{parse_mode:'HTML',reply_markup:view.keyboard},callbackTransportSignal(scope)));
     }).catch(()=>{if(!scope.signal.aborted)console.error('[msb/bot] skills read failed');});
     trackCallbackTask(bot,task);
