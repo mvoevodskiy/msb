@@ -22,10 +22,14 @@ try{
  const {applyProjectSelection}=await import('../../src/projects/selection.mjs');
  const seedRow=n=>({id:id(n),engine:'cc',providerId:provider,project:'alpha',firstPrompt:'seed-first-'+n,startedAt:'2026-01-01T00:00:00Z',lastActivity:'2026-01-01T00:00:00Z',messageCount:3});
  const initial={engine:'cc',extAuthBypass:provider,activeProject:'alpha',sessionEpoch:0,ccModel:'opus',fixturePreserved:true};
- if(['error-existing','abort-existing','update-order','foreign-existing','sentinel-existing'].includes(scenario)){initial.ccSessionId=id(10);initial.sessionHistory=[seedRow(10),seedRow(11)];}
+ if(['error-existing','abort-existing','update-order','foreign-existing','sentinel-existing','carried-error','pre-spawn-abort','completion-order'].includes(scenario)){initial.ccSessionId=id(10);initial.sessionHistory=[seedRow(10),seedRow(11)];}
  if(scenario==='limit'){initial.ccSessionId=id(99);initial.sessionHistory=Array.from({length:100},(_,i)=>seedRow(i));}
  if(scenario==='throws')initial.activeProject='missing';
  await saveState(initial);
+ if(scenario==='pre-spawn-abort'){
+  await fs.writeFile(path.join(workspace,'SOUL.md'),'fixture system context '.repeat(8000));
+  const write=fs.writeFile.bind(fs);fs.writeFile=async(file,...args)=>{const out=await write(file,...args);if(String(file).includes('msb-cc-system-prompt-'))controller.abort();return out;};
+ }
  cp.spawn=(command,args,opts)=>{
   if(command!=='claude'||opts.env.HOME!==home)throw Error('Unexpected model process');
   const child=new EventEmitter();child.stdin=new PassThrough();child.stdout=new PassThrough();child.stderr=new PassThrough();let closed=false;
@@ -39,18 +43,26 @@ try{
     if(scenario==='project-reset')await updateState(s=>applyProjectSelection(s,'beta'));
     const native=scenario.startsWith('sentinel')?(provider==='claude'?'unknown':'ext:codex:norestart'):scenario.startsWith('foreign')?'ext:qwen:foreign-ledger-session':scenario==='limit'?id(201):id(10);
     const actual=scenario.startsWith('foreign')?'qwen':provider;
-    child.stdout.write(JSON.stringify({type:'system',subtype:'init',session_id:native,provider_id:actual,model:'fixture-model'})+'\n');
+    if(!['carried-error','no-id-first'].includes(scenario))child.stdout.write(JSON.stringify({type:'system',subtype:'init',session_id:native,provider_id:actual,model:'fixture-model'})+'\n');
+    if(scenario==='completion-order'){call.respond=()=>{child.stdout.write(JSON.stringify({type:'result',subtype:'success',session_id:native,is_error:false,result:'fixture-completed'})+'\n');close();};call.ready=true;return;}
     if(scenario.startsWith('abort-')){controller.abort();return;}
     if(scenario==='tool-only')child.stdout.write(JSON.stringify({type:'assistant',message:{content:[{type:'tool_use',name:'Read',input:{file_path:'fixture'}}]}})+'\n');
-    const failure=scenario.startsWith('error-');
-    child.stdout.write(JSON.stringify({type:'result',subtype:failure?'error':'success',session_id:native,is_error:failure,result:scenario==='tool-only'?'':'fixture-ledger-answer'})+'\n');close(failure?1:0);
+    const failure=scenario.startsWith('error-')||scenario==='carried-error';
+    child.stdout.write(JSON.stringify({type:'result',subtype:failure?'error':'success',session_id:['carried-error','no-id-first'].includes(scenario)?undefined:native,is_error:failure,result:scenario==='tool-only'?'':'fixture-ledger-answer'})+'\n');close(failure?1:0);
    }catch(error){console.error(error);close(1);}
   }));return child;
  };
  syncBuiltinESMExports();
  let prompt=scenario==='redaction'?'fixture api_key=sk-session-fixture-secret-1234567890':scenario==='bounded'?'x'.repeat(350):scenario==='unicode'?'p'+'🧠'.repeat(160):'fixture first prompt';
- let out;try{out=await runAgentTurn({prompt,signal:controller.signal,autonomy:scenario==='autonomy'});}catch(error){out={ok:false,error:error.code||'exception'};}
+ let out,completionAfterNewer;
+ if(scenario==='completion-order'){
+  const until=async check=>{const end=Date.now()+3000;while(!check()){if(Date.now()>end)throw Error('Completion barrier missing');await new Promise(r=>setTimeout(r,2));}};
+  const older=runAgentTurn({prompt:'fixture older prompt'});await until(()=>calls[0]?.ready);
+  const newer=runAgentTurn({prompt:'fixture newer prompt'});await until(()=>calls[1]?.ready);
+  calls[1].respond();await newer;completionAfterNewer=(await loadState()).state;
+  calls[0].respond();out=await older;
+ }else try{out=await runAgentTurn({prompt,signal:controller.signal,autonomy:scenario==='autonomy'});}catch(error){out={ok:false,error:error.code||'exception'};}
  if(['repeat','update-order'].includes(scenario))out=await runAgentTurn({prompt:'fixture latest prompt',signal:controller.signal});
  const state=(await loadState()).state;
- console.log('SESSION_LEDGER='+JSON.stringify({provider,scenario,initial,state,calls,ok:out.ok,error:out.error,project:path.join(home,'projects','alpha'),id:id(10),newId:id(201),secondOldId:id(1)}));
+ console.log('SESSION_LEDGER='+JSON.stringify({provider,scenario,initial,state,calls,completionAfterNewer,ok:out.ok,error:out.error,project:path.join(home,'projects','alpha'),id:id(10),newId:id(201),secondOldId:id(1)}));
 }finally{clearTimeout(watchdog);controller.abort();await fs.rm(home,{recursive:true,force:true});}

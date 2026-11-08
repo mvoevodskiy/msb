@@ -7,7 +7,7 @@ import {EventEmitter} from 'node:events';
 import {PassThrough} from 'node:stream';
 import {fileURLToPath,pathToFileURL} from 'node:url';
 const [provider,scenario]=process.argv.slice(2),source=process.env.FIXTURE_SESSION_SOURCE_ROOT || fileURLToPath(new URL('../../../../',import.meta.url));
-if(!['claude','codex'].includes(provider)||!['resume','preparing','existing','same-id','same-first','provider-first'].includes(scenario))throw Error('Unknown resume fixture');
+if(!['claude','codex'].includes(provider)||!['resume','preparing','existing','same-id','same-first','provider-first','after-reset','after-project'].includes(scenario))throw Error('Unknown resume fixture');
 const load=relative=>import(pathToFileURL(path.join(source,relative)));
 const cleanup=[],calls=[],results=[],direct=[];let f,savedSpawn,savedRead,releasePrompt=()=>{};
 const report={provider,scenario,calls};const wait=ms=>new Promise(r=>setTimeout(r,ms));
@@ -57,6 +57,14 @@ try{
  if(scenario==='resume'){
   await f.callback('session:'+target.id);report.afterSelect=(await loadState()).state;
   await f.message('fixture selected task');await until(()=>calls[0]?.ready,'resumed child');calls[0].respond(target.id);await until(()=>results.length===1,'resumed result');
+ }else if(['after-reset','after-project'].includes(scenario)){
+  await f.message('fixture old task');await until(()=>calls[0]?.ready,'old first before reset');
+  if(scenario==='after-reset')await f.message('/newtask');else await f.callback('project:beta');
+  report.afterTransition=(await loadState()).state;calls[0].respond(old);await until(()=>results.length===1,'returned old history result');report.afterOld=(await loadState()).state;
+  await f.callback('session:'+old);report.afterSelect=(await loadState()).state;
+  await f.message('fixture selected task');await until(()=>calls[1]?.ready,'explicit old resume');
+  const resume=calls[1].args.indexOf('--resume');calls[1].respond(resume>=0&&calls[1].args[resume+1]===old?old:native(provider,40));await until(()=>results.length===2,'explicit resumed result');
+  report.target={...target,id:old,providerId:provider,project:'alpha',firstPrompt:'fixture old task',messageCount:1};
  }else if(scenario==='provider-first'){
   await f.message('fixture old task');await until(()=>calls[0]?.ready,'first A');await switchTo('claude');await f.callback('session:'+target.id);report.afterSelect=(await loadState()).state;
   await f.message('/newtask');const next=native('claude',30),job=runAgentTurn({prompt:'fixture new first beta'});direct.push(job);
@@ -70,7 +78,7 @@ try{
   await until(()=>results.length===1,'old result');report.afterOld=(await loadState()).state;
   await f.message('fixture selected task');await until(()=>calls[1]?.ready,'next resumed child');calls[1].respond(target.id);await until(()=>results.length===2,'next result');
  }
- report.state=(await loadState()).state;report.initial=initial;report.target=target;report.old=old;report.foreign=foreign;report.foreignProvider=foreignProvider;
+ report.state=(await loadState()).state;report.initial=initial;report.target=report.target || target;report.old=old;report.foreign=foreign;report.foreignProvider=foreignProvider;
  report.alpha=alpha;report.beta=beta;report.realAlpha=await fs.realpath(alpha);report.realBeta=await fs.realpath(beta);report.oldContextCleared=results[0]?.result?.context===null;
  const omit=new Set(['ccSessionId','sessionHistory','lastCcUsage','sessionEpoch','activeProject','parkedCcSessions','pendingCcSessionStarts']);
  const profile=s=>Object.fromEntries(Object.entries(s).filter(([key])=>!omit.has(key)));

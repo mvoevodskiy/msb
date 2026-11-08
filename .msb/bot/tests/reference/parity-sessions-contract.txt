@@ -251,3 +251,16 @@ late/error/abort изledger слишком строгим: worker110650–110700
 51c51e5 не выкладывался (Docker3fixturecaptionFAIL); JAR1 остаётся01e867a.
 Нужны отдельные RED дляутраченнойreturned истории, корректная provenance граница,
 completionorder и explicit resume записанного late ID, затем всеactivefences GREEN.
+
+
+Fidelity RED после повторной old-сверки
+session-ledger37 +session-resume15 =52tests,30PASS/22ERR_ASSERTION,
+0cancelled/skip/import/infrafail. Valid observed firsterror/abort/late reset/project
+теперь обязанысохранитьсявledger, без activeID/usage/parked resurrection. Native
+selector tests больше не требуютзамораживатьвсюисторию: подтверждаетсядельта
+толькоисторическойстрокисвоегозавершившегосявызова и неизменностьактивныхполей.
+НовыеexplicitUIresume послеnewtask/projectReset проверяютдоступностьlateID,
+actualargv/cwd и новыйход. Same-IDcompletionorder и carriedknown-error —GREEN
+контроли; pre-spawnabortсреальнымlargepromptfilegap0children —RED(fake count).
+IJold19514–19540 действительноspawnпередвозвратомenginepass; newearlyabort
+возвращаетcarriedIDбезchild, поэтомулишьtruthyresultfieldнедостаточнодляindex.

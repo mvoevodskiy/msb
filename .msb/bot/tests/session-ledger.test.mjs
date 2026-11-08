@@ -9,7 +9,7 @@ const fixture=fileURLToPath(new URL('./fixtures/session-ledger.mjs',import.meta.
 function run(provider,scenario){
  const out=spawnSync(process.execPath,[fixture,provider,scenario],{env:{PATH:path.dirname(process.execPath),TMPDIR:os.tmpdir()},encoding:'utf8',timeout:9000});assert.equal(out.status,0,out.stderr);
  const line=out.stdout.split('\n').find(s=>s.startsWith('SESSION_LEDGER='));assert.ok(line,out.stdout);const r=JSON.parse(line.slice('SESSION_LEDGER='.length));
- assert.equal(r.calls.length,scenario==='throws'?0:['repeat','update-order'].includes(scenario)?2:1);
+ assert.equal(r.calls.length,['throws','pre-spawn-abort'].includes(scenario)?0:['repeat','update-order','completion-order'].includes(scenario)?2:1);
  if(['first','repeat','autonomy','tool-only','redaction','bounded','unicode','update-order','limit'].includes(scenario)){
   assert.equal(r.ok,true,'The fixture must reach a successful production engine result before checking metadata');
   assert.equal(r.state.ccSessionId,scenario==='limit'?r.newId:r.id);
@@ -49,7 +49,7 @@ test('session ledger: stored prompt descriptions retain the old200 character bou
 test('session ledger: an accepted late first result parked after a provider switch retains its captured provider/project',()=>{
  const r=run('codex','provider-away'),row=entry(r);assert.equal(row.providerId,'codex');assert.equal(row.project,'alpha');assert.equal(r.state.extAuthBypass,'claude');assert.equal(r.state.ccSessionId,undefined);assert.equal(r.state.parkedCcSessions.codex,r.id);
 });
-for(const scenario of ['error-first','abort-first','foreign','sentinel','reset','project-reset','throws'])test('session ledger control: '+scenario+' cannot create a selectable ID beyond ownership fences',()=>{
+for(const scenario of ['foreign','sentinel','throws','no-id-first'])test('session ledger control: '+scenario+' cannot create a selectable ID beyond ownership fences',()=>{
  const r=run('codex',scenario);assert.equal(r.state.sessionHistory,undefined);assert.equal(r.state.pendingCcSessionStarts,undefined);
  if(scenario==='project-reset')assert.equal(r.state.activeProject,'beta');
  if(scenario==='throws'){assert.equal(r.error,'PROJECT_NOT_FOUND');assert.deepEqual(r.calls,[]);}
@@ -66,4 +66,20 @@ for(const scenario of ['sentinel-first','sentinel-existing'])test('session ledge
 
 test('session ledger:200 character description storage cannot split a surrogate pair',()=>{
  const r=run('codex','unicode'),row=entry(r);assert.equal(r.ok,true);assert.ok(row.firstPrompt.length<=200);assert.equal(row.firstPrompt.isWellFormed(),true);assert.equal(row.firstPrompt.includes('�'),false);
+});
+
+for(const provider of ['claude','codex'])for(const scenario of ['error-first','abort-first','reset','project-reset'])test('session ledger fidelity: '+provider+' '+scenario+' retains a returned observed ID for explicit history, without active resurrection',()=>{
+ const r=run(provider,scenario),row=entry(r);assert.equal(row.project,'alpha');assert.equal(row.providerId,provider);assert.equal(row.messageCount,1);assert.equal(row.firstPrompt,'fixture first prompt');
+ assert.equal(r.state.ccSessionId,undefined);assert.equal(r.state.parkedCcSessions,undefined);assert.equal(r.state.pendingCcSessionStarts,undefined);assert.equal(r.state.lastCcUsage,undefined);
+ if(scenario==='project-reset')assert.equal(r.state.activeProject,'beta');
+});
+test('session ledger fidelity: a returned launched error may count the already known carried resume ID',()=>{
+ const r=run('codex','carried-error'),row=entry(r);assert.equal(r.ok,false);assert.equal(r.calls.length,1);assert.equal(r.state.ccSessionId,r.initial.ccSessionId);assert.equal(row.messageCount,4);assert.equal(row.lastPrompt,'fixture first prompt');
+});
+test('session ledger fidelity: pre-spawn abort must not count a carried input ID as an executed engine pass',()=>{
+ const r=run('codex','pre-spawn-abort');assert.equal(r.ok,false);assert.deepEqual(r.calls,[]);assert.equal(r.state.ccSessionId,r.initial.ccSessionId);assert.deepEqual(r.state.sessionHistory,r.initial.sessionHistory);
+});
+test('session ledger fidelity: same-ID returned passes keep the old completion order, including both counts',()=>{
+ const r=run('codex','completion-order'),row=entry(r),newer=r.completionAfterNewer.sessionHistory.find(v=>v.id===r.id);
+ assert.equal(newer.messageCount,4);assert.equal(newer.lastPrompt,'fixture newer prompt');assert.equal(row.messageCount,5);assert.equal(row.lastPrompt,'fixture older prompt');assert.equal(row.firstPrompt,r.initial.sessionHistory[0].firstPrompt);assert.equal(r.state.ccSessionId,r.initial.ccSessionId);
 });
