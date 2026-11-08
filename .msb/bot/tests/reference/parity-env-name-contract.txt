@@ -1,0 +1,36 @@
+Env name normalization/limits: прежний reachable input без нового loader
+
+Baselinecfd429c. Oldmaster00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.msb/bot/vendor/deobfuscated.js,readableblob73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11.
+Читать git show BLOB | sed -n '119135,119177p;54513,54566p;54603,54610p'.
+Name stage:trim→upper→strip[^A-Z0-9_],normalizedlength<2 и>40 оставляют name
+pending с прежним сообщением. Затем protected check,затем value stage. _A/1A/
+A-B→AB поддержаны;singleA/41chars rejected. lK проверяетvalue,непервуюбуквуkey;
+s1 вызываетlK иприсваиваетprocess.env послеcommit. Непустоеоднострочноеvalue
+для_A/1A проходило весь writer. Не вводить иной UX/стандарт имён по вкусу.
+
+Новоеядро:forms/env иsetEnvKey требуютпервым[A-Z],нонеимеютUImin/max.
+Это lost working input для_A/1A иотсутствие прежних length/sanitize retries.
+FixUIдолжен восстановить этиоперации/отказыдоvalue,проверятьprotected после
+нормализации и сохранять началоTTL. Low-levelwriter допускает onlyuppercase
+ASCIIletters/digits/underscore без leadingletter requirement;CR/LF/= ипрочие
+injection charactersпо-прежнему запрещены. Старые >40charfilekeys не удалять
+илимигрировать;UImax не добавлять скрытым ограничениемexistingstoredata.
+
+Материальные границы
+TargetLinux257:EnvironmentFile сохраняет_A/AA,не1A. Послеruntimeassignment
+actualNode→child/Bashchild сохраняетвсе3. Sanitized evidence рядом. Это важнее
+одногоJSобъекта:valid_Aподдержанвstartup/children,1Aподдержанruntime,нонеполным
+restart. Trackedoldunit такжеEnvironmentFileperbot;bulkglobalfile→processenv
+loader не найден(oldg9/zyиспользуютrowsдляUI/metadata/redaction,неhydration).
+Поэтомуэтотfixвозвращает старыйUI/writer/runtime,не обещает1Aafterrestart и
+не добавляет новыйstartup/global auth import. Globalvisibility/bootstrap остаются
+отдельным этапом,неприниматьэтуграницузаfullenvparity.
+
+Проверки:productioncreateBot name→value→description/skip→store→processenv;
+_A/1A/2boundary/sanitize40/41/emptyretry,protectednormalizedname,исходныйTTL,
+state/provider/session/model/effort сохранены. Directstoreinjection negative;
+actualrunAgentTurn→CLIenv snapshot обоих движков сsynthetickey. Fakefixtures
+неподключаютrealCLI/API/auth;realLinuxparser/shellproof отдельно.
+ДоfixобязательныйRED,затемnarrowfix,regressionиотдельныйcommit.
+Rollbackвозвращаетnameinputregressions;данные.env code-onlyrollback не отменяет.
