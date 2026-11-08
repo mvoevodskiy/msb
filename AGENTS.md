@@ -84,8 +84,8 @@ Native авторизации CLI имеют свои действующие м�
 не меняется. Env UI/контракт: [.msb/bot/src/env/README.md](.msb/bot/src/env/README.md).
 
 Разрешены локальное восстановление прежнего поведения и согласованная code-only
-выкладка/Telegram-проверки JAR1. Сохранять auth/env/native session/model/effort и
-контекст владельца. Не запускать OS migration, не менять SSH/firewall и не
+выкладка/Telegram-проверки JAR1. Сохранять auth/env/native session и контекст
+владельца. Не запускать OS migration, не менять SSH/firewall и не
 включать отключённые auto-writers ради аудита; их опасные действия проверять
 изолированно. Личные аудио/файлы внешним API повторно без достаточного отдельного
 разрешения не передавать; native conversations не читать в диагностический отчёт.
