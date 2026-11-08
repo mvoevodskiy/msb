@@ -26,6 +26,7 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
     await fs.rm(home, { recursive: true, force: true });
   });
   const restartRequests = [];
+  const markupEdits = [];
   const messages = [], edits = [], editOptions = [], deleted = [], messageOptions = [], typingSignals = [], editSignals = [], replySignals = [];
   class Harness {
     handlers = new Map(); commands = new Map(); middleware = [];
@@ -36,6 +37,7 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
       sendChatAction: async (_chat, _action, _options, signal) => { typingSignals.push(signal); return true; },
       sendMessage: async (_chat, text, opts, signal) => { messages.push(text); messageOptions.push(opts); replySignals.push(signal); return { message_id: messages.length }; },
       editMessageText: async (_chat, _id, text, options, signal) => { edits.push(text); editOptions.push(options); editSignals.push(signal); },
+      editMessageReplyMarkup: async (chatId, messageId, options) => { markupEdits.push({ chatId, messageId, options }); },
       answerCallbackQuery: async () => {},
       deleteMessage: async (_chat, id) => { deleted.push(id); },
     };
@@ -46,7 +48,7 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
       const event = update.callback_query || update.message;
       const ctx = { from: event.from, chat: event.message?.chat || event.chat, message: update.message,
         callbackQuery: update.callback_query, api: this.api,
-        reply: (text, opts, signal) => this.api.sendMessage(42, text, opts, signal), answerCallbackQuery: async () => {} };
+        reply: (text, opts, signal) => this.api.sendMessage(ctx.chat.id, text, opts, signal), answerCallbackQuery: async () => {} };
       const text = ctx.message?.text;
       const command = text?.match(/^\/([^@\s]+)(?:@\S+)?(?:\s+([\s\S]*))?$/);
       if (command) ctx.match = command[2] || '';
@@ -61,7 +63,7 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
   await saveState({ engine: 'cc', extAuthBypass: 'codex', ccSessionId: 'ext:codex:0199a213-81c0-7800-8aa1-bbab2a035a53', dailySpendLimit: 10 });
   const storeFile = path.join(process.env.MSB_RUNTIME_ROOT, 'bots/default/ext-providers.json');
   await fs.writeFile(storeFile, JSON.stringify({ version: 1, active: 'codex', models: { codex: 'gpt-6.1-terra' }, efforts: { codex: 'max' } }));
-  const callback = (data, uid = 42) => bot.handleUpdate({ callback_query: { id: 'q', data, from: { id: uid }, message: { message_id: 1, chat: { id: 42 } } } });
+  const callback = (data, uid = 42, { chatId = 42, messageId = 1, threadId } = {}) => bot.handleUpdate({ callback_query: { id: 'q', data, from: { id: uid }, message: { message_id: messageId, chat: { id: chatId }, ...(threadId ? { message_thread_id: threadId } : {}) } } });
   const message = (text, uid = 42) => bot.handleUpdate({ message: { message_id: 99, text, from: { id: uid }, chat: { id: 42 } } });
-  return { home, bot, callback, message, messages, edits, editOptions, deleted, messageOptions, typingSignals, editSignals, replySignals, storeFile, restartRequests };
+  return { home, bot, callback, message, markupEdits, messages, edits, editOptions, deleted, messageOptions, typingSignals, editSignals, replySignals, storeFile, restartRequests };
 }

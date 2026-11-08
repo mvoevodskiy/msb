@@ -58,3 +58,18 @@ native права Codex. Сохранённый UI mode у Codex ранее яв
 Изменённая связь документируется у кода/импортов и в ближайшем README. Не вести
 ещё одну карту файлов и не переносить old bundle в runtime. Каждый logical этап
 имеет отдельный подробный commit с RED/GREEN и границами/откатом.
+
+Уточнение полного old пути (read-only Luna + главная сверка)
+OS.pushText106296–106330/flush106899 показывали stream без parser; final
+finishDelivery106557–106586 вызывает rkA перед обычной доставкой. Plan final
+sendPlanMessage107155–107184 удаляет thinking, отправляет отдельную новую карточку;
+footer и keyboard только у последнего chunk, HTML→plain сохраняет keyboard.
+Stop111026–111028 не запускает parser. Partial CC error мог finalize stream и
+показать карточку перед отдельной ошибкой110904–110915; это old edge, не гарантия
+безопасного инструментария и не причина запускать действие при нажатии reject.
+Callback120920+ очищает только markup clicked message, не редактирует текст.
+Нет old requestID/idempotency fence; повторный replay мог повторно queue instruction.
+Comment map был по userID, без TTL/cancel/reply filter; callback gU111460–111473
+терял topic, comment мог потребляться в другом чате. Эти старые ошибки не являются
+требованием: new ingress сохраняет свой chat/topic и существующий owner guard.
+Полную native безопасность не обещать: marker/always — разговорные инструкции.
