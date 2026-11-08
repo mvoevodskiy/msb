@@ -66,6 +66,15 @@ Old master00f081f2220d0e6d3a186e8e1bb447b57acd6ebf; readable reference blob
 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11; provenance — .msb/bot/tests/reference/README.md.
 План и результаты оператора — соседний AgentsMania/deployment/ops/jar1/parity-audit-2026-11-07/.
 
+Решение владельца08.11.2026 по ключам сервисов: сохранять РАЗДЕЛЬНЫЕ настройки
+каждого бота. Core env list/set/delete работают с текущим per-bot файлом; не
+возвращать old default-global запись, delete-both и очистку дублей других ботов.
+Это принятое отличие от старого ядра, а не незаконченный перенос. Существующие
+readonly fallback потребителей (например STT/shared) сохраняются; это не
+разрешение копировать/мигрировать/удалять общие секреты либо добавлять loader.
+Native авторизации CLI имеют свои действующие маршруты; их область этим решением
+не меняется. Env UI/контракт: [.msb/bot/src/env/README.md](.msb/bot/src/env/README.md).
+
 Разрешены локальное восстановление прежнего поведения и согласованная code-only
 выкладка/Telegram-проверки JAR1. Сохранять auth/env/native session/model/effort и
 контекст владельца. Не запускать OS migration, не менять SSH/firewall и не
