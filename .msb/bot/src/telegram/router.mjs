@@ -3,7 +3,7 @@
  * ROUTES ниже задаёт прежний порядок; только UNHANDLED передаёт управление дальше.
  * Настройки/формы → [settings](./routes/settings.mjs), модели → [models](./routes/models.mjs), auth/права → [agent](./routes/agent.mjs),
  * выбор движка → [engines](./routes/engines.mjs), проекты → [projects](./routes/projects.mjs),
- * навыки/MCP → [workspace](./routes/workspace.mjs), сессии → [sessions](./routes/sessions.mjs),
+ * навыки → [skills](./routes/skills.mjs), MCP → [workspace](./routes/workspace.mjs), сессии → [sessions](./routes/sessions.mjs),
  * задачи → [autonomy](./routes/autonomy.mjs), источники → [monitor](./routes/monitor.mjs).
  * Остальные семейства видны в прямых imports ниже; rendering → [screens](./screens.mjs).
  * Состояние → [state](../state.mjs), shared pending принадлежит createBot.
@@ -28,10 +28,12 @@ import { handleMonitorRoute } from './routes/monitor.mjs';
 import { handleWorkspaceRoute } from './routes/workspace.mjs';
 import { handleProjectRoute } from './routes/projects.mjs';
 import {handleSessionRoute} from './routes/sessions.mjs';
+import {handleSkillRoute} from './routes/skills.mjs';
 import { UNHANDLED } from './routes/shared.mjs';
 
 const ROUTES = [
   handleSessionRoute,
+  handleSkillRoute,
   handleProjectRoute,
   handleNavigationRoute,
   handleModelRoute,

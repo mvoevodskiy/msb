@@ -117,3 +117,7 @@ test('skills: the complete read flow keeps native ID/provider/store and source f
 test('skills: unreachable old create/toggle/delete handlers do not add buttons or new mutation workflows',async t=>{
  const f=await setup(t),file=await skill(f.workspace,'stable','Stable'),before=await state();for(const data of ['skills:create','skills:enable:stable','skills:disable:stable','skills:delete:stable','skills:confirm-delete:stable'])await f.callback(data);assert.equal(await fs.readFile(file,'utf8'),'Stable');assert.deepEqual(await state(),before);assert.equal(f.edits.length,0);
 });
+
+test('skills: a newly rendered workspace action stays bound to its original root after the source file disappears',async t=>{
+ const f=await setup(t),file=await skill(f.workspace,'replacement','---\nname: OriginalBase\n---\nORIGINAL_BASE');await f.callback('skills:folder:workspace');const action=find(f,'🧠 OriginalBase');await fs.unlink(file);await skill(f.home,'replacement','---\nname: AnotherHome\n---\nWRONG_ROOT_BODY');const before=await state();await f.callback(action);assert.equal(text(f),'⚠️ Навык не найден');assert.deepEqual(await state(),before);
+});

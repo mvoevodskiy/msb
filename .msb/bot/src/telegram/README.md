@@ -113,7 +113,8 @@ Owner boundary остаётся перед core router: middleware бота и h
 | [monitor](screens/monitor.mjs) | Источники, дайджест, настройки и справка мониторинга |
 | [bots](screens/bots.mjs) | `botsScreen`, `botDetailScreen` — список и карточка бота |
 | [projects](screens/projects.mjs) | Прежний список/страницы, выбор и форма проекта |
-| [workspace](screens/workspace.mjs) | Навыки, MCP |
+| [skills](screens/skills.mjs) → [catalog](../skills/README.md) | Каталог, папки, карточка, содержимое и Add advice |
+| [workspace](screens/workspace.mjs) | MCP |
 | [shared](screens/shared.mjs) | Общий blank-символ и `placeholder` |
 
 ## Голос

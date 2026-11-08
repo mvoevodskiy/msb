@@ -249,7 +249,8 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
 
   bot.command('skills', async (ctx) => {
     const { skillsScreen } = await import('./screens.mjs');
-    const view = skillsScreen();
+    const { state } = await loadState();
+    const view = await skillsScreen(state,process.env,{readProvider:bot[Symbol.for('msb.skillsProvider')]});
     await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
   });
 

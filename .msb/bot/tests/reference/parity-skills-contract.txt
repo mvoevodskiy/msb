@@ -163,3 +163,20 @@ Sol independently reread oldsource, findingsнет; CRLF/quoteddisabled cases д
 поoldregex, не поYAMLбиблиотеке. Real nativeDiscovery0.166 отдельно подтверждён
 вtemporaryHOME и не является доказательствомUIintegration. Никакихruntimeправок
 илиJAR1update этими41тестами не выполнялось. Ветка намеренноRED, квыкладкенеготова.
+
+
+Локальный core-read checkpoint (послеbf29807, ещё НЕрелиз)
+Claude scanner/views/routes и /skills теперьподключены. Старые тексты/папки/card/
+content/Back/Addadvice,34reader/UIcases GREEN; existingmenu41+sessions36 GREEN,
+всего111PASS,0FAIL/cancelled/skip. Selectednative seam не фальсифицируетClaude
+данные:42fullskills cases=36PASS/6nativeERR_ASSERTION до подключенияnativeadapter.
+NativeCodex transport/OC reader/INSTALL_SKILL backend ещёобязательны, JAR1необновлять.
+
+Reviewroot-retarget: новый короткийworkspace literal могперейти наодноимённый
+HOME skill послеудаленияbaseфайла. Отдельныйproductioncase0PASS/1ERR_ASSERTION;
+теперь ВСЕновыеactions hash-bind provider/root/source/path, этотcaseGREEN. Legacy
+literal поддержан толькодляединственной известнойClaudeстроки; rootисходного
+историческоголитерала восстановитьнельзя. Не выдаватьlegacyсовместимость за
+новыйscopefence. No state/auth/provider/store/sourcefile changes вreadworkflow.
+CorefoundationSolreview blockingfindings0;208relative source-header/READMElinks
+проверены,missing0. Нетglobalmap.

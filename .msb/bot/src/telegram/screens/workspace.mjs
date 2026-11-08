@@ -1,5 +1,5 @@
 /**
- * Возможности workspace: проекты, навыки и MCP.
+ * Прежние MCP views; навыки вынесены в [skills](./skills.mjs).
  * Навигация: [Telegram](../README.md).
  */
 import { InlineKeyboard } from 'grammy';
@@ -44,15 +44,5 @@ ${BLANK}`,
       .text('Apify', 'mcp:setup:apify')
       .row()
       .text('« Назад', 'mcp:folder:workspace'),
-  };
-}
-
-export function skillsScreen() {
-  return {
-    text: `<b>🧩 Навыки</b>
-
-Список навыков выбранного CLI пока не читается этим экраном.
-${BLANK}`,
-    keyboard: new InlineKeyboard().text('« Назад', 'menu:back'),
   };
 }
