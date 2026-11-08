@@ -175,3 +175,13 @@ helper snapshot. Обычный вход/Back читает cache без допо
 Refresh выполняется однократно на admission, до любых await. После загрузки state
 obsolete read ещё раз проверяет scope, чтобы не затронуть вновь открытую форму.
 [Production проверки](../../tests/pult-status.test.mjs) используют synthetic jar1.
+
+
+Claude model selection → [agent route](routes/agent.mjs) → [choice setters](actions.mjs)
+changes only model fields, retaining the native ID and unfinished first-start token.
+This matches old Ey/I2; a real mode change and /newtask/clear still reset the chosen
+conversation. Provider slots/epoch fences remain in shared/overlay modules.
+[Model ingress](../../tests/model-conversation.test.mjs) and
+[first-start lifecycle](../../tests/first-session.test.mjs) cover the distinction;
+old provenance and still-pending catalog locks are in
+[agent settings contract](../../tests/reference/parity-agent-settings-contract.txt).

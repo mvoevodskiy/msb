@@ -1,3 +1,10 @@
+/**
+ * Persist agent choices from [agent routes](./routes/agent.mjs) via [state](../state.mjs).
+ * Model/effort keep the native conversation; explicit mode reset invalidates its
+ * first-start token. Provider selection/slots belong to overlay, not these setters.
+ * Checks: [model conversation](../../tests/model-conversation.test.mjs),
+ * [first start/reset fences](../../tests/first-session.test.mjs).
+ */
 import { invalidateFirstSession } from '../../shared/session-starts.mjs';
 import { updateState } from '../state.mjs';
 
@@ -14,8 +21,6 @@ export async function applyModelFamily(family) {
   await updateState((s) => {
     s.ccModel = family;
     s.model = model;
-    invalidateFirstSession(s);
-    delete s.ccSessionId;
     return s;
   });
   return model;
