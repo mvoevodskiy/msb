@@ -1,5 +1,7 @@
 /**
  * Системные настройки, Пульт и перезапуск.
+ * Pult starts/Back/presets own [text forms](../forms/pult.mjs); other pending
+ * kinds remain owned by their routes. [Checks](../../../tests/pult-input.test.mjs).
  * Навигация: [Telegram](../README.md).
  */
 import { spawn } from 'node:child_process';
@@ -72,7 +74,10 @@ export async function handleSystemRoute({ data, show, chatId, bot, pending }) {
       }
     };
 
-    if (data === 'settings:pult') return showPult();
+    if (data === 'settings:pult') {
+      if (pending.get(chatId)?.startsWith('pult-')) pending.delete(chatId);
+      return showPult();
+    }
     if (data === 'settings:pult:on' || data === 'settings:pult:off') {
       const action = data === 'settings:pult:on' ? 'enable-pult' : 'disable-pult';
       try {
@@ -124,6 +129,7 @@ export async function handleSystemRoute({ data, show, chatId, bot, pending }) {
       });
     }
     if (data.startsWith('settings:pult:session:set:')) {
+      if (pending.get(chatId) === 'pult-session') pending.delete(chatId);
       const hours = data.slice('settings:pult:session:set:'.length);
       const { setEnvKey } = await import('../../env/store.mjs');
       await setEnvKey('PULT_SESSION_HOURS', hours);
@@ -131,6 +137,7 @@ export async function handleSystemRoute({ data, show, chatId, bot, pending }) {
       return showPult(`Сессия: <b>${escapeHtml(hours)} ч</b>\n${note}`);
     }
     if (data === 'settings:pult:listen') {
+      if (pending.get(chatId) === 'pult-listen') pending.delete(chatId);
       const cfg = await loadPultCfg();
       return show(pultListenScreen(cfg.host));
     }
@@ -142,6 +149,7 @@ export async function handleSystemRoute({ data, show, chatId, bot, pending }) {
       });
     }
     if (data.startsWith('settings:pult:listen:set:')) {
+      if (pending.get(chatId) === 'pult-listen') pending.delete(chatId);
       const host = data.slice('settings:pult:listen:set:'.length);
       const { setEnvKey } = await import('../../env/store.mjs');
       await setEnvKey('PULT_HOST', host);

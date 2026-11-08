@@ -2,7 +2,7 @@
  * Поля Пульта: проверка/сохранение и существующий IPC reload.
  * Вход: [form dispatcher](../forms.mjs); pending и lifecycle принадлежат createBot.
  * [Контракт](../../../tests/reference/parity-forms-contract.txt),
- * [handler tests](../../../tests/menu-handlers.test.mjs). Backend → [Pult](../../pult/client.mjs).
+ * [handler tests](../../../tests/pult-input.test.mjs). Backend → [Pult](../../pult/client.mjs).
  */
 export async function handlePultInput({ kind, ctx, text, pending, chatId }) {
   pending.delete(chatId);
