@@ -93,3 +93,44 @@ python3 STAGE/ops/deploy.py --rollback BACKUP
 время установки автоматически возвращает прежний код и проверяет его startup.
 Не использовать старые `candidate.patch` сборщики как параллельный путь выпуска.
 Исторические операторские отчёты остаются в AgentsMania, но сборка от них не зависит.
+
+## Локальные Linux-проверки в Docker
+
+По поручению владельца07.11.2026 можно проверять экспорт локально, не выполняя
+промежуточные тесты на JAR1. [Dockerfile](Dockerfile) собирает только инструменты
+и зависимости из `runtime/bot/package*.json`; файлы бота/авторизации в образ не
+копируются. Проверка получает read-only export, отдельные writable results/HOME
+и временный `/tmp`, без сети. `exec` у tmpfs нужен fake CLI/STT-скриптам тестов;
+без него они закономерно падают с EACCES, это не допустимый RED продукта.
+
+Проверено: Docker Desktop4.84 / Engine29.6.2, Linux arm64, pinned base Node22.23.2.
+Первый snapshot74241e3:202core+78overlay+15reference+13release PASS (308tests),
+плюс syntax/dependencies/profile/snapshot checks. JAR1 использует Node22.23.4:
+этот контейнер — предварительная проверка, а не замена целевому Linux gate.
+Перед production release по-прежнему проверить тот же commit на JAR1, его
+Node/dependencies и installed artifact, затем Telegram. Результат Docker хранить
+как `docker-verification.json`, не использовать вместо JAR1 `verification.json`.
+
+Из чистого commit, с новым каталогом stage (исходники/lock берутся из Git):
+
+```sh
+MSB_CHECK_STAGE=/tmp/msb-local-linux
+python3 tools/release/build.py --commit HEAD --output "$MSB_CHECK_STAGE"
+docker build -t msb-local-checks:node22 -f tools/release/Dockerfile "$MSB_CHECK_STAGE/runtime/bot"
+mkdir -p "$MSB_CHECK_STAGE/checks/results" "$MSB_CHECK_STAGE/checks/test-home"
+ln -s /opt/msb-deps/node_modules "$MSB_CHECK_STAGE/checks/source/.msb/bot/node_modules"
+ln -s /opt/msb-deps/node_modules "$MSB_CHECK_STAGE/checks/source/overlay/bot/node_modules"
+docker run --rm --network none --read-only --user "$(id -u):$(id -g)" \
+  --tmpfs /tmp:rw,exec,mode=1777 --env PYTHONDONTWRITEBYTECODE=1 \
+  --mount "type=bind,src=$MSB_CHECK_STAGE,dst=/stage,readonly" \
+  --mount "type=bind,src=$MSB_CHECK_STAGE/checks/results,dst=/stage/checks/results" \
+  --mount "type=bind,src=$MSB_CHECK_STAGE/checks/test-home,dst=/stage/checks/test-home" \
+  msb-local-checks:node22 python3 /stage/ops/verify.py \
+  --stage /stage --dependencies /opt/msb-deps/node_modules
+mv "$MSB_CHECK_STAGE/checks/results/verification.json" "$MSB_CHECK_STAGE/checks/results/docker-verification.json"
+```
+
+Не монтировать checkout целиком, host HOME, SSH или runtime бота. При новой
+версии lock/Dockerfile образ пересобирается; Docker layer cache ускоряет повтор.
+Для JAR1 готовить отдельный чистый export: Linux-report должен принадлежать
+его финальному manifest и реальным установленным зависимостям.
