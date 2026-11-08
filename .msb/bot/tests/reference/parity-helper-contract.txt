@@ -34,3 +34,18 @@ provider view. Existing mutations still complete after navigation; only renderin
 and read observation are cancelled. Bot stop drains tasks and deliveries.
 This is not proof of server application after transport timeout or live native
 OS controls on JAR1; that profile deliberately keeps the native UI disabled.
+
+Pult existing Refresh: 9adfe15 pins8RED from accepted e232629. Live cause was
+missing /run state after reboot, not missing code: helper profile jar1 and its
+PathExists .iia/engine/request were correct, package/unit existed, services worked.
+Null/partial snapshot must render unknown. Confirmed installed=false means full
+installation (package+unit) not found, with the actual profile root, not hardcoded msb.
+Root/Back stays passive to avoid repeated25s waits and20/hour quota spend while
+helper is unavailable. The same visible Refresh gets an internal refresh callback;
+old settings:pult still opens/re-renders the section. No new button or daemon.
+Fresh status uses existing status action/common read operation; only complete
+three-boolean state after OK is success. Refused/timeout/incomplete must not dress
+cached healthy data as a new result. UI read is cancellable, no enable/reload.
+Review reproduced8PASS/1RED for stale Refresh paused in loadState→new Pult form:
+duplicate route-level cancellation erased the new input. Deferred cancellation is
+now admission-only, with another current-scope check after the async state read.

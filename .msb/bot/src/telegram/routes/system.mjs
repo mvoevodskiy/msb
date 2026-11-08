@@ -14,15 +14,18 @@ import {
   sshUnavailableScreen,
   updatesScreen,
 } from '../screens.mjs';
+import { parsePultStatus } from '../../pult/status.mjs';
+import { cancelPultInput } from '../forms/pult.mjs';
 import { escapeHtml } from '../edit.mjs';
 import {
   engineStatusSnapshot,
+  refreshEngineStatus,
   submitRequest,
   waitRequestResult,
 } from '../../engines/client.mjs';
 import { UNHANDLED } from './shared.mjs';
 
-export async function handleSystemRoute({ data, show, chatId, bot, pending }) {
+export async function handleSystemRoute({ data, show, chatId, bot, pending, signal }) {
   // —— settings tree ——
   if (data === 'settings:extras') return show(extrasScreen());
 
@@ -56,8 +59,8 @@ export async function handleSystemRoute({ data, show, chatId, bot, pending }) {
         sessionHours,
       };
     };
-    const showPult = async (note = '') => {
-      const snap = await engineStatusSnapshot();
+    const showPult = async (note = '', snapshot) => {
+      const snap = snapshot ?? await engineStatusSnapshot();
       return show(pultScreen(snap.pult, await loadPultCfg(), note));
     };
     const reloadIfNeeded = async () => {
@@ -75,8 +78,21 @@ export async function handleSystemRoute({ data, show, chatId, bot, pending }) {
     };
 
     if (data === 'settings:pult') {
-      if (pending.get(chatId)?.startsWith('pult-')) pending.delete(chatId);
+      cancelPultInput(pending, chatId);
       return showPult();
+    }
+    if (data === 'settings:pult:refresh') {
+      // Deferred input exit belongs to router admission, before any await.
+      try {
+        const { result, snapshot } = await refreshEngineStatus({ signal });
+        if (!result) return showPult('Обновление статуса не подтверждено: нет ответа помощника.', { pult: null });
+        if (result.code !== 'OK') return showPult(`Не удалось обновить статус: <code>${escapeHtml(result.code)}</code>.`, { pult: null });
+        if (!parsePultStatus(snapshot.pult).known) return showPult('Помощник не вернул полный статус Пульта.', { pult: null });
+        return showPult('', snapshot);
+      } catch (err) {
+        if (signal?.aborted) return;
+        return showPult(`Не удалось обновить статус: ${escapeHtml(err.message)}`, { pult: null });
+      }
     }
     if (data === 'settings:pult:on' || data === 'settings:pult:off') {
       const action = data === 'settings:pult:on' ? 'enable-pult' : 'disable-pult';
@@ -129,7 +145,7 @@ export async function handleSystemRoute({ data, show, chatId, bot, pending }) {
       });
     }
     if (data.startsWith('settings:pult:session:set:')) {
-      if (pending.get(chatId) === 'pult-session') pending.delete(chatId);
+      cancelPultInput(pending, chatId, 'pult-session');
       const hours = data.slice('settings:pult:session:set:'.length);
       const { setEnvKey } = await import('../../env/store.mjs');
       await setEnvKey('PULT_SESSION_HOURS', hours);
@@ -137,7 +153,7 @@ export async function handleSystemRoute({ data, show, chatId, bot, pending }) {
       return showPult(`Сессия: <b>${escapeHtml(hours)} ч</b>\n${note}`);
     }
     if (data === 'settings:pult:listen') {
-      if (pending.get(chatId) === 'pult-listen') pending.delete(chatId);
+      cancelPultInput(pending, chatId, 'pult-listen');
       const cfg = await loadPultCfg();
       return show(pultListenScreen(cfg.host));
     }
@@ -149,7 +165,7 @@ export async function handleSystemRoute({ data, show, chatId, bot, pending }) {
       });
     }
     if (data.startsWith('settings:pult:listen:set:')) {
-      if (pending.get(chatId) === 'pult-listen') pending.delete(chatId);
+      cancelPultInput(pending, chatId, 'pult-listen');
       const host = data.slice('settings:pult:listen:set:'.length);
       const { setEnvKey } = await import('../../env/store.mjs');
       await setEnvKey('PULT_HOST', host);

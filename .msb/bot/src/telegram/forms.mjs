@@ -13,14 +13,13 @@ import { updateState } from '../state.mjs';
 import { escapeHtml } from './edit.mjs';
 import { handleAuthInput } from './forms/auth.mjs';
 import { handleEnvNameInput, handleEnvValueInput } from './forms/env.mjs';
-import { handlePultInput } from './forms/pult.mjs';
+import { handlePultInput, PULT_KINDS } from './forms/pult.mjs';
 
 const HANDLERS = {
   'auth-token': handleAuthInput, 'env-key-name': handleEnvNameInput,
   'feedback': handleFeedback, 'new-project': handleProject,
   'bot-token': handleBotToken, 'mon-source': handleSource,
 };
-const PULT_KINDS = new Set(['pult-password','pult-tg-token','pult-url','pult-listen','pult-session']);
 export async function handleFormInput(options) {
   const {kind,ctx} = options;
   const handler = kind?.startsWith('env:') ? handleEnvValueInput

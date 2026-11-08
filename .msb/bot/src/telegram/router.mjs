@@ -11,6 +11,7 @@
  * Проверка переходов/отмены/owner: [menu handlers](../../tests/menu-handlers.test.mjs).
  */
 import { beginCallbackRender, runCallbackScope, trackCallbackTask } from '../../shared/callback-renders.mjs';
+import { cancelPultInput } from './forms/pult.mjs';
 import { loadState } from '../state.mjs';
 import { editOrReply } from './edit.mjs';
 import { enginesScreen } from './screens.mjs';
@@ -52,7 +53,8 @@ export async function handleCallback({ bot, cfg, pending, ctx }) {
   const scope = beginCallbackRender(bot, ctx.callbackQuery);
   // Only read-only status is detached. Authorized mutation routes retain their
   // existing execution order; navigation invalidates their rendering, not writes.
-  const deferred = data === 'eng:status';
+  const deferred = data === 'eng:status' || data === 'settings:pult:refresh';
+  if (data === 'settings:pult:refresh') cancelPultInput(pending, chatId);
   await ctx.answerCallbackQuery().catch(() => {});
   if (!chatId) return;
   if (['menu:back', 'menu:close', 'menu:agent', 'menu:settings', 'settings:back', 'mon:back', 'settings:bots:cancel'].includes(data)) pending.delete(chatId);
@@ -63,6 +65,7 @@ export async function handleCallback({ bot, cfg, pending, ctx }) {
   const dispatch = async () => {
     if (deferred && !scope.isCurrent()) return;
     const { state } = await loadState();
+    if (deferred && !scope.isCurrent()) return;
     const engineMenu = async snapshot => enginesScreen(state, snapshot,
       await bot[Symbol.for('msb.engineProviderView')]?.(state));
     const context = { bot, cfg, pending, ctx, data, chatId, msgId, show, state, engineMenu, signal: scope.signal };

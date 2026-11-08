@@ -148,7 +148,7 @@ Polling получает управление до окончания испол
 
 ## Долгое чтение статуса и навигация
 
-[Router](router.mjs) оставляет read-only `eng:status` в tracked task, чтобы polling
+[Router](router.mjs) оставляет read-only `eng:status` и `settings:pult:refresh` в tracked task, чтобы polling
 принимал следующую команду. [Shared callback scope](../../shared/callback-renders.mjs)
 один для core/overlay и сохраняется через async continuation. Новый callback или
 /start, /settings, /stop отменяет прежний UI read/backoff; уже разрешённые записи
@@ -164,3 +164,14 @@ Telegram мог уже принять edit: его нельзя прервать
 [Bot stop](bot.mjs) отменяет наблюдателей и drains tasks/lane перед возвратом.
 Проверки: [production callbacks](../../tests/callback-refresh.test.mjs),
 [detached overlay scope](../../tests/callback-scope.test.mjs). Новых кнопок нет.
+
+
+Пульт: [status adapter](../pult/status.mjs) отличает unknown/partial от полного
+helper snapshot. Обычный вход/Back читает cache без дополнительных IPC запросов;
+существующая «Обновить» вызывает общий status round trip. Refused/timeout/partial
+не отображаются как stale success. Callback root `settings:pult` совместим как
+вход в раздел; после rendering кнопка Refresh имеет `settings:pult:refresh`.
+Это одна прежняя кнопка, не новый экран/daemon. Выход из Pult input при deferred
+Refresh выполняется однократно на admission, до любых await. После загрузки state
+obsolete read ещё раз проверяет scope, чтобы не затронуть вновь открытую форму.
+[Production проверки](../../tests/pult-status.test.mjs) используют synthetic jar1.

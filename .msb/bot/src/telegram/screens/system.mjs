@@ -1,9 +1,12 @@
 import profile from '../../../shared/profile.cjs';
 /**
- * Системные экраны: обновления, перезапуск, SSH и STT.
+ * Системные экраны: обновления, перезапуск, SSH, STT и Пульт.
+ * Pult data readiness/root → [adapter](../../pult/status.mjs),
+ * manual refresh → [route](../routes/system.mjs), [checks](../../../tests/pult-status.test.mjs).
  * Навигация: [Telegram](../README.md).
  */
 import { InlineKeyboard } from 'grammy';
+import { parsePultStatus } from '../../pult/status.mjs';
 import { checkOwnUpdates } from '../../updates/client.mjs';
 import { escapeHtml } from '../edit.mjs';
 import { BLANK } from './shared.mjs';
@@ -40,12 +43,13 @@ export function extrasScreen() {
  * @param {string} note
  */
 export function pultScreen(pultSnap = null, cfg = {}, note = '') {
-  const p = pultSnap || {};
-  const installed = p.installed === true;
-  const on = p.enabled === true;
-  const active = p.active === true;
+  const p = parsePultStatus(pultSnap);
+  const installed = p.installed;
+  const on = p.enabled;
+  const active = p.active;
   let status;
-  if (!installed) status = 'код не найден (~/.msb/pult) — переустанови ядро';
+  if (!p.known) status = 'нет данных от помощника — нажми «Обновить»';
+  else if (!installed) status = `полная установка Пульта не найдена (${p.root}) — проверь ядро и службы`;
   else if (on && active) status = 'включён, службы работают';
   else if (on) status = 'включён, но службы не active — journalctl -u pult-web';
   else status = 'выключен';
@@ -72,7 +76,7 @@ export function pultScreen(pultSnap = null, cfg = {}, note = '') {
   kb.text(`⏱ Сессия: ${sessionHours} ч`, 'settings:pult:session').row();
   kb.text('🤖 Бот тревог (опц.)', 'settings:pult:tg-token').row();
   kb.text('🔗 Публичный URL', 'settings:pult:url').row();
-  kb.text('🔄 Обновить', 'settings:pult').row();
+  kb.text('🔄 Обновить', 'settings:pult:refresh').row();
   kb.text('« Назад', 'settings:extras');
 
   return {

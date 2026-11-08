@@ -13,7 +13,8 @@ const ON = { installed: true, enabled: true, active: true, root: '/fixture/.iia/
 async function statusFixture(t, { initial = null, outcome = 'OK', fresh = ON, held = false } = {}) {
   let turnEntered;
   const turn = new Promise(resolve => { turnEntered = resolve; });
-  const f = await fixture(t, async ({ prompt }) => { turnEntered(prompt);return { ok: true, text: 'fixture' }; }, { runtimeProfile: 'jar1' });
+  const turns = [];
+  const f = await fixture(t, async ({ prompt }) => { turns.push(prompt);turnEntered(prompt);return { ok: true, text: 'fixture' }; }, { runtimeProfile: 'jar1' });
   const slot = path.join(f.home, '.iia/engine/request'), read = fs.readFile.bind(fs), requests = [];
   let released = !held, snapshot = initial;
   t.mock.method(fs, 'readFile', async (file,...args) => {
@@ -26,7 +27,7 @@ async function statusFixture(t, { initial = null, outcome = 'OK', fresh = ON, he
     return JSON.stringify({ pult: snapshot,
       last: last && outcome !== 'TIMEOUT' ? { id: last.id, code: released ? outcome : 'RUNNING', result: !released ? 'running' : outcome === 'OK' ? 'done' : 'refused' } : null });
   });
-  return { ...f, requests, turn, release() { released = true; },
+  return { ...f, requests, turn, turns, release() { released = true; },
     async refresh(data = 'settings:pult:refresh') { await f.callback(data);await Promise.all([...(f.bot[TASKS] || [])]); } };
 }
 
@@ -86,4 +87,24 @@ test('Pult status: Refresh leaves Pult input before asynchronous work and the ne
     assert.equal(prompt, 'ordinary task after refresh navigation');
   } finally { clearTimeout(timeout);f.release();await Promise.all([...(f.bot[TASKS] || [])]); }
   assert.equal((await readEnvMap()).map.size, 0);
+});
+
+test('Pult status: an obsolete Refresh cannot clear a newly opened Pult form after its state read resumes', async t => {
+  const f = await statusFixture(t), read = fs.readFile.bind(fs);
+  let first = true, entered, release;
+  const paused = new Promise(resolve => { entered = resolve; });
+  const gate = new Promise(resolve => { release = resolve; });
+  t.mock.method(fs, 'readFile', async (file,...args) => {
+    const raw = await read(file,...args);
+    if (first && String(file).endsWith('/state.json') && !String(file).startsWith('/run/')) { first = false;entered();await gate; }
+    return raw;
+  });
+  try {
+    await f.callback('settings:pult:refresh');await paused;
+    await f.callback('settings:pult:session');
+    release();await Promise.all([...(f.bot[TASKS] || [])]);
+    await f.message('12');
+    assert.equal((await readEnvMap()).map.get('PULT_SESSION_HOURS'), '12');
+    assert.deepEqual(f.turns, []);
+  } finally { release();await Promise.all([...(f.bot[TASKS] || [])]); }
 });
