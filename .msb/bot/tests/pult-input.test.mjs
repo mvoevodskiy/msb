@@ -8,7 +8,9 @@ import { setPendingAuth, getPendingAuth, clearPendingAuth } from '../../../overl
 import { setPendingLocalIp, getPendingLocalIp, clearPendingLocalIp } from '../../../overlay/bot/ext/local-ssh.mjs';
 
 async function pultFixture(t) {
-  const turns = [], f = await fixture(t, async request => { turns.push(request.prompt); return { ok: true, text: 'fixture response' }; });
+  let entered;
+  const turnEntered = new Promise(resolve => { entered = resolve; });
+  const turns = [], f = await fixture(t, async request => { turns.push(request.prompt); entered(); return { ok: true, text: 'fixture response' }; });
   // Production IPC still writes into the synthetic HOME. Supply only its response;
   // no host /run state, helper, service reload or external HTTP is used.
   const readFile = fs.readFile.bind(fs), requests = [];
@@ -20,7 +22,12 @@ async function pultFixture(t) {
     return JSON.stringify({ pult: { state: 'running' }, last: request ? { id: request.id, code: 'OK', result: 'done' } : null });
   });
   t.after(() => { clearPendingAuth(42); clearPendingLocalIp(42); });
-  return { ...f, turns, requests };
+  return { ...f, turns, requests, async waitForTurn() {
+    let timeout;
+    try {
+      await Promise.race([turnEntered, new Promise((_, reject) => { timeout = setTimeout(() => reject(Error('Next task never entered the runner')), 5_000); })]);
+    } finally { clearTimeout(timeout); }
+  } };
 }
 
 const fields = [
@@ -35,7 +42,7 @@ for (const [field, back] of fields) test(`Pult input: ${field} Back ends only it
   const before = [...(await readEnvMap()).map];
   await f.callback(back);
   await f.message('ordinary task after going back');
-  await new Promise(resolve => setTimeout(resolve, 10));
+  await f.waitForTurn();
   assert.deepEqual(f.turns, ['ordinary task after going back']);
   assert.deepEqual([...(await readEnvMap()).map], before);
   assert.deepEqual(f.requests, []);
@@ -51,7 +58,7 @@ for (const [field, value, key] of [
   assert.equal(f.requests.length, 1);assert.equal(f.requests[0].action, 'reload-pult');
   const before = [...(await readEnvMap()).map];
   await f.message('ordinary task after choosing preset');
-  await new Promise(resolve => setTimeout(resolve, 10));
+  await f.waitForTurn();
   assert.deepEqual(f.turns, ['ordinary task after choosing preset']);
   assert.deepEqual([...(await readEnvMap()).map], before);
 });
