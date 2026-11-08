@@ -63,3 +63,11 @@ Runtimefix:42service GREEN,113related PASS; Sol независимо79PASS
 (service+description+STT), без findings. Ни41FAIL, ни19catalogrows не означают
 41дефект или19проверенных API. Реальные авторизация/backend/shell/filtering
 не проверялись. Полный Linux/Docker/JAR1 gate и живая приёмка — отдельно.
+
+Дополнительный finding после620Docker: independent Sol воспроизвёл EACCES
+именноperbot.env. STTcatch даётunknown, но listEnvEntries читает тотжефайл и
+прерывает metadata/systemprompt, в отличие от cachedoldvHA безperturnIO.
+Изолировать только optionalcustommetadata чтение в prompt: knownrows сохранить,
+customrows пропустить с постоянной safeunknown пометкой. UIreader/writers/auth
+не менять; rawexception/path/value не попадут в prompt. Не считать shared-only
+EACCES тест достаточным доказательством этого другого связанного пути.

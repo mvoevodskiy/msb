@@ -138,7 +138,21 @@ for(const provider of ['claude','codex'])for(const mode of ['inline','file'])tes
  if(provider==='codex')assert.ok(p.includes('Runtime override'));
 });
 
-test('env services: an unknown STT status permits an ordinary production text turn',async()=>{
- const out=agentOptionsReport('codex','auto','opus','high','2.1.316',false,'','env-services-unknown'),p=out.calls[0].nativePrompt;
+for (const source of ['shared','bot']) test('env services: unknown '+source+' STT status permits an ordinary production text turn',async()=>{
+ const scenario=source==='bot'?'env-services-unknown-bot':'env-services-unknown';
+ const out=agentOptionsReport('codex','auto','opus','high','2.1.316',false,'',scenario),p=out.calls[0].nativePrompt;
  assert.equal(out.ok,true);assert.ok(p.includes(unknown));assert.equal(p.includes('fixture-private-marker'),false);
+});
+
+for (const target of ['metadata','system']) test('env services: unreadable per-bot metadata preserves known rows in '+target,async t=>{
+ const f=await fixture(t,undefined,{overlay:false}),env={...bare(f),GITHUB_TOKEN:SECRET},read=fs.readFile.bind(fs);
+ t.mock.method(fs,'readFile',async(file,...args)=>{
+  if(String(file)===envFilePath(env))throw Object.assign(Error('fixture-private-marker-'+SECRET),{code:'EACCES'});
+  return read(file,...args);
+ });
+ const p=target==='metadata'?await envCapabilityPrompt(env):await buildSystemPrompt({env,workspace:f.home});
+ assert.ok(p.includes(active('GITHUB_TOKEN','GitHub')));assert.ok(p.includes(unknown));
+ assert.ok(p.includes('Дополнительные имена и описания ключей сейчас недоступны.'));
+ for(const value of [SECRET,'fixture-private-marker','EACCES',f.home])assert.equal(p.includes(value),false);
+ assert.equal(env.GITHUB_TOKEN,SECRET);assert.deepEqual(f.restartRequests,[]);
 });

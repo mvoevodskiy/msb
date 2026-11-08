@@ -62,11 +62,11 @@ try {
     await setEnvKey('FIXTURE_CUSTOM_API','fixture-service-custom-value',process.env,{comment:'fixture custom description'});
     await setEnvKey('GEMINI_API_KEY','fixture-service-file-only-value',{HOME:home,MSB_BOT_ID:'default'});
     if (envScenario==='env-services-file')await fs.writeFile(path.join(home,'SOUL.md'),'fixture large system context '.repeat(2500));
-    if (envScenario==='env-services-unknown') {
+    if (envScenario==='env-services-unknown' || envScenario==='env-services-unknown-bot') {
       delete process.env.DEEPGRAM_API_KEY;
       const read=fs.readFile.bind(fs);
       fs.readFile=async(file,...args)=>{
-        if(String(file)===path.join(home,'.msb/.env'))throw Object.assign(Error('fixture-private-marker'),{code:'EACCES'});
+        if(String(file)===path.join(home,envScenario==='env-services-unknown-bot'?'.msb/bots/default/.env':'.msb/.env'))throw Object.assign(Error('fixture-private-marker'),{code:'EACCES'});
         return read(file,...args);
       };
     }
