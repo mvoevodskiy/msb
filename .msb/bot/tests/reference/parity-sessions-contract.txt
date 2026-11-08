@@ -83,16 +83,33 @@ Differentproject: existingapplyProjectSelection clearsALLslots/tokens, then rest
 selectedrowID in thatsame transaction. Validate row/provider/project/epoch again
 после awaitdirectory. Старыйresult/cleanup не вернётстарыйID и не удалитnewtoken.
 
-Writer обязаниспользоватьcapturedprovider/project, не случайныйтекущийstate после
-await. Acceptedfirst placement(active/parked) илиexistingIDfence→upsert ledgerвтойже
-транзакции. Resolved error/abort/tool-only с темжеужеизвестнымID приunchangedfence
-можетобновитьметаданныепопытки, сохраняяoldcount смысл; failed/aborted firstID,
-foreign/sentinel/reset/stale/newercwd не добавляетдоступный черезисторию bypass.
-Сами новые acceptedprovider-slot/reset гарантии важнееoldracebug. Count — returned
-engine passes, не гарантированноуспешныеответы; статускнопкалогики не добавлять.
-Displayprompt bounded200 с уже действующейjournal redaction, безсекретов; existing
-firstPrompt/project/startedAt приresume сохранить. Не retro-import старыеnative
-истории/личныеfiles или fabricate firstPrompt/COUNT приboot/чтениисписка.
+ИСТОРИЯ И АВТОМАТИЧЕСКАЯ АКТИВАЦИЯ — РАЗНЫЕ РЕШЕНИЯ (fidelity correction)
+Old tE/worker записывает каждый достоверный возвращённый native ID, в том числе
+error/abort первого хода и позднее завершение после newtask/project/session switch.
+Это не обход reset: история всегда разрешала явный выбор после сброса, без
+автоматической активации. Прежнее требование этого контракта «только accepted
+placement/same fence» было лишним ограничением и отменено до любой выкладки.
+Writer использует captured provider/project; новые row не привязывать к случайному
+текущему проекту после await (old GB.activeProject race исправляется по actual cwd).
+
+Active ccSessionId/parked slots/usage/context по-прежнему защищены всеми epoch,
+provider,project и first-token fences. Их запрет на автоматическое сохранение
+не отменяет историческую запись реального завершившегося вызова. Late metadata
+не трогает новую reservation или выбранные ID/usage. First error/abort с реально
+наблюдавшимся своим native ID индексируется, но не активируется автоматически.
+Foreign/sentinel/выдуманный ID исключаются. Из runClaudeTurn нужны внутренние
+факты: был ли child запущен и был ли конечный ID наблюдён в init/result. Carried
+ранее известный resume ID после реально запущенного вернувшегося вызова тоже
+учитывается, как old попытка; pre-spawn abort/setup throw и новый ненаблюдённый
+ID не создают историю. Проверка принадлежности ID своему captured provider остаётся.
+
+Count/lastPrompt/lastActivity меняются в порядке ЗАВЕРШЕНИЯ каждого engine pass,
+как tE, не «последний start побеждает». Atomic read/modify/write не теряет инкременты;
+existing firstPrompt/project/startedAt не переписывать. Completion-order не менять
+по собственной рекомендации; это было бы отдельным согласуемым отличием.
+Displayprompt bounded200 с общей journal redaction/Unicode clip. Не retro-import
+старые native histories/userfiles и не выдумывать firstPrompt/COUNT приboot/чтении.
+
 
 Текущее состояние/проверки
 01e867a: sessionsScreen — currentprovider/context+newtask, нетledgerwriter/
@@ -108,6 +125,12 @@ newOCнеподключён); невыдаватьэтотCCэтапзаfullOCpa
 Полная20family цель остаётсяпрежней; этотлогическийшаг закрываетCLIhistorypath.
 Ничего наJAR1дляcontract/REDне менять; ownernativeистории не читать, не импортировать.
 
+
+Архив промежуточных проверок ДО fidelity correction (не нормативное поведение)
+
+Часть прежних assertions ошибочно запрещала историческую запись late/firstabort.
+Они требуют замены проверкой истории отдельно от активных ID/usage. Приведённые
+ниже числа описывают реальные исторические прогоны, но не доказывают old parity.
 
 UI RED checkpoint
 node --test --test-reporter=tap .msb/bot/tests/sessions.test.mjs:
@@ -129,7 +152,8 @@ Fixture вызывает productionrunAgentTurn/state/placement, fakeCLI пер�
 parkedplacement. Case first/repeat/tool-only/autonomy, cap100/order, returned
 known-IDerror/abort, redaction/200bound и acceptedprovider-awayfirst воспроизводят
 отсутствующийwriter. Foreign/sentinel/firsterror/firstabort/reset/projectreset/
-throw controls ужеPASS и должнытакимиостаться. НетреальныхCLI/API/HOMEисторий.
+throw controls былиPASS; прежнее ожидание отсутствия valid first/late истории
+отменено fidelity correction сверху. НетреальныхCLI/API/HOMEисторий.
 Команда: node --test --test-reporter=tap .msb/bot/tests/session-ledger.test.mjs.
 UI+ledger checkpoints вместе52cases,12PASS/40RED; этоещёнеготовыйrelease.
 
@@ -216,3 +240,14 @@ Exactmodelcallcount1/2добавленпозамечаниюreview, лишние
 натекущемкоде11GREEN. Solнезависимо11PASS/no blockingfindings, countgapзакрыт.
 Настоящийadapter/nativeCLIresume, samefinalcommitLinux иliveещёнепроверены.
 JAR1 остаётся01e867a, native/userhistoryнечиталинепереносили.
+
+
+Причина уточнения
+Независимый повторный source review Terra иSol признал прежнее исключение valid
+late/error/abort изledger слишком строгим: worker110650–110700/tE55610–55644
+непроверяют success/abort/epoch передисторией, а newtaskсохраняетявныйвыбор.
+Ранее ревью проверяло реализацию против уже суженного нами контракта; это не
+достаточная old-проверка. Новый контракт/зелёныйtest не заменяют исходный oldsource.
+51c51e5 не выкладывался (Docker3fixturecaptionFAIL); JAR1 остаётся01e867a.
+Нужны отдельные RED дляутраченнойreturned истории, корректная provenance граница,
+completionorder и explicit resume записанного late ID, затем всеactivefences GREEN.
