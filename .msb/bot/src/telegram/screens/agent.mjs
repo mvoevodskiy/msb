@@ -2,6 +2,7 @@
  * Агент, модель, глубина, права и подключение Claude.
  * Навигация: [Telegram](../README.md).
  */
+import { VISIBLE_PERMISSION_MODES } from '../../../shared/permission-modes.mjs';
 import { InlineKeyboard } from 'grammy';
 import { hasClaudeAuth } from '../../state.mjs';
 import { agentDisplay } from '../../agent/display.mjs';
@@ -88,20 +89,16 @@ export function effortScreen() {
   };
 }
 
-export function permModeScreen() {
+export function permModeScreen(state = {}) {
+  const current = state.permissionMode || state.permMode || 'auto';
+  const modes = VISIBLE_PERMISSION_MODES;
+  const keyboard = new InlineKeyboard();
+  for (const mode of modes) keyboard.text(`${mode.label}${mode.id === current ? ' ✓' : ''}`, `settings:permmode:set:${mode.id}`).row();
+  keyboard.text('« Назад', 'menu:agent');
+  const selected = current === 'smart' ? 'Auto' : modes.find(mode => mode.id === current)?.label || modes[0].label;
   return {
-    text: `<b>🔐 Режим прав</b>\n\nКак агент вносит правки.\n${BLANK}`,
-    keyboard: new InlineKeyboard()
-      .text('без спроса (auto)', 'settings:permmode:set:auto')
-      .row()
-      .text('smart', 'settings:permmode:set:smart')
-      .text('с подтверждением', 'settings:permmode:set:control')
-      .row()
-      .text('сначала план', 'settings:permmode:set:plan')
-      .row()
-      .text('bypass', 'settings:permmode:set:bypassPermissions')
-      .row()
-      .text('« Назад', 'menu:agent'),
+    text: `<b>🧠 Режим работы</b>\n\nСпрашивает ли агент разрешение перед изменениями.\n\n${modes.map(mode => `<b>${mode.label}</b> — ${mode.desc}`).join('\n')}\n\n<b>Сейчас:</b> ${selected}\n\n<i>Смена режима начнёт новую беседу.</i>`,
+    keyboard,
   };
 }
 

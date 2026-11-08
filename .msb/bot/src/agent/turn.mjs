@@ -7,6 +7,7 @@ import {
   updateState,
 } from '../state.mjs';
 import { runClaudeTurn } from './claude.mjs';
+import { conversationalModePrompt } from './mode-prompt.mjs';
 import { buildSystemPrompt } from './system-prompt.mjs';
 import { readSessionContext } from './context.mjs';
 import { claimFirstSession, completeFirstSession, releaseFirstSession } from '../../shared/session-starts.mjs';
@@ -58,7 +59,7 @@ export async function runAgentTurn({
   const model = resolveModel(state);
   const effort = resolveEffort(state);
   const permissionMode = resolvePermMode(state);
-  const systemPrompt = await buildSystemPrompt();
+  const systemPrompt = await buildSystemPrompt({ extra: conversationalModePrompt(state) });
 
   if (signal?.aborted) return aborted();
 

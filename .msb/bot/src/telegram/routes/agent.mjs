@@ -11,7 +11,7 @@ export async function handleAgentRoute({ data, state, show, pending, chatId, bot
   // —— agent / model ——
   if (data === 'settings:model') return show(modelScreen());
   if (data === 'settings:effort') return show(effortScreen());
-  if (data === 'settings:permmode') return show(permModeScreen());
+  if (data === 'settings:permmode') return show(permModeScreen(state));
   if (data === 'settings:conn' || data === 'settings:auth') return show(await connScreen(state));
   if (data === 'settings:conn:noop') return;
   if (data === 'settings:conn:set:cc' || data === 'settings:engine:set:cc') {

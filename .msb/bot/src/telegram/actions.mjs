@@ -6,6 +6,7 @@
  * [first start/reset fences](../../tests/first-session.test.mjs).
  */
 import { invalidateFirstSession } from '../../shared/session-starts.mjs';
+import { normalizePermissionMode } from '../../shared/permission-modes.mjs';
 import { updateState } from '../state.mjs';
 
 export const MODEL_MAP = {
@@ -40,6 +41,7 @@ export async function applyEffort(value) {
 }
 
 export async function applyPermMode(value) {
+  value = normalizePermissionMode(value);
   await updateState((s) => {
     s.permissionMode = value;
     s.permMode = value;

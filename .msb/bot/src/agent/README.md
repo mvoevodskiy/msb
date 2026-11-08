@@ -68,3 +68,13 @@ Codex не требует значения `state.engine = codex`: это выб
 При разделении runner сохранять signal отмены, границы process group,
 stream-контракт и guard записи сессии. Эталон поведения и пределы проверки —
 [reference README](../../tests/reference/README.md), [контракт Claude CLI](../../vendor/CONTRACT-agent-cc.md).
+
+
+Claude control/plan uses the old conversational instructions in [mode-prompt](mode-prompt.mjs)
+from the same provider/mode snapshot as its CLI options. Both map to acceptEdits;
+this is a model request to wait for the old final marker/Telegram approval, not a
+native permission guarantee. Codex saved UI mode activates neither prompt and
+changes no native rights. Shared [mode vocabulary](../../shared/permission-modes.mjs)
+keeps the old visible choices/fallback; [production tests](../../tests/agent-modes.test.mjs)
+check callback writes and actual child argv/prompt. Plan delivery/continuation is
+verified in its own Telegram stage, not by argv tests alone.

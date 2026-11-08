@@ -96,7 +96,7 @@ export function resolvePermMode(state = {}) {
   if (ui === 'dontAsk') return 'dontAsk';
   // plan / control / auto / default → acceptEdits в штатном бандле
   if (ui === 'plan' || ui === 'control' || ui === 'auto' || ui === 'default' || ui === 'acceptEdits') {
-    return ui === 'plan' ? 'plan' : 'acceptEdits';
+    return 'acceptEdits';
   }
   return 'acceptEdits';
 }

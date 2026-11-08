@@ -1,4 +1,5 @@
 import profile from '../shared/profile.cjs';
+import { VISIBLE_PERMISSION_MODES } from '../shared/permission-modes.mjs';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -361,11 +362,7 @@ export async function buildPermModeMenu(env = process.env, home = os.homedir()) 
   const state = await readBotState(env, home);
   const current = state.permissionMode || 'auto';
   const modelId = await currentModelId(providerId, store, env, home);
-  const modes = [
-    { id: 'auto', label: 'Без спроса', desc: 'делает всё сам, не спрашивая (по умолчанию)' },
-    { id: 'control', label: 'С подтверждением', desc: '✔/✖ перед каждым изменением файла' },
-    { id: 'plan', label: 'Сначала план', desc: 'показывает план, ждёт ✔, потом делает всё' },
-  ];
+  const modes = VISIBLE_PERMISSION_MODES;
 
   const lines = [
     `<b>🔐 Режим работы</b> · ${esc(title)}`,

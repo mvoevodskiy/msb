@@ -3,6 +3,7 @@
  * Навигация: [Обвязка](../README.md).
  */
 import os from 'node:os';
+import { normalizePermissionMode } from '../../shared/permission-modes.mjs';
 import { isProviderId, getProvider } from '../providers.mjs';
 import { setActive } from '../store.mjs';
 import { providerConfigured } from '../env.mjs';
@@ -242,8 +243,7 @@ export async function handleCallback(bot, cq, closedCore = false) {
       const mode = data.startsWith('ext:permmode:set:')
         ? data.slice('ext:permmode:set:'.length)
         : data.slice('settings:permmode:set:'.length);
-      const allowed = ['auto', 'smart', 'control', 'plan'];
-      const next = allowed.includes(mode) ? mode : 'auto';
+      const next = normalizePermissionMode(mode);
       await writeBotPermissionMode(next);
       const notice = store.active === 'codex' ? `✔ Настройка режима сохранена: <b>${next}</b>. Права Codex не менялись.` : `✔ Режим: <b>${next}</b>.`;
       const agent = await buildAgentMenu(process.env, undefined, notice);
