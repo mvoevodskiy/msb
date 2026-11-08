@@ -264,3 +264,17 @@ actualargv/cwd и новыйход. Same-IDcompletionorder и carriedknown-error
 контроли; pre-spawnabortсреальнымlargepromptfilegap0children —RED(fake count).
 IJold19514–19540 действительноspawnпередвозвратомenginepass; newearlyabort
 возвращаетcarriedIDбезchild, поэтомулишьtruthyresultfieldнедостаточнодляindex.
+
+Fidelity GREEN checkpoint (after598cf6c RED)
+Runner exposes spawned/sessionIdObserved; early pre-spawn abort explicitly false.
+Result transaction indexes valid returned observed IDs (or launched carried known
+resume) using captured provider/project, independently of automatic placement.
+First error/abort and late reset/project/select history are retained; active IDs,
+parked slots, usage/context and newer reservations retain all previous fences.
+Existing first metadata is immutable; count/lastPrompt follow completion order.
+52ledger+resume PASS after30PASS/22ERR_ASSERTION;28first-session/session-starts/
+turn-context/lifecycle/project-races/claude-abort PASS. No cancelled/skipped cases.
+Independent Sol reread old source and ran58ledger+resume+session-starts PASS,
+no findings. These isolated checks use fake model protocol/own temporary HOME,
+not real adapter/native integration. Full same-commit Linux and native/live gates
+still pending; JAR1 remains01e867a and no push occurred.

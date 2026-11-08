@@ -132,10 +132,13 @@ SOUL/USER/MEMORY/CLAUDE/TELEGRAM-TOOLS остаются из base. Текуща�
 parked first-placement и usage. В той же транзакции [ledger](../sessions/ledger.mjs)
 индексирует ID, captured provider/project, первые/последние200символов и число
 вернувшихся engine passes (limit100). Это не импорт или просмотр native transcripts.
-Успешные первые active/parked IDs учитываются; failed/aborted first ID, foreign/
-sentinel/stale/reset результат не создают обход через историю. Вернувшаяся ошибка
-или отмена с тем же уже известным ID может обновить метаданные попытки только при
-неизменных fences; активная беседа и usage при этом не заменяются. Tool-only и
+История индексирует достоверный возвращённый ID независимо от допуска к active/
+parked placement: first error/abort и late reset/project/select результат остаются
+доступны для явного выбора, но не возвращают active ID/usage и не трогают новую
+reservation. Runner возвращает факты spawned/sessionIdObserved: launched carried
+known resume тоже считается; pre-spawn abort, ненаблюдённый новый ID, foreign и
+sentinel не создают запись. Count/lastPrompt меняются в порядке завершения, first
+metadata не переписывается. Это отдельное решение от active/usage fences. Tool-only и
 фоновые ходы используют тот же путь, как old tE. Исходный Pult/Telegram journal
 остаётся отдельным; его [redaction](../history/preview.mjs) теперь общая, без смены
 логики. Контракт и ограничения: [sessions reference](../../tests/reference/parity-sessions-contract.txt).

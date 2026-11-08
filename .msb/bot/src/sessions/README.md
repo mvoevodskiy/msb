@@ -5,10 +5,15 @@
 
 `state.sessionHistory` хранит прежние описания/ID, а не native transcripts.
 [Ledger](ledger.mjs) обновляется только внутри [result transaction](../agent/session-result.mjs)
-после подтверждения ownership. First/last descriptions до200символов используют
+после проверки происхождения ID и captured provider. История не зависит от допуска
+к автоматической активации: достоверные first error/abort и поздние reset/project/
+select результаты сохраняются для явного выбора, не меняя active/parked ID, usage
+или новые reservations. First/last descriptions до200символов используют
 общую прежнюю [redaction](../history/preview.mjs); limit100 не удаляет native файлы.
-Count означает вернувшиеся engine passes, включая разрешённые known-ID failed/
-aborted attempts, не только доставленные успешные ответы. Boot/чтение списка
+Count означает вернувшиеся engine passes в порядке завершения, включая error/
+abort; launched known resume учитывается и без нового init. Runner отличает
+наблюдённый ID от carried input и pre-spawn abort, который не создаёт попытку.
+First metadata уже известного ID сохраняется. Boot/чтение списка
 ничего не импортируют и не фабрикуют для старого native ID без описания.
 
 [Scope](scope.mjs) выводит только однозначные строки текущего CLI-провайдера:

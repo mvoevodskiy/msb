@@ -2,6 +2,8 @@
  * Запуск Claude Code CLI в режиме stream-json.
  * Контракт совместим с закрытым [msb/agent-cc] и overlay shim (PATH→claude).
  * Навигация: [Исполнение](./README.md), [provider shim](../../../../overlay/bot/ext/shim/run-turn.mjs).
+ * Result provenance (spawned/sessionIdObserved) lets [session-result](./session-result.mjs)
+ * count actual returned attempts without inventing history for a pre-spawn abort.
  */
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
@@ -93,7 +95,7 @@ export async function runClaudeTurn(opts) {
   if (opts.signal?.aborted) {
     if (sysPromptFile) await fs.unlink(sysPromptFile).catch(() => {});
     return {
-      sessionId: opts.sessionId || '', text: '', isError: false,
+      sessionId: opts.sessionId || '', spawned: false, sessionIdObserved: false, text: '', isError: false,
       exitCode: null, signal: null, aborted: true,
       usage: { inputTokens: 0, outputTokens: 0 }, toolsUsed: [], toolCount: 0, stderr: '',
     };
@@ -172,6 +174,7 @@ export async function runClaudeTurn(opts) {
     let stdoutBuf = '';
     let stderr = '';
     let sessionId = opts.sessionId || '';
+    let sessionIdObserved = false;
     let text = '';
     let model;
     let providerId = null;
@@ -203,7 +206,7 @@ export async function runClaudeTurn(opts) {
             if (['claude', 'codex', 'cursor', 'qwen'].includes(ev.provider_id)) providerId = ev.provider_id;
             if (ev.subtype === 'init') {
               if (!providerId && ev.apiKeySource !== 'ext') providerId = 'claude';
-              if (ev.session_id) sessionId = ev.session_id;
+              if (ev.session_id) { sessionId = ev.session_id; sessionIdObserved = true; }
               if (ev.model) model = ev.model;
             }
             break;
@@ -226,7 +229,7 @@ export async function runClaudeTurn(opts) {
           }
           case 'result':
             if (Number.isFinite(ev.total_cost_usd) && ev.total_cost_usd >= 0) costUsd = ev.total_cost_usd;
-            if (ev.session_id) sessionId = ev.session_id;
+            if (ev.session_id) { sessionId = ev.session_id; sessionIdObserved = true; }
             if (ev.subtype) subtype = ev.subtype;
             if (typeof ev.is_error === 'boolean') isError = ev.is_error;
             if (typeof ev.result === 'string' && ev.result && !text) text = ev.result;
@@ -257,6 +260,8 @@ export async function runClaudeTurn(opts) {
       );
       resolve({
         sessionId,
+        spawned: true,
+        sessionIdObserved,
         text: text.trim(),
         model,
         providerId,

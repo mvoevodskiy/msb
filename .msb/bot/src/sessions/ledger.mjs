@@ -1,5 +1,5 @@
 /**
- * Accepted native result -> old bounded per-bot description ledger; mutates only
+ * Actual returned native attempt -> old bounded per-bot description ledger; mutates only
  * the current [state transaction](../agent/session-result.mjs), never native files.
  * Identity -> [scope](./scope.mjs), display redaction -> [preview](../history/preview.mjs).
  * [Contract](../../tests/reference/parity-sessions-contract.txt), [runner checks](../../tests/session-ledger.test.mjs).
