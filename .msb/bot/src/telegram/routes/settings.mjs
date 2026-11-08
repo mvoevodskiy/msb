@@ -9,6 +9,8 @@ import { loadState, updateState } from '../../state.mjs';
 import { envScreen, envDeleteScreen, limitScreen, notificationsScreen, serverStatusScreen, sttScreen, tzScreen } from '../screens.mjs';
 import { deleteEnvKey } from '../../env/store.mjs';
 import { UNHANDLED } from './shared.mjs';
+import { protectedEnvNotice } from '../env-protection.mjs';
+import { escapeHtml } from '../edit.mjs';
 
 export async function handleSettingsRoute({ data, state, show, pending, chatId, bot, cfg }) {
   if (data === 'settings:env' || data === 'settings:env:cancel') {
@@ -24,9 +26,11 @@ export async function handleSettingsRoute({ data, state, show, pending, chatId, 
   }
   if (data.startsWith('settings:env:quick:')) {
     const key = data.slice('settings:env:quick:'.length);
+    const refusal = protectedEnvNotice(key);
+    if (refusal) { pending.delete(chatId); return show(refusal); }
     pending.set(chatId, `env:${key}`);
     return show({
-      text: `Пришли значение для <code>${key}</code>.`,
+      text: `Пришли значение для <code>${escapeHtml(key)}</code>.`,
       keyboard: (await envScreen()).keyboard,
     });
   }

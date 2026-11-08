@@ -14,6 +14,15 @@
 
 Маршрут: `settings:env:*` → [handleSettingsRoute](../telegram/routes/settings.mjs)
 → общий `pending` → [message:text](../telegram/bot.mjs) → `setEnvKey`.
+Обычные формы отклоняют системные ключи через общий
+[отказ](../telegram/env-protection.mjs); pending закрывается до ответа.
+`setEnvKey` повторяет запрет до IO. Прежний набор дополнен эквивалентными
+bootstrap MSB/IIA names (profile/root/paths/owner), без запрета обычных service keys.
+Только [штатная Claude auth-форма](../telegram/forms/auth.mjs) передаёт четвёртый
+аргумент `{internal:true}`; Pult и provider secrets имеют прежние маршруты.
+[Контракт и provenance](../../tests/reference/parity-env-protected-contract.txt),
+[production regression](../../tests/env-protected.test.mjs).
+
 Запись синхронизирует переданный env и его управляемые aliases через shared profile.
 Потребитель, захвативший настройку при startup, сам от этого не перезапускается.
 

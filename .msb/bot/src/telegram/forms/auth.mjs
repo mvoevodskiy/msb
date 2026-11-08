@@ -19,7 +19,8 @@ export async function handleAuthInput({ ctx, text, pending, chatId, restart }) {
   const key = token.startsWith('sk-ant-api') ? 'ANTHROPIC_API_KEY' : 'CLAUDE_CODE_OAUTH_TOKEN';
   const { setEnvKey } = await import('../../env/store.mjs');
   try {
-    await setEnvKey(key, token);
+    // Old s1 internal:true: only the dedicated auth form may replace this key.
+    await setEnvKey(key, token, process.env, { internal: true });
     process.env[key] = token;
     if (key === 'ANTHROPIC_API_KEY') process.env.MSB_ANTHROPIC_API_KEY = token;
     await updateState((s) => {

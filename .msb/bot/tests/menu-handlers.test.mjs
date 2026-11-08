@@ -293,7 +293,12 @@ test('all baseline menu button routes remain reachable', async (t) => {
   const callbacks = (v) => v.keyboard.inline_keyboard.flat().map((b) => b.callback_data).filter(Boolean);
   const state = { ...(await loadState()).state, permissionMode: 'auto', autonomyRights: false };
   await saveState(state);
-  for (const [name, expected] of Object.entries(contract.screens)) assert.deepEqual(callbacks(await screens[name](state)), expected, name);
+  for (const [name, expected] of Object.entries(contract.screens)) {
+    // The pinned open-core snapshot exposed NODE_ENV deletion. Old bY55151
+    // protects it; this one unsafe action is restored by the env contract.
+    const restored = name === 'envScreen' ? expected.filter(data => data !== 'settings:env:delete:NODE_ENV') : expected;
+    assert.deepEqual(callbacks(await screens[name](state)), restored, name);
+  }
   for (const [name, expected] of Object.entries(contract.overlay)) assert.deepEqual(callbacks(await overlay[name](process.env, f.home)), expected, name);
 });
 
@@ -576,7 +581,7 @@ test('env parity: returning to the env list or the old Cancel exits key input be
 
 test('env parity: protected keys stay protected at both deletion steps', async t => {
   const f = await fixture(t, undefined, {overlay:false});
-  await setEnvKey('BOT_TOKEN','synthetic-protected-value');
+  await setEnvKey('BOT_TOKEN','synthetic-protected-value',process.env,{internal:true});
   await f.callback('settings:env:delete:BOT_TOKEN');
   assert.equal(f.edits.at(-1),'❌ BOT_TOKEN — защищённый ключ, удаление запрещено.');
   assert.deepEqual(f.editOptions.at(-1).reply_markup.inline_keyboard, [[{text:'« Назад',callback_data:'settings:env'}]]);

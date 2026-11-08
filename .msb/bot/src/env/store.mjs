@@ -7,9 +7,24 @@ import path from 'node:path';
 import { botRoot, ensureDir } from '../paths.mjs';
 import profile from '../../shared/profile.cjs';
 
-/** Нельзя удалить базовые ключи юнита. */
+/** Old system-key boundary plus new equivalent bootstrap names; aliases agree.
+ * Generic forms cannot replace/delete these; only stock auth uses explicit internal.
+ * [Contract](../../tests/reference/parity-env-protected-contract.txt).
+ */
 export const PROTECTED_KEYS = new Set([
+  'JARVIS_CC_ONLY',
   'BOT_TOKEN',
+  'ANTHROPIC_API_KEY',
+  'MSB_ANTHROPIC_API_KEY',
+  'CLAUDE_CODE_OAUTH_TOKEN',
+  'SYNC_KEY',
+  'SYNC_URL',
+  'NODE_ENV',
+  'VPS_CLIENT_ID',
+  'MSB_WORKSPACE_DIR',
+  'MSB_RUNTIME_PROFILE',
+  'MSB_RUNTIME_ROOT',
+  'MSB_OS_ENGINE',
   'MSB_BOT_ID',
   'MSB_SESSION_DIR',
   'MSB_TRANSCRIPT_DIR',
@@ -82,12 +97,15 @@ export async function listEnvEntries(env = process.env) {
     }));
 }
 
-export async function setEnvKey(key, value, env = process.env) {
+export async function setEnvKey(key, value, env = process.env, { internal = false } = {}) {
   if (!/^[A-Z][A-Z0-9_]*$/.test(key)) {
     throw new Error('Ключ: только A-Z, цифры и _');
   }
   if (typeof value !== 'string' || /[\r\n\0]/.test(value)) {
     throw new Error('Значение должно быть одной строкой, без переводов строки и NUL.');
+  }
+  if (PROTECTED_KEYS.has(key) && internal !== true) {
+    throw new Error(`${key} — защищённый системный ключ, изменение запрещено`);
   }
   const { file, lines } = await readEnvMap(env);
   ensureDir(path.dirname(file));

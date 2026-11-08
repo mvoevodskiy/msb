@@ -5,9 +5,11 @@
  * [handler tests](../../../tests/menu-handlers.test.mjs).
  */
 import { escapeHtml } from '../edit.mjs';
+import { protectedEnvNotice } from '../env-protection.mjs';
 
 export async function handleEnvValueInput({ kind, ctx, text, pending, chatId }) {
   const key = kind.slice(4);
+  if (await refuseProtected({ key, ctx, pending, chatId })) return;
   const { setEnvKey } = await import('../../env/store.mjs');
   try { await setEnvKey(key, text.trim()); }
   catch (err) { await ctx.reply(`Не сохранил: ${err.message}`); return; }
@@ -22,7 +24,16 @@ export async function handleEnvNameInput({ ctx, text, pending, chatId }) {
     await ctx.reply('Имя ключа: только A-Z, цифры и _.');
     return;
   }
+  if (await refuseProtected({ key, ctx, pending, chatId })) return;
   pending.advance(chatId, `env:${key}`);
   await ctx.reply(`Ок. Пришли значение для <code>${key}</code>.`, { parse_mode: 'HTML' });
   return;
+}
+
+async function refuseProtected({ key, ctx, pending, chatId }) {
+  const notice = protectedEnvNotice(key);
+  if (!notice) return false;
+  pending.delete(chatId);
+  await ctx.reply(notice.text, { parse_mode: 'HTML', reply_markup: notice.keyboard });
+  return true;
 }

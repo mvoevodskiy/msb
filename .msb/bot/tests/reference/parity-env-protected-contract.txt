@@ -51,3 +51,13 @@ RED checkpoint должен явно отличаться от пригодно�
 Изолированная проверка не равна live Claude login или полному env parity.
 Откат этапа — revert fix, затем RED tests/contract при необходимости;
 code-only rollback не возвращает данные/секреты и снова открывает прежний дефект.
+
+Проверенный локальный checkpoint
+48d6785 — контракт; 55ac0f3 — production RED: 14 tests, 2 PASS / 12 RED.
+После узкого fix: 70 связанных tests PASS (env, auth, menu, monitor, profile).
+Независимый reviewer: env-protected + auth-input + pult-input, 32 PASS,
+без findings. Полный Linux gate и реальная приёмка относятся к финальному
+экспорту; эти цифры не являются утверждением о выпуске на JAR1.
+Единственная поправка immutable open-core menu snapshot в assertion:
+NODE_ENV больше не получает delete button, поскольку old bY уже защищал его.
+Сами fixture bytes и остальные ожидаемые callback routes не переписаны.

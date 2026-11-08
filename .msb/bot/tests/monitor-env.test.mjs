@@ -66,7 +66,7 @@ test('env CRUD', async () => {
   assert.ok(list.some((e) => e.key === 'DEEPGRAM_API_KEY'));
   await deleteEnvKey('DEEPGRAM_API_KEY', env);
   assert.equal((await listEnvEntries(env)).some((e) => e.key === 'DEEPGRAM_API_KEY'), false);
-  await setEnvKey('BOT_TOKEN', '1:abc', env);
+  await setEnvKey('BOT_TOKEN', '1:abc', env, {internal:true});
   await assert.rejects(() => deleteEnvKey('BOT_TOKEN', env));
   assert.ok(PROTECTED_KEYS.has('BOT_TOKEN'));
 });

@@ -17,7 +17,7 @@ for (const [label, token, key] of [
 ]) test(`Claude input: normalize ${label}, store in its existing route and preserve the active provider`, async t => {
   const f = await fixture(t, undefined, { overlay: false });
   const otherKey = key === 'ANTHROPIC_API_KEY' ? 'CLAUDE_CODE_OAUTH_TOKEN' : 'ANTHROPIC_API_KEY';
-  await setEnvKey(otherKey, 'fixture-other-existing-credential');
+  await setEnvKey(otherKey, 'fixture-other-existing-credential', process.env, {internal:true});
   const before = (await loadState()).state, storeBefore = await fs.readFile(f.storeFile, 'utf8');
   await f.callback('settings:auth:switch-sub');
   await f.message(` \n${token.slice(0, 15)}\t${token.slice(15)} \n`);
