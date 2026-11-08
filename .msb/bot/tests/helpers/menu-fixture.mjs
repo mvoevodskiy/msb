@@ -1,6 +1,7 @@
 /**
  * Isolated production Telegram ingress with a fake Grammy transport/turn/restart.
  * The synthetic HOME owns all bot data; no credential, installer or network setup.
+ * Workspace is HOME/workspace so old dirname(base)/projects stays inside HOME.
  * Used by [menu checks](../menu-handlers.test.mjs) and focused form suites.
  */
 import fs from 'node:fs/promises';
@@ -13,10 +14,12 @@ import { installUpdateHook } from '../../../../overlay/bot/ext/install.mjs';
 
 export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixture' }), { overlay = true, now = Date.now, runtimeProfile = 'msb', claudeCliVersion = '2.1.154' } = {}) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-menu-'));
+  const workspace = path.join(home, 'workspace');
+  await fs.mkdir(workspace);
   const previous = { ...process.env };
   let bot;
   process.env.HOME = home; process.env.MSB_BOT_ID = 'default'; process.env.ADMIN_ID = '42';
-  process.env.MSB_WORKSPACE_DIR = home;
+  process.env.MSB_WORKSPACE_DIR = workspace;
   process.env.MSB_RUNTIME_PROFILE = runtimeProfile;
   process.env.MSB_RUNTIME_ROOT = path.join(home, runtimeProfile === 'jar1' ? '.iia' : '.msb');
   delete process.env.JARVIS_CC_ONLY;
@@ -60,7 +63,7 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
       return step(0);
     }
   }
-  bot = createBot({ botToken: 'fake', botId: 'default', adminId: 42, workspace: home, timezone: 'Europe/Moscow' }, { bot: new Harness(), runTurn, now, restart: () => restartRequests.push(0) });
+  bot = createBot({ botToken: 'fake', botId: 'default', adminId: 42, workspace, timezone: 'Europe/Moscow' }, { bot: new Harness(), runTurn, now, restart: () => restartRequests.push(0) });
   if (overlay) installUpdateHook(Harness, { ADMIN_ID: '42' });
   await saveState({ engine: 'cc', extAuthBypass: 'codex', ccSessionId: 'ext:codex:0199a213-81c0-7800-8aa1-bbab2a035a53', dailySpendLimit: 10 });
   const storeFile = path.join(process.env.MSB_RUNTIME_ROOT, 'bots/default/ext-providers.json');
@@ -76,5 +79,5 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
     }
   };
   const message = (text, uid = 42) => bot.handleUpdate({ message: { message_id: 99, text, from: { id: uid }, chat: { id: 42 } } });
-  return { home, bot, callback, message, markupEdits, callbackAnswers, messages, edits, editOptions, deleted, messageOptions, typingSignals, editSignals, replySignals, storeFile, restartRequests };
+  return { home, workspace, bot, callback, message, markupEdits, callbackAnswers, messages, edits, editOptions, deleted, messageOptions, typingSignals, editSignals, replySignals, storeFile, restartRequests };
 }
