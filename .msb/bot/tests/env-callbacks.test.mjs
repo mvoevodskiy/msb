@@ -91,3 +91,12 @@ test('long env callback: unauthorized callback and protected key retain their gu
  await f.callback('settings:env:confirm-delete:BOT_TOKEN');
  assert.equal(await fs.readFile(file,'utf8'),before);assert.equal((await readEnvMap()).map.has(LONG),true);
 });
+
+test('long env callback: an obsolete reference does not redraw a newer active input as a list',async t=>{
+ const f=await fixture(t);await f.callback('settings:env:quick:ACTIVE_INPUT');await f.message('fixture-active-value');
+ const before=f.edits.length;
+ for(const action of ['delete','confirm-delete'])await f.callback(`settings:env:${action}:k~${'0'.repeat(32)}`);
+ assert.equal(f.edits.length,before,'a stale action must not disguise an active draft with an env-list redraw');
+ await f.message('fixture active description');
+ assert.equal((await readEnvMap()).map.get('ACTIVE_INPUT'),'fixture-active-value');
+});

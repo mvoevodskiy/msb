@@ -22,7 +22,7 @@ files точны. Sanitized proof — env-callback-telegram-evidence.json ряд
 использовать одну функцию;decoding по текущим именам per-bot file,не по values.
 Не создавать второй delete path/registry/file migration или менять labels/previews.
 Одна и та же ссылка работает после process restart;unknown/ambiguous/malformed
-opaque ref не удаляет никакой ключ и возвращает существующий список. Protected
+opaque ref не удаляет никакой ключ и не меняет текущие экран/форму. Protected
 keys и owner guard остаются. Legacy raw short и raw long opening refs совместимы.
 Callback_data всех кнопок <=64UTF8 bytes,включая confirm prefix. Это transport
 contract уже используемый monitor/source-ref;не переноситьmonitor state в env.
@@ -41,3 +41,13 @@ Name rules min2/max40/sanitize/_A/1A — отдельный этап. Linux257п
 
 RED checkpoint не выпускать. Rollbackfix возвращает transportfailure дляlongkey;
 code-onlyrollback не восстанавливает удалённые env values/descriptions.
+
+Уточнение до выпуска:initial fallback refreshlist дал production10PASS/1RED,
+если уже открыта новая env comment form. На экране был бы список,но draft жив:
+следующий текст скрыто сохранялся бы описанием. Unknownref теперь толькоack/noop,
+сохраняет текущую форму/экран;нет ложной навигации и второго cancel/write path.
+
+Checkpoint52bf260 contract/75a3d7e RED1PASS9RED. Послеcodec11casesGREEN,
+93relatedtestsPASS,0skip/todo. Sol independently92relatedPASS доinputdelta,
+затем11callbackPASS безfindings. РеальныйBotAPIafterfix/полныйLinux/live —
+уфинальногорелиза. Source labels/previews/store/auth/providerне менялись.

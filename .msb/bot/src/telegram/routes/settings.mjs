@@ -9,6 +9,7 @@ import { loadState, updateState } from '../../state.mjs';
 import { envScreen, envDeleteScreen, limitScreen, notificationsScreen, serverStatusScreen, sttScreen, tzScreen } from '../screens.mjs';
 import { skipEnvComment } from '../forms/env.mjs';
 import { deleteEnvKey, listEnvEntries } from '../../env/store.mjs';
+import { resolveEnvKeyReference } from '../../env/callback-key.mjs';
 import { UNHANDLED } from './shared.mjs';
 import { protectedEnvNotice } from '../env-protection.mjs';
 import { escapeHtml } from '../edit.mjs';
@@ -37,12 +38,16 @@ export async function handleSettingsRoute({ data, state, show, pending, chatId, 
     });
   }
   if (data.startsWith('settings:env:delete:')) {
-    const key = data.slice('settings:env:delete:'.length);
-    const entry = (await listEnvEntries()).find(row => row.key === key);
+    const entries = await listEnvEntries();
+    const key = resolveEnvKeyReference(data.slice('settings:env:delete:'.length),entries.map(row=>row.key));
+    if (key === null) return;
+    const entry = entries.find(row => row.key === key);
     return show(envDeleteScreen(key,entry?.comment));
   }
   if (data.startsWith('settings:env:confirm-delete:')) {
-    const key = data.slice('settings:env:confirm-delete:'.length);
+    const entries = await listEnvEntries();
+    const key = resolveEnvKeyReference(data.slice('settings:env:confirm-delete:'.length),entries.map(row=>row.key));
+    if (key === null) return;
     try { await deleteEnvKey(key); }
     catch (err) { await bot.api.sendMessage(chatId, err.message); }
     return show(await envScreen());

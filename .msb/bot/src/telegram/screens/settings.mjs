@@ -4,6 +4,7 @@
  */
 import { InlineKeyboard } from 'grammy';
 import { QUICK_KEYS, listEnvEntries, PROTECTED_KEYS } from '../../env/store.mjs';
+import { envKeyReference } from '../../env/callback-key.mjs';
 import { escapeHtml } from '../edit.mjs';
 import { BLANK, describeSpendLimit } from './shared.mjs';
 
@@ -47,7 +48,7 @@ export async function envScreen() {
   }
   kb.text('➕ Свой ключ', 'settings:env:add').row();
   for (const e of entries.filter((x) => !x.protected).slice(0, 8)) {
-    kb.text(`🗑 ${e.key}`, `settings:env:delete:${e.key}`).row();
+    kb.text(`🗑 ${e.key}`, `settings:env:delete:${envKeyReference(e.key)}`).row();
   }
   kb.text('« Назад', 'settings:back');
   return { text: lines.join('\n'), keyboard: kb };
@@ -63,7 +64,7 @@ export function envDeleteScreen(key,comment) {
   return {
     text: `Удалить <code>${safeKey}</code>?${comment ? `\n📝 <i>${escapeHtml(comment)}</i>\n` : ''}`,
     keyboard: new InlineKeyboard()
-      .text('🗑 Да, удалить', `settings:env:confirm-delete:${key}`)
+      .text('🗑 Да, удалить', `settings:env:confirm-delete:${envKeyReference(key)}`)
       .text('« Нет', 'settings:env'),
   };
 }

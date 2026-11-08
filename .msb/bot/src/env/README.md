@@ -50,3 +50,9 @@ comment одной queued mutation. Skip/blank сохраняют старое �
 service claims и global visibility не подменяются этим списком и требуют своей
 проверки. [Контракт](../../tests/reference/parity-env-description-contract.txt),
 [сквозной regression](../../tests/env-description.test.mjs).
+
+[callback-key](callback-key.mjs) сохраняет literal short callbacks и сокращает
+длинные доopaque ref длясуществующих delete/confirm. Тот жеcodec уscreen/routes;
+resolve читает currentkeynames,безvalue/registry/migration. Unknown/ambiguousref
+не меняет текущие экран/форму и не пишет.env. [Контракт](../../tests/reference/parity-env-callback-contract.txt),
+[transport/restart/owner tests](../../tests/env-callbacks.test.mjs).
