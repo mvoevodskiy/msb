@@ -46,9 +46,16 @@ Target закреплён до ожидания; весь read/modify/rename/env
 его строки; остальные raw lines/quoted values сохраняет. Store пишет value+
 comment одной queued mutation. Skip/blank сохраняют старое описание.
 [Custom capability metadata](prompt.mjs) → [system prompt](../agent/system-prompt.mjs)
-передаёт только имена/описания реально активных custom keys, без values. Known
-service claims и global visibility не подменяются этим списком и требуют своей
-проверки. [Контракт](../../tests/reference/parity-env-description-contract.txt),
+передаёт имена/описания активных custom keys без values. Known service metadata
+из [services.mjs](services.mjs) сохраняет19прежних key/label и12hint flags. Для
+Deepgram используется существующий STT resolver с process/bot/shared/empty
+приоритетами; остальные строки описывают только processenvpresence. Ошибка
+чтения STT даёт безопасный unknown, не отказ текстового хода. Наличие значения
+не обещает API/auth/backend работоспособность; универсального $NAME shell claim
+нет. Внутренние PULT quicksettings исключены, ordinary service quickkeys
+сохраняют custom путь. Globalcustom visibility и полный oldtool catalog отдельны.
+[Контракт](../../tests/reference/parity-env-services-contract.txt),
+[проверки](../../tests/env-services.test.mjs). [Контракт](../../tests/reference/parity-env-description-contract.txt),
 [сквозной regression](../../tests/env-description.test.mjs).
 
 [callback-key](callback-key.mjs) сохраняет literal short callbacks и сокращает

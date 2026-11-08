@@ -9,8 +9,8 @@ const FILES = ['SOUL.md', 'CLAUDE.md', 'USER.md', 'MEMORY.md', 'TELEGRAM-TOOLS.m
 /**
  * Собирает append-system-prompt из workspace (как context-loader закрытого ядра, упрощённо).
  * Навигация: [Исполнение](./README.md) → [profile label](../../shared/README.md);
- * [custom env metadata](../env/prompt.mjs) adds active key names/descriptions, never values.
- * [Contract/tests](../../tests/env-description.test.mjs).
+ * [env metadata](../env/prompt.mjs) adds service configuration and custom descriptions, never values.
+ * [Service checks](../../tests/env-services.test.mjs), [custom checks](../../tests/env-description.test.mjs).
  */
 export async function buildSystemPrompt({ env = process.env, workspace = workspaceDir(env), extra = '' } = {}) {
   const chunks = [];

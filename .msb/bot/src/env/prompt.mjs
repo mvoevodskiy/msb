@@ -1,22 +1,29 @@
 /**
- * Old user-added env capabilities: names/descriptions only, never stored values.
- * [System prompt](../agent/system-prompt.mjs) → existing CLI/shim prompt routes.
- * Known service/backend capability claims are separate; only active custom keys.
- * [Contract](../../tests/reference/parity-env-description-contract.txt),
- * [Tests](../../tests/env-description.test.mjs).
+ * Service/custom metadata → common system prompt; no values or previews.
+ * [Services](./services.mjs) owns old catalog/status and delegates Deepgram to STT;
+ * [store](./store.mjs) owns registered custom names/descriptions, not activation.
+ * Caller: [system prompt](../agent/system-prompt.mjs) → existing Claude/Codex routes.
+ * [Contract](../../tests/reference/parity-env-services-contract.txt),
+ * [service tests](../../tests/env-services.test.mjs), [custom tests](../../tests/env-description.test.mjs).
  */
 import profile from '../../shared/profile.cjs';
-import { listEnvEntries, PROTECTED_KEYS, QUICK_KEYS } from './store.mjs';
-const KNOWN = new Set([
-  ...QUICK_KEYS.map(row => row.key),
-  'VOYAGE_API_KEY','SERPER_API_KEY','BRAVE_API_KEY','SUPABASE_URL','SUPABASE_ACCESS_TOKEN',
-  'VERCEL_TOKEN','RAILWAY_TOKEN','GOOGLE_API_KEY','GEMINI_API_KEY','OPENAI_API_KEY',
-  'REPLICATE_API_TOKEN','CLOUDFLARE_API_TOKEN','NANOBANANA_API_KEY','FAL_KEY','SUPADATA_API_KEY','APIFY_API_KEY',
-]);
+import {listEnvEntries,PROTECTED_KEYS,QUICK_KEYS} from './store.mjs';
+import {envServiceMetadata,ENV_SERVICE_KEYS} from './services.mjs';
+const INTERNAL=new Set(QUICK_KEYS.filter(row=>row.key.startsWith('PULT_')).map(row=>row.key));
+
 export async function envCapabilityPrompt(env = process.env) {
-  const rows = (await listEnvEntries(env)).filter(row => !PROTECTED_KEYS.has(row.key)
-    && !KNOWN.has(row.key) && profile.envValue(env,row.key));
-  if (!rows.length) return '';
-  return ['## Настроенные сервисы','Все ключи доступны в Bash через $ИМЯ.',
-    ...rows.map(row => `- ${row.key}: ${row.comment || 'добавлен через /settings'}`)].join('\n');
+  const services = (await envServiceMetadata(env)).flatMap(row => {
+    let note;
+    if (row.status === 'configured') note = `ключ задан в ${row.source}.`;
+    else if (row.status === 'unknown') note = `состояние ключа в ${row.source} неизвестно.`;
+    else if (row.hint) note = `в ${row.source} ключ не задан (добавь через /settings → 🔑).`;
+    return note ? [`- ${row.key}: ${row.label} — ${note}`] : [];
+  });
+  const custom = (await listEnvEntries(env)).filter(row => !PROTECTED_KEYS.has(row.key)
+    && !ENV_SERVICE_KEYS.has(row.key) && !INTERNAL.has(row.key) && profile.envValue(env, row.key));
+  const lines = [...services, ...custom.map(row => `- ${row.key}: ${row.comment || 'добавлен через /settings'}`)];
+  if (!lines.length) return '';
+  return ['## Сервисы и ключи',
+    'Это сведения о настройках. Наличие ключа не подтверждает авторизацию, доступность API или встроенного инструмента.',
+    ...lines].join('\n');
 }

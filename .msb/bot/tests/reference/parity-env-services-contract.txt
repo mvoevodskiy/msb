@@ -57,3 +57,9 @@ STT process/bot/shared/empty/command/unknown без изменений env/files
 production runAgentTurn→argv/file→Claude/Codex buildPrompt с fakechild/networkoff,
 обычный ход при STTreaderror. Contract→RED→fix отдельными подробными commits.
 JAR1 до нового final gate не обновляется. Code-only rollback не меняет секреты.
+
+Checkpoint:5e6e318contract,3e0e545RED42tests1PASS/41assertFAIL, skip/todo0.
+Runtimefix:42service GREEN,113related PASS; Sol независимо79PASS
+(service+description+STT), без findings. Ни41FAIL, ни19catalogrows не означают
+41дефект или19проверенных API. Реальные авторизация/backend/shell/filtering
+не проверялись. Полный Linux/Docker/JAR1 gate и живая приёмка — отдельно.
