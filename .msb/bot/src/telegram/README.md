@@ -185,3 +185,21 @@ conversation. Provider slots/epoch fences remain in shared/overlay modules.
 [first-start lifecycle](../../tests/first-session.test.mjs) cover the distinction;
 old provenance and still-pending catalog locks are in
 [agent settings contract](../../tests/reference/parity-agent-settings-contract.txt).
+
+
+## Подтверждение плана и правки
+
+Финальный ответ → [plan parser](plan.mjs) → [response](response.mjs) удаляет
+thinking и отправляет отдельную прежнюю карточку; footer/keyboard только на
+последнем chunk, включая plain fallback. Tool/text progress не создаёт approvals;
+отменённый ход не доставляет final card, infrastructure error не парсится как план.
+[Plan actions](plan-actions.mjs) получает callback через существующий router:
+approve/always/skip → тот же inbox; reject → прежний ответ без модели; comment →
+один следующий обычный текст после secret forms. Always — текст модели, не grant.
+State комментария принадлежит createBot, без TTL, с привязкой к исходному чату.
+Owner guard и topic входа сохраняются. Нового persistent approval ledger или
+exactly-once/replay fence нет, как и в old callback protocol. Полная кнопочная
+безопасность не следует из prompt-маркера; native права Codex не меняются.
+[Callback/delivery tests](../../tests/plan-handoff.test.mjs),
+[полный fake-CLI resume](../../tests/plan-turn.test.mjs),
+[old provenance и границы](../../tests/reference/parity-agent-settings-contract.txt).

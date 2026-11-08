@@ -1,6 +1,7 @@
 import { invalidateFirstSession } from '../../../shared/session-starts.mjs';
 /**
  * Главное меню, навигация и поздние plan/misc callbacks.
+ * plan:* → [actions](../plan-actions.mjs) → существующий inbox; [handoff checks](../../../tests/plan-handoff.test.mjs).
  * Навигация: [Telegram](../README.md).
  */
 import { updateState } from '../../state.mjs';
@@ -40,12 +41,7 @@ export async function handleNavigationRoute({ data, state, show, pending, chatId
   return UNHANDLED;
 }
 
-export async function handleMiscRoute({ data, bot, chatId }) {
-  // —— plan / misc ——
-  if (data.startsWith('plan:')) {
-    await bot.api.sendMessage(chatId, `Получено: ${data}. Обработчик подтверждения в open-core пока не подключён.`);
-    return;
-  }
-
+export async function handleMiscRoute({ data, ctx, plan }) {
+  if (data.startsWith('plan:')) return plan.callback(ctx);
   return UNHANDLED;
 }

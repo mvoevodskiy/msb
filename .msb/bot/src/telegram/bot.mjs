@@ -8,6 +8,7 @@ import { invalidateFirstSession } from '../../shared/session-starts.mjs';
  * Кнопки → [router](./router.mjs) → routes/; вид → [screens](./screens.mjs).
  * Формы → [dispatcher](./forms.mjs); pending в этом процессе; записи → [state](../state.mjs) / [env](../env/store.mjs).
  * Индикация → [progress](./progress.mjs), итог → [response](./response.mjs),
+ * План/комментарий → [plan actions](./plan-actions.mjs) → тот же inbox; final marker → [plan](./plan.mjs).
  * журнал Пульта → [history](./history.mjs), STT → [voice](./voice.mjs).
  * Проверки: [inbox lifecycle](../../tests/inbox-lifecycle.test.mjs),
  * [polling/stop](../../tests/turn-lifecycle.test.mjs), [forms/menu](../../tests/menu-handlers.test.mjs).
@@ -21,6 +22,8 @@ import { recognizeVoice, voicePreview, STT_ONBOARDING } from './voice.mjs';
 import { startTurnProgress } from './progress.mjs';
 import { createInbox, isForwarded } from './inbox.mjs';
 import { prepareBatch, batchStatus } from './batch.mjs';
+import { createPlanActions } from './plan-actions.mjs';
+import { parsePlanResponse } from './plan.mjs';
 import { deliverTurnResponse } from './response.mjs';
 import { beginTurnHistory } from './history.mjs';
 import { runAgentTurn } from '../agent/turn.mjs';
@@ -72,7 +75,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     entry.presentation = (entry.presentation || Promise.resolve()).catch(() => {}).then(async () => {
       if (entry.cancelled && text !== 'Моя остановочка ✋🏽⛔️') return;
       if (text.startsWith('📥 Собираю') && revision !== entry.statusRevision) return;
-      const ctx = entry.ctx, thread = ctx.message?.message_thread_id;
+      const ctx = entry.ctx, thread = (ctx.message || ctx.callbackQuery?.message)?.message_thread_id;
       if (entry.status) await ctx.api.editMessageText(ctx.chat.id, entry.status.message_id, text, {}, presentationSignal(AbortSignal.timeout(15_000)));
       else entry.status = await ctx.reply(text, thread && thread !== 1 ? { message_thread_id: thread } : {}, presentationSignal(AbortSignal.timeout(15_000)));
     });
@@ -80,6 +83,9 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   }
 
   let stopping = false;
+  const plan = createPlanActions({ enqueue: (ctx, text) => {
+    if (!stopping) inbox.push({ ctx, text, voice: false });
+  } });
   const startPolling = bot.start.bind(bot);
   bot.start = (...args) => { stopping = false; openCallbackRenders(bot); inbox.open(); return startPolling(...args); };
   const stopPolling = bot.stop.bind(bot);
@@ -313,7 +319,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   });
 
   bot.on('callback_query:data', async (ctx) => {
-    await handleCallback({ bot, cfg, pending, ctx });
+    await handleCallback({ bot, cfg, pending, ctx, plan });
   });
 
   bot.on('message:text', async (ctx) => {
@@ -330,6 +336,8 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
 
     const pend = entry.kind;
     if (await handleFormInput({ kind: pend, ctx, text, pending, cfg, restart })) return;
+
+    if (await plan.consumeComment(ctx, text)) return;
 
     // Old reply-stop interrupts the current turn, but keeps collectors/FIFO.
     // Env/auth forms above keep priority; timezone input below remains pending.
@@ -472,7 +480,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     };
     try {
       if (!voice && !entry.items) history = await beginTurnHistory({ input: text });
-      const thread = ctx.message?.message_thread_id;
+      const thread = (ctx.message || ctx.callbackQuery?.message)?.message_thread_id;
       await entry.presentation?.catch(() => {});
       status = entry.status;
       if (signal.aborted) { await stopped(); return; }
@@ -517,7 +525,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       await deliverTurnResponse(ctx, status.message_id, out.text, out.ok ? {
         elapsedMs: performance.now() - startedAt, costUsd: out.result?.costUsd, context: out.result?.context,
       } : {});
-      deliveredText = out.text; delivered = true;
+      deliveredText = parsePlanResponse(out.text)?.cleanText ?? out.text; delivered = true;
     } catch (err) {
       await progress?.stop();
       if (signal.aborted) await stopped().catch(() => {});
@@ -526,13 +534,13 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         turn.completed = true;
         if (voice && err.code === 'STT_NOT_CONFIGURED') {
           if (status) await ctx.api.deleteMessage(chatId, status.message_id, presentationSignal(AbortSignal.timeout(15_000))).catch(() => {});
-          const thread = ctx.message?.message_thread_id;
+          const thread = (ctx.message || ctx.callbackQuery?.message)?.message_thread_id;
           await ctx.reply(STT_ONBOARDING.text, { reply_markup: STT_ONBOARDING.reply_markup, ...(thread && thread !== 1 ? { message_thread_id: thread } : {}) });
         } else {
           const error = voice && !transcribed
             ? `❌ Не удалось обработать голосовое: ${String(err.message).slice(0, 200)}\n\nПопробуй ещё раз или напиши текстом.`
             : `❌ Ошибка: ${String(err.message).slice(0, 300)}`;
-          await deliverTurnResponse(ctx, status?.message_id, error, {});
+          await deliverTurnResponse(ctx, status?.message_id, error, {}, { allowPlan: false });
           deliveredText = error; delivered = true;
         }
       }

@@ -25,5 +25,6 @@ const prompts = {
 };
 export function conversationalModePrompt(state = {}) {
   if (state.extAuthBypass || state.engine === 'oc') return '';
-  return prompts[state.permissionMode || state.permMode] || '';
+  const mode = state.permissionMode || state.permMode;
+  return Object.hasOwn(prompts, mode) ? prompts[mode] : '';
 }

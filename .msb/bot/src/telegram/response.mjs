@@ -1,3 +1,4 @@
+import { parsePlanResponse, planKeyboard } from './plan.mjs';
 import { presentationSignal } from './presentation-api.mjs';
 
 // Compact final delivery from the old u4/$u/editFinal contract, without its
@@ -138,7 +139,7 @@ function splitHtml(html, limit) {
 }
 
 function options(ctx, html = true, editing = false) {
-  const thread = ctx.message?.message_thread_id;
+  const thread = (ctx.message || ctx.callbackQuery?.message)?.message_thread_id;
   return {
     ...(html ? { parse_mode: 'HTML' } : {}),
     ...(!editing && thread && thread !== 1 ? { message_thread_id: thread } : {}),
@@ -146,20 +147,27 @@ function options(ctx, html = true, editing = false) {
   };
 }
 
-async function send(ctx, html) {
-  try { return await ctx.reply(html, options(ctx)); }
+async function send(ctx, html, keyboard) {
+  const markup = keyboard ? { reply_markup: keyboard } : {};
+  try { return await ctx.reply(html, { ...options(ctx), ...markup }); }
   catch (err) {
     if (!/parse|unsupported.*tag|entit/i.test(String(err?.description || err?.message || err))) throw err;
-    return ctx.reply(unescape(html.replace(/<[^>]*>/g, '')), options(ctx, false));
+    return ctx.reply(unescape(html.replace(/<[^>]*>/g, '')), { ...options(ctx, false), ...markup });
   }
 }
 
-/** Edit a short answer in place; remove status and send balanced long chunks. */
-export async function deliverTurnResponse(ctx, statusId, text, telemetry = {}) {
-  const body = renderResponseHtml(text || 'Ответ не пришёл — попробуй ещё раз.');
+/**
+ * Final text → Telegram: ordinary short edit, long chunks, old plan separate card.
+ * [plan parser/keyboard](./plan.mjs) runs here, never in progress; footer + markup
+ * only on the final chunk, including plain fallback. Error notices can opt out.
+ * [createBot](./bot.mjs) owns cancellation; [delivery tests](../../tests/plan-handoff.test.mjs).
+ */
+export async function deliverTurnResponse(ctx, statusId, text, telemetry = {}, { allowPlan = true } = {}) {
+  const plan = allowPlan && parsePlanResponse(text);
+  const body = renderResponseHtml(plan ? plan.cleanText : text || 'Ответ не пришёл — попробуй ещё раз.');
   const footer = formatTurnFooter(telemetry);
   const complete = body + footer;
-  if (complete.length <= LIMIT) {
+  if (complete.length <= LIMIT && !plan) {
     if (statusId) {
       try {
         await ctx.api.editMessageText(ctx.chat.id, statusId, complete, options(ctx, true, true), presentationSignal(AbortSignal.timeout(15_000)));
@@ -175,6 +183,9 @@ export async function deliverTurnResponse(ctx, statusId, text, telemetry = {}) {
   }
   if (statusId) await ctx.api.deleteMessage(ctx.chat.id, statusId, presentationSignal(AbortSignal.timeout(15_000))).catch(() => {});
   const chunks = splitHtml(body, LIMIT - footer.length);
-  for (let i = 0; i < chunks.length; i++) await send(ctx, chunks[i] + (i === chunks.length - 1 ? footer : ''));
+  for (let i = 0; i < chunks.length; i++) {
+    const last = i === chunks.length - 1;
+    await send(ctx, chunks[i] + (last ? footer : ''), last && plan ? planKeyboard(plan.pattern) : undefined);
+  }
   return { method: 'send', messages: chunks.length };
 }

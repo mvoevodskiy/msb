@@ -72,7 +72,7 @@ const TOOL_LABELS = {
 
 export function startTurnProgress(ctx, messageId, { signal, preparing = false, now = () => performance.now(), timers = globalThis } = {}) {
   let start = now();
-  const thread = ctx.message?.message_thread_id;
+  const thread = (ctx.message || ctx.callbackQuery?.message)?.message_thread_id;
   const topic = thread && thread !== 1 ? { message_thread_id: thread } : {};
   const typingAbort = new AbortController();
   const editsAbort = new AbortController();

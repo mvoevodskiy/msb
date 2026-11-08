@@ -121,3 +121,40 @@ test('long plan HTML fallback keeps keyboard/footer only on the last chunk', asy
     assert.equal(call.text.includes('⏱'), last);
   }
 });
+
+
+test('unknown/prototype plan callbacks do not create a hidden continuation', async t => {
+  const calls = [], f = await fixture(t, async opts => { calls.push(opts.prompt); return { ok: true, text: 'ready' }; });
+  for (const action of ['constructor', 'toString', '__proto__', 'unknown-fixture']) await f.callback(`plan:${action}`);
+  await f.message('sentinel ordinary input');
+  await until(() => calls.some(p => typeof p === 'string' && p.includes('sentinel ordinary input')));
+  await f.bot.stop();
+  assert.deepEqual(calls, ['sentinel ordinary input']);
+});
+
+test('infrastructure error containing a marker is a plain error notice, not an approval card', async t => {
+  const f = await fixture(t, async () => { throw Error('fixture error [КНОПКИ: plan]'); });
+  await f.message('synthetic task');
+  await until(() => f.edits.some(text => text.includes('fixture error')));
+  await f.bot.stop();
+  assert.equal(f.messageOptions.some(opts => opts?.reply_markup), false);
+  assert.match(f.edits.at(-1), /❌ Ошибка: fixture error \[КНОПКИ: plan\]/);
+});
+
+test('callback continuation keeps its topic through queue status and final response', async t => {
+  const calls = [], f = await fixture(t, async opts => { calls.push(opts.prompt); return { ok: true, text: 'topic response' }; });
+  await f.callback('plan:approve', 42, { threadId: 7 });
+  await until(() => f.edits.some(text => text.startsWith('topic response'))); await f.bot.stop();
+  assert.deepEqual(calls, ['✔ Продолжай выполнение.']);
+  assert.ok(f.messageOptions.some(opts => opts?.message_thread_id === 7));
+});
+
+test('plan comment is consumed only in its originating chat; other text retains ordinary routing', async t => {
+  const calls = [], f = await fixture(t, async opts => { calls.push(opts.prompt); return { ok: true, text: 'ready' }; });
+  await f.callback('plan:comment');
+  await f.bot.handleUpdate({ message: { message_id: 7, from: { id: 42 }, chat: { id: 43 }, text: 'другой чат' } });
+  await until(() => f.edits.some(text => text.startsWith('ready')));
+  await f.message('мой комментарий');
+  await until(() => calls.length === 2); await f.bot.stop();
+  assert.deepEqual(calls, ['другой чат', '✖ Не согласен. Комментарий: мой комментарий']);
+});

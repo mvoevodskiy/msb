@@ -46,7 +46,7 @@ const ROUTES = [
  * @param {object} opts.cfg
  * @param {Map<number, string>} opts.pending
  */
-export async function handleCallback({ bot, cfg, pending, ctx }) {
+export async function handleCallback({ bot, cfg, pending, ctx, plan }) {
   const data = ctx.callbackQuery.data || '';
   const chatId = ctx.chat?.id;
   const msgId = ctx.callbackQuery.message?.message_id;
@@ -68,7 +68,7 @@ export async function handleCallback({ bot, cfg, pending, ctx }) {
     if (deferred && !scope.isCurrent()) return;
     const engineMenu = async snapshot => enginesScreen(state, snapshot,
       await bot[Symbol.for('msb.engineProviderView')]?.(state));
-    const context = { bot, cfg, pending, ctx, data, chatId, msgId, show, state, engineMenu, signal: scope.signal };
+    const context = { bot, cfg, pending, ctx, plan, data, chatId, msgId, show, state, engineMenu, signal: scope.signal };
     for (const route of ROUTES) {
       const result = await route(context);
       if (result !== UNHANDLED) return result;

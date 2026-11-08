@@ -64,3 +64,11 @@ test('overlay keeps unknown-mode auto fallback without resetting Codex native co
   assert.equal((await loadState()).state.ccSessionId, before.ccSessionId);
   assert.equal(await fs.readFile(f.storeFile, 'utf8'), store);
 });
+
+
+test('persisted prototype-name modes cannot inject inherited object values into the system prompt', () => {
+  const ordinary = flag(options('claude', 'auto'), '--append-system-prompt');
+  for (const mode of ['constructor', 'toString', '__proto__']) {
+    assert.equal(flag(options('claude', mode), '--append-system-prompt'), ordinary);
+  }
+});

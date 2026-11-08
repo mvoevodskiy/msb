@@ -9,7 +9,7 @@ export const FORWARD_QUIET_MS = 2500;
 export const FORWARD_MAX_MS = 25_000;
 export const BATCH_MAX_ITEMS = 300;
 export const isForwarded = message => Boolean(message?.forward_origin || message?.forward_date || message?.forward_from || message?.forward_from_chat);
-const keyOf = item => `${item.ctx.chat.id}:${item.ctx.message?.message_thread_id || 1}`;
+const keyOf = item => `${item.ctx.chat.id}:${(item.ctx.message || item.ctx.callbackQuery?.message)?.message_thread_id || 1}`;
 
 // Each queued message owns its quote. Keep raw text separately for the journal.
 function textPrompt(item) {
