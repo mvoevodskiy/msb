@@ -48,7 +48,7 @@ try{
   }));return child;
  };
  syncBuiltinESMExports();
- let prompt=scenario==='redaction'?'fixture api_key=sk-session-fixture-secret-1234567890':scenario==='bounded'?'x'.repeat(350):'fixture first prompt';
+ let prompt=scenario==='redaction'?'fixture api_key=sk-session-fixture-secret-1234567890':scenario==='bounded'?'x'.repeat(350):scenario==='unicode'?'p'+'🧠'.repeat(160):'fixture first prompt';
  let out;try{out=await runAgentTurn({prompt,signal:controller.signal,autonomy:scenario==='autonomy'});}catch(error){out={ok:false,error:error.code||'exception'};}
  if(['repeat','update-order'].includes(scenario))out=await runAgentTurn({prompt:'fixture latest prompt',signal:controller.signal});
  const state=(await loadState()).state;

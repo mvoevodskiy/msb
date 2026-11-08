@@ -10,7 +10,7 @@ function run(provider,scenario){
  const out=spawnSync(process.execPath,[fixture,provider,scenario],{env:{PATH:path.dirname(process.execPath),TMPDIR:os.tmpdir()},encoding:'utf8',timeout:9000});assert.equal(out.status,0,out.stderr);
  const line=out.stdout.split('\n').find(s=>s.startsWith('SESSION_LEDGER='));assert.ok(line,out.stdout);const r=JSON.parse(line.slice('SESSION_LEDGER='.length));
  assert.equal(r.calls.length,scenario==='throws'?0:['repeat','update-order'].includes(scenario)?2:1);
- if(['first','repeat','autonomy','tool-only','redaction','bounded','update-order','limit'].includes(scenario)){
+ if(['first','repeat','autonomy','tool-only','redaction','bounded','unicode','update-order','limit'].includes(scenario)){
   assert.equal(r.ok,true,'The fixture must reach a successful production engine result before checking metadata');
   assert.equal(r.state.ccSessionId,scenario==='limit'?r.newId:r.id);
  }
@@ -62,4 +62,8 @@ for(const scenario of ['foreign-existing','sentinel-existing'])test('session led
 
 for(const scenario of ['sentinel-first','sentinel-existing'])test('session ledger control: Claude '+scenario+' cannot persist a raw service placeholder as a native ID',()=>{
  const r=run('claude',scenario);assert.equal(r.state.ccSessionId,r.initial.ccSessionId);assert.deepEqual(r.state.sessionHistory,r.initial.sessionHistory);
+});
+
+test('session ledger:200 character description storage cannot split a surrogate pair',()=>{
+ const r=run('codex','unicode'),row=entry(r);assert.equal(r.ok,true);assert.ok(row.firstPrompt.length<=200);assert.equal(row.firstPrompt.isWellFormed(),true);assert.equal(row.firstPrompt.includes('�'),false);
 });

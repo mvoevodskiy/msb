@@ -180,3 +180,15 @@ Luna readonly измерила oldlayout overflow:10rows×first200/last120/proje
 @grammyjs/types/methods.d.ts:91/1667 подтверждаютlimit4096послеentities.
 UIintegrationcheckpointнеготовквыпуску: исправитьэтотподтверждённыйкрайнийслучай
 отдельнымRED/fix, затемactualrunnerresume/overlap иfullsamecommitLinux/live.
+
+
+Size/Unicode RED checkpoint
+На4fa6b32 новаяsession-list-size suite8:1normal-controlPASS/7assertFAIL;
+вместеledger29 (новыйstoredUnicodecase) =37tests/29PASS/8ERR_ASSERTION,
+0cancelled/skip. ПроверяетсяvisibleUTF16послепарсингаb/entities,неrawHTMLbytes:
+project40→4226,project255→6376,escaped→6226,astral→5026,legacy5000→53826.
+Сохраняются10реальныхIDbuttons/5perrow/current/metadata/statebyteequality;
+normalgolden проверяетпобайтнопрежнийнепереполненныйвид. Ещёsingleemoji preview,
+selectedcaption иstored200boundary воспроизводятразрывsurrogatepair.
+Установленныеtypesmethods.d.ts91/1667прочитаныосновнымагентом; лимит4096после
+entities. НетTelegram/API/реальныхфайлов; этоinvalidpage/UnicodeRED,неinfraerror.
