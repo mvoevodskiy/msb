@@ -41,3 +41,13 @@ callback scopes/lane, с прежним отключением URL previews, б�
 Полный same-commit Linux gate и разрешённая живая приёмка обязательны перед выпуском.
 Code-only rollback не удаляет новые описания/native файлы и не возвращает указатели
 сессий/проектов из старого профиля. Не восстанавливать auth/env целиком ради кода.
+
+
+Размер страницы: [text formatter](../telegram/screens/session-list-text.mjs) считает
+видимый UTF16 до HTML escaping. Только при превышении4096 сокращаются подписи;
+все10 строк/ID actions/markers остаются, обычный вид не меняется. Общий
+[clip](../history/clip.mjs) удерживает границы Unicode в stored200 и UI previews;
+native IDs/ledger descriptions не перезаписываются ради display budget.
+[Size/Unicode checks](../../tests/session-list-size.test.mjs) включают exact normal
+layout и неизменность metadata после отображения. Метаданные не удаляются ради
+уменьшения длины Telegram сообщения.

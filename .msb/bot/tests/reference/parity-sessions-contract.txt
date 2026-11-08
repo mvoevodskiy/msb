@@ -192,3 +192,13 @@ normalgolden проверяетпобайтнопрежнийнеперепол�
 selectedcaption иstored200boundary воспроизводятразрывsurrogatepair.
 Установленныеtypesmethods.d.ts91/1667прочитаныосновнымагентом; лимит4096после
 entities. НетTelegram/API/реальныхфайлов; этоinvalidpage/UnicodeRED,неinfraerror.
+
+
+Size/Unicode fix checkpoint
+ОбщийclipUtf16 сохраняетвалидныесимволыприstored200/preview; redaction остаётся
+прежней. Formatter text/keyboard разделены; UTF16 visiblebudget считаетсяперед
+HTMLescaping, binarysearch captions толькоесли>4096. Normalviewbyteexact,
+page10/5perrow/allIDbuttons/current/metadataпрежние, ledger не режется радиUI.
+size+ledger37GREEN; expandedsize/ledger/UI/turnhistory/callbackrefresh/scope:
+88PASS,0FAIL/cancelled/skip. Sol независимо37PASS/0findings. Никакихреальных
+Telegram/nativeCLI/API илиuserdata; actualresume/races/Linux/live ещёpending.
