@@ -105,3 +105,15 @@ parent replacement, общей primary/mirror транзакции или concur
 это не native CLI/model proof. Native0.166 discovery/parsed frontmatter, provider
 application и target/live приёмка перед выпуском остаются отдельным gate. Полные
 skill bodies из unproven cp/nHA в prompt не внедряются, фоновые записи не расширены.
+
+
+Native0.166 gate обнаружил настоящий syntax-defect: legacy quote-only formatter
+создавал invalid YAML для backslash/NUL description, хотя file-write tests были
+зелёными. Описание теперь сериализуется как JSON-compatible YAML quoted scalar,
+с escaping C1/noncharacters и прежней UTF8 replacement нормализацией. Обычные
+plain/quoted descriptions byte-exact, validation limits/body/name не меняются.
+[Native RED proof](../../tests/reference/skills-native-install-0.166-red.json).
+[Manual native smoke](../../tests/fixtures/skills-native-install.mjs) принимает
+absolute binary и SOURCE_SHA, создаёт свой HOME/CODEX_HOME, пишет только synthetic
+skills и запрашивает initialize/skills/list. Login/model не вызывает; сетевую
+изоляцию задаёт caller. Это не owner skill installation или model application.

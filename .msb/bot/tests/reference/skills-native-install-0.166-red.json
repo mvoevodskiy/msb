@@ -1,0 +1,105 @@
+{
+  "version": "codex-cli 0.166.0",
+  "source_commit": "6985b45d8b456b7446a47d4a2fb6d7751808f974",
+  "uid": 1001,
+  "methods": [
+    "initialize",
+    "initialized",
+    "skills/list"
+  ],
+  "model_turns": 0,
+  "owner_auth_or_config_used": false,
+  "owner_skill_files_read_or_written": false,
+  "network_namespace_isolated": true,
+  "cases": [
+    {
+      "name": "normal-skill",
+      "expectedDescription": "When reviewing code",
+      "found": true,
+      "metadata": [
+        {
+          "name": "normal-skill",
+          "description": "When reviewing code",
+          "scope": "user",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "quoted-skill",
+      "expectedDescription": "Use \"quoted\" words",
+      "found": true,
+      "metadata": [
+        {
+          "name": "quoted-skill",
+          "description": "Use \"quoted\" words",
+          "scope": "user",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "path-skill",
+      "expectedDescription": "Use C:\\Users\\Documents when checking paths",
+      "found": false,
+      "metadata": []
+    },
+    {
+      "name": "42",
+      "expectedDescription": "Numeric name",
+      "found": true,
+      "metadata": [
+        {
+          "name": "42",
+          "description": "Numeric name",
+          "scope": "user",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "true",
+      "expectedDescription": "Boolean-looking name",
+      "found": true,
+      "metadata": [
+        {
+          "name": "true",
+          "description": "Boolean-looking name",
+          "scope": "user",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "multiline-skill",
+      "expectedDescription": "Use multiple spaces",
+      "found": true,
+      "metadata": [
+        {
+          "name": "multiline-skill",
+          "description": "Use multiple spaces",
+          "scope": "user",
+          "enabled": true
+        }
+      ]
+    },
+    {
+      "name": "nul-skill",
+      "expectedDescription": "Use\u0000 data",
+      "found": false,
+      "metadata": []
+    }
+  ],
+  "errors": [
+    {
+      "path": "$OWN_HOME/.agents/skills/nul-skill/SKILL.md",
+      "message": "invalid YAML: control characters are not allowed at position 33"
+    },
+    {
+      "path": "$OWN_HOME/.agents/skills/path-skill/SKILL.md",
+      "message": "invalid YAML: did not find expected hexadecimal number at line 2 column 23, while parsing a quoted scalar at line 2 column 14"
+    }
+  ],
+  "installed_source_observed": "830e3f6c9b1347ad6be3bae6ea9b3e94f5f8dd7d",
+  "probe_archive_sha256": "a89522e63b62cfff6184f4fd83272297e2c3d6214cbf40158706192c041974ba"
+}

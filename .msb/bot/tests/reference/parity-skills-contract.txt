@@ -354,3 +354,20 @@ Processor толькоTelegramreturnedfinal beforeplan/history, неUIviews и �
 NativeCLI/model невызывались. Полнотуnativefrontmatter/discovery/application и
 samecommit targetLinux/live ещёнужно проверить до JAR1; онпо-прежнему830e3f6.
 Solboundedread-onlyreview блокирующихновыхfindings0; ограниченияIOвыше сохраняются.
+
+
+Native0.166 frontmatter correction (после6985b45, до release)
+6985b45 прошёл954Docker(809core+117overlay+15reference+13release), но настоящий
+installedCodex0.166 вownHOME+CODEXHOME/unshare-net обнаружил2nativeRED из7cases:
+pathdescription иNUL далиinvalidYAML,5normal/quoted/numeric/bool/multiline найдены.
+Производный file-write success не означалnativeподключение. Proof tracked в
+skills-native-install-0.166-red.json; actualinstalledsource830e3f6,auth/model/owner
+skillfiles неиспользовались,temporaryHOME/archive/program удаленыfinally.
+
+Fix толькоscalarserialization: JSON quoted+escaped C1/noncharacters, UTF8
+lonesurrogatereplacement как прежде. Нормальныеplain/quote bytes, oldparserlimits,
+name/body/roots/markerorder не меняются.4productioncases:45total42PASS3assertRED
+(unpairedcontrolPASS)→66installerGREEN. Actualpinnednative повторить нафиксированном
+commit; localCodex0.167alpha не является проверкойцелевой0.166. Trackedmanualfixture
+skills-native-install.mjs оставляетownerHOME/auth встороне, owncases/discoveryonly;
+не считать metadata proof доказательством примененияреальноймоделью.

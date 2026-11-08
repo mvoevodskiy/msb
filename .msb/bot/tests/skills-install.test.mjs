@@ -102,3 +102,13 @@ for(const provider of ['claude','codex'])test('skill install: complete actual '+
 test('skill install: a plan-looking marker inside installed skill body does not create an approval card',async t=>{
  const data={...payload,body:'Instructions containing [КНОПКИ: plan] as data.'},f=await installFixture(t,{text:block(data)});await f.run();assert.equal(await f.exists(skillPath(f.home)),true);assert.ok(f.final().includes(installed()));assert.equal(f.messageOptions.some(options=>options.reply_markup),false);assert.equal(f.editOptions.some(options=>options.reply_markup),false);
 });
+
+
+for(const [label,description,expected]of [
+ ['backslash',String.raw`Use C:\Users\Documents when checking paths`,String.raw`description: "Use C:\\Users\\Documents when checking paths"`],
+ ['null-control','Use\u0000 data',String.raw`description: "Use\u0000 data"`],
+ ['c1-control','Use\u007f data',String.raw`description: "Use\u007f data"`],
+ ['unpaired-unicode','Use\ud800 data','description: "Use� data"'],
+])test('skill install: native-compatible YAML keeps '+label+' description after writing the old accepted payload',async t=>{
+ const f=await installFixture(t,{text:block({...payload,description})});await f.run();const file=skillPath(f.home);assert.equal(await f.exists(file),true);assert.ok((await fs.readFile(file,'utf8')).includes(expected+'\n'));assert.ok(f.final().includes(installed()));
+});

@@ -25,6 +25,8 @@ export function parseSkillPayload(text) {
   return /^[a-z0-9][a-z0-9-]{1,48}$/.test(name) && description && description.length<=200 && body && body.length<=60000?{name,description,body}:null;
 }
 export function formatSkillFile(skill) {
-  const description=skill.description.replace(/\s+/g,' ').replace(/"/g,'\\"');
-  return `---\nname: ${skill.name}\ndescription: "${description}"\n---\n\n${skill.body}\n`;
+  // Native YAML must preserve old accepted text, including backslashes/control units.
+  const description=JSON.stringify(skill.description.replace(/\s+/g,' ').toWellFormed())
+    .replace(/[\u007f-\u009f\ufffe\uffff]/g,character=>'\\u'+character.charCodeAt(0).toString(16).padStart(4,'0'));
+  return '---\nname: '+skill.name+'\ndescription: '+description+'\n---\n\n'+skill.body+'\n';
 }
