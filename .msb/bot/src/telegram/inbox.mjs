@@ -1,12 +1,26 @@
 /**
  * One FIFO worker for supported Telegram text/voice; forwarded collector reserves
- * its place immediately. No provider/session state here. See README.md#очередь.
+ * its place immediately. Text context → [reply formatter](./reply-context.mjs).
+ * No provider/session state here. See README.md#очередь.
  */
+import { buildReplyContext } from './reply-context.mjs';
+
 export const FORWARD_QUIET_MS = 2500;
 export const FORWARD_MAX_MS = 25_000;
 export const BATCH_MAX_ITEMS = 300;
 export const isForwarded = message => Boolean(message?.forward_origin || message?.forward_date || message?.forward_from || message?.forward_from_chat);
 const keyOf = item => `${item.ctx.chat.id}:${item.ctx.message?.message_thread_id || 1}`;
+
+// Each queued message owns its quote. Keep raw text separately for the journal.
+function textPrompt(item) {
+  const referent = buildReplyContext(item.ctx.message, item.ctx.me?.id);
+  return referent ? `${referent}\n\n${item.text}` : item.text;
+}
+function mergeTexts(texts) {
+  return texts.length === 1 ? texts[0] :
+    `Пока шёл предыдущий ход, пользователь отправил ещё ${texts.length} сообщений. Обработай их ВМЕСТЕ, одним ответом — не по одному.\n\n` +
+    texts.map((text, i) => `[Сообщение ${i + 1}/${texts.length}]\n${text}`).join('\n\n');
+}
 
 export function createInbox({ run, status, cancel, canRun = () => true, onError = console.error,
   now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout }) {
@@ -29,16 +43,19 @@ export function createInbox({ run, status, cancel, canRun = () => true, onError 
     const entry = queue.shift();
     // The old worker merges adjacent, already waiting text, never voices/batches.
     if (!entry.items && !entry.voice) {
-      const texts = [entry.text]; let chars = entry.text.length;
+      const texts = [entry.text], prompts = [textPrompt(entry)]; let chars = prompts[0].length;
       while (texts.length < 20) {
         const next = queue[0];
-        if (!next?.ready || next.items || next.voice || keyOf(next) !== keyOf(entry) || chars + next.text.length > 1_000_000) break;
-        queue.shift(); chars += next.text.length; texts.push(next.text);
+        if (!next?.ready || next.items || next.voice || keyOf(next) !== keyOf(entry)) break;
+        const prompt = textPrompt(next);
+        if (chars + prompt.length > 1_000_000) break;
+        queue.shift(); chars += prompt.length; texts.push(next.text); prompts.push(prompt);
         // Mark the consumed queue status, keeping one thinking/final status.
         next.cancelled = true;
         effect(() => cancel(next, true));
       }
-      if (texts.length > 1) entry.text = `Пока шёл предыдущий ход, пользователь отправил ещё ${texts.length} сообщений. Обработай их ВМЕСТЕ, одним ответом — не по одному.\n\n` + texts.map((text, i) => `[Сообщение ${i + 1}/${texts.length}]\n${text}`).join('\n\n');
+      entry.text = mergeTexts(texts);
+      entry.prompt = mergeTexts(prompts);
     }
     active = entry;
     effect(async () => {

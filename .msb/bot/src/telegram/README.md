@@ -13,6 +13,9 @@ handlers, общие `pending`, `running` и [очередь](#очередь). 
 
 Пачка/сообщения во время хода → [`createInbox`](inbox.mjs) → один FIFO worker →
 `executeTurn` в [`bot.mjs`](bot.mjs) → [общий provider runner](../agent/README.md).
+Обычный текст, включая каждый элемент queued merge, использует общий
+[`buildReplyContext`](reply-context.mjs); цитата добавляется только в prompt,
+журнал хранит прежний input. Формы и команды по цитате не исполняются.
 [Подготовка пересланной пачки](batch.mjs): `prepareBatch` последовательно вызывает
 тот же [`recognizeVoice`](voice.mjs), оставляет порядок и позиции неудачных STT.
 Таймеры сбора, лимиты, слияние соседнего ожидающего текста и drain принадлежат

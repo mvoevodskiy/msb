@@ -650,7 +650,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         progress.beginThinking();
       }
       signal.throwIfAborted();
-      const out = await runTurn({ prompt: text, signal, onStatus: ev => {
+      const out = await runTurn({ prompt: entry.prompt ?? text, signal, onStatus: ev => {
         if (ev.kind === 'provider') history?.provider(ev.providerId);
         progress.onStatus(ev);
       } });

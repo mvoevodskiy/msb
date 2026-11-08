@@ -216,7 +216,7 @@ test('inbox parity: each queued text keeps its own reply context after neighbori
   }
   first.resolve(); await until(() => f.prompts.length === 2, 'merged replies');
   const p=f.prompts[1];
-  for (const [part, pos] of [['[Сообщение 1/2]', 0], ['second-quote', 1], ['second-question', 2], ['[Сообщение 2/2]', 3], ['third-quote', 4], ['third-question', 5]]) {
+  for (const part of ['[Сообщение 1/2]', 'second-quote', 'second-question', '[Сообщение 2/2]', 'third-quote', 'third-question']) {
     assert.ok(p.includes(part), `Merged reply must retain ${part}`);
   }
   assert.ok(p.indexOf('second-quote') < p.indexOf('second-question'));
