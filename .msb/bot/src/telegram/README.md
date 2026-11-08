@@ -246,3 +246,15 @@ edit/send/scope путь, сохраняющий old link_preview_options; не�
 await и переходы project+ID, а не только наличие кнопок. OC history backend остаётся
 отдельным отсутствующим переносом. Native resume/overlap и full release gate —
 следующий обязательный этап до выкладки, не доказанный одним menu PASS.
+
+
+Prepared HTML view доставляется через [view-delivery](view-delivery.mjs): обычный
+экран не меняется, в том числе при encoded raw HTML длиннее4096, если текст после
+entities помещается. Для действительно длинного вида используется существующий
+pure [response splitter](response.mjs), без model-formatting/plan/skill markers
+и footer. Короткие code-span имена не режутся, если помещаются целиком; длинные
+значения сохраняются в частях. Старая клавиатура очищается на промежуточных частях,
+исходная остаётся только на последней. Caller сохраняет ctx.reply и render lane;
+после навигации/stop следующие части не отправляются. Model-turn default splitting
+не меняется. [Transport checks](../../tests/view-delivery.test.mjs),
+[production OC workflow](../../tests/skills-openclaw.test.mjs).

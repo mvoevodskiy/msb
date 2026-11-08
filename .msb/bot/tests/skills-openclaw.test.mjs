@@ -72,3 +72,9 @@ for(const callback of [false,true])test('OC skills: long '+(callback?'callback':
 test('OC skills: stale CLI folder/card/content/Add actions cannot open another engine files or fabricate OC actions',async t=>{
  const f=await openClawSkillsFixture(t),before=await state();for(const data of ['skills:folder:workspace','skills:view:foreign','skills:content:foreign','skills:add:workspace']){await f.callback(data);assert.equal(last(f),'⚠️ Навык не найден');}assert.deepEqual(await f.readCalls(),[]);assert.deepEqual(await state(),before);
 });
+
+
+test('OC skills: a chunk boundary cannot cut a short skill command into separate code spans',async t=>{
+ const names=Array.from({length:70},(_,i)=>'skill-'+String(i).padStart(3,'0')+'--'),f=await openClawSkillsFixture(t,names.map(name=>({name,description:'d'.repeat(90),source:'bundled'})));
+ await f.message('/skills');await called(f);assert.ok(f.messages.length>1);for(const name of names)assert.ok(f.messages.some(text=>text.includes('<code>'+name+'</code>')),name+' must remain a whole command');
+});

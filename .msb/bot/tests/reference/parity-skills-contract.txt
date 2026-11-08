@@ -273,3 +273,29 @@ Basic+regression165cases163PASS/2longRED передcanonicalfix; новыйcanon
 они не исключены/не skipped; отдельное исправление доставки следует за этим
 checkpoint. Addadvice не является работающей установкой: INSTALL_SKILL pipeline
 ещё не подключён. JAR1 остаётся830e3f6, локальные навыки не выкладывались, pushнет.
+
+
+Long prepared-view delivery checkpoint (послеb6095fa, локально)
+ДваproductionOC long RED из8024ee0 теперьGREEN: отдельныйview-delivery переиспользует
+существующий response.splitHtml, без запуска formatter/model/plan/INSTALL_SKILL
+parser на metadata. До4096visibleUTF16units текст остаётся исходным byte-exact,
+включая encodedHTML>4096raw; длинный список целиком вbalancedHTMLparts, безfooter,
+сединственной прежнейBackнафинальнойчасти. Contextreply/renderlane сохраняются;
+проверкаscopeмеждучастями suppresslatepartsпослеnavigation/stop. Transportfailure
+невыдаётсязауспех. Этоrepairлимитадоставки, не новые страницы/кнопки/тексты.
+
+Дополнительныйadversarialprobe70names skill-NNN-- выявил разрывskill-066-- вдвух
+codespans. Unit+productioncases33total31PASS/2assertRED→GREEN: optionalkeepInlineCode
+у существующегоsplitter сохраняетspanцеликомеслионвмещается, а длинныйspan остаётся
+разбиваемым. Modeldelivery не включаетoption; прежнееdefaultповедение сохранено.
+Finalfocused201PASS,0FAIL/cancelled/skip:25OC+11reader+34Claude/read+12nativeCodex+
+41menu+36sessions+8callbackrefresh+8viewdelivery+8responsedelivery+18planhandoff.
+Solнезависимыйboundedreview доставки:блокирующихкромеmaincodeboundaryневыявлено.
+
+Platformcontract:https://core.telegram.org/bots/api#sendmessage и
+https://core.telegram.org/bots/api#editmessagetext:4096charactersafterentities.
+UTF16/encodedchunkbudgetконсервативен; неclaimимреальныйoldTelegramотказ.
+OldYC112090–112125 делалодиночныйedit/reply, а oldsendLongMessage107193–107209
+применялсятолькокstreamingfinalizer106617/106643. РеальныйOCCLI/brain/API/live
+этимнеподтверждены;INSTALL_SKILL иfullsamecommitreleasegate всёещёобязательны.
+JAR1остаётся830e3f6,пакетskillsневыкладывался,pushнет.

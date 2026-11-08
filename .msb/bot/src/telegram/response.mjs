@@ -1,3 +1,8 @@
+/**
+ * Model final -> Telegram HTML/plan/footer; shared pure HTML length/split utilities.
+ * Caller [bot](./bot.mjs); prepared [views](./view-delivery.mjs) use only pure exports.
+ * [Response checks](../../tests/response-delivery.test.mjs), [plan checks](../../tests/plan-handoff.test.mjs).
+ */
 import { parsePlanResponse, planKeyboard } from './plan.mjs';
 import { presentationSignal } from './presentation-api.mjs';
 
@@ -104,7 +109,11 @@ export function formatTurnFooter({ elapsedMs, costUsd, context } = {}) {
   return `\n\n<blockquote>${parts.join(' · ')}</blockquote>`;
 }
 
-function splitHtml(html, limit) {
+/** Encoded HTML -> visible UTF16 units for Telegram's after-entities text budget. */
+export const visibleHtmlLength = html => unescape(String(html).replace(/<[^>]*>/g, '')).length;
+
+/** Balanced pure splitter shared by final responses and readonly [views](./view-delivery.mjs). */
+export function splitHtml(html, limit, {keepInlineCode = false} = {}) {
   const chunks = [];
   const stack = [];
   let chunk = '', content = false;
@@ -115,10 +124,21 @@ function splitHtml(html, limit) {
     chunk = stack.map((tag) => tag.raw).join('');
     content = false;
   };
-  for (const part of html.split(/(<[^>]*>)/g)) {
+  const parts = html.split(/(<[^>]*>)/g);
+  for (const [index, part] of parts.entries()) {
     if (!part) continue;
     const tag = part.startsWith('<') ? safeTag(part) : null;
     if (tag) {
+      // UI command names must remain copyable when their whole code span fits.
+      // Model responses keep the original splitting policy unless opted in.
+      if (keepInlineCode && !tag.close && tag.name === 'code') {
+        const end = safeTag(parts[index + 2] || '');
+        if (end?.close && end.name === 'code') {
+          const size = tag.raw.length + parts[index + 1].length + end.raw.length;
+          const wrappers = stack.reduce((total, item) => total + item.raw.length, 0) + closing().length;
+          if (content && size + wrappers <= limit && chunk.length + size + closing().length > limit) flush();
+        }
+      }
       const overhead = tag.close ? -tag.raw.length : `</${tag.name}>`.length;
       if (chunk.length + tag.raw.length + closing().length + overhead > limit) flush();
       chunk += tag.raw;

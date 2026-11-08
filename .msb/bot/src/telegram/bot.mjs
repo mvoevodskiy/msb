@@ -10,6 +10,7 @@ import {resetCliConversation} from '../sessions/selection.mjs';
  * Индикация → [progress](./progress.mjs), итог → [response](./response.mjs),
  * План/комментарий → [plan actions](./plan-actions.mjs) → тот же inbox; final marker → [plan](./plan.mjs).
  * журнал Пульта → [history](./history.mjs), STT → [voice](./voice.mjs).
+ * Prepared skills views/chunks → [view delivery](./view-delivery.mjs), context reply retained.
  * Skills command read options/OC loading → [read presentation](./skills-read.mjs), native OC reader is injectable.
  * Проверки: [inbox lifecycle](../../tests/inbox-lifecycle.test.mjs),
  * [polling/stop](../../tests/turn-lifecycle.test.mjs), [forms/menu](../../tests/menu-handlers.test.mjs).
@@ -26,6 +27,7 @@ import { prepareBatch, batchStatus } from './batch.mjs';
 import { createPlanActions } from './plan-actions.mjs';
 import { parsePlanResponse } from './plan.mjs';
 import { deliverTurnResponse } from './response.mjs';
+import { deliverView } from './view-delivery.mjs';
 import { registerProjectCommands } from './project-commands.mjs';
 import {prepareSkillRead,skillReadOptions} from './skills-read.mjs';
 import {readOpenClawSkills as nativeOpenClawSkills} from '../skills/openclaw.mjs';
@@ -258,7 +260,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       const {state}=await loadState();if(!scope.isCurrent())return;
       if(!await prepareSkillRead(bot,state,{chatId:ctx.chat.id,signal:scope.signal}))return;
       const view=await skillsScreen(state,process.env,skillReadOptions(bot,scope.signal));
-      if(scope.isCurrent())await scope.render(()=>ctx.reply(view.text,{parse_mode:'HTML',reply_markup:view.keyboard},callbackTransportSignal(scope)));
+      await deliverView(view,{scope,reply:part=>scope.render(()=>ctx.reply(part.text,{parse_mode:'HTML',reply_markup:part.keyboard},callbackTransportSignal(scope)))});
     }).catch(()=>{if(!scope.signal.aborted)console.error('[msb/bot] skills read failed');});
     trackCallbackTask(bot,task);
   });

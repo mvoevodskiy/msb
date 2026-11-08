@@ -63,5 +63,8 @@ Native IO ограничен 12s/4MiB; close обычно ожидается. П
 observer handle с failure. Это не гарантия reap неизвестных/escaped descendants
 или атомарного контроля OS PGID. Native CLI internal side effects этим не доказаны.
 [Process tests](../../tests/openclaw-skills-reader.test.mjs),
-[production UI](../../tests/skills-openclaw.test.mjs). Доставка oversized списка
-пока отдельный RED; installer/OC brain/live/full release остаются непроверенными.
+[production UI](../../tests/skills-openclaw.test.mjs). Длинный список доставляет
+[общий view transport](../telegram/view-delivery.mjs): все записи, balanced HTML,
+короткие имена в одном code span, Back только на последней части. Обычный список
+сохраняется byte-exact, дополнительных кнопок/пагинации/footer нет. Installer,
+OC brain/live/full release остаются непроверенными.

@@ -7,14 +7,16 @@
  * задачи → [autonomy](./routes/autonomy.mjs), источники → [monitor](./routes/monitor.mjs).
  * Остальные семейства видны в прямых imports ниже; rendering → [screens](./screens.mjs).
  * Состояние → [state](../state.mjs), shared pending принадлежит createBot.
+ * Prepared views → [view delivery](./view-delivery.mjs); short views stay unchanged.
  * Presentation/read lifecycle → [shared scopes](../../shared/callback-renders.mjs),
  * [async status checks](../../tests/callback-refresh.test.mjs).
  * Проверка переходов/отмены/owner: [menu handlers](../../tests/menu-handlers.test.mjs).
  */
-import { beginCallbackRender, runCallbackScope, trackCallbackTask } from '../../shared/callback-renders.mjs';
+import { beginCallbackRender, runCallbackScope, trackCallbackTask, callbackTransportSignal } from '../../shared/callback-renders.mjs';
 import { cancelPultInput } from './forms/pult.mjs';
 import { loadState } from '../state.mjs';
 import { editOrReply } from './edit.mjs';
+import { deliverView } from './view-delivery.mjs';
 import { enginesScreen } from './screens.mjs';
 import { handleNavigationRoute, handleMiscRoute } from './routes/navigation.mjs';
 import { handleModelRoute, isModelSelectionCallback } from './routes/models.mjs';
@@ -75,8 +77,11 @@ export async function handleCallback({ bot, cfg, pending, ctx, plan }) {
   if (['menu:back', 'menu:close', 'menu:agent', 'menu:settings', 'settings:back', 'mon:back', 'settings:bots:cancel'].includes(data)) pending.delete(chatId);
   const show = async view => {
     if (!scope.isCurrent()) return;
-    return editOrReply(bot.api, chatId, msgId, view.text, view.keyboard, 'HTML', scope,
-      view.disablePreview ? {link_preview_options:{is_disabled:true}} : {});
+    const extra=view.disablePreview?{link_preview_options:{is_disabled:true}}:{};
+    return deliverView(view,{scope,
+      edit:part=>editOrReply(bot.api,chatId,msgId,part.text,part.keyboard,'HTML',scope,extra),
+      reply:part=>scope.render(()=>ctx.reply(part.text,{...extra,parse_mode:'HTML',reply_markup:part.keyboard},callbackTransportSignal(scope))),
+    });
   };
   const dispatch = async () => {
     if (deferred && !scope.isCurrent()) return;
