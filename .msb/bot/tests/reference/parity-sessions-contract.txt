@@ -120,3 +120,15 @@ assertпроверкойналичияview; literalnewlines уточнены д�
 RED содержит только assertfailures, неtest infrastructure/TypeError/importerror.
 Runnerledger/selection→actualresume и overlapraces требуют отдельныхпроверок.
 JAR1 остаётся на принятом01e867a; этот RED checkpoint не готов к выкладке.
+
+
+Runner ledger RED checkpoint
+session-ledger.test.mjs:24tests,7PASS/17ERR_ASSERTION,0cancelled/skip/todo.
+Fixture вызывает productionrunAgentTurn/state/placement, fakeCLI передаёт настоящий
+совместимый JSONL; до metadata assertions проверяютсяok/nativeID/callcount либо
+parkedplacement. Case first/repeat/tool-only/autonomy, cap100/order, returned
+known-IDerror/abort, redaction/200bound и acceptedprovider-awayfirst воспроизводят
+отсутствующийwriter. Foreign/sentinel/firsterror/firstabort/reset/projectreset/
+throw controls ужеPASS и должнытакимиостаться. НетреальныхCLI/API/HOMEисторий.
+Команда: node --test --test-reporter=tap .msb/bot/tests/session-ledger.test.mjs.
+UI+ledger checkpoints вместе52cases,12PASS/40RED; этоещёнеготовыйrelease.
