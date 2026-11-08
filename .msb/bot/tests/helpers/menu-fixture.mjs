@@ -10,12 +10,14 @@ import { createBot } from '../../src/telegram/bot.mjs';
 import { saveState } from '../../src/state.mjs';
 import { installUpdateHook } from '../../../../overlay/bot/ext/install.mjs';
 
-export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixture' }), { overlay = true, now = Date.now } = {}) {
+export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixture' }), { overlay = true, now = Date.now, runtimeProfile = 'msb' } = {}) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-menu-'));
   const previous = { ...process.env };
   let bot;
   process.env.HOME = home; process.env.MSB_BOT_ID = 'default'; process.env.ADMIN_ID = '42';
   process.env.MSB_WORKSPACE_DIR = home;
+  process.env.MSB_RUNTIME_PROFILE = runtimeProfile;
+  process.env.MSB_RUNTIME_ROOT = path.join(home, runtimeProfile === 'jar1' ? '.iia' : '.msb');
   delete process.env.JARVIS_CC_ONLY;
   t.after(async () => {
     await bot?.stop();
@@ -57,7 +59,7 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
   bot = createBot({ botToken: 'fake', botId: 'default', adminId: 42, workspace: home, timezone: 'Europe/Moscow' }, { bot: new Harness(), runTurn, now, restart: () => restartRequests.push(0) });
   if (overlay) installUpdateHook(Harness, { ADMIN_ID: '42' });
   await saveState({ engine: 'cc', extAuthBypass: 'codex', ccSessionId: 'ext:codex:0199a213-81c0-7800-8aa1-bbab2a035a53', dailySpendLimit: 10 });
-  const storeFile = path.join(home, '.msb/bots/default/ext-providers.json');
+  const storeFile = path.join(process.env.MSB_RUNTIME_ROOT, 'bots/default/ext-providers.json');
   await fs.writeFile(storeFile, JSON.stringify({ version: 1, active: 'codex', models: { codex: 'gpt-6.1-terra' }, efforts: { codex: 'max' } }));
   const callback = (data, uid = 42) => bot.handleUpdate({ callback_query: { id: 'q', data, from: { id: uid }, message: { message_id: 1, chat: { id: 42 } } } });
   const message = (text, uid = 42) => bot.handleUpdate({ message: { message_id: 99, text, from: { id: uid }, chat: { id: 42 } } });
