@@ -6,7 +6,7 @@
 
 Модуль принимает события Telegram, показывает меню и ведёт пользовательский ход.
 Текстовые формы выделены в [dispatcher](forms.mjs) и подмодули [auth](forms/auth.mjs),
-[env](forms/env.mjs), [Pult](forms/pult.mjs); они не запускают отдельный agent path.
+[env](forms/env.mjs) (name→value→description/skip, transient draft/общий TTL), [Pult](forms/pult.mjs); они не запускают отдельный agent path.
 Точка сборки — [`createBot`](bot.mjs): owner guard, команды, callback/text/voice
 handlers, общие `pending`, `running` и [очередь](#очередь). [`main`](../main.mjs) управляет запуском
 и shutdown процесса.

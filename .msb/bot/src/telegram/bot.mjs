@@ -91,6 +91,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   const stopPolling = bot.stop.bind(bot);
   bot.stop = async () => {
     stopping = true;
+    pending.clear();
     stopCallbackRenders(bot);
     const turns = [...unfinished];
     const drainInbox = inbox.shutdown();

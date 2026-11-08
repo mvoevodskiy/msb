@@ -82,6 +82,7 @@ test('Pult input control: unrelated env input is not cancelled by a stale Pult b
     await f.callback('settings:env:quick:FIXTURE_INPUT_KEY');
     await f.callback(back);
     await f.message('fixture value');
+    await f.callback('settings:env:skip-comment',42,{messageId:f.messages.length});
     assert.equal((await readEnvMap()).map.get('FIXTURE_INPUT_KEY'), 'fixture value');
     assert.deepEqual(f.turns, []);
   }

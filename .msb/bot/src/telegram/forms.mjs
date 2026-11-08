@@ -12,7 +12,7 @@ import { ensureDir, workspaceDir } from '../paths.mjs';
 import { updateState } from '../state.mjs';
 import { escapeHtml } from './edit.mjs';
 import { handleAuthInput } from './forms/auth.mjs';
-import { handleEnvNameInput, handleEnvValueInput } from './forms/env.mjs';
+import { handleEnvNameInput, handleEnvValueInput, handleEnvCommentInput } from './forms/env.mjs';
 import { handlePultInput, PULT_KINDS } from './forms/pult.mjs';
 
 const HANDLERS = {
@@ -22,7 +22,7 @@ const HANDLERS = {
 };
 export async function handleFormInput(options) {
   const {kind,ctx} = options;
-  const handler = kind?.startsWith('env:') ? handleEnvValueInput
+  const handler = kind?.startsWith('env-comment:') ? handleEnvCommentInput : kind?.startsWith('env:') ? handleEnvValueInput
     : PULT_KINDS.has(kind) ? handlePultInput : Object.hasOwn(HANDLERS, kind) ? HANDLERS[kind] : undefined;
   if (!handler) return false;
   await handler({...options, chatId:ctx.chat.id});

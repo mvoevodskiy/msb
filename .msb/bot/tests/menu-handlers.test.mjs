@@ -28,14 +28,15 @@ test('explicit Back and start cancel env/auth input before ordinary text', async
   assert.equal((await readEnvMap()).map.has('CLAUDE_CODE_OAUTH_TOKEN'), false);
 });
 
-test('env input rejects line injection, retains form for retry, keeps masked previews and service buttons, without new automatic message deletion', async (t) => {
+test('env input rejects line injection, retains form for retry, keeps masked previews and service buttons, without deleting the user value message', async (t) => {
   const f = await fixture(t);
   await f.callback('settings:env:quick:TEST_MENU_TOKEN');
   await f.message('first\nINJECTED=bad');
   assert.equal((await readEnvMap()).map.size, 0);
   await f.message('fixture-secret');
+  await f.callback('settings:env:skip-comment',42,{messageId:f.messages.length});
   assert.equal((await readEnvMap()).map.get('TEST_MENU_TOKEN'), 'fixture-secret');
-  assert.deepEqual(f.deleted, []);
+  assert.ok(!f.deleted.includes(99),'keep the user env-value message');
   const view = await envScreen();
   assert.doesNotMatch(view.text, /fixture-secret/);
   assert.match(view.text, /fix…ret/);
@@ -266,8 +267,9 @@ test('stale Codex auth cannot switch provider, and old Claude engine callback ex
 test('a Telegram acknowledgement failure does not claim that a saved env value was not written', async (t) => {
   const f = await fixture(t);
   await f.callback('settings:env:quick:TEST_MENU_TOKEN');
+  await f.message('fixture-secret'); // value remains a draft until the old description step
   f.bot.api.sendMessage = async () => { throw new Error('fixture Telegram failure'); };
-  await assert.rejects(f.message('fixture-secret'), /fixture Telegram failure/);
+  await assert.rejects(f.message('fixture description'), /fixture Telegram failure/);
   assert.equal((await readEnvMap()).map.get('TEST_MENU_TOKEN'), 'fixture-secret');
   assert.ok(!f.messages.some((x) => x.startsWith('Не сохранил')));
 });
@@ -335,12 +337,13 @@ test('informational status preserves form input and core Back cancels even witho
   await f.callback('settings:env:quick:TEST_MENU_TOKEN');
   await f.message('/status');
   await f.message('fixture-after-status');
+  await f.callback('settings:env:skip-comment',42,{messageId:f.messages.length});
   assert.equal((await readEnvMap()).map.get('TEST_MENU_TOKEN'), 'fixture-after-status');
   await f.callback('settings:auth:switch-sub');
   await f.callback('menu:agent');
   await f.message('ordinary task');
   assert.equal((await readEnvMap()).map.has('CLAUDE_CODE_OAUTH_TOKEN'), false);
-  assert.deepEqual(f.deleted, []);
+  assert.ok(!f.deleted.includes(99),'env value is retained; only bot comment prompt is removed');
 });
 
 test('restored Claude engine selector opens its token form without switching Codex first', async (t) => {
@@ -626,7 +629,7 @@ test('form timeout parity: exactly ten minutes still accepts env input; reopenin
   let clock=1_000_000;
   const f=await fixture(t,undefined,{overlay:false,now:()=>clock});
   await f.callback('settings:env:quick:TEST_BOUNDARY');clock+=600_000;
-  await f.message('at-boundary');assert.equal((await readEnvMap()).map.get('TEST_BOUNDARY'),'at-boundary');
+  await f.message('at-boundary');await f.callback('settings:env:skip-comment',42,{messageId:f.messages.length});assert.equal((await readEnvMap()).map.get('TEST_BOUNDARY'),'at-boundary');
   await f.callback('settings:env:quick:TEST_BOUNDARY');clock+=600_001;
   await f.message('too-late');assert.equal((await readEnvMap()).map.get('TEST_BOUNDARY'),'at-boundary');
 });

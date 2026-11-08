@@ -7,6 +7,7 @@ import path from 'node:path';
 import { botRoot, ensureDir } from '../paths.mjs';
 import profile from '../../shared/profile.cjs';
 import { serializeEnvMutation } from '../../shared/env-writes.mjs';
+import { inspectEnvLines, replaceEnvValue, removeEnvValue } from './lines.mjs';
 
 /** Old system-key boundary plus new equivalent bootstrap names; aliases agree.
  * Generic forms cannot replace/delete these; only stock auth uses explicit internal.
@@ -68,18 +69,12 @@ async function readEnvFile(file) {
   try {
     raw = await fs.readFile(file, 'utf8');
   } catch (err) {
-    if (err?.code === 'ENOENT') return { file, map: new Map(), lines: [] };
+    if (err?.code === 'ENOENT') return { file, map: new Map(), lines: [], comments: new Map() };
     throw err;
   }
-  const map = new Map();
   const lines = raw.split('\n');
-  for (const line of lines) {
-    if (!line || line.trim().startsWith('#')) continue;
-    const i = line.indexOf('=');
-    if (i <= 0) continue;
-    map.set(line.slice(0, i), line.slice(i + 1));
-  }
-  return { file, map, lines };
+  const { map, comments } = inspectEnvLines(lines);
+  return { file, map, lines, comments };
 }
 
 export function maskValue(v) {
@@ -90,7 +85,7 @@ export function maskValue(v) {
 }
 
 export async function listEnvEntries(env = process.env) {
-  const { map } = await readEnvMap(env);
+  const { map, comments } = await readEnvMap(env);
   return [...map.entries()]
     .sort((a, b) => a[0].localeCompare(b[0]))
     .map(([key, value]) => ({
@@ -98,16 +93,16 @@ export async function listEnvEntries(env = process.env) {
       masked: maskValue(value),
       protected: PROTECTED_KEYS.has(key),
       set: Boolean(value),
+      ...(comments.has(key) ? { comment: comments.get(key) } : {}),
     }));
 }
 
-export async function setEnvKey(key, value, env = process.env, { internal = false } = {}) {
+export async function setEnvKey(key, value, env = process.env, { internal = false, comment } = {}) {
   if (!/^[A-Z][A-Z0-9_]*$/.test(key)) {
     throw new Error('Ключ: только A-Z, цифры и _');
   }
-  if (typeof value !== 'string' || /[\r\n\0]/.test(value)) {
-    throw new Error('Значение должно быть одной строкой, без переводов строки и NUL.');
-  }
+  validateEnvValue(value);
+  validateEnvComment(comment);
   if (PROTECTED_KEYS.has(key) && internal !== true) {
     throw new Error(`${key} — защищённый системный ключ, изменение запрещено`);
   }
@@ -115,20 +110,7 @@ export async function setEnvKey(key, value, env = process.env, { internal = fals
   return serializeEnvMutation(async () => {
     const { lines } = await readEnvFile(file);
     ensureDir(path.dirname(file));
-    const kept = [];
-    let replaced = false;
-    for (const line of lines) {
-      if (line.startsWith(`${key}=`)) {
-        kept.push(`${key}=${value}`);
-        replaced = true;
-      } else {
-        kept.push(line);
-      }
-    }
-    if (!replaced) {
-      while (kept.length && kept[kept.length - 1] === '') kept.pop();
-      kept.push(`${key}=${value}`);
-    }
+    const kept = replaceEnvValue(lines, key, value, comment?.trim());
     const body = `${kept.join('\n').replace(/\n*$/, '')}\n`;
     const tmp = `${file}.tmp.${process.pid}`;
     await fs.writeFile(tmp, body, { mode: 0o600 });
@@ -145,11 +127,23 @@ export async function deleteEnvKey(key, env = process.env) {
   const file = envFilePath(env);
   return serializeEnvMutation(async () => {
     const { lines } = await readEnvFile(file);
-    const kept = lines.filter((l) => !l.startsWith(`${key}=`));
+    const kept = removeEnvValue(lines, key);
     const tmp = `${file}.tmp.${process.pid}`;
     await fs.writeFile(tmp, `${kept.join('\n').replace(/\n*$/, '')}\n`, { mode: 0o600 });
     await fs.rename(tmp, file);
     profile.setEnvValue(env, key, undefined);
     return { file, key };
   });
+}
+
+export function validateEnvValue(value) {
+  if (typeof value !== 'string' || /[\r\n\0]/.test(value)) {
+    throw new Error('Значение должно быть одной строкой, без переводов строки и NUL.');
+  }
+}
+
+export function validateEnvComment(comment) {
+  if (comment !== undefined && (typeof comment !== 'string' || /[\r\n\0]/.test(comment))) {
+    throw new Error('Описание должно быть одной строкой, без переводов строки и NUL.');
+  }
 }

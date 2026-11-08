@@ -107,7 +107,7 @@ for(const provider of ['claude','codex'])test(`env description: production ${pro
  assert.equal(call.provider,provider);
 });
 
-for(const control of ['settings:env','settings:env:cancel','settings:back','/settings','/unknown_command']) {
+for(const control of ['settings:env','settings:env:cancel','settings:back','/unknown_command']) {
  test(`env description: ${control} cancels transient value before a later task`,async t=>{
   let turns=0;const f=await fixture(t,async()=>{turns++;return{ok:true,text:'ordinary task'};},{overlay:false});
   await stage(f);
@@ -143,4 +143,43 @@ test('env description: a failed completion notification never rolls back an alre
  f.bot.api.sendMessage=async()=>{throw Error('fixture completion notification failed');};
  await assert.rejects(f.message(DESC),/completion notification failed/);
  assert.equal((await readEnvMap()).map.get('CUSTOM_API'),SECRET);assert.equal((await entry()).comment,DESC);
+});
+
+test('env description: registered /settings preserves the old comment stage until actual completion',async t=>{
+ const f=await fixture(t,undefined,{overlay:false});await stage(f);await f.message('/settings');
+ assert.equal((await readEnvMap()).map.has('CUSTOM_API'),false);
+ await f.message(DESC);assert.equal((await entry()).comment,DESC);
+ assert.equal((await readEnvMap()).map.get('CUSTOM_API'),SECRET);
+});
+
+for(const action of ['cancel','replace','shutdown'])test(`env description: delayed prompt is removed after ${action} without reviving its draft`,async t=>{
+ const f=await fixture(t,undefined,{overlay:false});let entered,release;
+ const started=new Promise(r=>entered=r),gate=new Promise(r=>release=r);
+ const send=f.bot.api.sendMessage.bind(f.bot.api);
+ t.mock.method(f.bot.api,'sendMessage',async(chat,text,...rest)=>{
+  if(text.startsWith('Описание для <code>CUSTOM_API</code>')){entered();await gate;}
+  return send(chat,text,...rest);
+ });
+ await f.callback('settings:env:quick:CUSTOM_API');const held=f.message(SECRET);
+ t.after(async()=>{release();await held;});await started;
+ let replacement;
+ if(action==='cancel')await f.callback('settings:env');
+ else if(action==='replace'){await f.callback('settings:env:quick:NEW_API');await f.message('fixture-new-value');replacement=f.messages.length;}
+ else await f.bot.stop();
+ release();await held;const late=f.messages.length;
+ assert.ok(f.deleted.includes(late),'closed form must not leave a newly delivered dead prompt');
+ assert.equal((await readEnvMap()).map.has('CUSTOM_API'),false);
+ if(action==='replace'){
+  assert.equal(f.deleted.includes(replacement),false);await skip(f,replacement);
+  assert.equal((await readEnvMap()).map.get('NEW_API'),'fixture-new-value');
+ }
+});
+
+test('env description: nearest comment attaches only across adjacent comment rows, never blank or malformed lines',async t=>{
+ await fixture(t,undefined,{overlay:false});
+ await fs.writeFile(envFilePath(),'# attached\nCUSTOM_API=one\n# detached\n\nBLANK=two\n# detached too\nnot-an-assignment\nINVALID=three\n# earlier\n# last\nLAST=four\n# old\n#\nEMPTY=five\n',{mode:0o600});
+ assert.equal((await entry()).comment,'attached');assert.equal((await entry('LAST')).comment,'last');
+ for(const key of ['BLANK','INVALID','EMPTY'])assert.equal((await entry(key)).comment,undefined);
+ await setEnvKey('LAST','fixture-replacement',process.env,{comment:''});
+ assert.equal((await entry('LAST')).comment,undefined,'explicit internal empty clears without inheriting an earlier note');
 });

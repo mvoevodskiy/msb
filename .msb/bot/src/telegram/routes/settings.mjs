@@ -7,16 +7,18 @@
  */
 import { loadState, updateState } from '../../state.mjs';
 import { envScreen, envDeleteScreen, limitScreen, notificationsScreen, serverStatusScreen, sttScreen, tzScreen } from '../screens.mjs';
-import { deleteEnvKey } from '../../env/store.mjs';
+import { skipEnvComment } from '../forms/env.mjs';
+import { deleteEnvKey, listEnvEntries } from '../../env/store.mjs';
 import { UNHANDLED } from './shared.mjs';
 import { protectedEnvNotice } from '../env-protection.mjs';
 import { escapeHtml } from '../edit.mjs';
 
-export async function handleSettingsRoute({ data, state, show, pending, chatId, bot, cfg }) {
+export async function handleSettingsRoute({ data, state, show, pending, chatId, bot, cfg, ctx }) {
   if (data === 'settings:env' || data === 'settings:env:cancel') {
     pending.delete(chatId);
     return show(await envScreen());
   }
+  if (data === 'settings:env:skip-comment') return skipEnvComment({ctx,pending,chatId});
   if (data === 'settings:env:add') {
     pending.set(chatId, 'env-key-name');
     return show({
@@ -35,7 +37,9 @@ export async function handleSettingsRoute({ data, state, show, pending, chatId, 
     });
   }
   if (data.startsWith('settings:env:delete:')) {
-    return show(envDeleteScreen(data.slice('settings:env:delete:'.length)));
+    const key = data.slice('settings:env:delete:'.length);
+    const entry = (await listEnvEntries()).find(row => row.key === key);
+    return show(envDeleteScreen(key,entry?.comment));
   }
   if (data.startsWith('settings:env:confirm-delete:')) {
     const key = data.slice('settings:env:confirm-delete:'.length);

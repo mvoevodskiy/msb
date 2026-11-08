@@ -61,7 +61,7 @@ export async function runAgentTurn({
   const model = resolveModel(state);
   const effort = resolveEffort(state, cliVersion);
   const permissionMode = resolvePermMode(state, cliVersion);
-  const systemPrompt = await buildSystemPrompt({ extra: conversationalModePrompt(state) });
+  const systemPrompt = await buildSystemPrompt({ env, extra: conversationalModePrompt(state) });
 
   if (signal?.aborted) return aborted();
 

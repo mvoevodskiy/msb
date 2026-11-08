@@ -37,3 +37,16 @@ Target закреплён до ожидания; весь read/modify/rename/env
 Ошибка освобождает очередь. Это не lock внешних редакторов/других процессов.
 [Контракт](../../tests/reference/parity-env-write-contract.txt),
 [barrier regression](../../tests/env-write-order.test.mjs).
+
+Описания: [forms/env](../telegram/forms/env.mjs) держит value в private
+[PendingInputs payload](../telegram/pending-input.mjs) до description/skip,
+с исходным TTL. Cancel/replacement/shutdown удаляют draft; поздний bot prompt
+убирается без оживления формы. Пользовательское сообщение со значением сохраняется.
+[lines.mjs](lines.mjs) связывает ближайший #comment с ключом и меняет только
+его строки; остальные raw lines/quoted values сохраняет. Store пишет value+
+comment одной queued mutation. Skip/blank сохраняют старое описание.
+[Custom capability metadata](prompt.mjs) → [system prompt](../agent/system-prompt.mjs)
+передаёт только имена/описания реально активных custom keys, без values. Known
+service claims и global visibility не подменяются этим списком и требуют своей
+проверки. [Контракт](../../tests/reference/parity-env-description-contract.txt),
+[сквозной regression](../../tests/env-description.test.mjs).

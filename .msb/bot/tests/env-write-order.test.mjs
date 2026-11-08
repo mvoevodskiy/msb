@@ -16,7 +16,7 @@ async function home(t) {
  const env={HOME:dir,MSB_BOT_ID:'default'}, file=envFilePath(env);
  assert.equal(botEnvPath(env,dir),file);
  await fs.mkdir(path.dirname(file),{recursive:true});
- await fs.writeFile(file,'# fixture, unchanged raw line\nDELETE_ME=fixture-delete\nKEEP=fixture-keep\n',{mode:0o600});
+ await fs.writeFile(file,'# fixture, unchanged raw line\n\nDELETE_ME=fixture-delete\nKEEP=fixture-keep\n',{mode:0o600});
  return {env,file};
 }
 const deferred=()=>{let resolve;const promise=new Promise(r=>resolve=r);return {promise,resolve};};

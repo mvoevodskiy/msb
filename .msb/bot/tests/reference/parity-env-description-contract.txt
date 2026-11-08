@@ -13,7 +13,7 @@ nF:valid value хранится в transient form.varValue, step=comment, prompt
 и skip передают undefined;existing description тогда сохраняется, new — без него.
 Только после description/skip JDA118613–118626 закрывает форму и вызывает s1.
 Skip действует только на реальной comment stage. Shared10min deadline включает
-name→value→comment; отмена/команда не записывает незаконченный ввод.
+name→value→comment; отмена/неперехваченная команда не записывает незаконченный ввод.
 Own bot comment prompt best-effort удаляется перед сохранением (nF119207+,
 skip121368+); принятое новым ядром сохранение пользовательских env-сообщений
 не меняется. Secret value не должен попасть в обычный prompt/историю формы.
@@ -54,3 +54,19 @@ stale callback/shutdown,provider/session/model/effort сохранность.
 Не перезапускать JAR1 и не вводить настоящие credentials ради локального RED.
 Откат fix учитывает заменённый prompt shape/tests;code-only не возвращает.env.
 Полная env parity/global scope/liveClaude пока не заявляется.
+
+Уточнение registered/settings после первого RED:old command112175–112177
+вызывает iF52126–52190 без w9. Как уже закреплено parity-forms-contract,registered
+команды обходят generic form slash check; /settings сохраняет comment stage,
+не отменяет его. Исправлен ошибочный test expectation, продуктовый command
+handler не менялся. Выход — реальные Back/env list/cancel или reached unknownslash.
+
+Checkpoint:3eb076c contract,fdb84ce initial23RED. Один cancel-/settings expectation
+оказался неточным:узкий old command/iF proof выше;вместо изменения product handler
+проверка теперь подтверждает сохранение registered comment stage. Остальные
+расхождения подтверждены. После fix27description PASS/120targeted PASS.
+Дополнительные delayed prompt cancel/replace/shutdown:23PASS/3RED→26PASS;
+ещё parser raw/reset/internal clear контроль→27PASS. Independent Sol:63related
+PASS,после cleanup delta отдельно27PASS. Cleanup удаления ownprompt best effort:
+Telegram может отказать,но draft не оживает/чужая currentform не меняется.
+Это local synthetic proof,не realkey activation/liveClaude/fullenv parity.

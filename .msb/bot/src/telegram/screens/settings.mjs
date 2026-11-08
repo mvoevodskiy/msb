@@ -37,6 +37,7 @@ export async function envScreen() {
   ];
   for (const e of entries.slice(0, 25)) {
     lines.push(`• <code>${escapeHtml(e.key)}</code> — ${escapeHtml(e.masked)}${e.protected ? ' 🔒' : ''}`);
+    if (e.comment) lines.push(`   └ <i>${escapeHtml(e.comment.length > 300 ? e.comment.slice(0,300)+'…' : e.comment)}</i>`);
   }
   if (entries.length > 25) lines.push(`… и ещё ${entries.length - 25}`);
   lines.push(BLANK);
@@ -53,14 +54,14 @@ export async function envScreen() {
 }
 
 /** Legacy two-step deletion. Opening this view never changes the env file. */
-export function envDeleteScreen(key) {
+export function envDeleteScreen(key,comment) {
   const safeKey = escapeHtml(key);
   if (PROTECTED_KEYS.has(key)) return {
     text: `❌ ${safeKey} — защищённый ключ, удаление запрещено.`,
     keyboard: new InlineKeyboard().text('« Назад', 'settings:env'),
   };
   return {
-    text: `Удалить <code>${safeKey}</code>?`,
+    text: `Удалить <code>${safeKey}</code>?${comment ? `\n📝 <i>${escapeHtml(comment)}</i>\n` : ''}`,
     keyboard: new InlineKeyboard()
       .text('🗑 Да, удалить', `settings:env:confirm-delete:${key}`)
       .text('« Нет', 'settings:env'),
