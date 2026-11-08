@@ -57,6 +57,11 @@ collector присоединяется к пачке; `/stop` очищает col
 | Последующее текстовое значение формы | [`bot.mjs`](bot.mjs): `message:text`, ветви `pending`; форму открывает нужный обработчик `routes/` | [menu-handlers](../../tests/menu-handlers.test.mjs) проверяет переходы и отмену форм |
 | Значение `.env` | [`envScreen`](screens/settings.mjs) → [`handleSettingsRoute`](routes/settings.mjs) / pending → [`setEnvKey`](../env/store.mjs) | [monitor-env](../../tests/monitor-env.test.mjs) проверяет хранилище; [menu-handlers](../../tests/menu-handlers.test.mjs) — ввод |
 
+Env удаление использует прежний двухшаговый путь: `settings:env:delete:*`
+лишь открывает подтверждение; `settings:env:confirm-delete:*` вызывает store.
+Возврат к списку и прежний `settings:env:cancel` сбрасывают ожидание ввода в core
+и overlay. [Контракт форм](../../tests/reference/parity-forms-contract.txt).
+
 Callback-строки — внешние идентификаторы кнопок. При разделении файлов сохранять
 их, порядок обработки, обратные переходы и owner guard. Стандартные Claude/OC
 callbacks и callbacks расширения имеют разных обработчиков.

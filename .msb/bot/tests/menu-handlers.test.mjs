@@ -28,7 +28,7 @@ async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixture' }),
     Object.assign(process.env, previous);
     await fs.rm(home, { recursive: true, force: true });
   });
-  const messages = [], edits = [], deleted = [], messageOptions = [], typingSignals = [], editSignals = [], replySignals = [];
+  const messages = [], edits = [], editOptions = [], deleted = [], messageOptions = [], typingSignals = [], editSignals = [], replySignals = [];
   class Harness {
     handlers = new Map(); commands = new Map(); middleware = [];
     async start() {}
@@ -37,7 +37,7 @@ async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixture' }),
       config: { use() {} }, setMyCommands: async () => true,
       sendChatAction: async (_chat, _action, _options, signal) => { typingSignals.push(signal); return true; },
       sendMessage: async (_chat, text, opts, signal) => { messages.push(text); messageOptions.push(opts); replySignals.push(signal); return { message_id: messages.length }; },
-      editMessageText: async (_chat, _id, text, _options, signal) => { edits.push(text); editSignals.push(signal); },
+      editMessageText: async (_chat, _id, text, options, signal) => { edits.push(text); editOptions.push(options); editSignals.push(signal); },
       answerCallbackQuery: async () => {},
       deleteMessage: async (_chat, id) => { deleted.push(id); },
     };
@@ -65,7 +65,7 @@ async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixture' }),
   await fs.writeFile(storeFile, JSON.stringify({ version: 1, active: 'codex', models: { codex: 'gpt-6.1-terra' }, efforts: { codex: 'max' } }));
   const callback = (data, uid = 42) => bot.handleUpdate({ callback_query: { id: 'q', data, from: { id: uid }, message: { message_id: 1, chat: { id: 42 } } } });
   const message = (text, uid = 42) => bot.handleUpdate({ message: { message_id: 99, text, from: { id: uid }, chat: { id: 42 } } });
-  return { home, bot, callback, message, messages, edits, deleted, messageOptions, typingSignals, editSignals, replySignals, storeFile };
+  return { home, bot, callback, message, messages, edits, editOptions, deleted, messageOptions, typingSignals, editSignals, replySignals, storeFile };
 }
 
 test('explicit Back and start cancel env/auth input before ordinary text', async (t) => {
@@ -600,8 +600,7 @@ test('env parity: delete opens the original confirmation before changing the fil
   await f.callback('settings:env:delete:TEST_DELETE_KEY');
   assert.equal(await fs.readFile(path.join(f.home, '.msb/bots/default/.env'), 'utf8'), before);
   assert.equal(f.edits.at(-1), 'Удалить <code>TEST_DELETE_KEY</code>?');
-  // Existing keyboard helper in this harness captures message options only;
-  // the selected callback below proves the actual confirm-delete route.
+  assert.deepEqual(f.editOptions.at(-1).reply_markup.inline_keyboard, [[{text:'🗑 Да, удалить',callback_data:'settings:env:confirm-delete:TEST_DELETE_KEY'},{text:'« Нет',callback_data:'settings:env'}]]);
   await f.callback('settings:env:confirm-delete:TEST_DELETE_KEY');
   assert.equal((await readEnvMap()).map.has('TEST_DELETE_KEY'), false);
 });
@@ -626,4 +625,26 @@ test('env parity: returning to the env list or the old Cancel exits key input be
     assert.equal((await readEnvMap()).map.has('TEST_PENDING_KEY'), false);
   }
   await until(() => runs === 2);
+});
+
+
+test('env parity: protected keys stay protected at both deletion steps', async t => {
+  const f = await fixture(t, undefined, {overlay:false});
+  await setEnvKey('BOT_TOKEN','synthetic-protected-value');
+  await f.callback('settings:env:delete:BOT_TOKEN');
+  assert.equal(f.edits.at(-1),'❌ BOT_TOKEN — защищённый ключ, удаление запрещено.');
+  assert.deepEqual(f.editOptions.at(-1).reply_markup.inline_keyboard, [[{text:'« Назад',callback_data:'settings:env'}]]);
+  await f.callback('settings:env:confirm-delete:BOT_TOKEN');
+  assert.equal((await readEnvMap()).map.get('BOT_TOKEN'),'synthetic-protected-value');
+});
+
+test('env parity: env list and old Cancel clear provider input in the overlay too', async t => {
+  const f = await fixture(t);
+  const {setPendingAuth,getPendingAuth,clearPendingAuth}=await import('../../../overlay/bot/ext/auth.mjs');
+  t.after(()=>clearPendingAuth(42));
+  for(const data of ['settings:env','settings:env:cancel']) {
+    setPendingAuth(42,'claude',42);
+    await f.callback(data);
+    assert.equal(getPendingAuth(42),null,'Leaving the form must clear overlay ownership before another message arrives.');
+  }
 });

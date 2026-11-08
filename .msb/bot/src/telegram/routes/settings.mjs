@@ -1,14 +1,20 @@
 /**
  * Переменные окружения, timezone, лимиты и сведения.
- * Навигация: [Telegram](../README.md).
+ * Callback вход → [router](../router.mjs), renderer → [settings screens](../screens/settings.mjs).
+ * Env CRUD → [store](../../env/store.mjs); pending принадлежит createBot.
+ * [Old form contract](../../../tests/reference/parity-forms-contract.txt),
+ * [handler tests](../../../tests/menu-handlers.test.mjs).
  */
 import { loadState, updateState } from '../../state.mjs';
-import { envScreen, limitScreen, notificationsScreen, serverStatusScreen, sttScreen, tzScreen } from '../screens.mjs';
+import { envScreen, envDeleteScreen, limitScreen, notificationsScreen, serverStatusScreen, sttScreen, tzScreen } from '../screens.mjs';
 import { deleteEnvKey } from '../../env/store.mjs';
 import { UNHANDLED } from './shared.mjs';
 
 export async function handleSettingsRoute({ data, state, show, pending, chatId, bot, cfg }) {
-  if (data === 'settings:env') return show(await envScreen());
+  if (data === 'settings:env' || data === 'settings:env:cancel') {
+    pending.delete(chatId);
+    return show(await envScreen());
+  }
   if (data === 'settings:env:add') {
     pending.set(chatId, 'env-key-name');
     return show({
@@ -25,16 +31,12 @@ export async function handleSettingsRoute({ data, state, show, pending, chatId, 
     });
   }
   if (data.startsWith('settings:env:delete:')) {
-    const key = data.slice('settings:env:delete:'.length);
-    try {
-      await deleteEnvKey(key);
-      await bot.api.sendMessage(chatId, `Удалил <code>${key}</code>.`, { parse_mode: 'HTML' });
-    } catch (err) {
-      await bot.api.sendMessage(chatId, err.message);
-    }
-    return show(await envScreen());
+    return show(envDeleteScreen(data.slice('settings:env:delete:'.length)));
   }
   if (data.startsWith('settings:env:confirm-delete:')) {
+    const key = data.slice('settings:env:confirm-delete:'.length);
+    try { await deleteEnvKey(key); }
+    catch (err) { await bot.api.sendMessage(chatId, err.message); }
     return show(await envScreen());
   }
   if (data === 'settings:tz') {

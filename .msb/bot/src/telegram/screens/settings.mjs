@@ -3,7 +3,7 @@
  * Навигация: [Telegram](../README.md).
  */
 import { InlineKeyboard } from 'grammy';
-import { QUICK_KEYS, listEnvEntries } from '../../env/store.mjs';
+import { QUICK_KEYS, listEnvEntries, PROTECTED_KEYS } from '../../env/store.mjs';
 import { escapeHtml } from '../edit.mjs';
 import { BLANK, describeSpendLimit } from './shared.mjs';
 
@@ -50,6 +50,21 @@ export async function envScreen() {
   }
   kb.text('« Назад', 'settings:back');
   return { text: lines.join('\n'), keyboard: kb };
+}
+
+/** Legacy two-step deletion. Opening this view never changes the env file. */
+export function envDeleteScreen(key) {
+  const safeKey = escapeHtml(key);
+  if (PROTECTED_KEYS.has(key)) return {
+    text: `❌ ${safeKey} — защищённый ключ, удаление запрещено.`,
+    keyboard: new InlineKeyboard().text('« Назад', 'settings:env'),
+  };
+  return {
+    text: `Удалить <code>${safeKey}</code>?`,
+    keyboard: new InlineKeyboard()
+      .text('🗑 Да, удалить', `settings:env:confirm-delete:${key}`)
+      .text('« Нет', 'settings:env'),
+  };
 }
 
 export function tzScreen(state) {
