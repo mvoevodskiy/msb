@@ -119,11 +119,11 @@ for(const[label,vars,botText,sharedText,configured]of sttCases)test('env service
 });
 
 test('env services: STT read error becomes safe unknown, never missing or an exception in the text prompt',async t=>{
- const f=await fixture(t,undefined,{overlay:false}),env=bare(f),read=fs.readFile.bind(fs);
- t.mock.method(fs,'readFile',async(file,...args)=>{if(String(file)===path.join(f.home,'.msb/.env'))throw Object.assign(Error('fixture-private-marker-'+SECRET),{code:'EACCES'});return read(file,...args);});
+ const f=await fixture(t,undefined,{overlay:false}),env=bare(f),read=fs.readFile.bind(fs),privatePath=path.join(f.home,'.msb/.env');
+ t.mock.method(fs,'readFile',async(file,...args)=>{if(String(file)===privatePath)throw Object.assign(Error('fixture-private-marker-'+SECRET+' '+privatePath),{code:'EACCES',path:privatePath});return read(file,...args);});
  const p=await buildSystemPrompt({env,workspace:f.home});assert.ok(p.includes(unknown));
  assert.equal(p.includes(inactive('DEEPGRAM_API_KEY','Голосовые сообщения (Deepgram)')),false);
- for(const s of [SECRET,'fixture-private-marker','EACCES',f.home])assert.equal(p.includes(s),false);
+ for(const s of [SECRET,'fixture-private-marker','EACCES',privatePath])assert.equal(p.includes(s),false);
 });
 
 for(const provider of ['claude','codex'])for(const mode of ['inline','file'])test(`env services: production ${provider} ${mode} prompt route retains metadata without credentials`,async()=>{
@@ -145,14 +145,14 @@ for (const source of ['shared','bot']) test('env services: unknown '+source+' ST
 });
 
 for (const target of ['metadata','system']) test('env services: unreadable per-bot metadata preserves known rows in '+target,async t=>{
- const f=await fixture(t,undefined,{overlay:false}),env={...bare(f),GITHUB_TOKEN:SECRET},read=fs.readFile.bind(fs);
+ const f=await fixture(t,undefined,{overlay:false}),env={...bare(f),GITHUB_TOKEN:SECRET},read=fs.readFile.bind(fs),privatePath=envFilePath(bare(f));
  t.mock.method(fs,'readFile',async(file,...args)=>{
-  if(String(file)===envFilePath(env))throw Object.assign(Error('fixture-private-marker-'+SECRET),{code:'EACCES'});
+  if(String(file)===envFilePath(env))throw Object.assign(Error('fixture-private-marker-'+SECRET+' '+privatePath),{code:'EACCES',path:privatePath});
   return read(file,...args);
  });
  const p=target==='metadata'?await envCapabilityPrompt(env):await buildSystemPrompt({env,workspace:f.home});
  assert.ok(p.includes(active('GITHUB_TOKEN','GitHub')));assert.ok(p.includes(unknown));
  assert.ok(p.includes('Дополнительные имена и описания ключей сейчас недоступны.'));
- for(const value of [SECRET,'fixture-private-marker','EACCES',f.home])assert.equal(p.includes(value),false);
+ for(const value of [SECRET,'fixture-private-marker','EACCES',privatePath])assert.equal(p.includes(value),false);
  assert.equal(env.GITHUB_TOKEN,SECRET);assert.deepEqual(f.restartRequests,[]);
 });

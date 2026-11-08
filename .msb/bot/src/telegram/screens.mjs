@@ -20,6 +20,8 @@ export { enginesScreen } from './screens/engines.mjs';
 export { autonomyHomeScreen, autonomyWhatScreen, autonomyTasksScreen, autonomyTimersScreen, autonomyHistoryScreen, autonomyRightsScreen } from './screens/autonomy.mjs';
 export { monitorScreen, monitorSourcesScreen, monitorDigestScreen, monitorHelpScreen, monitorSettingsScreen } from './screens/monitor.mjs';
 export { botsScreen, botDetailScreen } from './screens/bots.mjs';
-export { mcpScreen, mcpWorkspaceScreen, mcpAddScreen, skillsScreen, projectsScreen } from './screens/workspace.mjs';
+export { mcpScreen, mcpWorkspaceScreen, mcpAddScreen, skillsScreen } from './screens/workspace.mjs';
 export { sessionsScreen, statusScreen } from './screens/sessions.mjs';
 export { placeholder } from './screens/shared.mjs';
+
+export {projectsScreen} from './screens/projects.mjs';

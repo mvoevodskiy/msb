@@ -6,7 +6,8 @@
  * выполнение модели/сессия → [runAgentTurn](./agent/turn.mjs);
  * интервальные задачи → [autonomy scheduler](./autonomy/scheduler.mjs);
  * источники/дайджест → [monitor scheduler](./monitor/scheduler.mjs);
- * профиль/папки → [paths](./paths.mjs), состояние → [state](./state.mjs).
+ * профиль/папки → [paths](./paths.mjs), состояние → [state](./state.mjs);
+ * восстановление выбранного проекта перед polling → [projects](./projects/restore.mjs).
  * Проверка exported runtime/shutdown: [profile smoke](../../../tools/release/profile-smoke.mjs),
  * [polling lifecycle](../tests/turn-lifecycle.test.mjs). Контракты — у модулей.
  */
@@ -16,6 +17,7 @@ import { startScheduler } from './autonomy/scheduler.mjs';
 import { startMonitorScheduler } from './monitor/scheduler.mjs';
 import { createBot, runPolling } from './telegram/bot.mjs';
 import { ensureDir, botRoot, sessionDir, autonomyDir } from './paths.mjs';
+import { restoreProjectState } from './projects/restore.mjs';
 import { monitorDir } from './monitor/config.mjs';
 
 export async function main() {
@@ -27,6 +29,7 @@ export async function main() {
   ensureDir(sessionDir());
   ensureDir(autonomyDir());
   ensureDir(monitorDir());
+  await restoreProjectState();
 
   const heartbeat = startHeartbeat();
   const bot = createBot(cfg);

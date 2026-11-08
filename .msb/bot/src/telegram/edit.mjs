@@ -7,14 +7,13 @@ export async function editOrReply(api, chatId, messageId, text, keyboard, parseM
     const opts = { parse_mode: parseMode, reply_markup: keyboard };
     if (messageId) {
       try {
-        await api.editMessageText(chatId, messageId, text, opts, scope ? callbackTransportSignal(scope) : undefined);
-        return;
+        return await api.editMessageText(chatId, messageId, text, opts, scope ? callbackTransportSignal(scope) : undefined);
       } catch (err) {
         if (scope && !scope.isCurrent()) return;
         if (err instanceof GrammyError && /not modified/i.test(err.description || '')) return;
       }
     }
-    if (!scope || scope.isCurrent()) await api.sendMessage(chatId, text, opts, scope ? callbackTransportSignal(scope) : undefined);
+    if (!scope || scope.isCurrent()) return await api.sendMessage(chatId, text, opts, scope ? callbackTransportSignal(scope) : undefined);
   };
   return scope ? scope.render(deliver) : deliver();
 }

@@ -2,7 +2,7 @@
  * Core text-form ownership and the old env/Claude deadline; no timers or I/O.
  * [createBot](./bot.mjs) consumes notices before form writes and model admission.
  * Callback starts use set(); env step transitions use advance() to keep the clock.
- * Private payload owns only transient env drafts, cleared by set/delete/clear;
+ * Private payload owns transient env drafts and project prompt delivery/ID, cleared by set/delete/clear;
  * read() never exposes their value. Voice never reads/consumes this state. Other form kinds have no implied TTL.
  * [Old contract](../../tests/reference/parity-forms-contract.txt),
  * [handler checks](../../tests/menu-handlers.test.mjs).

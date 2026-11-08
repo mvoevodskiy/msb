@@ -9,6 +9,7 @@ import {
 import { readClaudeVersion } from './claude-version.mjs';
 import { runClaudeTurn } from './claude.mjs';
 import { conversationalModePrompt } from './mode-prompt.mjs';
+import { projectLocations, resolveProjectCwd } from '../projects/paths.mjs';
 import { buildSystemPrompt } from './system-prompt.mjs';
 import { readSessionContext } from './context.mjs';
 import { claimFirstSession, completeFirstSession, releaseFirstSession } from '../../shared/session-starts.mjs';
@@ -18,10 +19,12 @@ import { claimFirstSession, completeFirstSession, releaseFirstSession } from '..
  * Вызывают [Telegram](../telegram/bot.mjs) и [autonomy](../autonomy/scheduler.mjs).
  * Аргументы/stream/abort → [runClaudeTurn](./claude.mjs) → существующий PATH shim;
  * native dispatch → [provider runner](../../../../overlay/bot/ext/shim/run-turn.mjs).
+ * Captured project cwd → [projects](../projects/paths.mjs); base context stays global.
  * Контекст → [system prompt](./system-prompt.mjs), [metadata](./context.mjs);
  * владелец записи сессии → [state](../state.mjs), [first-start token](../../shared/session-starts.mjs).
  * Проверки: [polling/session fences](../../tests/turn-lifecycle.test.mjs),
- * [provider isolation](../../../../overlay/bot/ext/tests/reference/provider-switch.test.mjs).
+ * [provider isolation](../../../../overlay/bot/ext/tests/reference/provider-switch.test.mjs),
+ * [project cwd](../../tests/project-execution.test.mjs), [project races](../../tests/project-races.test.mjs).
  */
 export async function runAgentTurn({
   prompt,
@@ -32,9 +35,11 @@ export async function runAgentTurn({
 } = {}) {
   const aborted = () => ({ ok: false, error: 'aborted', text: 'Остановлено.' });
   if (signal?.aborted) return aborted();
-  let state, firstSession;
+  let state, firstSession, baseWorkspace, contextNow;
   await updateState(s => {
     state = { ...s };
+    baseWorkspace = projectLocations(env).workspace;
+    contextNow = Date.now();
     if (signal?.aborted || !hasClaudeAuth(env, s) || s.engine === 'oc' || s.ccSessionId) return NO_STATE_WRITE;
     firstSession = claimFirstSession(s);
     return firstSession ? s : NO_STATE_WRITE;
@@ -57,11 +62,13 @@ export async function runAgentTurn({
     };
   }
 
+  const cwd = await resolveProjectCwd(state, env, baseWorkspace);
+  if (signal?.aborted) return aborted();
   const cliVersion = (state.extAuthBypass || 'claude') === 'claude' ? await readClaudeVersion(env) : undefined;
   const model = resolveModel(state);
   const effort = resolveEffort(state, cliVersion);
   const permissionMode = resolvePermMode(state, cliVersion);
-  const systemPrompt = await buildSystemPrompt({ env, extra: conversationalModePrompt(state) });
+  const systemPrompt = await buildSystemPrompt({ env, workspace:baseWorkspace, cwd, timezone:state.timezone || 'UTC', now:contextNow, extra: conversationalModePrompt(state) });
 
   if (signal?.aborted) return aborted();
 
@@ -76,6 +83,7 @@ export async function runAgentTurn({
     effort,
     permissionMode,
     systemPrompt,
+    cwd,
     signal,
     autonomy,
     onEvent(ev) {

@@ -140,3 +140,26 @@ test('projects control: unknown opaque selection cannot redraw or close a new en
  await f.message('fixture-value');await f.callback('settings:env:skip-comment',42,{messageId:f.messages.length});
  assert.equal((await readEnvMap()).map.get('CUSTOM_API'),'fixture-value');
 });
+
+test('projects: create cannot follow an existing project symlink and modify a directory outside the project root',async t=>{
+ const f=await fixture(t,undefined,{overlay:false}),outside=path.join(f.home,'outside-projects');await dirs(f,[]);await fs.mkdir(outside);
+ await fs.symlink(outside,path.join(root(f),'alpha'));const before=await seeded();
+ await f.callback('menu:newproject');await f.message('alpha');
+ assert.equal(await exists(path.join(outside,'memory')),false);assert.equal(await exists(path.join(outside,'knowledge')),false);assert.equal(await exists(path.join(outside,'.git')),false);
+ assert.deepEqual(await state(),before);
+});
+
+
+test('projects: cancel deletes the actual fallback prompt instead of the original menu message',async t=>{
+ const f=await fixture(t,undefined,{overlay:false}),before=await state();
+ f.bot.api.editMessageText=async()=>{throw Error('fixture edit unavailable');};
+ await f.callback('menu:newproject',42,{messageId:77});const promptId=f.messages.length;
+ assert.equal(f.messages.at(-1),PREFIX);await f.callback('menu:cancel_newproject',42,{messageId:promptId});
+ assert.deepEqual(f.deleted,[promptId]);assert.equal(f.deleted.includes(77),false);assert.deepEqual(await state(),before);assert.equal(await exists(root(f)),false);
+});
+test('projects: cancel from an older project prompt cannot close the replacement project input',async t=>{
+ const f=await fixture(t,undefined,{overlay:false}),before=await seeded();
+ await f.callback('menu:newproject',42,{messageId:11});await f.callback('menu:newproject',42,{messageId:22});
+ await f.callback('menu:cancel_newproject',42,{messageId:11});assert.deepEqual(f.deleted,[]);
+ await f.message('replacement-project');checkSelection(await state(),before,'replacement-project');
+});

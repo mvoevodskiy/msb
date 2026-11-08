@@ -25,6 +25,7 @@ import { prepareBatch, batchStatus } from './batch.mjs';
 import { createPlanActions } from './plan-actions.mjs';
 import { parsePlanResponse } from './plan.mjs';
 import { deliverTurnResponse } from './response.mjs';
+import { registerProjectCommands } from './project-commands.mjs';
 import { beginTurnHistory } from './history.mjs';
 import { runAgentTurn } from '../agent/turn.mjs';
 import { compactSession } from '../agent/compact.mjs';
@@ -253,11 +254,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
   });
 
-  bot.command('projects', async (ctx) => {
-    const { projectsScreen } = await import('./screens.mjs');
-    const view = projectsScreen();
-    await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
-  });
+  registerProjectCommands(bot,pending);
 
   bot.command('skills', async (ctx) => {
     const { skillsScreen } = await import('./screens.mjs');
@@ -335,6 +332,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       await ctx.reply(notice, { parse_mode: 'HTML' });
       return;
     }
+    if(entry.kind==='new-project' && text.trimStart().startsWith('/')) {pending.delete(chatId);return;}
     if (text.startsWith('/')) return;
 
     const pend = entry.kind;

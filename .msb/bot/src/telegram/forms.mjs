@@ -2,7 +2,8 @@
  * Текстовые формы до обычного prompt/очереди. Один dispatcher, не второй путь
  * входящих сообщений: [createBot](./bot.mjs) владеет pending и принимает результат.
  * Auth → [forms/auth](./forms/auth.mjs), env → [forms/env](./forms/env.mjs),
- * Pult → [forms/pult](./forms/pult.mjs); остальные короткие input adapters ниже.
+ * Pult → [forms/pult](./forms/pult.mjs), проект → [forms/projects](./forms/projects.mjs);
+ * остальные короткие input adapters ниже.
  * Timezone остаётся после reply-stop в createBot, чтобы сохранить прежний приоритет.
  * [Контракт](../../tests/reference/parity-forms-contract.txt), [проверки](../../tests/menu-handlers.test.mjs).
  */
@@ -11,13 +12,14 @@ import path from 'node:path';
 import { ensureDir, workspaceDir } from '../paths.mjs';
 import { updateState } from '../state.mjs';
 import { escapeHtml } from './edit.mjs';
+import { handleProjectNameInput } from './forms/projects.mjs';
 import { handleAuthInput } from './forms/auth.mjs';
 import { handleEnvNameInput, handleEnvValueInput, handleEnvCommentInput } from './forms/env.mjs';
 import { handlePultInput, PULT_KINDS } from './forms/pult.mjs';
 
 const HANDLERS = {
   'auth-token': handleAuthInput, 'env-key-name': handleEnvNameInput,
-  'feedback': handleFeedback, 'new-project': handleProject,
+  'feedback': handleFeedback, 'new-project': handleProjectNameInput,
   'bot-token': handleBotToken, 'mon-source': handleSource,
 };
 export async function handleFormInput(options) {
@@ -35,20 +37,6 @@ async function handleFeedback({ ctx,text,pending,chatId }) {
   ensureDir(path.dirname(file));
   await fs.appendFile(file, `\n## ${new Date().toISOString()}\n\n${text}\n`);
   await ctx.reply('Спасибо, записал.');
-  return;
-}
-
-async function handleProject({ ctx,text,pending,chatId }) {
-  pending.delete(chatId);
-  const name = text.trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
-  if (!name) {
-    await ctx.reply('Имя не подошло. Только латиница, цифры, -_.');
-    return;
-  }
-  const dir = path.join(process.env.HOME || '', 'projects', name);
-  await fs.mkdir(dir, { recursive: true });
-  await updateState((s) => { s.activeProject = name; return s; });
-  await ctx.reply(`✔ Проект <code>${name}</code> создан и выбран. Переключение cwd в open-core пока не подключено.`, { parse_mode: 'HTML' });
   return;
 }
 

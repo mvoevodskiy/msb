@@ -56,16 +56,3 @@ ${BLANK}`,
     keyboard: new InlineKeyboard().text('« Назад', 'menu:back'),
   };
 }
-
-export function projectsScreen() {
-  return {
-    text: `<b>📁 Проекты</b>
-
-Проекты живут в <code>~/projects/</code>. Кнопка создаёт папку и сохраняет выбранный проект. Переключение cwd в open-core пока не подключено.
-${BLANK}`,
-    keyboard: new InlineKeyboard()
-      .text('➕ Новый проект', 'menu:newproject')
-      .row()
-      .text('« Назад', 'menu:back'),
-  };
-}

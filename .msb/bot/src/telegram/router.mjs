@@ -2,7 +2,8 @@
  * Callback вход из [createBot](./bot.mjs): тот же callback_data и один context.
  * ROUTES ниже задаёт прежний порядок; только UNHANDLED передаёт управление дальше.
  * Настройки/формы → [settings](./routes/settings.mjs), модели → [models](./routes/models.mjs), auth/права → [agent](./routes/agent.mjs),
- * выбор движка → [engines](./routes/engines.mjs), проекты/MCP → [workspace](./routes/workspace.mjs),
+ * выбор движка → [engines](./routes/engines.mjs), проекты → [projects](./routes/projects.mjs),
+ * навыки/MCP → [workspace](./routes/workspace.mjs),
  * задачи → [autonomy](./routes/autonomy.mjs), источники → [monitor](./routes/monitor.mjs).
  * Остальные семейства видны в прямых imports ниже; rendering → [screens](./screens.mjs).
  * Состояние → [state](../state.mjs), shared pending принадлежит createBot.
@@ -25,9 +26,11 @@ import { handleEnginesRoute } from './routes/engines.mjs';
 import { handleAutonomyRoute } from './routes/autonomy.mjs';
 import { handleMonitorRoute } from './routes/monitor.mjs';
 import { handleWorkspaceRoute } from './routes/workspace.mjs';
+import { handleProjectRoute } from './routes/projects.mjs';
 import { UNHANDLED } from './routes/shared.mjs';
 
 const ROUTES = [
+  handleProjectRoute,
   handleNavigationRoute,
   handleModelRoute,
   handleAgentRoute,

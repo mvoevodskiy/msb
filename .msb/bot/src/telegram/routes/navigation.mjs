@@ -5,7 +5,7 @@ import { invalidateFirstSession } from '../../../shared/session-starts.mjs';
  * Навигация: [Telegram](../README.md).
  */
 import { updateState } from '../../state.mjs';
-import { agentScreen, autonomyHomeScreen, hubScreen, mcpScreen, projectsScreen, sessionsScreen, settingsScreen, skillsScreen } from '../screens.mjs';
+import { agentScreen, autonomyHomeScreen, hubScreen, mcpScreen, sessionsScreen, settingsScreen, skillsScreen } from '../screens.mjs';
 import { UNHANDLED } from './shared.mjs';
 
 export async function handleNavigationRoute({ data, state, show, pending, chatId, bot }) {
@@ -19,14 +19,6 @@ export async function handleNavigationRoute({ data, state, show, pending, chatId
   if (data === 'menu:mcp') return show(mcpScreen());
   if (data === 'menu:skills') return show(skillsScreen());
   if (data === 'menu:sessions') return show(await sessionsScreen(state));
-  if (data === 'menu:projects') return show(projectsScreen());
-  if (data === 'menu:newproject') {
-    pending.set(chatId, 'new-project');
-    return show({
-      text: 'Пришли имя нового проекта (латиница/цифры/-_). Создам папку в ~/projects/.',
-      keyboard: projectsScreen().keyboard,
-    });
-  }
   if (data === 'menu:newtask') {
     await updateState((s) => {
       invalidateFirstSession(s);

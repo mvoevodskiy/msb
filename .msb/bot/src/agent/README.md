@@ -13,7 +13,7 @@ Telegram UI, progress и отправка ответа остаются в со�
 | Задача | Файл → функция | Проверка |
 |---|---|---|
 | Допуск по auth, core engine, модель/effort/права | [`turn.mjs`](turn.mjs): `runAgentTurn`; [`state.mjs`](../state.mjs): `hasClaudeAuth`, `resolveModel`, `resolveEffort`, `resolvePermMode` | [paths-state](../../tests/paths-state.test.mjs), [turn-lifecycle](../../tests/turn-lifecycle.test.mjs) |
-| Сформировать системный prompt из workspace | [`system-prompt.mjs`](system-prompt.mjs): `buildSystemPrompt` | [profile-ui](../../tests/profile-ui.test.mjs) проверяет runtime label; полнота содержимого workspace отдельно не проверяется |
+| Сформировать prompt из базовых owner files и выбранного cwd | [`system-prompt.mjs`](system-prompt.mjs) → [проектный контекст](../projects/context.mjs) | [project-execution](../../tests/project-execution.test.mjs), [project-context](../../tests/project-context.test.mjs); полнота всех old owner files отдельно не доказана |
 | Передать stream-события в progress и вернуть итог | [`runAgentTurn`](turn.mjs) → [`runClaudeTurn`](claude.mjs) | [voice-progress](../../tests/reference/voice-progress.test.mjs), [turn-lifecycle](../../tests/turn-lifecycle.test.mjs) |
 | Сохранить session ID после успешного хода, который не был отменён | [`runAgentTurn`](turn.mjs): guard по signal, session ID, `sessionEpoch`, `extAuthBypass`; [`updateState`](../state.mjs) | [turn-lifecycle](../../tests/turn-lifecycle.test.mjs), [state-concurrency](../../tests/state-concurrency.test.mjs) |
 | Сжать текущую сессию по провайдеру | [`compactSession`](compact.mjs) → Claude stream boundary или [Codex app-server](../../../../overlay/bot/ext/compact-codex.mjs) | [compact-routing](../../tests/compact-routing.test.mjs), [compact-codex](../../../../overlay/bot/ext/tests/compact-codex.test.mjs) |
@@ -108,3 +108,19 @@ Explicit legacy off сохраняет native default без preferred-high over
 [UI/state/provider tests](../../tests/model-catalog.test.mjs),
 [actual argv](../../tests/claude-effort.test.mjs). Реальные auth/model availability
 и весь OpenClaw backend этим каталогом не доказываются.
+
+
+## Проект и рабочий каталог
+
+[Проектный контракт](../projects/README.md) разделяет стабильный base workspace и
+cwd выбранного проекта. `runAgentTurn` захватывает base/state до подготовки prompt,
+проверяет выбранную папку и явно передаёт её `runClaudeTurn`. Native dispatch уже
+наследует этот cwd; `process.chdir()` и подмена глобальных env/auth путей не нужны.
+SOUL/USER/MEMORY/CLAUDE/TELEGRAM-TOOLS остаются из base. Текущая задача, заметки за
+локальный день и knowledge index дополняют их из captured cwd.
+
+Явный выбор проекта сбрасывает conversation slots и все старые first-start tokens
+одной транзакцией. Поэтому поздний результат старой папки не вернёт её native ID
+после смены провайдера; завершение не удалит token нового хода. [Race-проверки](../../tests/project-races.test.mjs)
+используют production runner/state и подменённый модельный процесс. Они не доказывают
+особенности автоматического чтения CLAUDE/AGENTS настоящими native CLI.

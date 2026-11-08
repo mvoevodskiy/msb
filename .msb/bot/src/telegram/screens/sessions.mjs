@@ -1,3 +1,4 @@
+import {projectPath} from '../../projects/paths.mjs';
 /**
  * Текущая сессия, native-контекст и статус агента.
  * Навигация: [Telegram](../README.md).
@@ -34,7 +35,7 @@ export async function statusScreen(state, cfg, env = process.env) {
       `Модель: <code>${escapeHtml(agent.model)}</code>`,
       ...(agent.effort ? [`Глубина: <code>${escapeHtml(agent.effort)}</code>`] : []),
       context || 'Контекст: нет данных текущей сессии.',
-      `Workspace: <code>${escapeHtml(cfg.workspace)}</code>`,
+      `Workspace: <code>${escapeHtml(state.activeProject ? projectPath(state.activeProject,env) : cfg.workspace)}</code>`,
       `Сессия: <code>${escapeHtml((state.ccSessionId || '—').slice(0, 24))}</code>`,
     ].join('\n'),
   };

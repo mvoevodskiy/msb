@@ -119,3 +119,20 @@ savedID; startupmigration рассматриваетсяотдельно. Про
 настоящийnativeCLI/API илиисполнениеегоинструментов. Existing env-services
 должныостатьсяGREEN прирасширенииобщегоfakeprobe. First-token/late-provider
 гонки ещё требуют отдельнойfixture, frontendRED их не заменяет.
+
+
+Проверка реализации (до Linux/deploy/live)
+UI37→39 с actual fallback prompt/stale-cancel проверками; runner8; startup7;
+races3 (preparing/existing-ID через bot, ID-less A/B overlap через общий runner и
+production callback/reset); optional context5. Race-suite на неизменном git archive
+91db9f3:0PASS/3ERR_ASSERTION, без cancelled/skip; на текущей реализации3PASS.
+Модельный child подменён; отдельный harmless Node child подтверждает OS cwd.
+Global fetch запрещён; auth/CLI API не вызываются, owner/native history не читается.
+Optional context проверяет local-day boundary, strip/cap, EACCES, external/internal
+symlinks и UTC fallback. Начальный EACCES mock был исправлен под realpath /var→
+/private/var на Mac; это дефект тестового пути, не продуктовый RED.
+Реальные Git init в menu tests выполняются только в synthetic HOME, без shell;
+при PATH без Git success означает созданную папку, не initialized repo.
+Startup сохраняет existing regular CLAUDE/link, missing reset guard защищает
+concurrent newer choice, EACCES не очищает saved session. Прежняя caveat native
+project instructions и legacy cwd provenance остаётся needs-evidence.

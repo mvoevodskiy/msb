@@ -112,7 +112,8 @@ Owner boundary остаётся перед core router: middleware бота и h
 | [autonomy](screens/autonomy.mjs) | Задачи, история, таймеры и права автономки |
 | [monitor](screens/monitor.mjs) | Источники, дайджест, настройки и справка мониторинга |
 | [bots](screens/bots.mjs) | `botsScreen`, `botDetailScreen` — список и карточка бота |
-| [workspace](screens/workspace.mjs) | Проекты, навыки, MCP |
+| [projects](screens/projects.mjs) | Прежний список/страницы, выбор и форма проекта |
+| [workspace](screens/workspace.mjs) | Навыки, MCP |
 | [shared](screens/shared.mjs) | Общий blank-символ и `placeholder` |
 
 ## Голос
@@ -222,3 +223,14 @@ suppresses obsolete rendering, shutdown drains the bounded query. This does not
 cancel authorized model writes. A cold pinned-selection guard stays ordered and
 can wait up to5s before its single lock alert/ack, matching the old bound.
 [Readonly lifecycle](../../tests/model-read-lifecycle.test.mjs).
+
+
+Проекты: [callback route](routes/projects.mjs), [команды](project-commands.mjs) и
+[форма](forms/projects.mjs) используют общий [project contract](../projects/README.md).
+Renderer сохраняет старые тексты, nine-per-page/three-per-row и Back/Close маршруты;
+длинное существующее имя получает bounded callback, без persistent registry.
+Меню проверяет имя строго, `/project new` сохраняет отдельное старое правило sanitize.
+Pending payload связывает отмену с фактически отправленным prompt ID, включая
+edit→send fallback; старая кнопка не закрывает новую форму. Ни form TTL, ни busy
+запрет на выбор проекта не добавлены. [Сквозные проверки](../../tests/projects.test.mjs)
+проверяют filesystem/state, а не только наличие кнопок.

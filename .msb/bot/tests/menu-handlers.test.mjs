@@ -330,9 +330,9 @@ test('all baseline menu button routes remain reachable', async (t) => {
   for (const [name, expected] of Object.entries(contract.overlay)) assert.deepEqual(callbacks(await overlay[name](process.env, f.home)), expected, name);
 });
 
-test('stored settings, cost history and selected project work again without claiming new executors', async (t) => {
+test('stored settings and cost history survive a real project selection reset', async (t) => {
   const f = await fixture(t);
-  const session = (await loadState()).state.ccSessionId;
+  const epoch = (await loadState()).state.sessionEpoch || 0;
   await f.callback('settings:limit:set:25');
   assert.equal((await loadState()).state.dailySpendLimit, 25);
   await saveState({ ...(await loadState()).state, costPaused: true, costHistory: { [new Date().toISOString().slice(0, 10)]: 2.34 } });
@@ -352,7 +352,8 @@ test('stored settings, cost history and selected project work again without clai
   assert.ok((await fs.stat(path.join(f.home, 'projects/fixture-project'))).isDirectory());
   await f.callback('ext:permmode:set:plan');
   assert.equal((await loadState()).state.permissionMode, 'plan');
-  assert.equal((await loadState()).state.ccSessionId, session);
+  assert.equal((await loadState()).state.ccSessionId, undefined);
+  assert.equal((await loadState()).state.sessionEpoch, epoch+1);
   const store = JSON.parse(await fs.readFile(f.storeFile, 'utf8'));
   assert.equal(store.models.codex, 'gpt-6.1-terra');
   assert.equal(store.efforts.codex, 'max');
