@@ -51,3 +51,19 @@ test('native skills RPC: bounded output fails without a parser or process leak',
 test('native skills RPC: early close and synchronous spawn failure settle as failures',async()=>{
  const f=transport((q,{close})=>{if(q.method==='initialize')close(1);});assert.deepEqual(await run(f),{ok:false,error:'closed'});assert.deepEqual(await readCodexSkillList({command:'fixture-codex',cwd:'/fixture/project',spawnProcess:()=>{throw Error('fixture-only');}}),{ok:false,error:'spawn'});
 });
+
+test('native skills RPC metadata cleanup: leader exit fences late group signals and bounds inherited pipes',async()=>{
+ const f=transport(()=>{}, {closeOnEnd:false}),controller=new AbortController(),originalKill=process.kill,groups=[];let unref=false,p;
+ f.child.pid=42;f.child.unref=()=>{unref=true;};process.kill=(pid,signal)=>{groups.push([pid,signal]);return true;};
+ try{
+  p=run(f,{signal:controller.signal,cleanupGraceMs:20});f.child.exitCode=0;f.child.emit('exit',0,null);controller.abort();
+  assert.deepEqual(groups,[],'An observed exit cannot be followed by a signal to a possibly reused group');
+  const out=await Promise.race([p,new Promise((_,reject)=>setTimeout(()=>reject(new assert.AssertionError({message:'Inherited pipes must not keep a metadata observer alive forever'})),300))]);
+  assert.equal(out.ok,false);assert.equal(out.aborted,true);assert.equal(out.cleanupTimedOut,true);assert.equal(f.child.stdout.destroyed,true);assert.equal(unref,true);assert.deepEqual(groups,[]);
+ }finally{f.close();if(p)await p;process.kill=originalKill;}
+});
+test('native skills RPC metadata cleanup: an unresponsive kernel/process cannot keep the read task pending indefinitely',async()=>{
+ const f=transport(()=>{}, {closeOnEnd:false}),controller=new AbortController();let unref=false,p;f.child.kill=signal=>{f.kills.push(signal);return true;};f.child.unref=()=>{unref=true;};
+ try{p=run(f,{signal:controller.signal,cleanupGraceMs:20});controller.abort();const out=await Promise.race([p,new Promise((_,reject)=>setTimeout(()=>reject(new assert.AssertionError({message:'Metadata cleanup deadline missing'})),300))]);assert.equal(out.ok,false);assert.equal(out.cleanupTimedOut,true);assert.equal(unref,true);assert.equal(f.child.stdout.destroyed,true);}
+ finally{f.close();if(p)await p;}
+});

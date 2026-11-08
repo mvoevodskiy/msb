@@ -4,21 +4,28 @@
  * Native 0.166 schema: [tracked proof](../../../.msb/bot/tests/reference/skills-native-0.166-protocol.json).
  */
 import {spawn} from 'node:child_process';
-export function readCodexSkillList({command,cwd,env=process.env,signal,timeoutMs=12_000,maxBytes=4*1024*1024,spawnProcess=spawn}) {
+export function readCodexSkillList({command,cwd,env=process.env,signal,timeoutMs=12_000,cleanupGraceMs=5_000,maxBytes=4*1024*1024,spawnProcess=spawn}) {
   if(signal?.aborted)return Promise.resolve({ok:false,aborted:true});
   return new Promise(resolve=>{
     let child;
     try{child=spawnProcess(command,['app-server'],{cwd,env,detached:true,stdio:['pipe','pipe','ignore']});}
     catch{return resolve({ok:false,error:'spawn'});}
-    let phase='init',buffer='',bytes=0,result=null,closed=false,resolved=false,timeout,termTimer,killTimer;
+    let phase='init',buffer='',bytes=0,result=null,closed=false,leaderExited=false,resolved=false,timeout,termTimer,killTimer,forceTimer;
     function signalGroup(name) {
-      if(closed)return;
+      if(closed || resolved || leaderExited || child.exitCode!=null || child.signalCode!=null)return;
       try{if(child.pid){process.kill(-child.pid,name);return;}}catch{/* Fall back only to the still-live leader. */}
       if(child.exitCode==null && child.signalCode==null)try{child.kill(name);}catch{}
     }
     function complete() {
-      if(resolved)return;resolved=true;clearTimeout(timeout);clearTimeout(termTimer);clearTimeout(killTimer);
+      if(resolved)return;resolved=true;clearTimeout(timeout);clearTimeout(termTimer);clearTimeout(killTimer);clearTimeout(forceTimer);
       signal?.removeEventListener('abort',onAbort);resolve(result || {ok:false,error:'closed'});
+    }
+    function forceCleanup() {
+      if(resolved)return;
+      // Bounded observation failure, not proof that opaque descendants or a D-state process were reaped.
+      result={ok:false,...(result?.aborted?{aborted:true}:{}),error:result?.error || 'cleanup_timeout',cleanupTimedOut:true};
+      for(const stream of [child.stdin,child.stdout,child.stderr])try{stream?.destroy();}catch{}
+      child.unref?.();complete();
     }
     function finish(value) {
       if(result)return;result=value;clearTimeout(timeout);
@@ -28,7 +35,7 @@ export function readCodexSkillList({command,cwd,env=process.env,signal,timeoutMs
       if(value.aborted)signalGroup('SIGINT');
       if(closed)return complete();
       termTimer=setTimeout(()=>signalGroup('SIGTERM'),1000);
-      killTimer=setTimeout(()=>signalGroup('SIGKILL'),5000);
+      killTimer=setTimeout(()=>{signalGroup('SIGKILL');if(!closed && !resolved)forceTimer=setTimeout(forceCleanup,100);},cleanupGraceMs);
     }
     function onAbort(){finish({ok:false,aborted:true});}
     function send(message) {if(!result)try{child.stdin.write(JSON.stringify(message)+'\n');}catch{finish({ok:false,error:'stdin'});}}
@@ -54,6 +61,7 @@ export function readCodexSkillList({command,cwd,env=process.env,signal,timeoutMs
       }
     });
     child.on('error',()=>{if(!child.pid)closed=true;finish({ok:false,error:'spawn'});});
+    child.on('exit',()=>{leaderExited=true;});
     child.on('close',()=>{closed=true;complete();});
     timeout=setTimeout(()=>finish({ok:false,error:'timeout'}),timeoutMs);
     signal?.addEventListener('abort',onAbort,{once:true});

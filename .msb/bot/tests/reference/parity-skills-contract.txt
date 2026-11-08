@@ -242,3 +242,17 @@ Desc90 сохраняет old ENCODEDbudget, но целыеentity/Unicodeunits;
 Общий существующийHTMLsplitter finalresponse можно использовать какpureutility,
 не вызывать model/plan/INSTALL_SKILL parser на метаданных UI. NativeCLI/OCbrain/
 fullreleaseэтимREDнеподтверждены, JAR1остаётся830e3f6 иpushнет.
+
+
+Дополнение native metadata cleanup (передJAR1, послеd3e35a4)
+ReviewOCвыявилтакжепроблемувновомCodextransport: exitлидера необязателенclose
+унаследованногопотока, позднийсигналPGID послеobservedexit небезопасен, а ожидание
+closeможетзависнуть.4controlledRED(2RPC/2OC)→24GREEN (14RPC+10pendingOCreader).
+ВэтомдополнениикоммитятсятолькоCodexRPC+его14unitcases; OCкодотдельнымэтапом.
+Послеobservedexit/exitCode/signalCode groupkillбольшеневыполняется. Обычныйclose
+по-прежнемуожидается. Конечныйgrace освобождаеттольконашиstreams/handles ивозвращает
+failure сcleanupTimedOut, не ложныйуспех. Этоboundedobservercleanup, НЕдоказательство
+reapвсехopaque descendants илиD-state иНЕатомарноедоказательствоPGIDownership.
+Modelturn/Claudeabort/locks не меняются. Никакихguardian/service/OSизменений.
+ВсеsignalsвPIDreusecasesподмененыspies,реальныхkillнет. Terrare-reviewblocking0.
+JAR1пока830e3f6, ничего невыкладывалось/pushнет,OCдоставка/installerещёвработе.
