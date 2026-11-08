@@ -35,9 +35,12 @@ callback scopes/lane, с прежним отключением URL previews, б�
 
 [UI/selection checks](../../tests/sessions.test.mjs),
 [runner metadata](../../tests/session-ledger.test.mjs),
-[existing ownership](../../tests/first-session.test.mjs).
-Фактическое продолжение выбранной беседы через runner/CLI и overlap-races требуют
-отдельной проверки; одни поля ID/project или зелёный экран её не заменяют.
+[existing ownership](../../tests/first-session.test.mjs),
+[actual next runner and overlap](../../tests/session-resume.test.mjs).
+Production selector→runner argv/cwd и late-result guards проверяются через fake CLI
+и отдельный Node OS cwd probe; synthetic token counters делают context fence
+непустой проверкой. Особенности настоящего adapter/native backend и живая приёмка
+остаются отдельными требованиями; поля ID/project и зелёный экран их не заменяют.
 Полный same-commit Linux gate и разрешённая живая приёмка обязательны перед выпуском.
 Code-only rollback не удаляет новые описания/native файлы и не возвращает указатели
 сессий/проектов из старого профиля. Не восстанавливать auth/env целиком ради кода.

@@ -202,3 +202,17 @@ page10/5perrow/allIDbuttons/current/metadataпрежние, ledger не реже
 size+ledger37GREEN; expandedsize/ledger/UI/turnhistory/callbackrefresh/scope:
 88PASS,0FAIL/cancelled/skip. Sol независимо37PASS/0findings. Никакихреальных
 Telegram/nativeCLI/API илиuserdata; actualresume/races/Linux/live ещёpending.
+
+
+Next-run/selector overlap checkpoint
+session-resume.test.mjs11PASS:2providers×resume/preparing/existing/same-id/same-first,
+плюсID-lessCodex→Claudehistory/project→newtask→newClaudefirst→lateCodex.
+Productionbot/callback/runner/state/providerplacement; selectedresumeargv/cwd,
+local+ownerprompt, metadata/usage/foreignslots/newreservation guards. Реальный
+harmlessNodechild проверяетOS cwd; nativeCLI/model подменён. SyntheticCodex
+counter50000дохода подтверждён отдельно, поэтомуcontextnullassertневакуумный.
+Exactmodelcallcount1/2добавленпозамечаниюreview, лишниезапускинепрячутся.
+На immutablegitarchive01e867a:0PASS/11ERR_ASSERTION,0cancel/skip/importerrors;
+натекущемкоде11GREEN. Solнезависимо11PASS/no blockingfindings, countgapзакрыт.
+Настоящийadapter/nativeCLIresume, samefinalcommitLinux иliveещёнепроверены.
+JAR1 остаётся01e867a, native/userhistoryнечиталинепереносили.
