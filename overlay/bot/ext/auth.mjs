@@ -12,8 +12,10 @@ export function setPendingAuth(userId, providerId, chatId) {
   pending.set(Number(userId), { providerId, chatId: Number(chatId), at: Date.now() });
 }
 
-export function clearPendingAuth(userId) {
-  pending.delete(Number(userId));
+export function clearPendingAuth(userId, { chatId } = {}) {
+  const row = pending.get(Number(userId));
+  if (chatId !== undefined && row?.chatId !== Number(chatId)) return false;
+  return pending.delete(Number(userId));
 }
 
 export function getPendingAuth(userId, { chatId, includeExpired = false } = {}) {

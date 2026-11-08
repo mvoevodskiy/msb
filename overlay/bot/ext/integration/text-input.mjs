@@ -1,6 +1,7 @@
 /**
  * Ввод локального IP и ключей: только в исходном чате, просроченный ввод
- * поглощается до модели. State — auth/local-ssh; [проверки](../tests/input-scope.test.mjs).
+ * поглощается до модели. State — auth/local-ssh; [scope](../tests/input-scope.test.mjs),
+ * [transport failures](../tests/input-boundary.test.mjs).
  * Навигация: [Обвязка](../README.md).
  */
 import profile from '../../shared/profile.cjs';
@@ -22,40 +23,41 @@ export async function handleLocalSshIpMessage(bot, msg) {
   if (!userId || !chatId) return false;
   const pending = getPendingLocalIp(userId, { chatId, includeExpired: true });
   if (!pending) return false;
-  if (pending.expired) {
-    clearPendingLocalIp(userId);
-    await bot.api.sendMessage(chatId, '⏳ Время на ввод IP истекло (10 мин) — режим ввода сброшен. Начни заново: /settings → 🔌 Подключение.');
-    return true;
-  }
-
-  const text = (msg.text || '').trim();
-  if (!text || text.startsWith('/')) {
-    clearPendingLocalIp(userId);
-    return false;
-  }
-
-  clearPendingLocalIp(userId);
-  if (!isValidLocalSshHost(text)) {
-    await bot.api.sendMessage(
-      chatId,
-      `Не похоже на IPv4/hostname. Пример: <code>${profile.resolveProfile().lanExample}</code>`,
-      { parse_mode: 'HTML' },
-    );
-    return true;
-  }
-
   try {
+    if (pending.expired) {
+      clearPendingLocalIp(userId, { chatId });
+      await sendInputNotice(bot, chatId, '⏳ Время на ввод IP истекло (10 мин) — режим ввода сброшен. Начни заново: /settings → 🔌 Подключение.');
+      return true;
+    }
+
+    const text = (msg.text || '').trim();
+    if (!text || text.startsWith('/')) {
+      clearPendingLocalIp(userId, { chatId });
+      return false;
+    }
+
+    clearPendingLocalIp(userId, { chatId });
+    if (!isValidLocalSshHost(text)) {
+      await sendInputNotice(bot,
+        chatId,
+        `Не похоже на IPv4/hostname. Пример: <code>${profile.resolveProfile().lanExample}</code>`,
+        { parse_mode: 'HTML' },
+      );
+      return true;
+    }
+
     await setLocalSshHost(text);
     await bot.api.deleteMessage(chatId, msg.message_id).catch(() => {});
     const menu = await buildLocalSshMenu();
-    await bot.api.sendMessage(
+    await sendInputNotice(bot,
       chatId,
       `✔ Локальный SSH IP: <code>${text}</code>\n\n${menu.text}`,
       { parse_mode: 'HTML', reply_markup: menu.keyboard },
     );
     console.error(`${EXT_MARKER} MSB_LOCAL_SSH_HOST → ${text}`);
   } catch (err) {
-    await bot.api.sendMessage(chatId, `❌ ${String(err.message || err).slice(0, 200)}`);
+    clearPendingLocalIp(userId, { chatId });
+    await sendInputNotice(bot, chatId, `❌ ${String(err.message || err).slice(0, 200)}`);
   }
   return true;
 }
@@ -72,38 +74,36 @@ export async function handleAuthMessage(bot, msg) {
 
   // Codex не принимает секрет из Telegram — сбрасываем pending, если вдруг остался.
   if (pending.providerId === 'codex') {
-    clearPendingAuth(userId);
-    await bot.api
-      .sendMessage(
-        chatId,
-        'Для Codex секрет в чат не нужен. Открой «🔌 Подключение» → Codex → «Войти» (ChatGPT device code).',
-      )
-      .catch(() => {});
+    clearPendingAuth(userId, { chatId });
+    await sendInputNotice(bot,
+      chatId,
+      'Для Codex секрет в чат не нужен. Открой «🔌 Подключение» → Codex → «Войти» (ChatGPT device code).',
+    );
     return true;
   }
 
   if (pending.expired) {
-    clearPendingAuth(userId);
-    await bot.api.sendMessage(chatId, AUTH_INPUT_EXPIRED);
+    clearPendingAuth(userId, { chatId });
+    await sendInputNotice(bot, chatId, AUTH_INPUT_EXPIRED);
     return true;
   }
 
   const text = (msg.text || '').trim();
   if (!text || text.startsWith('/')) {
-    clearPendingAuth(userId);
+    clearPendingAuth(userId, { chatId });
     return false;
   }
 
   try {
     await saveProviderSecret(pending.providerId, text);
-    clearPendingAuth(userId);
+    clearPendingAuth(userId, { chatId });
     await bot.api.deleteMessage(chatId, msg.message_id).catch(() => {});
 
-    await bot.api.sendMessage(chatId, '⏳ Сохранил ключ. Ставлю/проверяю CLI и авторизацию…').catch(() => {});
+    await sendInputNotice(bot, chatId, '⏳ Сохранил ключ. Ставлю/проверяю CLI и авторизацию…');
     process.env.PATH = enrichPath(process.env);
     const cli = await ensureProviderCli(pending.providerId, { env: process.env });
     if (!cli.ok) {
-      await bot.api.sendMessage(
+      await sendInputNotice(bot,
         chatId,
         `✔ Ключ сохранён, но CLI не готов:\n${cli.error}\n\nПоставь CLI и снова выбери провайдера в «🔌 Подключение».`,
       );
@@ -112,7 +112,7 @@ export async function handleAuthMessage(bot, msg) {
 
     const wired = await wireProviderAuth(pending.providerId, text, process.env);
     if (!wired?.ok) {
-      await bot.api.sendMessage(
+      await sendInputNotice(bot,
         chatId,
         `❌ Авторизация ${pending.providerId} не удалась.\n${wired?.error || 'unknown'}\n\nДвижок не переключаю.`,
       );
@@ -127,15 +127,20 @@ export async function handleAuthMessage(bot, msg) {
     await syncExtAuthGate();
     const menu = await buildConnMenu();
     const extra = cli.installed ? `\nCLI: <code>${cli.bin}</code>` : '';
-    await bot.api.sendMessage(
+    await sendInputNotice(bot,
       chatId,
       `${savedKeyText(pending.providerId)}${extra}\n\n${menu.text}`,
       { parse_mode: 'HTML', reply_markup: menu.keyboard },
     );
     console.error(`${EXT_MARKER} saved+wired ${pending.providerId}`);
   } catch (err) {
-    clearPendingAuth(userId);
-    await bot.api.sendMessage(chatId, `❌ Не сохранил ключ: ${String(err.message || err).slice(0, 200)}`);
+    clearPendingAuth(userId, { chatId });
+    await sendInputNotice(bot, chatId, `❌ Не сохранил ключ: ${String(err.message || err).slice(0, 200)}`);
   }
   return true;
+}
+
+/** Notification failure never changes the admission decision for owned input. */
+async function sendInputNotice(bot, ...args) {
+  try { return await bot.api.sendMessage(...args); } catch { /* transport only */ }
 }

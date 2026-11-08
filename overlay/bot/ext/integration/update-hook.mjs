@@ -1,5 +1,6 @@
 /**
  * Owner boundary, отмена форм и передача события core.
+ * Admission failure/cross-chat checks: [input boundary](../tests/input-boundary.test.mjs).
  * Навигация: [Обвязка](../README.md).
  */
 import { registerEngineProviderView } from '../engine-menu.mjs';
@@ -30,9 +31,12 @@ export function installUpdateHook(BotClass, env = process.env) {
           'settings:pult:session', 'settings:pult:listen:custom',
         ].includes(event.data) || /^(?:settings:env:quick:|ext:auth:|ext:conn:set:|settings:conn:set:|settings:engine:set:)/.test(event.data || '');
         if (startsForm || ['menu:back', 'menu:close', 'menu:settings', 'menu:agent', 'settings:back', 'settings:env', 'settings:env:cancel', 'settings:auth', 'settings:conn', 'ext:conn', 'ext:ssh:local', 'mon:back', 'settings:bots:cancel'].includes(event.data)) {
-          clearPendingAuth(event.from.id);
-          clearPendingLocalIp(event.from.id);
-          this[Symbol.for('msb.cancelPendingInput')]?.(event.message?.chat?.id);
+          const chatId = event.message?.chat?.id;
+          if (chatId != null) {
+            clearPendingAuth(event.from.id, { chatId });
+            clearPendingLocalIp(event.from.id, { chatId });
+            this[Symbol.for('msb.cancelPendingInput')]?.(chatId);
+          }
         }
         const handled = await handleCallback(this, event, closedCore);
         if (handled) return;

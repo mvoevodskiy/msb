@@ -44,7 +44,7 @@ export async function handleCallback(bot, cq, closedCore = false) {
 
   if (data === 'ext:ssh:local') {
     await bot.api.answerCallbackQuery(cq.id).catch(() => {});
-    clearPendingLocalIp(userId);
+    clearPendingLocalIp(userId, { chatId });
     const menu = await buildLocalSshMenu();
     await editOrReply(bot, chatId, messageId, menu.text, menu.keyboard);
     return true;

@@ -564,6 +564,8 @@ export function getPendingLocalIp(userId, { chatId, includeExpired = false } = {
   return s;
 }
 
-export function clearPendingLocalIp(userId) {
-  pendingLocalIp.delete(userId);
+export function clearPendingLocalIp(userId, { chatId } = {}) {
+  const row = pendingLocalIp.get(userId);
+  if (chatId !== undefined && Number(row?.chatId) !== Number(chatId)) return false;
+  return pendingLocalIp.delete(userId);
 }
