@@ -22,3 +22,5 @@ Core env / Claude token TTL and slash input, old 54723–54750,55123,
   are earlier and keep their established semantics (e.g. /status preserves form).
 - Other forms (timezone/project/bot/MCP/source) had no common TTL; do not impose
   ten minutes on them or clear text pending when a voice message arrives.
+Quick env fields use the same iE value-stage state with startedAt (53804–53816),
+so they share the env deadline; this is not a newly imposed quick-key limit.

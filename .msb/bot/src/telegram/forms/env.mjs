@@ -22,7 +22,7 @@ export async function handleEnvNameInput({ ctx, text, pending, chatId }) {
     await ctx.reply('Имя ключа: только A-Z, цифры и _.');
     return;
   }
-  pending.set(chatId, `env:${key}`);
+  pending.advance(chatId, `env:${key}`);
   await ctx.reply(`Ок. Пришли значение для <code>${key}</code>.`, { parse_mode: 'HTML' });
   return;
 }

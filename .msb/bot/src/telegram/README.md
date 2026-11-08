@@ -62,7 +62,10 @@ collector присоединяется к пачке; `/stop` очищает col
 Env удаление использует прежний двухшаговый путь: `settings:env:delete:*`
 лишь открывает подтверждение; `settings:env:confirm-delete:*` вызывает store.
 Возврат к списку и прежний `settings:env:cancel` сбрасывают ожидание ввода в core
-и overlay. [Контракт форм](../../tests/reference/parity-forms-contract.txt).
+и overlay. [PendingInputs](pending-input.mjs) хранит срок env/Claude формы от
+открытия; переход к значению не продлевает 10 минут. После истечения следующий
+текст потребляется с прежним сообщением, без записи/модели/перезапуска. У voice и
+прочих нет нового общего срока. [Контракт форм](../../tests/reference/parity-forms-contract.txt).
 
 Callback-строки — внешние идентификаторы кнопок. При разделении файлов сохранять
 их, порядок обработки, обратные переходы и owner guard. Стандартные Claude/OC

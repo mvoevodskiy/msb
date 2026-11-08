@@ -14,6 +14,7 @@ import { Bot } from 'grammy';
 import { autoRetry } from '@grammyjs/auto-retry';
 import { presentationAwareRetry, presentationSignal } from './presentation-api.mjs';
 import { handleFormInput } from './forms.mjs';
+import { PendingInputs, pendingInputNotice } from './pending-input.mjs';
 import { recognizeVoice, voicePreview, STT_ONBOARDING } from './voice.mjs';
 import { startTurnProgress } from './progress.mjs';
 import { createInbox, isForwarded } from './inbox.mjs';
@@ -34,7 +35,7 @@ import { describeSpendLimit } from './screens/shared.mjs';
 /**
  * @param {ReturnType<import('../config.mjs').readConfig>} cfg
  */
-export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgentTurn, restart = () => setTimeout(() => process.exit(0), 600) } = {}) {
+export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgentTurn, now = Date.now, restart = () => setTimeout(() => process.exit(0), 600) } = {}) {
   bot.api.config.use(presentationAwareRetry(autoRetry()));
 
   /** Active turns outlive the polling handler; keep ownership until delivery finishes. */
@@ -42,7 +43,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   // Includes completed deliveries whose journal is still flushing after chat unlock.
   const unfinished = new Set();
   /** @type {Map<number, string>} */
-  const pending = new Map();
+  const pending = new PendingInputs({ now });
 
   // Every supported agent input enters one worker; commands/forms remain immediate.
   const inbox = createInbox({
@@ -314,9 +315,16 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   bot.on('message:text', async (ctx) => {
     const text = ctx.message.text || '';
     const chatId = ctx.chat.id;
+    const entry = pending.read(chatId);
+    const notice = pendingInputNotice(entry, text);
+    if (notice) {
+      pending.delete(chatId);
+      await ctx.reply(notice, { parse_mode: 'HTML' });
+      return;
+    }
     if (text.startsWith('/')) return;
 
-    const pend = pending.get(chatId);
+    const pend = entry.kind;
     if (await handleFormInput({ kind: pend, ctx, text, pending, cfg, restart })) return;
 
     // Old reply-stop interrupts the current turn, but keeps collectors/FIFO.
