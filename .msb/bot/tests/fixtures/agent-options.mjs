@@ -34,6 +34,10 @@ cp.spawn = (command, args, options) => {
         : await buildPrompt(parsed,call.prompt,{providerId:provider});
       call.inheritedServiceEnvNonempty={deepgram:Boolean(options.env.DEEPGRAM_API_KEY),openrouter:Boolean(options.env.OPENROUTER_API_KEY)};
     }
+    if(envScenario==='skills-race') {
+      const {loadState,saveState}=await import('../../src/state.mjs');
+      await saveState({...((await loadState()).state),extAuthBypass:provider==='codex'?'claude':'codex'});
+    }
     const id = provider === 'claude' ? 'claude-options-fixture' : 'ext:codex:0199a213-81c0-7800-8aa1-bbab2a035a53';
     child.stdout.write(JSON.stringify({ type: 'system', subtype: 'init', session_id: id, model, provider_id: provider }) + '\n');
     child.stdout.write(JSON.stringify({ type: 'result', subtype: 'success', session_id: id, result: 'fixture options answer', is_error: false }) + '\n');
@@ -95,5 +99,5 @@ try {
   try { out=await runAgentTurn({ prompt: 'synthetic options task' }); }
   catch(error) { out={ok:false,error:error.code || 'exception',text:String(error.message)}; }
   console.log('AGENT_OPTIONS=' + JSON.stringify({ ok: out.ok, error:out.error, calls,
-    workspace:process.env.MSB_WORKSPACE_DIR, project, stateBefore, state: (await loadState()).state }));
+    workspace:process.env.MSB_WORKSPACE_DIR, project, stateBefore, skillInstall:out.skillInstall, state: (await loadState()).state }));
 } finally { await fs.rm(home, { recursive: true, force: true }); }

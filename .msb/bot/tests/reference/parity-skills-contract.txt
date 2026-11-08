@@ -299,3 +299,35 @@ OldYC112090–112125 делалодиночныйedit/reply, а oldsendLongMessa
 применялсятолькокstreamingfinalizer106617/106643. РеальныйOCCLI/brain/API/live
 этимнеподтверждены;INSTALL_SKILL иfullsamecommitreleasegate всёещёобязательны.
 JAR1остаётся830e3f6,пакетskillsневыкладывался,pushнет.
+
+
+INSTALL_SKILL production RED (после05e2edd, НЕрелиз)
+35cases:3PASS/32ERR_ASSERTION,0cancelled/skip/import/infra. Synthetic model returns
+controlled text+captured target descriptor; настоящий bot worker, fs/response/plan/
+journal. Два настоящих runner prompt probes и два provider-race probes используют
+owned fake child через existing agent-options fixture. Это отдельно доказывает
+отсутствующие producer instruction/target и consumer marker processing, не только
+прямой вызов нового helper. Цели: старые validation/inclusive bounds/firstblock/
+remainingstrip/messages/backup/mirror/partialerror/abort/plan-before-journal;
+Codex user .agents из подтверждённой native0.166, Claude прежний .claude;
+unknown native provider не получает выдуманный успех. Новыхкнопок нет.
+
+Bounded old reread: OA70–114 не просто JARVIS_CC_ONLY flag! vB признаёт engineoc,
+ocModel/ocSessionId/ocSessionName и непустые ocPrevSessionIds/ocLiveModels. RW
+запоминает обнаруженный OC state на время процесса; load55485–88 и startup109754
+вызываютRW. Поэтому установленныйOCконтекст может разрешитьmirrorдажеприфлаге1.
+Не упрощать это до одного boolflag. OC actualpromptVs29650–53→t732195–97→
+xTA56331–35→X1A55938–53; общий successworker110655/110839–41→finish→install.
+Обычныйreturnedpartialerror CCfinish110899–915, aborted иOCpartialerror нет.
+Отдельный background/autonomy route черезfinish boundedпоиском не доказан;
+не расширять writer наscheduler безсобственногоevidence. MCP ADD_MCP ещёотдельно.
+
+Actual narrow old M8A57179–57205 выполнен сownedtemporaryHOME, фиксированным
+syntheticformatter и OA=true (безmirror). Триsymlinks (SKILL.md,.bak,skilldir)
+изменили внешниеsynthetic sentinel; failedbackup всёравнозаменилстарыйskill.
+Proof skills-old-writer-proof.json; originalfunction читать git show BLOB указанного
+oldsource, не запускать весь bundle. New atomic temp/rename должен сохранять
+внешние sentinel и oldbytes приbackupfailure; разрешать legitimate native-root
+symlink. Не claim atomic containment против concurrent parent replacement или
+общую транзакцию primary+mirror, Nodepathoperations этого не доказывают.
+JAR1остаётся830e3f6; RED checkpoint невыкладывать, pushнет.
