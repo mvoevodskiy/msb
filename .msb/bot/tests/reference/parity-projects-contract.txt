@@ -108,3 +108,14 @@ A→switchB→projectreset→newB→lateA→switchA, bootstrap, модели/aut
 contract/RED/узкиеfixкоммиты; финальныеLinuxgate/deploy/live отдельно. Полная
 projects+sessions parity недоказанапоодномуpwd илиэкрану. Откаттолькокода не
 удаляетсозданныедиректории/git иливозвращаетстарыйstate/nativehistory.
+
+Runner RED дополнение
+project-execution.test.mjs использует реальныйrunAgentTurn→runClaudeTurn и
+fakechild cwd/argv/prompt:2provider×(persistedproject/default/global+localcontext/
+missingtarget). Defaultконтроли сохраняютbasecwd/ownerfiles, выбранныйпроект
+долженпередатьprojectcwd иresumeвалидногоsavedID. Missingruntimeproject возвращает
+PROJECT_NOT_FOUND безchild ибезмолчаливогозапускавbase, не очищаетнеизвестный
+savedID; startupmigration рассматриваетсяотдельно. Пробанесчитаетподключённым
+настоящийnativeCLI/API илиисполнениеегоинструментов. Existing env-services
+должныостатьсяGREEN прирасширенииобщегоfakeprobe. First-token/late-provider
+гонки ещё требуют отдельнойfixture, frontendRED их не заменяет.

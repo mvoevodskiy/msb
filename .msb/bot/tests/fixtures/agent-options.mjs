@@ -15,12 +15,13 @@ Object.assign(process.env, { HOME: home, MSB_BOT_ID: 'default', MSB_WORKSPACE_DI
 const { fixtureClaudeVersion } = await import('../helpers/claude-version-fixture.mjs');
 await fixtureClaudeVersion(home, cliVersion);
 const calls = [];
+let project = null, stateBefore = null;
 cp.spawn = (command, args, options) => {
   if (command !== 'claude' || options.env.HOME !== home) throw Error('Unexpected CLI');
   const child = new EventEmitter();
   child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.stdin = new PassThrough();
   child.kill = () => true;
-  const call = { args, provider: options.env.MSB_TURN_PROVIDER, prompt: '' };
+  const call = { args, provider: options.env.MSB_TURN_PROVIDER, cwd: options.cwd, prompt: '' };
   if (envName) call.namedEnv = {name:envName,valuePresent:options.env[envName] === 'fixture-env-name-value'};
   calls.push(call);
   child.stdin.on('data', value => { call.prompt += value; });
@@ -55,7 +56,7 @@ try {
     const {setEnvKey} = await import('../../src/env/store.mjs');
     await setEnvKey(envName,'fixture-env-name-value');
   }
-  if (envScenario) {
+  if (envScenario?.startsWith('env-services-')) {
     const {setEnvKey}=await import('../../src/env/store.mjs');
     process.env.DEEPGRAM_API_KEY='fixture-service-stt-value';
     process.env.OPENROUTER_API_KEY='fixture-service-router-value';
@@ -71,6 +72,28 @@ try {
       };
     }
   }
-  const out = await runAgentTurn({ prompt: 'synthetic options task' });
-  console.log('AGENT_OPTIONS=' + JSON.stringify({ ok: out.ok, calls, state: (await loadState()).state }));
+  if (envScenario?.startsWith('project-')) {
+    const workspace=path.join(home,'tenant','workspace');
+    process.env.MSB_WORKSPACE_DIR=workspace;
+    project=path.join(home,'tenant','projects','alpha');
+    await fs.mkdir(workspace,{recursive:true});
+    for(const [name,text]of Object.entries({'SOUL.md':'fixture-global-soul','USER.md':'fixture-global-user','MEMORY.md':'fixture-global-memory','CLAUDE.md':'fixture-global-rules'}))await fs.writeFile(path.join(workspace,name),text);
+    if(envScenario!=='project-missing') {
+      await fs.mkdir(path.join(project,'memory'),{recursive:true});
+      await fs.mkdir(path.join(project,'knowledge'),{recursive:true});
+      await fs.writeFile(path.join(project,'SOUL.md'),'fixture-local-soul-must-not-replace-owner');
+      await fs.writeFile(path.join(project,'.current-task.md'),'fixture-project-task');
+      await fs.writeFile(path.join(project,'knowledge/_index.md'),'fixture-project-index');
+      await fs.writeFile(path.join(project,'memory',new Date().toISOString().slice(0,10)+'.md'),'fixture-project-daily');
+    }
+    const before=(await loadState()).state;
+    await saveState({...before,...(envScenario==='project-default'?{}:{activeProject:'alpha'}),
+      ccSessionId:provider==='claude'?'fixture-existing-project-session':'ext:codex:0199a213-81c0-7800-8aa1-bbab2a035a51',timezone:'UTC'});
+    stateBefore=(await loadState()).state;
+  }
+  let out;
+  try { out=await runAgentTurn({ prompt: 'synthetic options task' }); }
+  catch(error) { out={ok:false,error:error.code || 'exception',text:String(error.message)}; }
+  console.log('AGENT_OPTIONS=' + JSON.stringify({ ok: out.ok, error:out.error, calls,
+    workspace:process.env.MSB_WORKSPACE_DIR, project, stateBefore, state: (await loadState()).state }));
 } finally { await fs.rm(home, { recursive: true, force: true }); }
