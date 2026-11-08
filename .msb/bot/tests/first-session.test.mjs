@@ -49,8 +49,10 @@ test('existing session keeps snapshot bytes unchanged; newer first attempt survi
   assert.equal(newer.newerSurvived, true); assert.equal(newer.sessionId, ids.codex); assert.equal(newer.pending, null);
 });
 
-test('existing model/permission reset paths cancel first Claude start but Codex permission UI preserves it', () => {
-  for (const scenario of ['claude-model-reset', 'claude-permission-reset', 'claude-overlay-permission']) {
+test('model selection preserves first Claude start; explicit permission reset still invalidates it', () => {
+  const selected = run('claude-model-reset');
+  assert.equal(selected.sessionId, ids.claude); assert.equal(selected.pending, null);
+  for (const scenario of ['claude-permission-reset', 'claude-overlay-permission']) {
     const r = run(scenario); assert.equal(r.sessionId, null); assert.equal(r.pending, null);
   }
   const codex = run('codex-overlay-permission');
