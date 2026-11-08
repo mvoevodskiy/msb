@@ -137,12 +137,12 @@ test('presentation retry: stop drains late HTTP results without a retry or final
         return deliverTurnResponse(f.ctx, 101, 'Финальный ответ', { elapsedMs: 13_000 });
       })());
       await flush();
-      assert.equal(pendingEdit.signal.aborted, true, 'The fifth editMessageText argument must cancel the real API request.');
+      assert.equal(pendingEdit.signal.aborted, false, 'An accepted edit must drain before retiring its transport signal.');
       assert.equal(finishing.settled, false, 'Do not release final delivery while an accepted edit can still arrive.');
       assert.ok(!f.calls.some(call => call.payload.text?.startsWith('Финальный ответ')));
       held.resolve();
       await flush();
-      assert.equal(clock.hasDelay(120_000), false, 'A 429 arriving after abort must not register pause() on an already-aborted signal.');
+      assert.equal(clock.hasDelay(120_000), false, 'A late 429 must not enter an obsolete autoRetry pause.');
       assert.equal(finishing.settled, true);
       assert.equal(finishing.error, undefined);
       assert.deepEqual(finishing.value, { method: 'edit', messages: 1 });
@@ -195,4 +195,37 @@ test('presentation retry: final edit and cleanup 429 fall back immediately, whil
     await clock.advance(clock.now() + 240_002);
     clock.restore();
   }
+});
+
+test('presentation retry: client abort must not release a final edit ahead of an accepted remote animation', async () => {
+  const held = gate();
+  let first = true, remoteText = '', remoteApply, progress, finishing;
+  const f = fixture(call => {
+    if (call.method === 'editMessageText' && first) {
+      first = false;
+      // Telegram has accepted the request. Cancelling the client fetch does not
+      // roll back server work, whose application is independent of its response.
+      remoteApply = held.promise.then(() => { remoteText = call.payload.text; return success(call.payload); });
+      return new Promise((resolve, reject) => {
+        const abort = () => reject(new DOMException('Client disconnected', 'AbortError'));
+        call.signal.addEventListener('abort', abort, { once: true });
+        if (call.signal.aborted) abort();
+        remoteApply.then(resolve).finally(() => call.signal.removeEventListener('abort', abort));
+      });
+    }
+    if (call.method === 'editMessageText') remoteText = call.payload.text;
+    return success(call.payload);
+  });
+  try {
+    progress = startTurnProgress(f.ctx, 101);
+    await flush(); assert.ok(remoteApply, 'Exercise an already accepted remote edit.');
+    finishing = watch((async () => {
+      await progress.stop();
+      return deliverTurnResponse(f.ctx, 101, 'Моя остановочка ✋🏽⛔️');
+    })());
+    await flush();
+    held.resolve(); await remoteApply; await flush(); await finishing.promise;
+    assert.equal(finishing.error, undefined);
+    assert.equal(remoteText, 'Моя остановочка ✋🏽⛔️', 'A server-side animation must never overwrite the terminal stop.');
+  } finally { held.resolve(); await progress?.stop(); await finishing?.promise; }
 });
