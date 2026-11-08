@@ -15,7 +15,7 @@ import { trySessionOperation } from '../src/agent/session-operation.mjs';
 import { presentationAwareRetry } from '../src/telegram/presentation-api.mjs';
 import { installUpdateHook } from '../../../overlay/bot/ext/install.mjs';
 
-async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixture' }), { overlay = true } = {}) {
+async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixture' }), { overlay = true, now = Date.now } = {}) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-menu-'));
   const previous = { ...process.env };
   let bot;
@@ -28,6 +28,7 @@ async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixture' }),
     Object.assign(process.env, previous);
     await fs.rm(home, { recursive: true, force: true });
   });
+  const restartRequests = [];
   const messages = [], edits = [], editOptions = [], deleted = [], messageOptions = [], typingSignals = [], editSignals = [], replySignals = [];
   class Harness {
     handlers = new Map(); commands = new Map(); middleware = [];
@@ -53,19 +54,19 @@ async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixture' }),
       const command = text?.match(/^\/([^@\s]+)(?:@\S+)?(?:\s+([\s\S]*))?$/);
       if (command) ctx.match = command[2] || '';
       const handler = ctx.callbackQuery ? this.handlers.get('callback_query:data')
-        : command ? this.commands.get(command[1]) : this.handlers.get(text ? 'message:text' : update.message?.photo ? 'message:photo' : update.message?.video ? 'message:video' : 'message:document');
+        : command ? this.commands.get(command[1]) || this.handlers.get('message:text') : this.handlers.get(text ? 'message:text' : update.message?.photo ? 'message:photo' : update.message?.video ? 'message:video' : 'message:document');
       const step = (i) => i < this.middleware.length ? this.middleware[i](ctx, () => step(i + 1)) : handler?.(ctx);
       return step(0);
     }
   }
-  bot = createBot({ botToken: 'fake', botId: 'default', adminId: 42, workspace: home, timezone: 'Europe/Moscow' }, { bot: new Harness(), runTurn });
+  bot = createBot({ botToken: 'fake', botId: 'default', adminId: 42, workspace: home, timezone: 'Europe/Moscow' }, { bot: new Harness(), runTurn, now, restart: () => restartRequests.push(0) });
   if (overlay) installUpdateHook(Harness, { ADMIN_ID: '42' });
   await saveState({ engine: 'cc', extAuthBypass: 'codex', ccSessionId: 'ext:codex:0199a213-81c0-7800-8aa1-bbab2a035a53', dailySpendLimit: 10 });
   const storeFile = path.join(home, '.msb/bots/default/ext-providers.json');
   await fs.writeFile(storeFile, JSON.stringify({ version: 1, active: 'codex', models: { codex: 'gpt-6.1-terra' }, efforts: { codex: 'max' } }));
   const callback = (data, uid = 42) => bot.handleUpdate({ callback_query: { id: 'q', data, from: { id: uid }, message: { message_id: 1, chat: { id: 42 } } } });
   const message = (text, uid = 42) => bot.handleUpdate({ message: { message_id: 99, text, from: { id: uid }, chat: { id: 42 } } });
-  return { home, bot, callback, message, messages, edits, editOptions, deleted, messageOptions, typingSignals, editSignals, replySignals, storeFile };
+  return { home, bot, callback, message, messages, edits, editOptions, deleted, messageOptions, typingSignals, editSignals, replySignals, storeFile, restartRequests };
 }
 
 test('explicit Back and start cancel env/auth input before ordinary text', async (t) => {
@@ -647,4 +648,72 @@ test('env parity: env list and old Cancel clear provider input in the overlay to
     await f.callback(data);
     assert.equal(getPendingAuth(42),null,'Leaving the form must clear overlay ownership before another message arrives.');
   }
+});
+
+
+test('form timeout parity: expired env input is consumed without storing it or sending it to the model', async t => {
+  let clock=1_000_000,runs=0;
+  const f=await fixture(t,async()=>{runs++;return{ok:true,text:'ordinary accepted'};},{overlay:false,now:()=>clock});
+  await f.callback('settings:env:quick:TEST_EXPIRES');clock+=600_001;
+  await f.message('fixture-late-value');
+  assert.equal((await readEnvMap()).map.has('TEST_EXPIRES'),false);
+  assert.equal(runs,0);
+  assert.equal(f.messages.at(-1),'⏳ Время на ввод переменной истекло (10 мин) — режим ввода сброшен. Начни заново: /settings → 🔑 Переменные.');
+  await f.message('ordinary task');await until(()=>runs===1);
+});
+
+test('form timeout parity: env name-to-value transition keeps the original deadline', async t => {
+  let clock=1_000_000;
+  const f=await fixture(t,undefined,{overlay:false,now:()=>clock});
+  await f.callback('settings:env:add');clock+=590_000;
+  await f.message('TEST_WHOLE_FORM');clock+=10_001;
+  await f.message('fixture-late-value');
+  assert.equal((await readEnvMap()).map.has('TEST_WHOLE_FORM'),false);
+  assert.ok(f.messages.at(-1).startsWith('⏳ Время на ввод переменной истекло'));
+});
+
+test('form timeout parity: exactly ten minutes still accepts env input; reopening starts a new deadline', async t => {
+  let clock=1_000_000;
+  const f=await fixture(t,undefined,{overlay:false,now:()=>clock});
+  await f.callback('settings:env:quick:TEST_BOUNDARY');clock+=600_000;
+  await f.message('at-boundary');assert.equal((await readEnvMap()).map.get('TEST_BOUNDARY'),'at-boundary');
+  await f.callback('settings:env:quick:TEST_BOUNDARY');clock+=600_001;
+  await f.message('too-late');assert.equal((await readEnvMap()).map.get('TEST_BOUNDARY'),'at-boundary');
+});
+
+test('form timeout parity: an expired Claude token input never changes auth or requests restart', async t => {
+  let clock=1_000_000,runs=0;
+  const f=await fixture(t,async()=>{runs++;return{ok:true,text:'ordinary accepted'};},{overlay:false,now:()=>clock});
+  const before=(await loadState()).state;
+  await f.callback('settings:auth:switch-sub');clock+=600_001;
+  await f.message('fixture_expired_auth_'+ 'x'.repeat(60));
+  assert.equal((await readEnvMap()).map.has('CLAUDE_CODE_OAUTH_TOKEN'),false);
+  assert.equal((await readEnvMap()).map.has('ANTHROPIC_API_KEY'),false);
+  assert.deepEqual((await loadState()).state,before);
+  assert.deepEqual(f.restartRequests,[]);assert.equal(runs,0);
+  assert.equal(f.messages.at(-1),'⏳ Время на ввод токена истекло (10 мин) — режим ввода сброшен. Начни заново: /settings → 🔌 Подключение.');
+  await f.message('ordinary task');await until(()=>runs===1);
+});
+
+for(const form of ['env','auth']) for(const leading of ['', '   ']) {
+  test(`form command parity: ${form} consumes an unknown slash input and cancels before the next task (${leading.length} spaces)`,async t=>{
+    let runs=0;
+    const f=await fixture(t,async()=>{runs++;return{ok:true,text:'ordinary accepted'};},{overlay:false});
+    await f.callback(form==='env'?'settings:env:quick:TEST_SLASH':'settings:auth:switch-sub');
+    await f.message(leading+'/not_a_registered_command');
+    assert.equal(f.messages.at(-1),form==='env'
+      ?'Вышел из режима ввода переменной — команда не была сохранена как значение. Отправь её ещё раз.'
+      :'Вышел из режима ввода токена — команда не была сохранена. Отправь её ещё раз.');
+    assert.equal((await readEnvMap()).map.has('TEST_SLASH'),false);
+    assert.equal((await readEnvMap()).map.has('CLAUDE_CODE_OAUTH_TOKEN'),false);
+    assert.deepEqual(f.restartRequests,[]);
+    await f.message('ordinary task');await until(()=>runs===1);
+  });
+}
+
+test('form timeout parity: timezone had no old TTL and remains editable after ten minutes',async t=>{
+  let clock=1_000_000;
+  const f=await fixture(t,undefined,{overlay:false,now:()=>clock});
+  await f.callback('settings:tz');clock+=700_000;
+  await f.message('Pacific/Honolulu');assert.equal((await loadState()).state.timezone,'Pacific/Honolulu');
 });

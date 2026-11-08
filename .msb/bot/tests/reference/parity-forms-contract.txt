@@ -10,3 +10,15 @@ New3131916 swaps semantics: delete writes immediately, confirm-delete is a no-op
 return to the list/old Cancel leaves env input active. Production handler tests
 reproduce both lost confirmation and the next task being saved as a key value.
 Synthetic keys/data only; existing services/preview/buttons must be preserved.
+
+Core env / Claude token TTL and slash input, old 54723–54750,55123,
+119119–119199 and119397–119465:
+- Strict Date.now()-startedAt >600000ms, checked on the next text only.
+- Name→value→comment transitions keep the first timestamp; reopening resets it.
+- Expired input is consumed with the old timeout reply, clears pending and is
+  never stored or sent to the model. No model turn/restart may happen.
+- trimStart().startsWith('/') in a reached timed form clears/consumes the input
+  with the old 'command was not saved' reply. Registered Bot.command handlers
+  are earlier and keep their established semantics (e.g. /status preserves form).
+- Other forms (timezone/project/bot/MCP/source) had no common TTL; do not impose
+  ten minutes on them or clear text pending when a voice message arrives.
