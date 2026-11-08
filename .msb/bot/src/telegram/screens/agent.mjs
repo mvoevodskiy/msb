@@ -1,10 +1,13 @@
 /**
  * Агент, модель, глубина, права и подключение Claude.
+ * [Routes](../routes/agent.mjs) supplies state; depth → [policy](../../agent/effort.mjs),
+ * [production checks](../../../tests/claude-effort.test.mjs). No setting writes here.
  * Навигация: [Telegram](../README.md).
  */
 import { VISIBLE_PERMISSION_MODES } from '../../../shared/permission-modes.mjs';
 import { InlineKeyboard } from 'grammy';
-import { hasClaudeAuth } from '../../state.mjs';
+import { CLAUDE_EFFORTS, isClaudeEffort, supportsClaudeEffort, claudeEffortFlag } from '../../agent/effort.mjs';
+import { hasClaudeAuth, resolveModel } from '../../state.mjs';
 import { agentDisplay } from '../../agent/display.mjs';
 import { CC_ONLY_OC_BLOCK } from '../commands.mjs';
 import { escapeHtml } from '../edit.mjs';
@@ -73,19 +76,28 @@ export function modelScreen() {
   };
 }
 
-export function effortScreen() {
+export function effortScreen(state = {}) {
+  const model = resolveModel(state);
+  const keyboard = new InlineKeyboard();
+  if (!supportsClaudeEffort(model)) return {
+    text: '<b>💭 Глубина мыслей</b>\n\nУ этой модели глубина не настраивается.',
+    keyboard: keyboard.text('« Назад', 'menu:agent'),
+  };
+  const saved = state.ccEffort || state.effort;
+  const level = isClaudeEffort(saved) ? saved : 'high';
+  const descriptions = ['быстро, минимум раздумий', 'обычная глубина', 'углублённо', 'глубже, для кода и сложных задач', 'максимум'];
+  CLAUDE_EFFORTS.forEach((value, index) => {
+    if (index > 0 && index % 3 === 0) keyboard.row();
+    keyboard.text(`${value}${level === value ? ' ✓' : ''}`, `settings:effort:set:${value}`);
+  });
+  keyboard.row().text('« Назад', 'menu:agent');
+  const normalized = ['xhigh', 'max'].filter(value => claudeEffortFlag(model, value) !== value);
+  const label = escapeHtml(state.ccModel || state.model || 'opus');
+  const note = normalized.length ? `\n\n<i>На ${label} ${normalized.join(' и ')} ${normalized.length === 1 ? 'работает' : 'работают'} как high.</i>` : '';
+  const choices = CLAUDE_EFFORTS.map((value, index) => `<b>${value}</b>: ${descriptions[index]}${value === 'high' ? ' (по умолчанию)' : ''}`).join('\n');
   return {
-    text: `<b>💭 Глубина мыслей</b>\n\nПередаётся в Claude Code как <code>--effort</code>.\n${BLANK}`,
-    keyboard: new InlineKeyboard()
-      .text('off', 'settings:effort:set:off')
-      .text('low', 'settings:effort:set:low')
-      .text('medium', 'settings:effort:set:medium')
-      .row()
-      .text('high', 'settings:effort:set:high')
-      .text('xhigh', 'settings:effort:set:xhigh')
-      .text('max', 'settings:effort:set:max')
-      .row()
-      .text('« Назад', 'menu:agent'),
+    text: `<b>💭 Глубина мыслей</b>\n\nНасколько глубоко агент обдумывает ответ.\n\n${choices}\n\n<b>Сейчас:</b> ${level}${isClaudeEffort(saved) ? '' : ' (по умолчанию)'}${note}`,
+    keyboard,
   };
 }
 

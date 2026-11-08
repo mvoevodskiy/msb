@@ -7,6 +7,7 @@
  */
 import { invalidateFirstSession } from '../../shared/session-starts.mjs';
 import { normalizePermissionMode } from '../../shared/permission-modes.mjs';
+import { isClaudeEffort } from '../agent/effort.mjs';
 import { updateState } from '../state.mjs';
 
 export const MODEL_MAP = {
@@ -28,16 +29,13 @@ export async function applyModelFamily(family) {
 }
 
 export async function applyEffort(value) {
+  if (!isClaudeEffort(value)) return false;
   await updateState((s) => {
-    if (value === 'off') {
-      delete s.ccEffort;
-      delete s.effort;
-    } else {
-      s.ccEffort = value;
-      s.effort = value;
-    }
+    s.ccEffort = value;
+    s.effort = value;
     return s;
   });
+  return true;
 }
 
 export async function applyPermMode(value) {

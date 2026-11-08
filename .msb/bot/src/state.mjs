@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { claudeEffortFlag } from './agent/effort.mjs';
 import path from 'node:path';
 import { ensureDir, statePath } from './paths.mjs';
 
@@ -11,6 +12,7 @@ import { ensureDir, statePath } from './paths.mjs';
  * Путь/profile → [paths](./paths.mjs), env CRUD → [env/store](./env/store.mjs).
  * Отдельные provider IDs/model/effort → [ext store](../../../overlay/bot/ext/store.mjs);
  * переключение бесед → [provider sessions](../../../overlay/bot/ext/provider-sessions.mjs).
+ * Effort flag (без записи preference) → [Claude policy](./agent/effort.mjs).
  * Проверки: [paths/state](../tests/paths-state.test.mjs), [session races](../tests/turn-lifecycle.test.mjs).
  */
 export async function loadState(env = process.env) {
@@ -83,9 +85,7 @@ export function resolveModel(state = {}) {
 }
 
 export function resolveEffort(state = {}) {
-  const e = state.ccEffort || state.effort;
-  if (!e || e === 'off') return undefined;
-  return e;
+  return claudeEffortFlag(resolveModel(state), state.ccEffort || state.effort);
 }
 
 /** UI permissionMode → Claude CLI --permission-mode (CONTRACT-agent-cc). */

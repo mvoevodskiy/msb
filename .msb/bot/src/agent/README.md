@@ -78,3 +78,13 @@ changes no native rights. Shared [mode vocabulary](../../shared/permission-modes
 keeps the old visible choices/fallback; [production tests](../../tests/agent-modes.test.mjs)
 check callback writes and actual child argv/prompt. Plan delivery/continuation is
 verified in its own Telegram stage, not by argv tests alone.
+
+
+[Claude effort policy](effort.mjs) validates the old five preferences and resolves
+only the outgoing flag from the selected concrete CLI model. Haiku4.5 omits it;
+non-Opus xhigh/max fall back to high; pinned Opus4.6 retains max, maps xhigh to high.
+[state.resolveEffort](../state.mjs) is shared by turns and compact, while the
+[screen](../telegram/screens/agent.mjs) keeps raw preference and states the fallback.
+No saved preference/session/native config is migrated. Codex effort remains in
+its adapter/store; model catalog/CLI-version locks are a separate pending audit.
+[UI/argv/compact checks](../../tests/claude-effort.test.mjs).
