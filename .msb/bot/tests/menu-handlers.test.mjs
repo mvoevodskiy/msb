@@ -574,3 +574,21 @@ test('/compact presents a successful no-op without inventing a compaction or an 
   await until(() => f.edits.some(value => value === text));
   assert.ok(!f.edits.some(value => /успешно сжат|Не получилось/.test(value)));
 });
+
+test('reply stop parity: stop reply precedes timezone validation and leaves the form ready for its value', async t => {
+  let observed;
+  const f = await fixture(t, async ({ signal }) => {
+    observed = signal;
+    await new Promise(resolve => { signal.addEventListener('abort', resolve, { once: true }); });
+    return { ok: false, error: 'aborted', text: 'Остановлено.' };
+  }, { overlay: false });
+  await f.message('active'); await until(() => observed);
+  try {
+    await f.callback('settings:tz');
+    await f.bot.handleUpdate({ message: { message_id: 123, text: 'стоп', from: { id: 42 }, chat: { id: 42 }, reply_to_message: { text: 'Думаю…', from: { id: 99 } } } });
+    assert.equal(observed.aborted, true);
+    assert.ok(!f.messages.some(text => text.startsWith('Неизвестный часовой пояс.')));
+    await f.message('Pacific/Honolulu');
+    assert.equal((await loadState()).state.timezone, 'Pacific/Honolulu');
+  } finally { if (!observed.aborted) await f.message('/stop'); }
+});

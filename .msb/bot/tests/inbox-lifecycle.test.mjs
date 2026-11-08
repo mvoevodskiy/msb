@@ -224,3 +224,25 @@ test('inbox parity: each queued text keeps its own reply context after neighbori
   assert.ok(p.indexOf('third-quote') < p.indexOf('third-question'));
   assert.equal(f.maxActive, 1);
 });
+
+test('reply stop parity: replying стоп aborts active work but retains the waiting queue', async t => {
+  const first = gate();
+  const f = await fixture(t, async ({ signal }, n, holds) => { if (n === 1) { holds.push(first); await first.promise; } return { ok: !signal.aborted, error: signal.aborted ? 'aborted' : undefined, text: `answer-${n}` }; });
+  await f.input('first'); await until(() => f.prompts.length === 1, 'active turn');
+  await f.input('retained task');
+  await f.input('СтОп', false, 42, undefined, { reply_to_message: { from: { id: 99 }, text: 'Думаю…' } });
+  assert.equal(f.signals[0].aborted, true, 'Legacy reply-stop must reach the current controller.');
+  first.resolve(); await until(() => f.prompts.length === 2, 'the existing queue survives reply-stop');
+  assert.deepEqual(f.prompts, ['first', 'retained task']);
+  assert.ok(f.calls.some(c => c.text === 'Моя остановочка ✋🏽⛔️'));
+  assert.equal(f.maxActive, 1);
+});
+
+test('reply stop parity: idle reply стоп is consumed silently, while plain стоп remains an agent input', async t => {
+  const f = await fixture(t);
+  await f.input('стоп', false, 42, undefined, { reply_to_message: { from: { id: 99 }, text: 'старый ответ' } });
+  await pause(20);
+  assert.deepEqual(f.prompts, []); assert.deepEqual(f.calls, []);
+  await f.input('стоп'); await until(() => f.prompts.length === 1, 'plain non-reply text');
+  assert.deepEqual(f.prompts, ['стоп']);
+});
