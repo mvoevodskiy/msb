@@ -1,0 +1,59 @@
+Сведения о сервисах в prompt: прежний каталог и действующий выбор STT
+
+База8f7290a, веткаcodex/open-core-reference-tests. Эталонmaster
+00f081f2220d0e6d3a186e8e1bb447b57acd6ebf, .msb/bot/vendor/deobfuscated.js,
+readableblob73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11. Читать git show BLOB |
+sed -n '8464,8534p;8928,8955p;9156,9245p;44245,44252p;52112,52124p'.
+vHA8469–8489/GZ8492–8528:19MG service keys/labels, active по truthy process.env,
+inactive hints для12каталожных строк в vHA. Known MG независимо от .env list.
+zy52112–52124 наполняет customkeyset/comments, old g954424–54447 mergeglobal/bot.
+Custom: registered key, truthy process.env, кромеMG/pp и t5systemkeys44249.
+GITHUB_TOKEN_FINE/CLASSIC/X_BEARER_TOKEN/PROXYAPI_KEY не являются MG или t5;
+не исключать обычный custom service только потому, что у него есть quickbutton.
+nHA8933–8944 добавляет информацию о сервисах в Claude system prompt; GZ
+используется другими promptbuilders19306–19317/29610–29617. Значения и previews
+не вставляются в каталог, это не API health/auth check.
+
+Новый полный путь
+src/agent/turn→system-prompt→env/prompt→runClaudeTurn argv либо temporaryfile.
+NativeClaude shim passthrough сохраняет append arguments. Codex shim runAlternate
+использует parse-args.buildPrompt и отдаёт текст существующему adapter. Один
+общий источник metadata, без второго provider-specific каталога или API handler.
+Сейчас KNOWN исключает все19MG, а QUICK также обычные service customkeys.
+
+Адаптация по фактической ответственности
+Каталог содержит19прежних key/label и hintflags. Не выдавать старые длинные
+описания API/Haiku scoring/Voyage-memory или встроенные tools за работающие
+backends нового ядра; catalogpresence не доказывает эти интеграции. Старые
+Anthropic always-search/check_capabilities/cleanEnv/SERVICES.md claims не следуют
+из нового пути и не переносятся как факты. Prompt передаёт имена/метки/configstatus,
+не values, authуспех или обещание работы API. Существующий неподтверждённый текст
+«Все ключи доступны в Bash через $ИМЯ» тоже не подходит всем поддержанным именам:
+1A существует в process env, но $1A — positionalparam1 + A. Native CLI может
+фильтровать shell env. Metadata не обещает универсальную shell expansion.
+
+Deepgram требует адаптации, не буквального process-only копирования.
+В новом ядре реальным выбором STT владеет src/media/stt.resolveSttConfig:
+process→perbot→shared, explicit-empty blocksfallback, чтение не меняет processenv.
+На JAR1 в startup env нет DEEPGRAM_API_KEY/STT_COMMAND (прочитаны только bool);
+предыдущие реальные voice проверки прошли через существующий filefallback.
+Поэтому Deepgram keypresence брать из того же resolver, не новой копии lookup.
+Command+key означает лишь ключ задан, не выбор Deepgram; command-only ключа нет.
+STT_NOT_CONFIGURED→ключа нет. Иная ошибка чтения→фиксированный unknownstatus,
+без err.message/filename/value и без срыва обычного текстового хода.
+Для остальныхMG отражать именно processenvpresence, не отсутствие ключа вообще
+во всех возможных loaders. Generic globalenvloader/migration/authchanges нет.
+
+Custom metadata остаётся на принятом perbot пути. Кроме knownMG/protected,
+сохранять исключение внутренних PULT_* quicksettings: это конфигурация панели,
+не новая service capability. Globalcustom visibility остаётся отдельным аудитом.
+Реальные serviceAPI, полная oldtool check_capabilities и recipes/другие backends
+не считаются восстановленными этим узким metadata этапом.
+
+Проверки: все19keys/labels, truthy/empty/missing,12hintflags, runtime-only known,
+file-only не является processactive для genericMG; customquick controls,
+неутечка значений/превью и отсутствие неподтверждённых builtin/shell claims;
+STT process/bot/shared/empty/command/unknown без изменений env/files и API;
+production runAgentTurn→argv/file→Claude/Codex buildPrompt с fakechild/networkoff,
+обычный ход при STTreaderror. Contract→RED→fix отдельными подробными commits.
+JAR1 до нового final gate не обновляется. Code-only rollback не меняет секреты.
