@@ -55,3 +55,11 @@ for(const scenario of ['error-first','abort-first','foreign','sentinel','reset',
  if(scenario==='throws'){assert.equal(r.error,'PROJECT_NOT_FOUND');assert.deepEqual(r.calls,[]);}
  assert.equal(r.state.fixturePreserved,true);
 });
+
+for(const scenario of ['foreign-existing','sentinel-existing'])test('session ledger control: '+scenario+' cannot replace the known provider ID or metadata',()=>{
+ const r=run('codex',scenario);assert.equal(r.state.ccSessionId,r.initial.ccSessionId);assert.deepEqual(r.state.sessionHistory,r.initial.sessionHistory);assert.equal(r.state.sessionEpoch,r.initial.sessionEpoch);
+});
+
+for(const scenario of ['sentinel-first','sentinel-existing'])test('session ledger control: Claude '+scenario+' cannot persist a raw service placeholder as a native ID',()=>{
+ const r=run('claude',scenario);assert.equal(r.state.ccSessionId,r.initial.ccSessionId);assert.deepEqual(r.state.sessionHistory,r.initial.sessionHistory);
+});

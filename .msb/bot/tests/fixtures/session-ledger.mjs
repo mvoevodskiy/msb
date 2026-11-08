@@ -22,7 +22,7 @@ try{
  const {applyProjectSelection}=await import('../../src/projects/selection.mjs');
  const seedRow=n=>({id:id(n),engine:'cc',providerId:provider,project:'alpha',firstPrompt:'seed-first-'+n,startedAt:'2026-01-01T00:00:00Z',lastActivity:'2026-01-01T00:00:00Z',messageCount:3});
  const initial={engine:'cc',extAuthBypass:provider,activeProject:'alpha',sessionEpoch:0,ccModel:'opus',fixturePreserved:true};
- if(['error-existing','abort-existing','update-order'].includes(scenario)){initial.ccSessionId=id(10);initial.sessionHistory=[seedRow(10),seedRow(11)];}
+ if(['error-existing','abort-existing','update-order','foreign-existing','sentinel-existing'].includes(scenario)){initial.ccSessionId=id(10);initial.sessionHistory=[seedRow(10),seedRow(11)];}
  if(scenario==='limit'){initial.ccSessionId=id(99);initial.sessionHistory=Array.from({length:100},(_,i)=>seedRow(i));}
  if(scenario==='throws')initial.activeProject='missing';
  await saveState(initial);
@@ -37,8 +37,8 @@ try{
     if(scenario==='provider-away')await updateState(s=>{switchProviderSession(s,currentSessionProvider(s),'claude');s.extAuthBypass='claude';return s;});
     if(scenario==='reset')await updateState(s=>{invalidateFirstSession(s);delete s.ccSessionId;s.sessionEpoch++;return s;});
     if(scenario==='project-reset')await updateState(s=>applyProjectSelection(s,'beta'));
-    const native=scenario==='sentinel'?'ext:codex:norestart':scenario==='foreign'?'ext:qwen:foreign-ledger-session':scenario==='limit'?id(201):id(10);
-    const actual=scenario==='foreign'?'qwen':provider;
+    const native=scenario.startsWith('sentinel')?(provider==='claude'?'unknown':'ext:codex:norestart'):scenario.startsWith('foreign')?'ext:qwen:foreign-ledger-session':scenario==='limit'?id(201):id(10);
+    const actual=scenario.startsWith('foreign')?'qwen':provider;
     child.stdout.write(JSON.stringify({type:'system',subtype:'init',session_id:native,provider_id:actual,model:'fixture-model'})+'\n');
     if(scenario.startsWith('abort-')){controller.abort();return;}
     if(scenario==='tool-only')child.stdout.write(JSON.stringify({type:'assistant',message:{content:[{type:'tool_use',name:'Read',input:{file_path:'fixture'}}]}})+'\n');

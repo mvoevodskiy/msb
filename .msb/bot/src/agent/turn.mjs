@@ -12,7 +12,8 @@ import { conversationalModePrompt } from './mode-prompt.mjs';
 import { projectLocations, resolveProjectCwd } from '../projects/paths.mjs';
 import { buildSystemPrompt } from './system-prompt.mjs';
 import { readSessionContext } from './context.mjs';
-import { claimFirstSession, completeFirstSession, releaseFirstSession } from '../../shared/session-starts.mjs';
+import { claimFirstSession, releaseFirstSession } from '../../shared/session-starts.mjs';
+import {applySessionResult} from './session-result.mjs';
 
 /**
  * runAgentTurn: prompt/signal → выбранный CLI → результат и guarded session/usage.
@@ -21,7 +22,8 @@ import { claimFirstSession, completeFirstSession, releaseFirstSession } from '..
  * native dispatch → [provider runner](../../../../overlay/bot/ext/shim/run-turn.mjs).
  * Captured project cwd → [projects](../projects/paths.mjs); base context stays global.
  * Контекст → [system prompt](./system-prompt.mjs), [metadata](./context.mjs);
- * владелец записи сессии → [state](../state.mjs), [first-start token](../../shared/session-starts.mjs).
+ * владелец записи сессии → [result transaction](./session-result.mjs) / [state](../state.mjs),
+ * [first-start token](../../shared/session-starts.mjs), [description ledger](../sessions/ledger.mjs).
  * Проверки: [polling/session fences](../../tests/turn-lifecycle.test.mjs),
  * [provider isolation](../../../../overlay/bot/ext/tests/reference/provider-switch.test.mjs),
  * [project cwd](../../tests/project-execution.test.mjs), [project races](../../tests/project-races.test.mjs).
@@ -107,29 +109,8 @@ export async function runAgentTurn({
   });
 
   result.context = await readSessionContext(result.sessionId, env);
-  if (result.sessionId && !result.isError && !result.aborted && !signal?.aborted) {
-    await updateState((s) => {
-      if (firstSession) {
-        if (signal?.aborted) { result.context = null; return s; }
-        const sameTurn = s.ccSessionId === state.ccSessionId && (s.sessionEpoch || 0) === (state.sessionEpoch || 0)
-          && s.extAuthBypass === state.extAuthBypass;
-        const placement = completeFirstSession(s, firstSession, result);
-        if (placement !== 'active' || !sameTurn) result.context = null;
-        // A parked/late first ID must not overwrite the active provider's usage.
-        if (placement === 'active' && sameTurn) s.lastCcUsage = { ...result.usage, ...result.context, model: result.model,
-          sessionId: result.sessionId, updatedAt: new Date().toISOString() };
-        return s;
-      }
-      // /newtask during a running turn must not resurrect the old session.
-      if (signal?.aborted || s.ccSessionId !== state.ccSessionId || (s.sessionEpoch || 0) !== (state.sessionEpoch || 0) || s.extAuthBypass !== state.extAuthBypass) {
-        result.context = null;
-        return s;
-      }
-      s.ccSessionId = result.sessionId;
-      s.lastCcUsage = { ...result.usage, ...result.context, model: result.model,
-        sessionId: result.sessionId, updatedAt: new Date().toISOString() };
-      return s;
-    }, env);
+  if (result.sessionId) {
+    await updateState(s=>applySessionResult(s,{snapshot:state,reservation:firstSession,result,prompt,signal}),env);
   }
 
   if (signal?.aborted || result.aborted) {

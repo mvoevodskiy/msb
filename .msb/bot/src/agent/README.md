@@ -15,7 +15,7 @@ Telegram UI, progress и отправка ответа остаются в со�
 | Допуск по auth, core engine, модель/effort/права | [`turn.mjs`](turn.mjs): `runAgentTurn`; [`state.mjs`](../state.mjs): `hasClaudeAuth`, `resolveModel`, `resolveEffort`, `resolvePermMode` | [paths-state](../../tests/paths-state.test.mjs), [turn-lifecycle](../../tests/turn-lifecycle.test.mjs) |
 | Сформировать prompt из базовых owner files и выбранного cwd | [`system-prompt.mjs`](system-prompt.mjs) → [проектный контекст](../projects/context.mjs) | [project-execution](../../tests/project-execution.test.mjs), [project-context](../../tests/project-context.test.mjs); полнота всех old owner files отдельно не доказана |
 | Передать stream-события в progress и вернуть итог | [`runAgentTurn`](turn.mjs) → [`runClaudeTurn`](claude.mjs) | [voice-progress](../../tests/reference/voice-progress.test.mjs), [turn-lifecycle](../../tests/turn-lifecycle.test.mjs) |
-| Сохранить session ID после успешного хода, который не был отменён | [`runAgentTurn`](turn.mjs): guard по signal, session ID, `sessionEpoch`, `extAuthBypass`; [`updateState`](../state.mjs) | [turn-lifecycle](../../tests/turn-lifecycle.test.mjs), [state-concurrency](../../tests/state-concurrency.test.mjs) |
+| Сохранить ID/usage и описание сессии в одной транзакции | [`runAgentTurn`](turn.mjs) → [`applySessionResult`](session-result.mjs) → [`ledger`](../sessions/ledger.mjs), через [`updateState`](../state.mjs) | [session-ledger](../../tests/session-ledger.test.mjs), [turn-lifecycle](../../tests/turn-lifecycle.test.mjs), [state-concurrency](../../tests/state-concurrency.test.mjs) |
 | Сжать текущую сессию по провайдеру | [`compactSession`](compact.mjs) → Claude stream boundary или [Codex app-server](../../../../overlay/bot/ext/compact-codex.mjs) | [compact-routing](../../tests/compact-routing.test.mjs), [compact-codex](../../../../overlay/bot/ext/tests/compact-codex.test.mjs) |
 
 Первый ход без ID атомарно резервирует `pendingCcSessionStarts[provider]` через
@@ -124,3 +124,20 @@ SOUL/USER/MEMORY/CLAUDE/TELEGRAM-TOOLS остаются из base. Текуща�
 после смены провайдера; завершение не удалит token нового хода. [Race-проверки](../../tests/project-races.test.mjs)
 используют production runner/state и подменённый модельный процесс. Они не доказывают
 особенности автоматического чтения CLAUDE/AGENTS настоящими native CLI.
+
+
+## Журнал описаний сессий
+
+[Session result](session-result.mjs) сохраняет прежние ownership fences, active/
+parked first-placement и usage. В той же транзакции [ledger](../sessions/ledger.mjs)
+индексирует ID, captured provider/project, первые/последние200символов и число
+вернувшихся engine passes (limit100). Это не импорт или просмотр native transcripts.
+Успешные первые active/parked IDs учитываются; failed/aborted first ID, foreign/
+sentinel/stale/reset результат не создают обход через историю. Вернувшаяся ошибка
+или отмена с тем же уже известным ID может обновить метаданные попытки только при
+неизменных fences; активная беседа и usage при этом не заменяются. Tool-only и
+фоновые ходы используют тот же путь, как old tE. Исходный Pult/Telegram journal
+остаётся отдельным; его [redaction](../history/preview.mjs) теперь общая, без смены
+логики. Контракт и ограничения: [sessions reference](../../tests/reference/parity-sessions-contract.txt).
+Список/выбор подключаются отдельным этапом; запись ledger сама по себе не доказывает
+работу menu/resume/native CLI. Реальные пользовательские истории не мигрируются.

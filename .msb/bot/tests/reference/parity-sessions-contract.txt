@@ -132,3 +132,25 @@ known-IDerror/abort, redaction/200bound и acceptedprovider-awayfirst воспр
 throw controls ужеPASS и должнытакимиостаться. НетреальныхCLI/API/HOMEисторий.
 Команда: node --test --test-reporter=tap .msb/bot/tests/session-ledger.test.mjs.
 UI+ledger checkpoints вместе52cases,12PASS/40RED; этоещёнеготовыйrelease.
+
+
+Writer checkpoint (до UI/LINUX/deploy)
+Runner ledger26GREEN плюсfirst-session/turn-lifecycle/turn-context/turn-history/
+project-races:49PASS,0FAIL/cancelled/skip. Два additional existing foreign/sentinel
+ID контроля на b47runtime:0PASS/2assertFAIL, затемGREEN; прежний existing-IDsave
+не валидировалresult namespace/provider. applySessionResult защищает и ID, иledger.
+SharedhistoryPreview перенесён без сменыбайтовfunctionbody; прежнийexport остаётся.
+Accepted active/parked first result и unchanged existing fence пишутcaptured
+metadata. Known-ID returned abort/error сохраняют old attempt count смысл безID/
+usageзамены. UI28 всёещёRED; это intermediate implementation, неготовыйrelease.
+
+
+Writer review/final focused checkpoint
+Sol49PASS нашёл P2rawClaude serviceplaceholder IDs (sharedvalidatorраньшеразрешал
+любуюnonextстроку). Newfirst/existingrunner+purematrix3RED→3GREEN, независимый
+Sol3PASS/resolved. Отдельный commonvalidatorfixe8d179c сохраняетrawIDcompat,
+ноиспользуетсуществующийsentineldenylist. Existingresult gate/ledger использует
+его черезновуюresulttransaction; не добавленыUUIDwhitelist/nativeAPI/massreset.
+Expandedledger28+sharedstarts6+first/lifecycle/context/history/projectraces:
+57PASS,0FAIL/cancelled/skip. UI52суммарныйпредыдущийRED — историческийcheckpoint;
+текущийwriterGREEN не делает ещёнеподключённоеmenu/resume готовым квыкладке.

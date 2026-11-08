@@ -4,15 +4,8 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { botRoot } from '../paths.mjs';
 
-export function historyPreview(value) {
-  return String(value ?? '').replace(/[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g, '')
-    .replace(/-----BEGIN [^-]*(?:PRIVATE KEY)[^-]*-----[\s\S]*?(?:-----END [^-]+-----|$)/g, '[скрыто]')
-    .replace(/\b\d{6,12}:[A-Za-z0-9_-]{30,}\b/g, '[скрыто]')
-    .replace(/\b(?:sk-|dg_)[A-Za-z0-9_-]{16,}\b/g, '[скрыто]')
-    .replace(/(\b(?:password|passwd|token|secret|api[_-]?key|authorization)\b\s*[:=]\s*)(?:"[^"]*"|'[^']*'|[^\s,;]+)/gi, '$1[скрыто]')
-    .replace(/([?&](?:token|key|tg|code|secret)=)[^&#\s]+/gi, '$1[скрыто]')
-    .slice(0, 1000);
-}
+import {historyPreview} from '../history/preview.mjs';
+export {historyPreview};
 
 /** Append errors are deliberately isolated from the Telegram response/stop lifecycle. */
 export async function beginTurnHistory({ input, env = process.env, now = Date.now, io = fs, log = console.error } = {}) {
