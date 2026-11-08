@@ -17,7 +17,7 @@ export const MODEL_MAP = {
 };
 
 export async function applyModelFamily(family) {
-  const model = MODEL_MAP[family];
+  const model = Object.hasOwn(MODEL_MAP, family) ? MODEL_MAP[family] : null;
   if (!model) return null;
   await updateState((s) => {
     s.ccModel = family;

@@ -34,3 +34,12 @@ test('unknown Claude model is a no-op; real permission change remains an explici
   assert.deepEqual(after.parkedCcSessions, state.parkedCcSessions);
   assert.equal(after.ccModel, state.ccModel);
 });
+
+
+test('prototype property names are not Claude model choices', async t => {
+  const { f, state } = await claude(t, true);
+  for (const family of ['constructor', 'toString', '__proto__']) {
+    await f.callback(`settings:model:set:${family}`);
+    assert.deepEqual((await loadState()).state, state, family);
+  }
+});
