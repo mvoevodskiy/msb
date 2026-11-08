@@ -1,8 +1,8 @@
 /** Native OS-helper callbacks. JAR1 keeps these disabled in its runtime profile. */
-import { engineStatusSnapshot, submitRequest, waitRequestResult } from './client.mjs';
+import { engineStatusSnapshot, submitRequest, waitRequestResult, refreshEngineStatus } from './client.mjs';
 import { nativeEnginesScreen } from './screen.mjs';
 const ACTIONS = new Set(['eng:home', 'eng:add', 'eng:mig', 'eng:status', 'eng:oc:on', 'eng:oc:off']);
-export async function handleNativeEngineCallback({ data, state, show, providerView }) {
+export async function handleNativeEngineCallback({ data, state, show, providerView, signal }) {
   if (!ACTIONS.has(data)) return false;
   const engineMenu = async snapshot => nativeEnginesScreen(state, snapshot, await providerView?.());
   await (async () => {
@@ -15,11 +15,7 @@ export async function handleNativeEngineCallback({ data, state, show, providerVi
   }
   if (data === 'eng:status') {
     try {
-      const { id } = await submitRequest('status', {
-        bot_id: process.env.MSB_BOT_ID || 'default',
-      });
-      const result = await waitRequestResult(id, { timeoutMs: 20_000 });
-      const snap = await engineStatusSnapshot();
+      const { result, snapshot: snap } = await refreshEngineStatus({ signal });
       const note = result
         ? `\n\nЗаявка <code>${result.code}</code> (${result.result})`
         : '\n\n⚠️ Нет ответа helper за 20с';

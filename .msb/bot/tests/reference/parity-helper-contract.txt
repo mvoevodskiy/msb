@@ -18,3 +18,19 @@ still replaces request can violate this invariant; no exactly-once claim is made
 A filesystem that cannot provide no-replace publication must fail, never fall back
 to replacing rename. Status fixture consumers must actually unlink the request,
 just like the helper, while retaining their result keyed by id.
+
+Status UI/read lifecycle (existing eng:status, not a new OS action):
+1e54cdb reproduced4RED: helper wait holds the callback, late status overwrites
+new core/overlay navigation, shutdown leaves the UI observer. A later independent
+review reproduced accepted edit ordering after client abort (intermediate6PASS/1RED).
+The existing accepted progress fix b5a781d already establishes the bounded drain
+pattern: do not release newer delivery merely because a fetch was cancelled.
+Current callback view and transport delivery are distinct lifetimes. A new view
+aborts old status observation/retry pauses; accepted edit is awaited in the shared
+per-chat lane, physical attempts bounded15s. Original autoRetry remains for the
+still-current view. Scope follows detached overlay continuations, not whichever
+callback happens to be current later. Handler return does not end the selected
+provider view. Existing mutations still complete after navigation; only rendering
+and read observation are cancelled. Bot stop drains tasks and deliveries.
+This is not proof of server application after transport timeout or live native
+OS controls on JAR1; that profile deliberately keeps the native UI disabled.

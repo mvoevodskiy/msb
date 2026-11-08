@@ -144,3 +144,23 @@ Polling получает управление до окончания испол
 
 Переход к модели: [общий ход агента](../agent/README.md#общий-ход).
 Границы эталонных проверок: [reference README](../../tests/reference/README.md).
+
+
+## Долгое чтение статуса и навигация
+
+[Router](router.mjs) оставляет read-only `eng:status` в tracked task, чтобы polling
+принимал следующую команду. [Shared callback scope](../../shared/callback-renders.mjs)
+один для core/overlay и сохраняется через async continuation. Новый callback или
+/start, /settings, /stop отменяет прежний UI read/backoff; уже разрешённые записи
+настроек/системные действия этим не отменяются. Scope последнего выбранного экрана
+остаётся current после handler return, пока пользователь не выбрал другой.
+
+Telegram мог уже принять edit: его нельзя прервать navigation signal и считать
+доставку оконченной. Общая per-chat delivery lane дожидается отправленного edit
+перед новым экраном. [API policy](presentation-api.mjs) сохраняет штатный autoRetry,
+но разделяет signal retry/read и отдельную15с попытку транспорта. Проверка scope
+перед повтором/приёмом следующего render исключает obsolete delivery/retry;
+после transport timeout серверное применение остаётся внешней неопределённостью.
+[Bot stop](bot.mjs) отменяет наблюдателей и drains tasks/lane перед возвратом.
+Проверки: [production callbacks](../../tests/callback-refresh.test.mjs),
+[detached overlay scope](../../tests/callback-scope.test.mjs). Новых кнопок нет.

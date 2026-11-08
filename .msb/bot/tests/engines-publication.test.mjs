@@ -92,3 +92,16 @@ test('engine publication: unsupported no-replace primitive fails and cleans temp
   await assert.rejects(f.publish(), { code: 'EOPNOTSUPP' });
   assert.deepEqual(await fs.readdir(engineDir(f.env)), []);
 });
+
+test('engine publication: cancelling a waiting observer removes only its unpublished temp', async t => {
+  const f = await fixture(t), first = await f.publish();
+  const link = fs.link.bind(fs);let attempted;
+  const waiting = new Promise(resolve => { attempted = resolve; });
+  t.mock.method(fs, 'link', (...args) => { attempted();return link(...args); });
+  const controller = new AbortController();
+  const second = f.publish({ signal: controller.signal });
+  const refused = assert.rejects(second, { name: 'AbortError' });
+  await waiting;controller.abort();await refused;
+  assert.equal(JSON.parse(await fs.readFile(f.slot, 'utf8')).id, first.id);
+  assert.deepEqual(await fs.readdir(engineDir(f.env)), ['request']);
+});

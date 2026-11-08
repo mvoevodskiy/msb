@@ -3,6 +3,7 @@
  * Admission failure/cross-chat checks: [input boundary](../tests/input-boundary.test.mjs).
  * Навигация: [Обвязка](../README.md).
  */
+import { beginCallbackRender, runCallbackScope } from '../../shared/callback-renders.mjs';
 import { registerEngineProviderView } from '../engine-menu.mjs';
 import { registerCompactProvider } from '../compact-codex.mjs';
 import { clearPendingAuth } from '../auth.mjs';
@@ -24,6 +25,7 @@ export function installUpdateHook(BotClass, env = process.env) {
     }
     try {
       if (update?.callback_query) {
+        const render = beginCallbackRender(this, event);
         const startsForm = [
           'settings:auth:switch-sub', 'setup:subscription', 'settings:env:add',
           'settings:tz', 'menu:newproject', 'mon:add-hint', 'settings:bots:add', 'ext:ssh:local:edit',
@@ -38,7 +40,7 @@ export function installUpdateHook(BotClass, env = process.env) {
             this[Symbol.for('msb.cancelPendingInput')]?.(chatId);
           }
         }
-        const handled = await handleCallback(this, event, closedCore);
+        const handled = await runCallbackScope(render, () => handleCallback(this, event, closedCore));
         if (handled) return;
       }
       if (update?.message?.text) {

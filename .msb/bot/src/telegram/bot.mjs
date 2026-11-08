@@ -1,8 +1,10 @@
+import { openCallbackRenders, stopCallbackRenders, cancelCallbackRenders, drainCallbackTasks } from '../../shared/callback-renders.mjs';
 import { invalidateFirstSession } from '../../shared/session-starts.mjs';
 /**
  * createBot собирает входящие Telegram события и lifecycle хода; UI не хранит
  * provider session отдельно. Вход: [main](../main.mjs), owner → [auth](./auth.mjs).
  * Текст/voice → [inbox](./inbox.mjs) → executeTurn → [agent](../agent/turn.mjs).
+ * UI read/delivery lifecycle → [shared callbacks](../../shared/callback-renders.mjs).
  * Кнопки → [router](./router.mjs) → routes/; вид → [screens](./screens.mjs).
  * Формы → [dispatcher](./forms.mjs); pending в этом процессе; записи → [state](../state.mjs) / [env](../env/store.mjs).
  * Индикация → [progress](./progress.mjs), итог → [response](./response.mjs),
@@ -79,20 +81,22 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
 
   let stopping = false;
   const startPolling = bot.start.bind(bot);
-  bot.start = (...args) => { stopping = false; inbox.open(); return startPolling(...args); };
+  bot.start = (...args) => { stopping = false; openCallbackRenders(bot); inbox.open(); return startPolling(...args); };
   const stopPolling = bot.stop.bind(bot);
   bot.stop = async () => {
     stopping = true;
+    stopCallbackRenders(bot);
     const turns = [...unfinished];
     const drainInbox = inbox.shutdown();
     for (const turn of turns) if (!turn.completed) turn.controller.abort();
     try { await stopPolling(); }
-    finally { await Promise.allSettled([...turns.map((turn) => turn.done), drainInbox]); }
+    finally { await Promise.allSettled([...turns.map((turn) => turn.done), drainInbox, drainCallbackTasks(bot)]); }
   };
 
   bot.use(adminGuard(cfg.adminId));
   bot[Symbol.for('msb.cancelPendingInput')] = (chatId) => pending.delete(chatId);
   bot.use(async (ctx, next) => {
+    if (/^\/(?:start|settings|stop)(?:@[\w_]+)?(?:\s|$)/.test(ctx.message?.text || '')) cancelCallbackRenders(bot, ctx.chat?.id);
     if (/^\/start(?:@[\w_]+)?(?:\s|$)/.test(ctx.message?.text || '')) pending.delete(ctx.chat?.id);
     return next();
   });

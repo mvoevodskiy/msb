@@ -6,8 +6,11 @@
  * задачи → [autonomy](./routes/autonomy.mjs), источники → [monitor](./routes/monitor.mjs).
  * Остальные семейства видны в прямых imports ниже; rendering → [screens](./screens.mjs).
  * Состояние → [state](../state.mjs), shared pending принадлежит createBot.
+ * Presentation/read lifecycle → [shared scopes](../../shared/callback-renders.mjs),
+ * [async status checks](../../tests/callback-refresh.test.mjs).
  * Проверка переходов/отмены/owner: [menu handlers](../../tests/menu-handlers.test.mjs).
  */
+import { beginCallbackRender, runCallbackScope, trackCallbackTask } from '../../shared/callback-renders.mjs';
 import { loadState } from '../state.mjs';
 import { editOrReply } from './edit.mjs';
 import { enginesScreen } from './screens.mjs';
@@ -46,21 +49,33 @@ export async function handleCallback({ bot, cfg, pending, ctx }) {
   const data = ctx.callbackQuery.data || '';
   const chatId = ctx.chat?.id;
   const msgId = ctx.callbackQuery.message?.message_id;
+  const scope = beginCallbackRender(bot, ctx.callbackQuery);
+  // Only read-only status is detached. Authorized mutation routes retain their
+  // existing execution order; navigation invalidates their rendering, not writes.
+  const deferred = data === 'eng:status';
   await ctx.answerCallbackQuery().catch(() => {});
   if (!chatId) return;
   if (['menu:back', 'menu:close', 'menu:agent', 'menu:settings', 'settings:back', 'mon:back', 'settings:bots:cancel'].includes(data)) pending.delete(chatId);
-
-  const show = async (view) => editOrReply(bot.api, chatId, msgId, view.text, view.keyboard);
-  const { state } = await loadState();
-  const engineMenu = async (snapshot) => enginesScreen(state, snapshot,
-    await bot[Symbol.for('msb.engineProviderView')]?.(state));
-
-  const context = { bot, cfg, pending, ctx, data, chatId, msgId, show, state, engineMenu };
-  for (const route of ROUTES) {
-    const result = await route(context);
-    if (result !== UNHANDLED) return result;
+  const show = async view => {
+    if (!scope.isCurrent()) return;
+    return editOrReply(bot.api, chatId, msgId, view.text, view.keyboard, 'HTML', scope);
+  };
+  const dispatch = async () => {
+    if (deferred && !scope.isCurrent()) return;
+    const { state } = await loadState();
+    const engineMenu = async snapshot => enginesScreen(state, snapshot,
+      await bot[Symbol.for('msb.engineProviderView')]?.(state));
+    const context = { bot, cfg, pending, ctx, data, chatId, msgId, show, state, engineMenu, signal: scope.signal };
+    for (const route of ROUTES) {
+      const result = await route(context);
+      if (result !== UNHANDLED) return result;
+    }
+    console.error(`[msb/bot] unhandled callback: ${data}`);
+  };
+  if (deferred) {
+    const task = runCallbackScope(scope, dispatch).catch(() => { if (!scope.signal.aborted) console.error('[msb/bot] status callback failed'); });
+    trackCallbackTask(bot, task);
+    return;
   }
-
-  // неизвестный callback — не молчим в лог
-  console.error(`[msb/bot] unhandled callback: ${data}`);
+  return await runCallbackScope(scope, dispatch);
 }

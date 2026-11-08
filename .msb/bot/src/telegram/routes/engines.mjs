@@ -5,9 +5,9 @@
 import { handleNativeEngineCallback } from '../../engines/telegram.mjs';
 import { UNHANDLED } from './shared.mjs';
 
-export async function handleEnginesRoute({ data, state, show, bot, engineMenu }) {
+export async function handleEnginesRoute({ data, state, show, bot, engineMenu, signal }) {
   if (process.env.MSB_OS_ENGINE === 'native' && await handleNativeEngineCallback({
-    data, state, show, providerView: () => bot[Symbol.for('msb.engineProviderView')]?.(state),
+    data, state, show, signal, providerView: () => bot[Symbol.for('msb.engineProviderView')]?.(state),
   })) return;
   if (data === 'eng:home' || data === 'eng:add' || data === 'eng:mig') {
     if (process.env.JARVIS_CC_ONLY === '1' && data !== 'eng:home') {
