@@ -151,3 +151,15 @@ multiples/partial/stop/plan ordering, sharedturn pipeline +journalprocessedtext.
 Затем samecommit fullLinuxDocker/target+manifest и разрешённая controllednative/
 Telegramприёмка. Одногоэкрананедостаточно. Пока productionfix неготов, JAR1 остаётся
 830e3f6; нетpush/переносасекретов/nativeисторий/настоящихowner skillcontent вGit.
+
+
+Checkpoint UI/native RED (после1f21237, доruntimefix)
+Production command/callback tests:41cases,3PASS/38ERR_ASSERTION,0cancelled/skip.
+33ClaudeUI/reader cases и8native-provider cases; controlsowner/unreachable PASS,
+остальное отсутствует вproduction. Не importfailure и неparserinfraerror.
+Сгенерированный fakeCodex отдельно реально запущен сinitialize/initialized/skills/list:
+2JSONответа,4nativeentries,правильныйmethodlog; неиспользовался внешнийCLI/auth/model.
+Sol independently reread oldsource, findingsнет; CRLF/quoteddisabled cases добавлены
+поoldregex, не поYAMLбиблиотеке. Real nativeDiscovery0.166 отдельно подтверждён
+вtemporaryHOME и не является доказательствомUIintegration. Никакихruntimeправок
+илиJAR1update этими41тестами не выполнялось. Ветка намеренноRED, квыкладкенеготова.
