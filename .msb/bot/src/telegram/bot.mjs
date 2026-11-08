@@ -109,11 +109,13 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
 
   bot.command('start', async (ctx) => {
     const { state } = await loadState();
-    await updateState((s) => {
+    await updateState((s, { exists }) => {
+      // Old Q1 initializes xhigh only when the profile file is absent.
+      const newProfile = !exists;
       s.chatId = ctx.chat.id;
       s.userId = ctx.from?.id;
       s.ownerUsername = ctx.from?.username || null;
-      if (s.ccEffort === undefined) s.ccEffort = 'xhigh';
+      if (newProfile && s.ccEffort === undefined) s.ccEffort = 'xhigh';
       if (s.dailySpendLimit === undefined) s.dailySpendLimit = 10;
       if (s.timezone === undefined) s.timezone = cfg.timezone;
       return s;
