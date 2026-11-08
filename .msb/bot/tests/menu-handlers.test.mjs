@@ -188,7 +188,10 @@ test('/compact refuses a background run and never sends a switched session to th
 });
 
 test('/compact and normal turns cannot overlap across the owner’s chats', async (t) => {
-  let start, release, runCalls = 0;
+  let start, release, finishCompact, releaseHistory, runCalls = 0;
+  const historyGate = new Promise(resolve => { releaseHistory = resolve; });
+  // Release every held fake operation before fixture shutdown, even on failure.
+  t.after(() => { releaseHistory(); release?.(); finishCompact?.(); });
   const entered = new Promise((resolve) => { start = resolve; });
   const f = await fixture(t, async () => {
     runCalls++;
@@ -196,6 +199,15 @@ test('/compact and normal turns cannot overlap across the owner’s chats', asyn
     if (runCalls === 1) await new Promise((resolve) => { release = resolve; });
     return { ok: true, text: 'done', result: {} };
   }, { overlay: false });
+  const appendFile = fs.appendFile.bind(fs);
+  let journalHeld = false;
+  t.mock.method(fs, 'appendFile', async (file, ...args) => {
+    if (!journalHeld && String(file).endsWith('/chat-diary.jsonl')) {
+      journalHeld = true;
+      await historyGate;
+    }
+    return appendFile(file, ...args);
+  });
   let compactCalls = 0;
   f.bot[Symbol.for('msb.compactProvider')] = async () => { compactCalls++; return { ok: true }; };
   await f.message('working');
@@ -206,14 +218,28 @@ test('/compact and normal turns cannot overlap across the owner’s chats', asyn
   release();
   await until(() => f.edits.some((text) => text.includes('done')));
 
-  let startCompact, finishCompact;
+  await until(() => journalHeld);
+  await f.message('/compact');
+  assert.match(f.messages.at(-1), /Уже работаю/);
+  assert.equal(compactCalls, 0, 'Visible text does not mean the journal/worker has finished.');
+  releaseHistory();
+
+  let startCompact, compactStarted = false;
   const compactEntered = new Promise((resolve) => { startCompact = resolve; });
   f.bot[Symbol.for('msb.compactProvider')] = async () => {
+    compactStarted = true;
     startCompact();
     await new Promise((resolve) => { finishCompact = resolve; });
     return { ok: true };
   };
-  await f.message('/compact');
+  // Wait through the public admission rule, including history flush. Do not
+  // equate a fake transport edit with the end of the detached inbox worker.
+  const end = Date.now() + 2000;
+  while (!compactStarted && Date.now() < end) {
+    await f.message('/compact');
+    if (!compactStarted) await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.ok(compactStarted, 'Compaction must start after the worker finishes.');
   await compactEntered;
   await f.bot.handleUpdate({ message: { message_id: 102, text: 'other chat', from: { id: 42 }, chat: { id: 43 } } });
   assert.equal(f.messages.at(-1), '⏳ в очереди');

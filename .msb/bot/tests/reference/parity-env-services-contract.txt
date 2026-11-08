@@ -77,3 +77,9 @@ metadata, UIreader/writer/auth не меняются. Параллельный t
 не принят: core462PASS/0FAIL/33cancelled, первый cancellation в старом
 menu-handlers /compact test. Причина проверяется отдельно;620Docker не заменяет
 targetgate. b2749a6 на JAR1 не устанавливался, финальный gate будет нового SHA.
+Причина targetcancelled найдена в test harness assumptions, не metadata runner:
+menu-handlers /compact ждал fakeeditdone, тогда как inbox.active ещё удерживал
+history.finish; правильный busy оставлял compactEntered неразрешённым. Тест
+теперь удерживает journalappend барьером, проверяетbusy во времяflush, затем
+ограниченно ждёт publiccompactadmission. Productcode не меняется. Main41 и
+Sol41 menu tests PASS/0cancelled. Новый полный gate обязателен на finalSHA.
