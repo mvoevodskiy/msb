@@ -5,8 +5,8 @@ import os from 'node:os';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 const fixture = fileURLToPath(new URL('../fixtures/agent-options.mjs', import.meta.url));
-export function agentOptionsReport(provider, mode, model = 'opus', effort = 'high', cliVersion = '2.1.154', envDescription = false) {
-  const child = spawnSync(process.execPath, [fixture, provider, mode, model, effort, cliVersion, envDescription ? 'env-description' : ''], {
+export function agentOptionsReport(provider, mode, model = 'opus', effort = 'high', cliVersion = '2.1.154', envDescription = false, envName = '') {
+  const child = spawnSync(process.execPath, [fixture, provider, mode, model, effort, cliVersion, envDescription ? 'env-description' : '', envName], {
     env: { PATH: path.dirname(process.execPath), TMPDIR: os.tmpdir() }, encoding: 'utf8', timeout: 8000 });
   assert.equal(child.status, 0, child.stderr);
   const line = child.stdout.split('\n').find(s => s.startsWith('AGENT_OPTIONS='));

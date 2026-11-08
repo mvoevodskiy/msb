@@ -6,7 +6,7 @@ import cp from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { syncBuiltinESMExports } from 'node:module';
-const [provider, mode, model = 'opus', effort = 'high', cliVersion = '2.1.154', envDescription] = process.argv.slice(2);
+const [provider, mode, model = 'opus', effort = 'high', cliVersion = '2.1.154', envDescription, envName] = process.argv.slice(2);
 const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-agent-options-'));
 for (const key of Object.keys(process.env)) delete process.env[key];
 Object.assign(process.env, { HOME: home, MSB_BOT_ID: 'default', MSB_WORKSPACE_DIR: home,
@@ -19,7 +19,9 @@ cp.spawn = (command, args, options) => {
   const child = new EventEmitter();
   child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.stdin = new PassThrough();
   child.kill = () => true;
-  const call = { args, provider: options.env.MSB_TURN_PROVIDER, prompt: '' }; calls.push(call);
+  const call = { args, provider: options.env.MSB_TURN_PROVIDER, prompt: '' };
+  if (envName) call.namedEnv = {name:envName,valuePresent:options.env[envName] === 'fixture-env-name-value'};
+  calls.push(call);
   child.stdin.on('data', value => { call.prompt += value; });
   child.stdin.on('finish', () => queueMicrotask(() => {
     const id = provider === 'claude' ? 'claude-options-fixture' : 'ext:codex:0199a213-81c0-7800-8aa1-bbab2a035a53';
@@ -39,6 +41,10 @@ try {
   if (envDescription === 'env-description') {
     const { setEnvKey } = await import('../../src/env/store.mjs');
     await setEnvKey('FIXTURE_CUSTOM_API', 'fixture-env-description-value-79f1', process.env, {comment:'fixture custom description'});
+  }
+  if (envName) {
+    const {setEnvKey} = await import('../../src/env/store.mjs');
+    await setEnvKey(envName,'fixture-env-name-value');
   }
   const out = await runAgentTurn({ prompt: 'synthetic options task' });
   console.log('AGENT_OPTIONS=' + JSON.stringify({ ok: out.ok, calls, state: (await loadState()).state }));
