@@ -76,7 +76,8 @@ test('turn lifecycle: stop holds the lock through delayed CLI close, then admits
   assert.deepEqual(r.cli.map((call) => call.prompt), ['first task', 'second allowed']);
   assert.equal(r.maxActiveChildren, 1, 'The next CLI must not overlap the stopped process.');
   assert.ok(r.events.indexOf('cli-close:1') < r.events.indexOf('cli-start:2'));
-  assert.equal(r.calls.filter((call) => call.text?.startsWith('Уже работаю')).length, 2);
+  assert.ok([1, 2].includes(r.calls.filter((call) => call.text === '⏳ в очереди').length), 'The early probe queues; the allowed replacement may also queue while the old journal finishes.');
+  assert.equal(r.calls.filter((call) => call.text?.startsWith('Уже работаю')).length, 1, 'Compaction still cannot overlap the replacement CLI.');
   assert.ok(r.events.includes('cli-abort:1'));
   assert.ok(!r.events.includes('cli-abort:2'), 'Finishing the old turn must not disturb the replacement turn.');
   assertAnswerReplacedStatus(r, 2);

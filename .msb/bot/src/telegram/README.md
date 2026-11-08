@@ -6,8 +6,28 @@
 
 Модуль принимает события Telegram, показывает меню и ведёт пользовательский ход.
 Точка сборки — [`createBot`](bot.mjs): owner guard, команды, callback/text/voice
-handlers, общие `pending` и `running`. [`main`](../main.mjs) управляет запуском
+handlers, общие `pending`, `running` и [очередь](#очередь). [`main`](../main.mjs) управляет запуском
 и shutdown процесса.
+
+## Очередь
+
+Пачка/сообщения во время хода → [`createInbox`](inbox.mjs) → один FIFO worker →
+`executeTurn` в [`bot.mjs`](bot.mjs) → [общий provider runner](../agent/README.md).
+[Подготовка пересланной пачки](batch.mjs): `prepareBatch` последовательно вызывает
+тот же [`recognizeVoice`](voice.mjs), оставляет порядок и позиции неудачных STT.
+Таймеры сбора, лимиты, слияние соседнего ожидающего текста и drain принадлежат
+`inbox.mjs`; providers/auth/session не хранятся в очереди. Движок выбирается
+штатным runner при старте хода, а не отдельным batch-adapter.
+
+Формы `pending` и команды обслуживаются до inbox. Обычный комментарий при открытом
+collector присоединяется к пачке; `/stop` очищает collector/FIFO и отменяет active,
+`/clear`/`/newtask` лишь сбрасывают беседу. Shutdown отменяет и дожидается доставки;
+после polling retry очередь снова принимает входы. Очередь оперативная, без диска.
+Вложения по-прежнему обслуживает отдельный существующий handler.
+
+[Эталон/границы](../../tests/reference/inbox-contract.md) ·
+[Handler + STT lifecycle tests](../../tests/inbox-lifecycle.test.mjs) ·
+[Timer/cap/FIFO tests](../../tests/inbox.test.mjs).
 
 ## Настройки и кнопки
 

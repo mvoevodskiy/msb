@@ -12,6 +12,7 @@
 |---|---|---|
 | История запросов и квоты в Пульте | [Пульт → История и провайдеры](pult-telemetry.md) | общий journal, Claude state, Codex account RPC; telemetry tests |
 | Изменить кнопку или переход настроек | [Telegram → Настройки и кнопки](../.msb/bot/src/telegram/README.md#настройки-и-кнопки) | `settingsScreen`, `handleCallback`; UI и engine-menu tests |
+| Пачка пересланных voice/текстов или сообщения во время хода | [Telegram → Очередь](../.msb/bot/src/telegram/README.md#очередь) | `createInbox` → `prepareBatch` / `executeTurn`; inbox lifecycle и timer tests |
 | Разобраться с голосовым | [Telegram → Голос](../.msb/bot/src/telegram/README.md#голос) | `recognizeVoice` → `transcribeVoice`; voice/STT tests |
 | Исправить stop, индикацию или итоговый ответ | [Telegram → Жизненный цикл хода](../.msb/bot/src/telegram/README.md#жизненный-цикл-хода) | `executeTurn`, progress, response; lifecycle/reference tests |
 | Понять, как запускается модель | [Исполнение → CLI и выбор провайдера](../.msb/bot/src/agent/README.md#cli-и-выбор-провайдера) | `runAgentTurn` → runner → PATH-shim → adapter |

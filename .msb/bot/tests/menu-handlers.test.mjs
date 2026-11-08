@@ -140,12 +140,13 @@ test('/stop keeps current turn locked until it finishes and never reports succes
   await f.message('/stop');
   await f.message('second before exit');
   assert.equal(calls, 1);
-  assert.match(f.messages.at(-1), /Уже работаю/);
+  assert.equal(f.messages.at(-1), '⏳ в очереди');
   release(); await first;
   await until(() => f.edits.includes('Моя остановочка ✋🏽⛔️'));
   await new Promise(resolve => setTimeout(resolve, 10));
+  await until(() => calls === 2, 'queued turn after stopped process exits');
   await f.message('after exit');
-  await until(() => calls === 2 && f.edits.at(-1) === 'fixture failure');
+  await until(() => calls === 3 && f.edits.at(-1) === 'fixture failure');
   assert.ok(!f.edits.includes('✅'));
 });
 
@@ -192,7 +193,7 @@ test('/stop keeps a compaction locked until the provider finishes', async (t) =>
   assert.equal(observedSignal.aborted, true);
   assert.equal(f.typingSignals.at(-1)?.aborted, true);
   await f.message('wait');
-  assert.match(f.messages.at(-1), /Уже работаю/);
+  assert.equal(f.messages.at(-1), '⏳ в очереди');
   release();
   await until(() => f.edits.includes('Моя остановочка ✋🏽⛔️'));
   assert.ok(!f.edits.includes('🗜️ Контекст успешно сжат. Жду команду.'));
@@ -240,11 +241,12 @@ test('/compact refuses a background run and never sends a switched session to th
 });
 
 test('/compact and normal turns cannot overlap across the owner’s chats', async (t) => {
-  let start, release;
+  let start, release, runCalls = 0;
   const entered = new Promise((resolve) => { start = resolve; });
   const f = await fixture(t, async () => {
+    runCalls++;
     start();
-    await new Promise((resolve) => { release = resolve; });
+    if (runCalls === 1) await new Promise((resolve) => { release = resolve; });
     return { ok: true, text: 'done', result: {} };
   }, { overlay: false });
   let compactCalls = 0;
@@ -267,9 +269,11 @@ test('/compact and normal turns cannot overlap across the owner’s chats', asyn
   await f.message('/compact');
   await compactEntered;
   await f.bot.handleUpdate({ message: { message_id: 102, text: 'other chat', from: { id: 42 }, chat: { id: 43 } } });
-  assert.match(f.messages.at(-1), /Уже работаю/);
+  assert.equal(f.messages.at(-1), '⏳ в очереди');
+  assert.equal(runCalls, 1, 'The queued model cannot start inside compaction.');
   finishCompact();
   await until(() => f.edits.includes('🗜️ Контекст успешно сжат. Жду команду.'));
+  await until(() => runCalls === 2, 'Queued text starts after the compact provider finishes.');
 });
 
 test('timezone form validates and digest screen/executor use the same saved zone', async (t) => {

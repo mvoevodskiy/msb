@@ -10,6 +10,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { recognizeVoice, voicePreview, STT_ONBOARDING } from './voice.mjs';
 import { startTurnProgress } from './progress.mjs';
+import { createInbox, isForwarded } from './inbox.mjs';
+import { prepareBatch, batchStatus } from './batch.mjs';
 import { deliverTurnResponse } from './response.mjs';
 import { beginTurnHistory } from './history.mjs';
 import { runAgentTurn } from '../agent/turn.mjs';
@@ -37,16 +39,49 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   /** @type {Map<number, string>} */
   const pending = new Map();
 
+  // Every supported agent input enters one worker; commands/forms remain immediate.
+  const inbox = createInbox({
+    canRun: () => !stopping && running.size === 0,
+    status: showInboxStatus,
+    cancel: async (entry, merged = false) => {
+      await entry.presentation?.catch(() => {});
+      if (entry.status) {
+        if (merged) await entry.ctx.api.deleteMessage(entry.ctx.chat.id, entry.status.message_id, presentationSignal(AbortSignal.timeout(15_000))).catch(() => {});
+        else await showInboxStatus(entry, 'Моя остановочка ✋🏽⛔️');
+      }
+    },
+    run: (entry) => {
+      const turn = { controller: new AbortController(), completed: false, done: null };
+      running.set(entry.ctx.chat.id, turn); unfinished.add(turn);
+      turn.done = executeTurn(entry.ctx, entry.text || '', turn, entry.voice, entry)
+        .catch(() => console.error('[msb/bot] turn delivery failed'))
+        .finally(() => unfinished.delete(turn));
+      return turn.done;
+    },
+  });
+  function showInboxStatus(entry, text) {
+    const revision = entry.statusRevision = (entry.statusRevision || 0) + 1;
+    entry.presentation = (entry.presentation || Promise.resolve()).catch(() => {}).then(async () => {
+      if (entry.cancelled && text !== 'Моя остановочка ✋🏽⛔️') return;
+      if (text.startsWith('📥 Собираю') && revision !== entry.statusRevision) return;
+      const ctx = entry.ctx, thread = ctx.message?.message_thread_id;
+      if (entry.status) await ctx.api.editMessageText(ctx.chat.id, entry.status.message_id, text, {}, presentationSignal(AbortSignal.timeout(15_000)));
+      else entry.status = await ctx.reply(text, thread && thread !== 1 ? { message_thread_id: thread } : {}, presentationSignal(AbortSignal.timeout(15_000)));
+    });
+    return entry.presentation;
+  }
+
   let stopping = false;
   const startPolling = bot.start.bind(bot);
-  bot.start = (...args) => { stopping = false; return startPolling(...args); };
+  bot.start = (...args) => { stopping = false; inbox.open(); return startPolling(...args); };
   const stopPolling = bot.stop.bind(bot);
   bot.stop = async () => {
     stopping = true;
     const turns = [...unfinished];
+    const drainInbox = inbox.shutdown();
     for (const turn of turns) if (!turn.completed) turn.controller.abort();
     try { await stopPolling(); }
-    finally { await Promise.allSettled(turns.map((turn) => turn.done)); }
+    finally { await Promise.allSettled([...turns.map((turn) => turn.done), drainInbox]); }
   };
 
   bot.use(adminGuard(cfg.adminId));
@@ -134,9 +169,10 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
 
 
   bot.command('stop', async (ctx) => {
-    const turn = running.get(ctx.chat.id);
-    if (turn && !turn.completed) {
-      turn.controller.abort();
+    const queued = inbox.clear();
+    const turns = [...running.values()].filter(turn => !turn.completed);
+    if (turns.length || queued) {
+      for (const turn of turns) turn.controller.abort();
       await ctx.reply('Моя остановочка ✋🏽⛔️');
     } else {
       await ctx.reply('Нечего останавливать 🤷');
@@ -166,7 +202,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   bot.command('compact', async (ctx) => {
     const chatId = ctx.chat.id;
     if (stopping) return;
-    if (running.size) {
+    if (running.size || inbox.size) {
       await ctx.reply('Уже работаю над предыдущим сообщением. /stop — прервать.');
       return;
     }
@@ -459,7 +495,8 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       return;
     }
 
-    const scheduled = tryParseScheduleMessage(text);
+    const batchInput = isForwarded(ctx.message) || inbox.isCollecting(ctx);
+    const scheduled = !batchInput && tryParseScheduleMessage(text);
     if (scheduled) {
       const task = await addTask(scheduled);
       await ctx.reply(
@@ -470,16 +507,11 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     }
 
     // маркеры автономки из ответа агента
-    const marker = text.match(/\[SCHEDULE_TASK\]([\s\S]*?)\[\/SCHEDULE_TASK\]/i);
+    const marker = !batchInput && text.match(/\[SCHEDULE_TASK\]([\s\S]*?)\[\/SCHEDULE_TASK\]/i);
     if (marker) {
       const body = marker[1].trim();
       const task = await addTask({ prompt: body, title: body.slice(0, 80), everyHours: 24 });
       await ctx.reply(`Задача из маркера: <b>${escapeHtml(task.title)}</b>`, { parse_mode: 'HTML' });
-      return;
-    }
-
-    if (running.has(chatId) || [...running.values()].some((turn) => turn.compacting)) {
-      await ctx.reply('Уже работаю над предыдущим сообщением. /stop — прервать.');
       return;
     }
 
@@ -490,13 +522,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     }
 
     if (stopping) return;
-    const turn = { controller: new AbortController(), completed: false, done: null };
-    running.set(chatId, turn);
-    unfinished.add(turn);
-    // Return to Grammy immediately, so the next getUpdates can deliver /stop.
-    turn.done = executeTurn(ctx, text, turn).catch((err) => {
-      console.error('[msb/bot] turn delivery failed:', err.message);
-    }).finally(() => unfinished.delete(turn));
+    inbox.push({ ctx, text, voice: false });
   });
 
   async function executeCompact(ctx, turn, release) {
@@ -564,10 +590,11 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       turn.completed = true;
       if (running.get(chatId) === turn) running.delete(chatId);
       release();
+      inbox.kick();
     }
   }
 
-  async function executeTurn(ctx, text, turn, voice = false) {
+  async function executeTurn(ctx, text, turn, voice = false, entry = {}) {
     const chatId = ctx.chat.id;
     const signal = turn.controller.signal;
     let status;
@@ -583,15 +610,20 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         .then(() => { deliveredText = 'Моя остановочка ✋🏽⛔️'; delivered = true; }).catch(() => {});
     };
     try {
-      if (!voice) history = await beginTurnHistory({ input: ctx.message?.text ?? text });
+      if (!voice && !entry.items) history = await beginTurnHistory({ input: text });
       const thread = ctx.message?.message_thread_id;
+      await entry.presentation?.catch(() => {});
+      status = entry.status;
+      if (signal.aborted) { await stopped(); return; }
       if (voice) {
         transcription = await ctx.reply('🎙 Расшифровываю...', thread && thread !== 1 ? { message_thread_id: thread } : {});
-        if (signal.aborted) return;
+        if (signal.aborted) { await stopped(); return; }
       }
-      status = await ctx.reply('Думаю ⏳', thread && thread !== 1 ? { message_thread_id: thread } : {});
+      const initialText = entry.items ? batchStatus(entry) : 'Думаю ⏳';
+      if (status) await ctx.api.editMessageText(chatId, status.message_id, initialText, {}, presentationSignal(AbortSignal.any([signal, AbortSignal.timeout(15_000)])));
+      else status = await ctx.reply(initialText, thread && thread !== 1 ? { message_thread_id: thread } : {});
       if (signal.aborted) { await stopped(); return; }
-      progress = startTurnProgress(ctx, status.message_id, { signal, preparing: voice });
+      progress = startTurnProgress(ctx, status.message_id, { signal, preparing: voice || Boolean(entry.items) });
       if (voice) {
         const recognized = await recognizeVoice(ctx, cfg.botToken, signal);
         signal.throwIfAborted();
@@ -604,6 +636,13 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         history = await beginTurnHistory({ input: recognized.transcript.slice(0, 300) });
         progress.beginThinking();
       }
+      if (entry.items) {
+        text = await prepareBatch(entry, cfg.botToken, signal);
+        signal.throwIfAborted();
+        history = await beginTurnHistory({ input: text });
+        progress.beginThinking();
+      }
+      signal.throwIfAborted();
       const out = await runTurn({ prompt: text, signal, onStatus: ev => {
         if (ev.kind === 'provider') history?.provider(ev.providerId);
         progress.onStatus(ev);
@@ -649,12 +688,8 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     const { state } = await loadState();
     if (isSetupMode(state)) { await ctx.reply('Сначала подключи AI: /start'); return; }
     if (stopping) return;
-    if (running.has(ctx.chat.id) || [...running.values()].some((turn) => turn.compacting)) { await ctx.reply('Уже работаю над предыдущим сообщением. /stop — прервать.'); return; }
-    const turn = { controller: new AbortController(), completed: false, done: null };
-    running.set(ctx.chat.id, turn);
-    unfinished.add(turn);
-    // Speech never passes through pending text forms or fabricated Telegram updates.
-    turn.done = executeTurn(ctx, '', turn, true).catch(err => console.error('[msb/bot] voice delivery failed:', err.message)).finally(() => unfinished.delete(turn));
+    // Speech never passes through pending text forms or fabricated updates.
+    inbox.push({ ctx, text: '', voice: true });
   });
 
   bot.on(['message:photo', 'message:video', 'message:document'], async (ctx) => {

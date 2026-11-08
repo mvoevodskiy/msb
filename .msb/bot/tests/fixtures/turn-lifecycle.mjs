@@ -164,7 +164,7 @@ try {
       const id = payload.message_id || ++messageId;
       const call = { method, text: payload.text, messageId: id, parseMode: payload.parse_mode, applied: false };
       report.calls.push(call);
-      if (method === 'sendMessage' && payload.text === 'Думаю ⏳') report.statusIds.push(id);
+      if (payload.text === 'Думаю ⏳' && !report.statusIds.includes(id)) report.statusIds.push(id);
       if (method === 'sendMessage' && payload.text === 'Думаю ⏳' && firstStatus) {
         firstStatus = false;
         report.initialStatusId = id;
@@ -246,7 +246,9 @@ try {
     await until(() => has('cli-abort:1') && has('stop-acknowledged'), 'stop delivery and abort');
     if (scenario === 'next-turn') {
       send('too early');
-      await until(() => report.calls.some((call) => call.applied && call.text.startsWith('Уже работаю')), 'lock retained before close');
+      await until(() => report.calls.some((call) => call.applied && call.text === '⏳ в очереди'), 'queued with the lock retained before close');
+      send('/stop');
+      await until(() => report.calls.filter(call => call.applied && call.text === 'Моя остановочка ✋🏽⛔️' && call.method === 'sendMessage').length === 2, 'clear queued early probe');
     }
     children[0].close(['saved-session', 'empty-session'].includes(scenario) ? 'late-result' : 'abort');
     if (scenario === 'late-edit') releaseProgress();
@@ -255,8 +257,8 @@ try {
     if (scenario === 'next-turn') {
       send('second allowed');
       await until(() => has('cli-init:2'), 'replacement turn');
-      send('must still be busy');
-      await until(() => report.calls.filter((call) => call.applied && call.text.startsWith('Уже работаю')).length === 2, 'replacement lock remains owned');
+      send('/compact');
+      await until(() => report.calls.some((call) => call.applied && call.text.startsWith('Уже работаю')), 'replacement lock remains owned');
       children[1].close('success');
       await until(() => hasAnswer(2), 'replacement answer replacing its own status');
     }

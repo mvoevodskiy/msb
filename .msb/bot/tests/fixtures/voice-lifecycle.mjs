@@ -223,7 +223,9 @@ try {
     await until(() => has('stop-acknowledged'), 'stop acknowledgement while speech is pending');
     if (stage !== 'preview') await until(() => has(`${stage}-aborted`), 'cancellation reaches network signal');
     sendText('too early');
-    await until(() => report.calls.some(call => call.applied && call.text?.startsWith('Уже работаю')), 'running lock before the pending operation drains');
+    await until(() => report.calls.some(call => call.applied && call.text === '⏳ в очереди'), 'queued while the pending operation drains');
+    sendText('/stop');
+    await until(() => report.calls.filter(call => call.applied && call.text === stopped && call.method === 'sendMessage').length === 2, 'clear the queued probe');
     releaseNetwork(); releasePreview();
     await until(() => has('stopped-edit') && has('transcription-deleted'), 'stopped status and transcription cleanup');
   } else if (scenario === 'missing-key') {
