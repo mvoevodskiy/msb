@@ -12,6 +12,7 @@ Telegram, Deepgram и CLI. Ожидания не подгоняются под �
 
 | Сценарий | Маршрут | Проверка |
 |---|---|---|
+| Обычный reply, queued цитаты и reply «стоп» | [Контракт входов](parity-inputs-contract.txt) → inbox/executeTurn | [inbox lifecycle](../inbox-lifecycle.test.mjs), [формы](../menu-handlers.test.mjs) |
 | Голос и прежний preview/reply | [Telegram voice](../../src/telegram/README.md#голос) → [STT](../../src/media/README.md) → общий ход | [voice-progress](voice-progress.test.mjs), [voice-lifecycle](../voice-lifecycle.test.mjs), [stt](../stt.test.mjs) |
 | Typing/status, final edit/chunks/footer | [Жизненный цикл](../../src/telegram/README.md#жизненный-цикл-хода) → progress/response | [voice-progress](voice-progress.test.mjs), [response-delivery](../response-delivery.test.mjs), [presentation-retry](../presentation-retry.test.mjs) |
 | `/stop` во время долгого хода | `bot.start` / polling → controller → runner abort → cleanup/unlock | [stop-polling](stop-polling.test.mjs), [turn-lifecycle](../turn-lifecycle.test.mjs), [claude-abort](../claude-abort.test.mjs) |

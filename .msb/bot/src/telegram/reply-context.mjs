@@ -1,4 +1,10 @@
-// Legacy reply context: vendor TxA/$2, with no Telegram or state dependencies.
+/**
+ * Чистый formatter прежнего TxA/$2: Telegram message → untrusted quote prefix;
+ * лимиты/редакция секретов, без API/записей состояния. Вызывают [inbox](./inbox.mjs),
+ * [voice](./voice.mjs), [batch](./batch.mjs); последний добавляет prefix один раз.
+ * [Контракт](../../tests/reference/parity-inputs-contract.txt),
+ * [проверка formatter](../../tests/reply-context.test.mjs), [handler](../../tests/inbox-lifecycle.test.mjs).
+ */
 const SECRET_PATTERNS = [
   [/-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z0-9]+ )*PRIVATE KEY-----/g, '[REDACTED:private_key]'],
   [/-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----(?:\s*[A-Za-z0-9+/=]{20,})*/g, '[REDACTED:private_key]'],

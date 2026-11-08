@@ -24,11 +24,14 @@ handlers, общие `pending`, `running` и [очередь](#очередь). 
 
 Формы `pending` и команды обслуживаются до inbox. Обычный комментарий при открытом
 collector присоединяется к пачке; `/stop` очищает collector/FIFO и отменяет active,
-`/clear`/`/newtask` лишь сбрасывают беседу. Shutdown отменяет и дожидается доставки;
+`/clear`/`/newtask` лишь сбрасывают беседу. Ответ словом «стоп» отменяет
+активный ход, сохраняя очередь и collector; без активного хода потребляется
+без запуска модели. Это прежний отдельный путь, а не полный синоним `/stop`. Shutdown отменяет и дожидается доставки;
 после polling retry очередь снова принимает входы. Очередь оперативная, без диска.
 Вложения по-прежнему обслуживает отдельный существующий handler.
 
-[Эталон/границы](../../tests/reference/inbox-contract.md) ·
+[Эталон пачки](../../tests/reference/inbox-contract.md) ·
+[Контракт ordinary reply / reply-stop](../../tests/reference/parity-inputs-contract.txt) ·
 [Handler + STT lifecycle tests](../../tests/inbox-lifecycle.test.mjs) ·
 [Timer/cap/FIFO tests](../../tests/inbox.test.mjs).
 

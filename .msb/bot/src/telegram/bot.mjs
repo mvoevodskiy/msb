@@ -175,11 +175,15 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   });
 
 
+  function interruptActiveTurns() {
+    const turns = [...running.values()].filter(turn => !turn.completed);
+    for (const turn of turns) turn.controller.abort();
+    return turns.length > 0;
+  }
+
   bot.command('stop', async (ctx) => {
     const queued = inbox.clear();
-    const turns = [...running.values()].filter(turn => !turn.completed);
-    if (turns.length || queued) {
-      for (const turn of turns) turn.controller.abort();
+    if (interruptActiveTurns() || queued) {
       await ctx.reply('Моя остановочка ✋🏽⛔️');
     } else {
       await ctx.reply('Нечего останавливать 🤷');
@@ -325,18 +329,6 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       pending.delete(chatId);
       await ctx.reply('Токен сохранён. Перезапускаюсь…');
       setTimeout(() => process.exit(0), 600);
-      return;
-    }
-    if (pend === 'timezone') {
-      const timezone = text.trim();
-      try { new Intl.DateTimeFormat('en', { timeZone: timezone }).format(); }
-      catch { await ctx.reply('Неизвестный часовой пояс. Например: Europe/Moscow.'); return; }
-      pending.delete(chatId);
-      await updateState((s) => {
-        s.timezone = timezone;
-        return s;
-      });
-      await ctx.reply(`Часовой пояс: <code>${escapeHtml(timezone)}</code>`, { parse_mode: 'HTML' });
       return;
     }
     if (pend?.startsWith('env:')) {
@@ -495,6 +487,24 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       return;
     }
 
+    // Old reply-stop interrupts the current turn, but keeps collectors/FIFO.
+    // Env/auth forms above keep priority; timezone input below remains pending.
+    if (text.toLowerCase() === 'стоп' && ctx.message.reply_to_message) {
+      if (interruptActiveTurns()) await ctx.reply('Моя остановочка ✋🏽⛔️');
+      return;
+    }
+    if (pend === 'timezone') {
+      const timezone = text.trim();
+      try { new Intl.DateTimeFormat('en', { timeZone: timezone }).format(); }
+      catch { await ctx.reply('Неизвестный часовой пояс. Например: Europe/Moscow.'); return; }
+      pending.delete(chatId);
+      await updateState((s) => {
+        s.timezone = timezone;
+        return s;
+      });
+      await ctx.reply(`Часовой пояс: <code>${escapeHtml(timezone)}</code>`, { parse_mode: 'HTML' });
+      return;
+    }
     const { state } = await loadState();
     if (isSetupMode(state)) {
       const view = setupScreen();

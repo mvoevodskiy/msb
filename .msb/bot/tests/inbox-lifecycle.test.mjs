@@ -246,3 +246,13 @@ test('reply stop parity: idle reply стоп is consumed silently, while plain �
   await f.input('стоп'); await until(() => f.prompts.length === 1, 'plain non-reply text');
   assert.deepEqual(f.prompts, ['стоп']);
 });
+
+test('reply stop parity: an open forward collector survives reply-stop without collecting the command', async t => {
+  const f = await fixture(t);
+  await f.input('retained forwarded item', true);
+  await f.input('стоп', false, 42, undefined, { reply_to_message: { from: { id: 99 }, text: 'старая карточка' } });
+  await until(() => f.prompts.length === 1, 'the collector survives reply-stop');
+  assert.match(f.prompts[0], /^Пользователь переслал сообщение:/);
+  assert.ok(f.prompts[0].includes('retained forwarded item'));
+  assert.ok(!f.prompts[0].includes('стоп') && !f.prompts[0].includes('старая карточка'));
+});
