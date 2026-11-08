@@ -154,3 +154,29 @@ Sol3PASS/resolved. Отдельный commonvalidatorfixe8d179c сохраняе
 Expandedledger28+sharedstarts6+first/lifecycle/context/history/projectraces:
 57PASS,0FAIL/cancelled/skip. UI52суммарныйпредыдущийRED — историческийcheckpoint;
 текущийwriterGREEN не делает ещёнеподключённоеmenu/resume готовым квыкладке.
+
+
+UI integration checkpoint (до actual resume/races/Linux/deploy)
+34sessionUI +28ledger+41menu+3codexcontext+callbackrefresh/callbackscope/inbox:
+132PASS,0FAIL/cancelled/skip. IndependentSol session/ledger/menu/codexcontext:
+106PASS, findingsнет; native resume и selector overlap ещёнепроверены.
+OriginalUIRED28(5PASS23FAIL) теперьGREEN, ещё6контролей commandpreview/pending/
+ambiguous/forceconflict/provider+rowchangedduringdirectoryawait. Oldpending
+contract подтверждён120868–120897/121478–121526/121912–122028: list/page/select
+ничего неочищали. UnknownIDoldbug не переносится. New/clear/menu oldtexts
+восстановлены только CLIпути; OC прежнийunconnectedview не объявляетсяbackend.
+Одинcodex-context test ожидалновыйstubtitle«Codex» вemptyhistory; онуточнён:
+emptyoldtext и реальнаяфильтрацияprovider-ownedrows, status/enginesnativefallback
+assertions сохранены. Это не удаление живой metadata/footer capability.
+СправкаCC/sessions«список сессий» из old51855; OCсправка покапрежняя.
+
+
+UI error/size follow-up before release
+Ещё2контроля permissionEACCES и Telegramfailureпослеpersist: UI36,
+расширенныйнабор134PASS. Directoryerror не меняетбеседу/невыводитprivateerror,
+ошибкадоставки послеуспешнойзаписи не маскируется«state unchanged».
+Luna readonly измерила oldlayout overflow:10rows×first200/last120/project40
+→4226visibleUTF16; project255→6376, оба>4096. Установленныеофициальныетипы
+@grammyjs/types/methods.d.ts:91/1667 подтверждаютlimit4096послеentities.
+UIintegrationcheckpointнеготовквыпуску: исправитьэтотподтверждённыйкрайнийслучай
+отдельнымRED/fix, затемactualrunnerresume/overlap иfullsamecommitLinux/live.

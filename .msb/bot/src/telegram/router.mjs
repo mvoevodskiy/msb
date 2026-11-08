@@ -3,7 +3,7 @@
  * ROUTES ниже задаёт прежний порядок; только UNHANDLED передаёт управление дальше.
  * Настройки/формы → [settings](./routes/settings.mjs), модели → [models](./routes/models.mjs), auth/права → [agent](./routes/agent.mjs),
  * выбор движка → [engines](./routes/engines.mjs), проекты → [projects](./routes/projects.mjs),
- * навыки/MCP → [workspace](./routes/workspace.mjs),
+ * навыки/MCP → [workspace](./routes/workspace.mjs), сессии → [sessions](./routes/sessions.mjs),
  * задачи → [autonomy](./routes/autonomy.mjs), источники → [monitor](./routes/monitor.mjs).
  * Остальные семейства видны в прямых imports ниже; rendering → [screens](./screens.mjs).
  * Состояние → [state](../state.mjs), shared pending принадлежит createBot.
@@ -27,9 +27,11 @@ import { handleAutonomyRoute } from './routes/autonomy.mjs';
 import { handleMonitorRoute } from './routes/monitor.mjs';
 import { handleWorkspaceRoute } from './routes/workspace.mjs';
 import { handleProjectRoute } from './routes/projects.mjs';
+import {handleSessionRoute} from './routes/sessions.mjs';
 import { UNHANDLED } from './routes/shared.mjs';
 
 const ROUTES = [
+  handleSessionRoute,
   handleProjectRoute,
   handleNavigationRoute,
   handleModelRoute,
@@ -71,7 +73,8 @@ export async function handleCallback({ bot, cfg, pending, ctx, plan }) {
   if (['menu:back', 'menu:close', 'menu:agent', 'menu:settings', 'settings:back', 'mon:back', 'settings:bots:cancel'].includes(data)) pending.delete(chatId);
   const show = async view => {
     if (!scope.isCurrent()) return;
-    return editOrReply(bot.api, chatId, msgId, view.text, view.keyboard, 'HTML', scope);
+    return editOrReply(bot.api, chatId, msgId, view.text, view.keyboard, 'HTML', scope,
+      view.disablePreview ? {link_preview_options:{is_disabled:true}} : {});
   };
   const dispatch = async () => {
     if (deferred && !scope.isCurrent()) return;

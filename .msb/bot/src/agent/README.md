@@ -139,5 +139,6 @@ sentinel/stale/reset результат не создают обход чере�
 фоновые ходы используют тот же путь, как old tE. Исходный Pult/Telegram journal
 остаётся отдельным; его [redaction](../history/preview.mjs) теперь общая, без смены
 логики. Контракт и ограничения: [sessions reference](../../tests/reference/parity-sessions-contract.txt).
-Список/выбор подключаются отдельным этапом; запись ledger сама по себе не доказывает
-работу menu/resume/native CLI. Реальные пользовательские истории не мигрируются.
+[Список/выбор](../sessions/README.md) теперь использует этот ledger; запись metadata
+и menu PASS сами по себе не доказывают фактический resume/native CLI. Реальные
+пользовательские истории не мигрируются.

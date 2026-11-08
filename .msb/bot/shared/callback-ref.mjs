@@ -1,6 +1,7 @@
 /**
  * Stateless names → bounded Telegram references; no registry, values or I/O.
- * Callers: [env](../src/env/callback-key.mjs), [projects](../src/projects/callback-key.mjs).
+ * Callers: [env](../src/env/callback-key.mjs), [projects](../src/projects/callback-key.mjs),
+ * [sessions](../src/sessions/callback-key.mjs).
  * Unknown/ambiguous digests never select another current name. Short literals keep
  * their existing route. [Env checks](../tests/env-callbacks.test.mjs), [project checks](../tests/projects.test.mjs).
  */

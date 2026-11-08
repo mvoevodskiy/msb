@@ -1,6 +1,7 @@
 /**
  * Core state + encoded IDs -> provider-owned CLI ledger rows, without I/O/migration.
- * [Ledger](./ledger.mjs), selector and Telegram list share this identity contract.
+ * [Ledger](./ledger.mjs), [selector](./selection.mjs) and [list](../telegram/screens/session-list.mjs)
+ * share this identity contract.
  * Existing ownership shapes -> [first starts](../../shared/session-starts.mjs).
  * [Old contract](../../tests/reference/parity-sessions-contract.txt).
  */
@@ -8,7 +9,8 @@ import {isProviderSession,selectedSessionProvider} from '../../shared/session-st
 
 export function historyProvider(state,env=process.env) {
   if(state.engine==='oc')return null;
-  return env.JARVIS_CC_ONLY==='1'?'claude':selectedSessionProvider(state);
+  const provider=selectedSessionProvider(state);
+  return env.JARVIS_CC_ONLY==='1' && provider!=='claude'?null:provider;
 }
 export function entryProvider(entry) {
   if(!entry || typeof entry!=='object' || typeof entry.id!=='string')return null;
@@ -19,6 +21,8 @@ export function entryProvider(entry) {
 export function cliSessionEntries(state,env=process.env) {
   const provider=historyProvider(state,env);
   if(!provider || !Array.isArray(state.sessionHistory))return [];
-  return state.sessionHistory.filter(entry=>entry && (entry.engine===undefined || entry.engine==='cc')
-    && entryProvider(entry)===provider).slice().reverse();
+  const rows=state.sessionHistory.filter(entry=>entry && (entry.engine===undefined || entry.engine==='cc')
+    && entryProvider(entry)===provider);
+  const counts=new Map();for(const row of rows)counts.set(row.id,(counts.get(row.id)||0)+1);
+  return rows.filter(row=>counts.get(row.id)===1).reverse();
 }

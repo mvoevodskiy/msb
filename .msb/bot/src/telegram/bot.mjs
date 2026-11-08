@@ -1,5 +1,5 @@
 import { openCallbackRenders, stopCallbackRenders, cancelCallbackRenders, drainCallbackTasks } from '../../shared/callback-renders.mjs';
-import { invalidateFirstSession } from '../../shared/session-starts.mjs';
+import {resetCliConversation} from '../sessions/selection.mjs';
 /**
  * createBot собирает входящие Telegram события и lifecycle хода; UI не хранит
  * provider session отдельно. Вход: [main](../main.mjs), owner → [auth](./auth.mjs).
@@ -204,23 +204,13 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   });
 
   bot.command('newtask', async (ctx) => {
-    await updateState((s) => {
-      invalidateFirstSession(s);
-      delete s.ccSessionId;
-      s.sessionEpoch = (s.sessionEpoch || 0) + 1;
-      return s;
-    });
-    await ctx.reply('Новая сессия. Пиши задачу.');
+    const state=await resetCliConversation();
+    await ctx.reply(state.engine==='oc'?'Новая сессия. Пиши задачу.':'🆕 Новая сессия. Предыдущий контекст сброшен.');
   });
 
   bot.command('clear', async (ctx) => {
-    await updateState((s) => {
-      invalidateFirstSession(s);
-      delete s.ccSessionId;
-      s.sessionEpoch = (s.sessionEpoch || 0) + 1;
-      return s;
-    });
-    await ctx.reply('Начата новая беседа. Файлы и native-история сохранены.');
+    const state=await resetCliConversation();
+    await ctx.reply(state.engine==='oc'?'Начата новая беседа. Файлы и native-история сохранены.':'🧹 Контекст сброшен. Начинаем с чистого листа.');
   });
 
   bot.command('compact', async (ctx) => {
@@ -250,8 +240,9 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   bot.command('sessions', async (ctx) => {
     const { sessionsScreen } = await import('./screens.mjs');
     const { state } = await loadState();
-    const view = await sessionsScreen(state);
-    await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
+    const view = await sessionsScreen(state,process.env,0,{fromMenu:false});
+    await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard,
+      ...(view.disablePreview?{link_preview_options:{is_disabled:true}}:{}) });
   });
 
   registerProjectCommands(bot,pending);

@@ -59,7 +59,7 @@ test('status, sessions and engines show active Codex, never stale Claude/model/c
   assert.doesNotMatch((await enginesScreen(state, env)).text, /Claude/);
 });
 
-test('all screens honor provider selection and native config fallback before first turn', async (t) => {
+test('status/engines honor native fallback; sessions show only the selected core provider ledger', async (t) => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-native-display-'));
   t.after(() => fs.rm(home, { recursive: true, force: true }));
   const env = { HOME: home };
@@ -72,7 +72,11 @@ test('all screens honor provider selection and native config fallback before fir
   const status = await statusScreen(state, cfg, env);
   assert.match(status.text, /gpt-6.1-terra/);
   assert.match(status.text, /max/);
-  assert.match((await sessionsScreen(state, env)).text, /Codex/);
+  assert.equal((await sessionsScreen(state, env)).text,'Нет сохранённых сессий. Напиши что-нибудь, чтобы начать первую.');
+  const withRows={...state,extAuthBypass:'codex',sessionHistory:[
+    {id:sessionId,engine:'cc',firstPrompt:'Codex saved conversation',messageCount:1,lastActivity:'2099-01-01T00:00:00Z'},
+    {id:'claude-other-fixture',engine:'cc',firstPrompt:'Claude foreign conversation',messageCount:1,lastActivity:'2099-01-01T00:00:00Z'}]};
+  const sessions=await sessionsScreen(withRows,env);assert.match(sessions.text,/Codex saved conversation/);assert.doesNotMatch(sessions.text,/Claude foreign conversation/);
   assert.match((await enginesScreen(state, env)).text, /Codex/);
   for (const screen of [sessionsScreen, enginesScreen]) {
     assert.doesNotMatch((await screen({ extAuthBypass: 'codex' }, { ...env, JARVIS_CC_ONLY: '1' })).text, /Codex/);

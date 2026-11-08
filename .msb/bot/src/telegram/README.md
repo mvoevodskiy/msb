@@ -108,7 +108,7 @@ Owner boundary остаётся перед core router: middleware бота и h
 | [settings](screens/settings.mjs) | Настройки, `.env`, timezone, лимит, сведения о сервере, уведомления |
 | [system](screens/system.mjs) | Системные пункты, обновления, restart, SSH и STT |
 | [engines](screens/engines.mjs) | `enginesScreen` — прежние controls и опциональный provider view |
-| [sessions](screens/sessions.mjs) | `sessionsScreen`, `statusScreen` — текущий агент и native-контекст |
+| [sessions](screens/sessions.mjs) → [list](screens/session-list.mjs) | CLI ledger/pages; `statusScreen` — текущий агент и native-контекст |
 | [autonomy](screens/autonomy.mjs) | Задачи, история, таймеры и права автономки |
 | [monitor](screens/monitor.mjs) | Источники, дайджест, настройки и справка мониторинга |
 | [bots](screens/bots.mjs) | `botsScreen`, `botDetailScreen` — список и карточка бота |
@@ -234,3 +234,14 @@ Pending payload связывает отмену с фактически отпр
 edit→send fallback; старая кнопка не закрывает новую форму. Ни form TTL, ни busy
 запрет на выбор проекта не добавлены. [Сквозные проверки](../../tests/projects.test.mjs)
 проверяют filesystem/state, а не только наличие кнопок.
+
+
+Сессии: [route](routes/sessions.mjs) → [atomic selector](../sessions/selection.mjs),
+список из [per-bot ledger](../sessions/README.md). Сохраняются прежние numeric
+buttons/pages и empty/reset тексты. Команда и callbacks используют один renderer;
+list/page/select не меняют pending owner. `disablePreview` передаётся через общий
+edit/send/scope путь, сохраняющий old link_preview_options; нет обхода delivery lane.
+[Production checks](../../tests/sessions.test.mjs) проверяют scope/epoch после directory
+await и переходы project+ID, а не только наличие кнопок. OC history backend остаётся
+отдельным отсутствующим переносом. Native resume/overlap и full release gate —
+следующий обязательный этап до выкладки, не доказанный одним menu PASS.

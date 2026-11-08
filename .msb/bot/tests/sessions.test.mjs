@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {fixture} from './helpers/menu-fixture.mjs';
-import {loadState,saveState} from '../src/state.mjs';
+import {loadState,saveState,updateState} from '../src/state.mjs';
 import {readEnvMap} from '../src/env/store.mjs';
 const EMPTY='Нет сохранённых сессий. Напиши что-нибудь, чтобы начать первую.';
 const state=async()=>(await loadState()).state;
@@ -31,6 +31,7 @@ test('sessions: old insertion order, ten per page, five buttons per row and curr
  entries[0].lastActivity='2099-12-31T00:00:00Z';await seed(entries,{ccSessionId:entries[11].id});await f.callback('menu:sessions');
  const text=edit(f),rows=f.editOptions.at(-1).reply_markup.inline_keyboard;
  assert.ok(text.startsWith('📋 <b>Сессии</b> (12) — стр. 1:'));
+ assert.deepEqual(f.editOptions.at(-1).link_preview_options,{is_disabled:true});
  assert.ok(text.includes('1. fixture-first-codex-11 ← текущая'));
  assert.ok(text.indexOf('10. fixture-first-codex-2')<text.indexOf('1. fixture-first-codex-11'));
  assert.equal(text.includes('fixture-first-codex-0'),false);
@@ -129,4 +130,48 @@ for(const command of ['newtask','clear'])test('sessions: /'+command+' retains th
 test('sessions: menu new-task keeps the old edited message and retained-history route',async t=>{
  const f=await fixture(t,undefined,{overlay:false}),entry=row('codex',1),before=await seed([entry]);await f.callback('menu:newtask');
  assert.equal(edit(f),'🆕 Новая сессия. Предыдущая сохранена — найдёшь в /sessions.\n\nПиши.');assert.deepEqual((await state()).sessionHistory,before.sessionHistory);assert.equal((await state()).ccSessionId,undefined);
+});
+
+
+test('sessions: valid selection retains the old pending env input ownership',async t=>{
+ const f=await fixture(t,undefined,{overlay:false}),entry=row('codex',1);await seed([entry]);await f.callback('settings:env:quick:CUSTOM_HISTORY');
+ await f.callback('session:'+entry.id);assert.equal((await state()).ccSessionId,entry.id);
+ await f.message('fixture-value');await f.callback('settings:env:skip-comment',42,{messageId:f.messages.length});assert.equal((await readEnvMap()).map.get('CUSTOM_HISTORY'),'fixture-value');
+});
+test('sessions: nonempty command uses the same old list and disables URL previews',async t=>{
+ const f=await fixture(t,undefined,{overlay:false}),entry=row('codex',1);await seed([entry]);await f.message('/sessions');
+ assert.ok(f.messages.at(-1).startsWith('📋 <b>Сессии</b> (1):'));assert.equal(f.messageOptions.at(-1).reply_markup.inline_keyboard[0][0].callback_data,'session:'+entry.id);assert.deepEqual(f.messageOptions.at(-1).link_preview_options,{is_disabled:true});
+});
+test('sessions control: ambiguous repeated IDs are not offered or selected as another project',async t=>{
+ const f=await fixture(t,undefined,{overlay:false}),entry=row('codex',1),before=await seed([entry,{...entry,project:'other'}]);await f.callback('menu:sessions');assert.equal(edit(f),EMPTY);
+ await f.callback('session:'+entry.id);assert.deepEqual(await state(),before);
+});
+test('sessions control: Claude-only conflict cannot offer or install a Codex history ID',async t=>{
+ const f=await fixture(t,undefined,{overlay:false}),entry=row('codex',1),before=await seed([entry]);process.env.JARVIS_CC_ONLY='1';
+ await f.callback('menu:sessions');assert.equal(edit(f),EMPTY);await f.callback('session:'+entry.id);assert.deepEqual(await state(),before);
+});
+for(const change of ['provider','row-project'])test('sessions: '+change+' changing during directory validation invalidates the old selection without partial state writes',async t=>{
+ const f=await fixture(t,undefined,{overlay:false}),entry=row('codex',1,{project:'alpha'});await project(f,'alpha');await seed([entry]);
+ let entered,release;const checking=new Promise(r=>{entered=r;}),gate=new Promise(r=>{release=r;});t.after(()=>release());
+ const stat=fs.stat.bind(fs),target=path.join(path.dirname(f.workspace),'projects','alpha');
+ t.mock.method(fs,'stat',async(file,...args)=>{if(String(file)===target){entered();await gate;}return stat(file,...args);});
+ const selecting=f.callback('session:'+entry.id);await checking;
+ await updateState(s=>{
+  if(change==='provider'){s.extAuthBypass='claude';s.ccSessionId='keep-newer-claude';s.sessionEpoch++;}
+  else s.sessionHistory=[{...entry,project:'beta'}];
+  return s;
+ });const newer=await state();release();await selecting;assert.deepEqual(await state(),newer);assert.equal(f.edits.length,0);
+});
+
+
+test('sessions: a directory permission error keeps the current conversation and shows no private filesystem detail',async t=>{
+ const f=await fixture(t,undefined,{overlay:false}),entry=row('codex',1,{project:'alpha'});await project(f,'alpha');const before=await seed([entry]),target=path.join(path.dirname(f.workspace),'projects','alpha'),stat=fs.stat.bind(fs);
+ t.mock.method(fs,'stat',async(file,...args)=>{if(String(file)===target)throw Object.assign(Error('fixture-private-fs-detail-'+target),{code:'EACCES'});return stat(file,...args);});
+ await f.callback('session:'+entry.id);assert.deepEqual(await state(),before);assert.equal(f.messages.at(-1),'❌ Не удалось открыть сохранённую сессию. Текущая беседа не изменена.');
+ assert.equal(f.messages.join('').includes('fixture-private-fs-detail'),false);assert.equal(f.messages.join('').includes(target),false);
+});
+test('sessions: a post-selection Telegram delivery failure cannot claim that the conversation was unchanged',async t=>{
+ const f=await fixture(t,undefined,{overlay:false}),entry=row('codex',1);await seed([entry]);
+ f.bot.api.editMessageText=async()=>{throw Error('fixture Telegram delivery failed');};f.bot.api.sendMessage=async()=>{throw Error('fixture Telegram delivery failed');};
+ await assert.rejects(f.callback('session:'+entry.id),/fixture Telegram delivery failed/);assert.equal((await state()).ccSessionId,entry.id);assert.equal(f.messages.some(s=>s.includes('беседа не изменена')),false);
 });
