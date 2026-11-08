@@ -4,7 +4,7 @@ import { invalidateFirstSession } from '../../shared/session-starts.mjs';
  * provider session отдельно. Вход: [main](../main.mjs), owner → [auth](./auth.mjs).
  * Текст/voice → [inbox](./inbox.mjs) → executeTurn → [agent](../agent/turn.mjs).
  * Кнопки → [router](./router.mjs) → routes/; вид → [screens](./screens.mjs).
- * Формы: pending в этом процессе; записи → [state](../state.mjs) / [env](../env/store.mjs).
+ * Формы → [dispatcher](./forms.mjs); pending в этом процессе; записи → [state](../state.mjs) / [env](../env/store.mjs).
  * Индикация → [progress](./progress.mjs), итог → [response](./response.mjs),
  * журнал Пульта → [history](./history.mjs), STT → [voice](./voice.mjs).
  * Проверки: [inbox lifecycle](../../tests/inbox-lifecycle.test.mjs),
@@ -13,8 +13,7 @@ import { invalidateFirstSession } from '../../shared/session-starts.mjs';
 import { Bot } from 'grammy';
 import { autoRetry } from '@grammyjs/auto-retry';
 import { presentationAwareRetry, presentationSignal } from './presentation-api.mjs';
-import fs from 'node:fs/promises';
-import path from 'node:path';
+import { handleFormInput } from './forms.mjs';
 import { recognizeVoice, voicePreview, STT_ONBOARDING } from './voice.mjs';
 import { startTurnProgress } from './progress.mjs';
 import { createInbox, isForwarded } from './inbox.mjs';
@@ -26,7 +25,6 @@ import { compactSession } from '../agent/compact.mjs';
 import { trySessionOperation } from '../agent/session-operation.mjs';
 import { hasClaudeAuth, loadState, updateState } from '../state.mjs';
 import { addTask, tryParseScheduleMessage } from '../autonomy/store.mjs';
-import { botRoot, ensureDir, workspaceDir } from '../paths.mjs';
 import { adminGuard, isSetupMode } from './auth.mjs';
 import { HELP_CC, HELP_OC, commandsForEngine } from './commands.mjs';
 import { handleCallback } from './router.mjs';
@@ -36,7 +34,7 @@ import { describeSpendLimit } from './screens/shared.mjs';
 /**
  * @param {ReturnType<import('../config.mjs').readConfig>} cfg
  */
-export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgentTurn } = {}) {
+export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgentTurn, restart = () => setTimeout(() => process.exit(0), 600) } = {}) {
   bot.api.config.use(presentationAwareRetry(autoRetry()));
 
   /** Active turns outlive the polling handler; keep ownership until delivery finishes. */
@@ -319,173 +317,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     if (text.startsWith('/')) return;
 
     const pend = pending.get(chatId);
-    if (pend === 'auth-token') {
-      const token = text.trim();
-      const { setEnvKey } = await import('../env/store.mjs');
-      try {
-        await setEnvKey(token.startsWith('sk-ant-') ? 'ANTHROPIC_API_KEY' : 'CLAUDE_CODE_OAUTH_TOKEN', token);
-        await saveAuthToken(token);
-      } catch (err) { await ctx.reply(`Токен не сохранён: ${err.message}`); return; }
-      pending.delete(chatId);
-      await ctx.reply('Токен сохранён. Перезапускаюсь…');
-      setTimeout(() => process.exit(0), 600);
-      return;
-    }
-    if (pend?.startsWith('env:')) {
-      const key = pend.slice(4);
-      const { setEnvKey } = await import('../env/store.mjs');
-      try { await setEnvKey(key, text.trim()); }
-      catch (err) { await ctx.reply(`Не сохранил: ${err.message}`); return; }
-      pending.delete(chatId);
-      await ctx.reply(`Сохранил <code>${escapeHtml(key)}</code> в .env бота. Это не проверка подключения сервиса. Для параметров запуска нужен перезапуск бота.`, { parse_mode: 'HTML' });
-      return;
-    }
-    if (pend === 'feedback') {
-      pending.delete(chatId);
-      const file = path.join(workspaceDir(), 'ops', 'feedback.md');
-      ensureDir(path.dirname(file));
-      await fs.appendFile(file, `\n## ${new Date().toISOString()}\n\n${text}\n`);
-      await ctx.reply('Спасибо, записал.');
-      return;
-    }
-    if (pend === 'new-project') {
-      pending.delete(chatId);
-      const name = text.trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
-      if (!name) {
-        await ctx.reply('Имя не подошло. Только латиница, цифры, -_.');
-        return;
-      }
-      const dir = path.join(process.env.HOME || '', 'projects', name);
-      await fs.mkdir(dir, { recursive: true });
-      await updateState((s) => { s.activeProject = name; return s; });
-      await ctx.reply(`✔ Проект <code>${name}</code> создан и выбран. Переключение cwd в open-core пока не подключено.`, { parse_mode: 'HTML' });
-      return;
-    }
-    if (pend === 'bot-token') {
-      pending.delete(chatId);
-      await ctx.reply('⏳ Ставлю бота через bot-ctl…');
-      const { addBot } = await import('../bots/manage.mjs');
-      const res = await addBot(text.trim(), { ownerId: cfg.adminId });
-      if (res.ok) {
-        await ctx.reply(`✔ Служба бота <b>${res.botId}</b> создана и запущена. Ответ в Telegram ещё нужно проверить.`, { parse_mode: 'HTML' });
-      } else {
-        await ctx.reply(`Не удалось добавить бота: ${res.error}`);
-      }
-      return;
-    }
-    if (pend === 'env-key-name') {
-      const key = text.trim().toUpperCase();
-      if (!/^[A-Z][A-Z0-9_]*$/.test(key)) {
-        await ctx.reply('Имя ключа: только A-Z, цифры и _.');
-        return;
-      }
-      pending.set(chatId, `env:${key}`);
-      await ctx.reply(`Ок. Пришли значение для <code>${key}</code>.`, { parse_mode: 'HTML' });
-      return;
-    }
-    if (pend === 'mon-source') {
-      pending.delete(chatId);
-      const { addSourceFromInput } = await import('../monitor/config.mjs');
-      const res = await addSourceFromInput(text);
-      if (!res.ok) {
-        await ctx.reply(res.error);
-        return;
-      }
-      await ctx.reply(
-        res.added
-          ? `✔ Источник <b>${res.type}</b>: ${res.name}`
-          : `Уже был: <b>${res.type}</b> ${res.name}`,
-        { parse_mode: 'HTML' },
-      );
-      return;
-    }
-    if (
-      pend === 'pult-password' ||
-      pend === 'pult-tg-token' ||
-      pend === 'pult-url' ||
-      pend === 'pult-listen' ||
-      pend === 'pult-session'
-    ) {
-      pending.delete(chatId);
-      const { setEnvKey, deleteEnvKey } = await import('../env/store.mjs');
-      const { pultScreen } = await import('./screens.mjs');
-      const { engineStatusSnapshot, submitRequest, waitRequestResult } = await import('../engines/client.mjs');
-      const { readPultSecrets, pultPublicUrl, pultListenHost } = await import('../pult/client.mjs');
-      const { escapeHtml } = await import('./edit.mjs');
-
-      try {
-        if (pend === 'pult-password') {
-          const pw = text.trim();
-          if ([...pw].length < 12) {
-            await ctx.reply('Пароль короче 12 символов.');
-            return;
-          }
-          await setEnvKey('PULT_PASSWORD', pw);
-        } else if (pend === 'pult-tg-token') {
-          const v = text.trim();
-          if (v === '-' || v === '') await deleteEnvKey('PULT_TG_TOKEN');
-          else await setEnvKey('PULT_TG_TOKEN', v);
-        } else if (pend === 'pult-url') {
-          const v = text.trim().replace(/\/+$/, '');
-          try {
-            const u = new URL(v);
-            if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('protocol');
-          } catch {
-            await ctx.reply('Нужен URL вида https://… или http://…');
-            return;
-          }
-          await setEnvKey('PULT_PUBLIC_URL', v);
-        } else if (pend === 'pult-listen') {
-          const host = text.trim();
-          if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(host) && host !== '::' && !host.includes(':')) {
-            await ctx.reply('Ожидаю IPv4, например 192.168.1.10');
-            return;
-          }
-          await setEnvKey('PULT_HOST', host);
-        } else if (pend === 'pult-session') {
-          const hours = Number(text.trim());
-          if (!Number.isInteger(hours) || hours < 1 || hours > 720) {
-            await ctx.reply('Нужно целое число часов от 1 до 720.');
-            return;
-          }
-          await setEnvKey('PULT_SESSION_HOURS', String(hours));
-        }
-
-        let note = 'сохранено';
-        try {
-          const { id } = await submitRequest('reload-pult', {
-            bot_id: process.env.MSB_BOT_ID || 'default',
-          });
-          const result = await waitRequestResult(id, { timeoutMs: 90_000 });
-          note =
-            result?.code === 'OK'
-              ? 'сохранено, службы обновлены'
-              : `сохранено; reload: ${result?.code || 'нет ответа'}`;
-        } catch (err) {
-          note = `сохранено; reload: ${err.message}`;
-        }
-
-        const secrets = await readPultSecrets();
-        const { readEnvMap } = await import('../env/store.mjs');
-        const { map } = await readEnvMap();
-        const snap = await engineStatusSnapshot();
-        const view = pultScreen(
-          snap.pult,
-          {
-            password: map.get('PULT_PASSWORD') || secrets.web.get('PULT_PASSWORD') || '',
-            host: map.get('PULT_HOST') || pultListenHost(secrets),
-            tgToken: map.get('PULT_TG_TOKEN') || secrets.web.get('PULT_TG_TOKEN') || '',
-            publicUrl: map.get('PULT_PUBLIC_URL') || pultPublicUrl(secrets),
-            sessionHours: map.get('PULT_SESSION_HOURS') || secrets.web.get('PULT_SESSION_HOURS') || '4',
-          },
-          escapeHtml(note),
-        );
-        await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
-      } catch (err) {
-        await ctx.reply(`Не удалось сохранить: ${err.message}`);
-      }
-      return;
-    }
+    if (await handleFormInput({ kind: pend, ctx, text, pending, cfg, restart })) return;
 
     // Old reply-stop interrupts the current turn, but keeps collectors/FIFO.
     // Env/auth forms above keep priority; timezone input below remains pending.
@@ -724,21 +556,6 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     .catch((err) => console.error('[msb/bot] setMyCommands failed:', err.message));
 
   return bot;
-}
-
-async function saveAuthToken(raw) {
-  const token = raw.trim();
-  if (token.startsWith('sk-ant-')) {
-    process.env.ANTHROPIC_API_KEY = token;
-    process.env.MSB_ANTHROPIC_API_KEY = token;
-  } else {
-    process.env.CLAUDE_CODE_OAUTH_TOKEN = token;
-  }
-  await updateState((s) => {
-    s.authMode = 'subscription';
-    s.hasSubscriptionAuth = true;
-    return s;
-  });
 }
 
 function escapeHtml(s) {
