@@ -109,3 +109,70 @@ test('start retains an existing unset effort so model-dependent default can appl
   assert.equal((await loadState()).state.ccEffort, undefined);
   assert.equal((await loadState()).state.ccSessionId, state.ccSessionId);
 });
+
+
+test('a genuinely new profile retains the original xhigh initialization', async t => {
+  const { f } = await claude(t);
+  await fs.unlink((await loadState()).file); await f.message('/start');
+  assert.equal((await loadState()).state.ccEffort,'xhigh');
+});
+
+for (const [version, expected] of [['2.1.153','Opus 4.7'],['2.1.154','Opus 4.8'],['2.1.219','Opus 5'],['2.1.280','Opus 5.5']]) {
+  test(`native metadata ${version} labels the Opus alias as ${expected} without pinning state`, async t => {
+    const { f, state } = await claude(t,version); await saveState({...state,ccModel:'opus'});
+    await f.callback('settings:model');
+    assert.ok(f.edits.at(-1).includes(`<b>${expected}</b>`));
+    assert.equal((await loadState()).state.ccModel,'opus');
+  });
+}
+
+for (const [version,expected] of [['2.1.196','Sonnet 4.6'],['2.1.197','Sonnet 5'],['2.1.284','Sonnet 5.5']]) {
+  test(`native metadata ${version} labels the Sonnet alias as ${expected}`, async t => {
+    const { f } = await claude(t,version); await f.callback('settings:model');
+    assert.ok(f.edits.at(-1).includes(`<b>${expected}</b>`));
+  });
+}
+
+test('Haiku alias gains the original depth controls only at its old CLI threshold', async t => {
+  const { f, state } = await claude(t,'2.1.293');await saveState({...state,ccModel:'haiku'});
+  await f.callback('settings:effort');
+  assert.equal(buttons(f).filter(b=>b.callback_data.startsWith('settings:effort:set:')).length,5);
+  await f.callback('menu:agent');assert.ok(f.edits.at(-1).includes('Haiku 5.5'));
+});
+
+test('legacy explicit off shows native medium default for pinned Opus 5.5, without rewriting preference', async t => {
+  const {f,state}=await claude(t);await saveState({...state,ccModel:'claude-opus-5-5',ccEffort:'off'});
+  await f.callback('menu:agent');assert.match(f.edits.at(-1),/Глубина: <b>medium<[/]b>/);
+  await f.callback('settings:effort');assert.match(f.edits.at(-1),/Сейчас:<[/]b> medium/);
+  assert.equal((await loadState()).state.ccEffort,'off');
+});
+
+
+test('CLI replacement while the model write waits cannot apply a stale unlocked choice', async t => {
+  const {f,state}=await claude(t),file=f.home+'/.msb/bots/default/state.json';
+  const observed=f.home+'/version-observed';
+  await fs.writeFile(process.env.MSB_REAL_CLAUDE,`import fs from 'node:fs'; fs.writeFileSync(${JSON.stringify(observed)},'1'); process.stdout.write('2.1.300 (Claude Code)');`);
+  let release,entered,held=false;
+  const gate=new Promise(r=>{release=r;}),waiting=new Promise(r=>{entered=r;});
+  const read=fs.readFile.bind(fs);
+  t.mock.method(fs,'readFile',async(target,...args)=>{
+    if(String(target)===file && !held && await fs.access(observed).then(()=>true,()=>false)) {
+      held=true;entered();await gate;
+    }
+    return read(target,...args);
+  });
+  const selection=f.callback('settings:model:set:opus55');
+  try {
+    await waiting;
+    await fs.writeFile(process.env.MSB_REAL_CLAUDE,"process.stdout.write('unknown');");
+    release();await selection;
+    assert.deepEqual((await loadState()).state,state);
+    assert.deepEqual(f.callbackAnswers,[ [{show_alert:true,text:'Opus 5.5 откроется после обновления системы.'}] ]);
+  } finally {release();await selection;}
+});
+
+
+test('an existing empty state file is still legacy, not permission to invent a new effort choice', async t => {
+  const {f}=await claude(t);await saveState({});await f.message('/start');
+  assert.equal((await loadState()).state.ccEffort,undefined);
+});

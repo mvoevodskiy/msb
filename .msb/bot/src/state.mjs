@@ -1,4 +1,5 @@
 import fs from 'node:fs/promises';
+import { getClaudeModel, cleanClaudeModelId, compareCliVersion } from './agent/models.mjs';
 import { claudeEffortFlag } from './agent/effort.mjs';
 import path from 'node:path';
 import { ensureDir, statePath } from './paths.mjs';
@@ -8,6 +9,7 @@ import { ensureDir, statePath } from './paths.mjs';
  * Канон полей (CONTRACT-state-menus): authMode, hasSubscriptionAuth, engine,
  * ccSessionId, ccModel, ccEffort, permissionMode, extAuthBypass.
  * Алиасы model/effort/permMode читаются для старых записей.
+ * loadState.exists — IO metadata, не поле профиля; updateState передаёт его mutator вторым аргументом.
  * Вход: [Telegram](./telegram/bot.mjs), [agent](./agent/turn.mjs); записи только updateState.
  * Путь/profile → [paths](./paths.mjs), env CRUD → [env/store](./env/store.mjs).
  * Отдельные provider IDs/model/effort → [ext store](../../../overlay/bot/ext/store.mjs);
@@ -20,9 +22,9 @@ export async function loadState(env = process.env) {
   try {
     const raw = await fs.readFile(file, 'utf8');
     const state = JSON.parse(raw);
-    return { file, state: normalizeState(state && typeof state === 'object' ? state : {}) };
+    return { file, state: normalizeState(state && typeof state === 'object' ? state : {}), exists: true };
   } catch (err) {
-    if (err?.code === 'ENOENT') return { file, state: {} };
+    if (err?.code === 'ENOENT') return { file, state: {}, exists: false };
     throw err;
   }
 }
@@ -52,8 +54,8 @@ export function updateState(mutator, env = process.env) {
   const file = statePath(env);
   const previous = stateUpdates.get(file) || Promise.resolve();
   const update = previous.catch(() => {}).then(async () => {
-    const { state } = await loadState(env);
-    const changed = await mutator({ ...state });
+    const { state, exists } = await loadState(env);
+    const changed = await mutator({ ...state }, { exists });
     if (changed === NO_STATE_WRITE) return state;
     const next = changed || state;
     await saveState(next, env);
@@ -77,21 +79,20 @@ export function hasClaudeAuth(env = process.env, state = {}) {
 
 export function resolveModel(state = {}) {
   const raw = state.ccModel || state.model || 'opus';
-  if (raw === 'opus' || raw === 'opusplan') return 'claude-opus-4-6';
-  if (raw === 'sonnet') return 'claude-sonnet-4-6';
-  if (raw === 'haiku') return 'claude-haiku-4-5-20251001';
+  // The former open-core Fable family field meant pinned Fable5; retain that
+  // compatibility until an explicit catalogue choice, without a disk migration.
   if (raw === 'fable') return 'claude-fable-5';
-  return raw;
+  return getClaudeModel(raw)?.cliModel || cleanClaudeModelId(raw);
 }
 
-export function resolveEffort(state = {}) {
-  return claudeEffortFlag(resolveModel(state), state.ccEffort || state.effort);
+export function resolveEffort(state = {}, version) {
+  return claudeEffortFlag(resolveModel(state), state.ccEffort || state.effort, version);
 }
 
 /** UI permissionMode → Claude CLI --permission-mode (CONTRACT-agent-cc). */
-export function resolvePermMode(state = {}) {
+export function resolvePermMode(state = {}, version) {
   const ui = state.permissionMode || state.permMode || 'auto';
-  if (ui === 'smart') return 'auto';
+  if (ui === 'smart') return (compareCliVersion(version, '2.1.154') ?? -1) >= 0 ? 'auto' : 'acceptEdits';
   if (ui === 'bypassPermissions' || ui === 'bypass') return 'bypassPermissions';
   if (ui === 'dontAsk') return 'dontAsk';
   // plan / control / auto / default → acceptEdits в штатном бандле

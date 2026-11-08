@@ -71,6 +71,8 @@ try {
     MSB_SESSION_DIR: path.join(fixtureHome, '.msb/bots/default/sessions'),
     CLAUDE_CODE_OAUTH_TOKEN: 'fixture-only',
   });
+  const { fixtureClaudeVersion, fixtureVersionExec } = await import('../helpers/claude-version-fixture.mjs');
+  await fixtureClaudeVersion(fixtureHome);
   await fs.mkdir(path.dirname(stateFile), { recursive: true });
   await fs.writeFile(stateFile, JSON.stringify({
     authMode: 'subscription', hasSubscriptionAuth: true, fixtureUnrelated: 'preserve-me',
@@ -94,6 +96,7 @@ try {
   };
   globalThis.fetch = forbidden('fetch');
   for (const method of ['exec', 'execFile', 'execSync', 'execFileSync', 'spawnSync', 'fork']) cp[method] = forbidden(method);
+  cp.execFile = fixtureVersionExec(fixtureHome, kind => forbidden(kind)());
   cp.spawn = (command, args, options) => {
     if (command !== 'claude' || options.env.HOME !== fixtureHome) return forbidden(`spawn ${command}`)();
     const number = children.length + 1;

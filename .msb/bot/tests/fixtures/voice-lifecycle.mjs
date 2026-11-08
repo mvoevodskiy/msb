@@ -96,6 +96,8 @@ try {
     CLAUDE_CODE_OAUTH_TOKEN: 'fixture-auth-unchanged',
     ...(scenario !== 'missing-key' ? { DEEPGRAM_API_KEY: 'fixture-deepgram' } : {}),
   });
+  const { fixtureClaudeVersion, fixtureVersionExec } = await import('../helpers/claude-version-fixture.mjs');
+  await fixtureClaudeVersion(fixtureHome);
   process.chdir(fixtureHome);
   const botRoot = path.join(fixtureHome, '.msb/bots/default');
   const stateFile = path.join(botRoot, 'state.json');
@@ -135,6 +137,7 @@ try {
     }
   };
   for (const method of ['exec', 'execSync', 'execFile', 'execFileSync', 'spawnSync', 'fork']) cp[method] = forbidden(method);
+  cp.execFile = fixtureVersionExec(fixtureHome, kind => forbidden(kind)());
   cp.spawn = (command, args, options) => {
     if (command !== 'claude' || options.env.HOME !== fixtureHome || options.cwd !== fixtureHome) return forbidden('unexpected spawn')();
     const child = new EventEmitter();

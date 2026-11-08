@@ -66,9 +66,9 @@ test('Sonnet xhigh/max become high only in actual CLI options, not persisted pre
   }
 });
 
-test('current pinned Opus 4.6 maps xhigh to high but retains its supported max', () => {
+test('explicit pinned Opus 4.6 maps xhigh to high but retains its supported max', () => {
   for (const [value, effective] of [['xhigh', 'high'], ['max', 'max'], ['low', 'low']]) {
-    const r = agentOptionsReport('claude', 'auto', 'opus', value), args = r.calls[0].args;
+    const r = agentOptionsReport('claude', 'auto', 'claude-opus-4-6', value), args = r.calls[0].args;
     assert.equal(args[args.indexOf('--effort') + 1], effective);
     assert.equal(r.state.ccEffort, value);
   }
@@ -83,7 +83,34 @@ test('invalid persisted effort is not passed through as a CLI option', () => {
 test('Claude compact reuses the same model-specific effort resolution', async () => {
   let observed;
   const r = await compactSession({ engine: 'cc', ccSessionId: 'claude-effort-fixture', ccModel: 'haiku', ccEffort: 'max' }, {
-    runClaude: async opts => { observed = opts; opts.onEvent({ type: 'system', subtype: 'compact_boundary' }); return { isError: false }; },
+    readVersion: async () => '2.1.154', runClaude: async opts => { observed = opts; opts.onEvent({ type: 'system', subtype: 'compact_boundary' }); return { isError: false }; },
   });
   assert.equal(r.ok, true); assert.equal(observed.effort, undefined);
+});
+
+
+test('legacy explicit off keeps native default and does not become a preferred high override', () => {
+  const r = agentOptionsReport('claude','auto','claude-opus-5-5','off','2.1.300');
+  assert.equal(r.calls[0].args.includes('--effort'),false);
+  assert.equal(r.state.ccEffort,'off');
+});
+
+test('unset effort restores preferred high only when the selected CLI model requires it', () => {
+  const r = agentOptionsReport('claude','auto','claude-opus-5-5','','2.1.300');
+  const args = r.calls[0].args;
+  assert.equal(args[args.indexOf('--effort')+1],'high');
+  assert.equal(r.state.ccEffort,'');
+});
+
+
+for (const [version,model,expected] of [
+  ['2.1.154','opus',undefined],['2.1.219','opus',undefined],['2.1.280','opus','high'],
+  ['2.1.197','sonnet',undefined],['2.1.284','sonnet','high'],
+  ['2.1.292','haiku',undefined],['2.1.293','haiku','high'],
+]) test(`unset ${model} effort at CLI ${version} follows old native/default metadata`, () => {
+  const r=agentOptionsReport('claude','auto',model,'',version),args=r.calls[0].args;
+  assert.equal(args[args.indexOf('--model')+1],model,'preserve native alias');
+  assert.equal(args.includes('--effort'),expected!==undefined);
+  if(expected)assert.equal(args[args.indexOf('--effort')+1],expected);
+  assert.equal(r.state.ccEffort,'');
 });

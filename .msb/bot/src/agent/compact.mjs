@@ -1,9 +1,10 @@
+import { readClaudeVersion } from './claude-version.mjs';
 import { runClaudeTurn } from './claude.mjs';
 import { resolveEffort, resolveModel, resolvePermMode } from '../state.mjs';
 
 /** Route the old Telegram action to a verified provider implementation. */
 export async function compactSession(state, { signal, isCurrent = async () => true,
-  compactProvider, runClaude = runClaudeTurn } = {}) {
+  compactProvider, runClaude = runClaudeTurn, readVersion = readClaudeVersion } = {}) {
   if (state.engine === 'oc') return { ok: false, error: 'Сжатие OpenClaw в этом ядре пока не подключено.' };
   if (typeof state.ccSessionId !== 'string' || !state.ccSessionId.trim()) {
     return { ok: false, error: 'Нет активной CC-сессии. Напиши что-нибудь сначала.' };
@@ -17,10 +18,12 @@ export async function compactSession(state, { signal, isCurrent = async () => tr
   if (state.ccSessionId.startsWith('ext:')) return { ok: false, error: 'Текущая сессия не принадлежит Claude.' };
   if (signal?.aborted || !await isCurrent()) return { ok: false, aborted: true };
 
+  const version = await readVersion();
+  if (signal?.aborted || !await isCurrent()) return { ok: false, aborted: true };
   let boundary = false;
   const result = await runClaude({
     prompt: '/compact', sessionId: state.ccSessionId, providerId: 'claude',
-    model: resolveModel(state), effort: resolveEffort(state), permissionMode: resolvePermMode(state), signal, maxTurns: 1,
+    model: resolveModel(state), effort: resolveEffort(state,version), permissionMode: resolvePermMode(state,version), signal, maxTurns: 1,
     disallowedTools: ['Bash', 'WebSearch', 'WebFetch', 'Agent', 'Task', 'Workflow', 'Monitor', 'Skill', 'Read', 'Edit', 'Write', 'Glob', 'Grep'],
     onEvent: (event) => { if (event.type === 'system' && event.subtype === 'compact_boundary') boundary = true; },
   });

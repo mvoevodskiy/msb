@@ -6,7 +6,12 @@ import path from 'node:path';
 import { compactSession } from '../src/agent/compact.mjs';
 import { trySessionOperation } from '../src/agent/session-operation.mjs';
 
-test('Claude requires a compact boundary in the original session', async () => {
+test('Claude requires a compact boundary in the original session', async (t) => {
+  const nativeHome = await fs.mkdtemp(path.join(os.tmpdir(),'compact-version-'));
+  const previousNative = process.env.MSB_REAL_CLAUDE;
+  const { fixtureClaudeVersion } = await import('./helpers/claude-version-fixture.mjs');
+  await fixtureClaudeVersion(nativeHome);
+  t.after(async () => { if (previousNative === undefined) delete process.env.MSB_REAL_CLAUDE; else process.env.MSB_REAL_CLAUDE = previousNative; await fs.rm(nativeHome,{recursive:true,force:true}); });
   const state = { engine: 'cc', ccSessionId: 'claude-fixture', ccModel: 'sonnet', ccEffort: 'high' };
   let options;
   const runClaude = async (input) => {
@@ -64,11 +69,11 @@ test('a stale session never starts Claude and a guard is scoped to one bot', asy
 // origin/master: /compact uses qu(...) when CLI succeeds without compact_boundary.
 test('a short Claude history is a no-op, while actual CLI failure remains an error', async () => {
   const state = { engine: 'cc', ccSessionId: 'claude-fixture' };
-  const result = await compactSession(state, { runClaude: async () => ({
+  const result = await compactSession(state, { readVersion: async () => '2.1.154', runClaude: async () => ({
     sessionId: state.ccSessionId, isError: false, usage: { inputTokens: 1200, cacheReadTokens: 800, cacheCreationTokens: 0 },
   }) });
   assert.equal(result.ok, true);
   assert.equal(result.compacted, false);
   assert.equal(result.text, 'Сжимать нечего — контекст не забит: сейчас в нём ~2K токенов. Компакт нужен, когда история большая.');
-  assert.equal((await compactSession(state, { runClaude: async () => ({ isError: true }) })).ok, false);
+  assert.equal((await compactSession(state, { readVersion: async () => '2.1.154', runClaude: async () => ({ isError: true }) })).ok, false);
 });

@@ -81,7 +81,13 @@ DC275–287 запрещает настройку Haiku4.5. nU809–817 не п�
 low/medium/high/max, но не xhigh. K0A52558–52615 показывает raw выбранный уровень
 и отдельно честную подсказку, во что он отображается; setter53275–53289 принимает
 только5значений, сохраняет preference без нормализации и не сбрасывает беседу.
-New текущие aliases resolveModel закреплены на Opus4.6/Sonnet4.6/Haiku4.5/Fable5;
+На baseline c76d8a3 aliases resolveModel были закреплены на Opus4.6/Sonnet4.6/Haiku4.5/Fable5;
 этот узкий этап не заменяет каталог и не заявляет перенос CLI-version locks.
 Нормализовать только фактический flag, не переписывать сохранённый preference,
 не трогать Codex provider effort/native config и выбранный владельцем low.
+
+Последующий этап каталога (контракт parity-model-catalog-contract.txt) возвращает
+native aliases и весь V1 metadata/CLI locks. Прежний текст о concrete aliases
+выше относится к baseline c76d8a3, не к новой policy. Explicit legacy off остаётся
+без outgoing flag; FY preferred default применяется только при unset, без
+перезаписи raw field. Initial xhigh относится лишь к новому профилю, не к legacy unset.

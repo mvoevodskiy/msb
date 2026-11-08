@@ -88,3 +88,23 @@ non-Opus xhigh/max fall back to high; pinned Opus4.6 retains max, maps xhigh to 
 No saved preference/session/native config is migrated. Codex effort remains in
 its adapter/store; model catalog/CLI-version locks are a separate pending audit.
 [UI/argv/compact checks](../../tests/claude-effort.test.mjs).
+
+
+## Каталог Claude и native CLI metadata
+
+[Shared catalog](../../shared/claude-models.mjs) содержит закреплённые old V1 данные;
+[models](models.mjs) вычисляет aliases, locks, подписи и defaults. Значение alias
+передаётся CLI, а версии служат UI/effort policy. Pinned callback выбирает точный
+CLI ID; retired opusplan разрешается в opus без неявной disk/session migration.
+Legacy raw ID остаётся passthrough; early open-core fable сохраняет значение Fable5.
+[Version reader](claude-version.mjs) спрашивает только native `--version` через
+[общий resolver](../../shared/claude-binary.mjs), который также используют startup
+и passthrough shim. Timeout 5s/SIGKILL, stdout 4KiB; shell/auth/CLI install отсутствуют.
+Fingerprint/backoff/coalescing не позволяют старому ответу разблокировать новую
+установку. Для Codex этот запрос на ходе не выполняется: его model/effort native.
+Turn/compact/display используют одну версию и [effort policy](effort.mjs).
+Explicit legacy off сохраняет native default без preferred-high override.
+[Metadata/cache tests](../../tests/claude-version.test.mjs),
+[UI/state/provider tests](../../tests/model-catalog.test.mjs),
+[actual argv](../../tests/claude-effort.test.mjs). Реальные auth/model availability
+и весь OpenClaw backend этим каталогом не доказываются.

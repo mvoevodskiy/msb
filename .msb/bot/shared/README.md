@@ -43,3 +43,10 @@ token, не history metadata или авторизация. Переключен
 Поздний успешный ID допускается только для своего token/provider и пустого
 слота; обычный fence существующих IDs не ослабляется. Маршрут и тесты —
 [исполнение](../src/agent/README.md#общий-ход).
+
+
+[Claude catalog](claude-models.mjs) — общие old model identities для core и
+защиты provider boundaries; policy находится в agent/models, а не в UI renderer.
+[Native resolver](claude-binary.mjs) используется startup/shim и metadata reader,
+исключает собственный shim по realpath. Это чтение локальной CLI версии, без auth
+или provider turn. [Native checks](../tests/claude-version.test.mjs).

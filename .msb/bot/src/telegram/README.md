@@ -80,7 +80,8 @@ Owner boundary остаётся перед core router: middleware бота и h
 | Подмодуль | Маршруты и функции |
 |---|---|
 | [navigation](routes/navigation.mjs) | `handleNavigationRoute`: главное меню, новые сессии/проекты, `whisper:skip`; `handleMiscRoute`: поздние `plan:*` |
-| [agent](routes/agent.mjs) | `handleAgentRoute`: auth, модель, effort, права; `handleSetupRoute`: поздний `setup:*` fallback |
+| [models](routes/models.mjs) | `handleModelRoute`: family/Versions, один lock alert до ack, сохранение CLI choice без reset |
+| [agent](routes/agent.mjs) | `handleAgentRoute`: auth, effort, права; `handleSetupRoute`: поздний `setup:*` fallback |
 | [system](routes/system.mjs) | `handleSystemRoute`: системный экран, restart, SSH и updates |
 | [bots](routes/bots.mjs) | `handleBotsRoute`: список, карточка, формы добавления/удаления бота |
 | [settings](routes/settings.mjs) | `handleSettingsRoute`: `.env`, timezone, лимиты, сведения, STT и уведомления |
@@ -102,7 +103,8 @@ Owner boundary остаётся перед core router: middleware бота и h
 | Подмодуль | Что искать |
 |---|---|
 | [hub](screens/hub.mjs) | `hubKeyboard`, `hubScreen` — главное меню |
-| [agent](screens/agent.mjs) | Агент, модель, effort, права, Claude connection/setup |
+| [agent](screens/agent.mjs) | Агент, effort, права, Claude connection/setup; совместимый re-export моделей |
+| [models](screens/models.mjs) | Прежние family/Versions, selected/locks и Back; pure renderer |
 | [settings](screens/settings.mjs) | Настройки, `.env`, timezone, лимит, сведения о сервере, уведомления |
 | [system](screens/system.mjs) | Системные пункты, обновления, restart, SSH и STT |
 | [engines](screens/engines.mjs) | `enginesScreen` — прежние controls и опциональный provider view |
@@ -148,7 +150,7 @@ Polling получает управление до окончания испол
 
 ## Долгое чтение статуса и навигация
 
-[Router](router.mjs) оставляет read-only `eng:status` и `settings:pult:refresh` в tracked task, чтобы polling
+[Router](router.mjs) оставляет read-only status и Claude Agent/model/Versions/effort views в tracked tasks, чтобы polling
 принимал следующую команду. [Shared callback scope](../../shared/callback-renders.mjs)
 один для core/overlay и сохраняется через async continuation. Новый callback или
 /start, /settings, /stop отменяет прежний UI read/backoff; уже разрешённые записи
@@ -203,3 +205,20 @@ exactly-once/replay fence нет, как и в old callback protocol. Полна
 [Callback/delivery tests](../../tests/plan-handoff.test.mjs),
 [полный fake-CLI resume](../../tests/plan-turn.test.mjs),
 [old provenance и границы](../../tests/reference/parity-agent-settings-contract.txt).
+
+
+Claude family/Versions → [model route](routes/models.mjs) → [native version](../agent/claude-version.mjs)
+и [catalog policy](../agent/models.mjs) → [model screens](screens/models.mjs).
+Pinned callback получает один alert до обычного ack, если CLI unknown/too old;
+setter использует тот же catalog и сохраняет ID/epoch/parked slots/effort.
+Aliases остаются native aliases. Fable — прежний one-tap, без нового confirm.
+Старые Claude aliases/pinned IDs перехватывает overlay guard до чужого native config.
+[Contract](../../tests/reference/parity-model-catalog-contract.txt),
+[production checks](../../tests/model-catalog.test.mjs).
+
+Cold Claude metadata read uses the same tracked readonly callback scope as status:
+Agent/model/Versions/effort return polling before the query ends; later navigation
+suppresses obsolete rendering, shutdown drains the bounded query. This does not
+cancel authorized model writes. A cold pinned-selection guard stays ordered and
+can wait up to5s before its single lock alert/ack, matching the old bound.
+[Readonly lifecycle](../../tests/model-read-lifecycle.test.mjs).

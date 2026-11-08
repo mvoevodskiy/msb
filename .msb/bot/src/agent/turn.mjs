@@ -6,6 +6,7 @@ import {
   resolvePermMode,
   updateState,
 } from '../state.mjs';
+import { readClaudeVersion } from './claude-version.mjs';
 import { runClaudeTurn } from './claude.mjs';
 import { conversationalModePrompt } from './mode-prompt.mjs';
 import { buildSystemPrompt } from './system-prompt.mjs';
@@ -56,9 +57,10 @@ export async function runAgentTurn({
     };
   }
 
+  const cliVersion = (state.extAuthBypass || 'claude') === 'claude' ? await readClaudeVersion(env) : undefined;
   const model = resolveModel(state);
-  const effort = resolveEffort(state);
-  const permissionMode = resolvePermMode(state);
+  const effort = resolveEffort(state, cliVersion);
+  const permissionMode = resolvePermMode(state, cliVersion);
   const systemPrompt = await buildSystemPrompt({ extra: conversationalModePrompt(state) });
 
   if (signal?.aborted) return aborted();

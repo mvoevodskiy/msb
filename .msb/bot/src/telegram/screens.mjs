@@ -5,7 +5,7 @@
  * Навигация: [Telegram](./README.md).
  */
 export { hubKeyboard, hubScreen } from './screens/hub.mjs';
-export { agentScreen, modelScreen, effortScreen, permModeScreen, connScreen, setupScreen } from './screens/agent.mjs';
+export { agentScreen, modelScreen, modelVersionsScreen, effortScreen, permModeScreen, connScreen, setupScreen } from './screens/agent.mjs';
 export { settingsScreen, envScreen, envDeleteScreen, tzScreen, limitScreen, serverStatusScreen, notificationsScreen } from './screens/settings.mjs';
 export {
   extrasScreen,

@@ -5,9 +5,7 @@ import '../../shared/preload.mjs';
  * Навигация: [Исполнение CLI](../README.md#исполнение-cli) → [Codex](../adapters/codex.mjs).
  */
 import { spawn } from 'node:child_process';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolveNativeClaude } from '../../shared/claude-binary.mjs';
 import { loadStore, encodeExtSession, setSession, decodeExtSession } from '../store.mjs';
 import { isProviderId } from '../providers.mjs';
 import { parseClaudeArgv, readStdin, buildPrompt } from '../adapters/parse-args.mjs';
@@ -17,37 +15,7 @@ import { runCodexTurn } from '../adapters/codex.mjs';
 import { runQwenTurn } from '../adapters/qwen.mjs';
 import { isValidCodexThreadId } from '../codex-native.mjs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-function resolveRealClaude(env = process.env) {
-  if (env.MSB_REAL_CLAUDE && fs.existsSync(env.MSB_REAL_CLAUDE)) return env.MSB_REAL_CLAUDE;
-  const candidates = [
-    '/usr/bin/claude',
-    '/usr/local/bin/claude',
-    '/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js',
-  ];
-  for (const c of candidates) {
-    try {
-      fs.accessSync(c, fs.constants.X_OK);
-      return c;
-    } catch {
-      /* continue */
-    }
-  }
-  // PATH без нашего shim/bin
-  const shimBin = path.resolve(__dirname, 'bin');
-  for (const dir of (env.PATH || '').split(':')) {
-    if (!dir || path.resolve(dir) === shimBin) continue;
-    const c = path.join(dir, 'claude');
-    try {
-      fs.accessSync(c, fs.constants.X_OK);
-      return c;
-    } catch {
-      /* continue */
-    }
-  }
-  return null;
-}
 
 function stripForeignResume(argv) {
   // При возврате на Claude чужой ext session id не должен уходить в его CLI.
@@ -198,7 +166,7 @@ async function main() {
   }
 
   if (active === 'claude' || process.env.JARVIS_CC_ONLY === '1') {
-    const real = resolveRealClaude();
+    const real = resolveNativeClaude();
     if (!real) {
       console.error('[msb/ext/shim] настоящий claude не найден (MSB_REAL_CLAUDE / PATH)');
       process.exit(127);

@@ -4,8 +4,8 @@ import './shared/preload.mjs';
  * Вход overlay: shared profile → PATH-shim → integration prepare → установленный index.js.
  * Навигация: [Обвязка](./ext/README.md), [prepare](./ext/install.mjs).
  */
+import { resolveNativeClaude, isNativeClaudeFile } from './shared/claude-binary.mjs';
 import { spawnSync } from 'node:child_process';
-import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -17,25 +17,11 @@ const shimBin = path.join(__dirname, 'ext', 'shim', 'bin');
 const MARK = '[msb/ext]';
 
 function findRealClaude() {
-  if (process.env.MSB_REAL_CLAUDE && fs.existsSync(process.env.MSB_REAL_CLAUDE)) {
-    return process.env.MSB_REAL_CLAUDE;
-  }
-  const hardcoded = [
-    '/usr/bin/claude',
-    '/usr/local/bin/claude',
-    '/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js',
-  ];
-  for (const c of hardcoded) {
-    try {
-      fs.accessSync(c, fs.constants.X_OK);
-      return c;
-    } catch {
-      /* continue */
-    }
-  }
+  const native = resolveNativeClaude();
+  if (native) return native;
   const r = spawnSync('bash', ['-lc', 'type -P claude || true'], { encoding: 'utf8' });
   const found = (r.stdout || '').trim().split('\n').filter(Boolean)[0];
-  if (found && !found.includes('/ext/shim/bin/')) return found;
+  if (found && isNativeClaudeFile(found)) return found;
   return null;
 }
 

@@ -7,3 +7,13 @@ export async function fixtureClaudeVersion(home, version = '2.1.154') {
   process.env.MSB_REAL_CLAUDE = file;
   return file;
 }
+
+/** Strict process fixtures permit only this one metadata probe; all other execs stay forbidden. */
+export function fixtureVersionExec(home, deny, version = '2.1.154') {
+  const file = path.join(home, 'native-version-fixture.mjs');
+  return (command, args, options, callback) => {
+    if (command !== process.execPath || args.length !== 2 || args[0] !== file || args[1] !== '--version'
+      || options.env.HOME !== home || options.env.MSB_REAL_CLAUDE !== file) return deny('execFile');
+    queueMicrotask(() => callback(null, version + ' (Claude Code)', ''));
+  };
+}

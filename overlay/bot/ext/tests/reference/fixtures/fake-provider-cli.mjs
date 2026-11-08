@@ -7,6 +7,10 @@ if (!globalThis[Symbol.for('msb.reference.networkBlocked')]) {
 }
 const name = path.basename(process.argv[1]);
 const argv = process.argv.slice(2);
+if (name === 'claude' && argv.length === 1 && argv[0] === '--version') {
+  process.stdout.write('2.1.154 (Claude Code)');
+  process.exit(0);
+}
 const chunks = [];
 for await (const chunk of process.stdin) chunks.push(chunk);
 const stdin = Buffer.concat(chunks).toString('utf8');

@@ -4,6 +4,8 @@ import path from 'node:path';
 const home = await fs.mkdtemp(path.join(os.tmpdir(), 'history-lifecycle-'));
 for (const key of Object.keys(process.env)) delete process.env[key];
 Object.assign(process.env, { HOME: home, PATH: path.dirname(process.execPath), MSB_BOT_ID: 'default', MSB_WORKSPACE_DIR: home, CLAUDE_CODE_OAUTH_TOKEN: 'fixture' });
+const { fixtureClaudeVersion } = await import('../helpers/claude-version-fixture.mjs');
+await fixtureClaudeVersion(home);
 const root = path.join(home, '.msb/bots/default');
 await fs.mkdir(root, { recursive: true });
 await fs.writeFile(path.join(root, 'state.json'), JSON.stringify({ authMode: 'subscription', hasSubscriptionAuth: true }));

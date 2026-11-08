@@ -3,6 +3,7 @@
  * Навигация: [Обвязка](../README.md).
  */
 import os from 'node:os';
+import { isClaudeModelChoice } from '../../shared/claude-models.mjs';
 import { normalizePermissionMode } from '../../shared/permission-modes.mjs';
 import { isProviderId, getProvider } from '../providers.mjs';
 import { setActive } from '../store.mjs';
@@ -276,7 +277,7 @@ export async function handleCallback(bot, cq, closedCore = false) {
       ? data.slice('ext:model:set:'.length)
       : data.slice('settings:model:set:'.length);
     // Не даём штатным алиасам Claude (opus/sonnet/…) записаться как модель Codex/Cursor.
-    if (/^(opus|sonnet|haiku|fable)\b/i.test(modelId)) {
+    if (isClaudeModelChoice(modelId)) {
       const menu = await buildModelMenu();
       await editOrReply(
         bot,

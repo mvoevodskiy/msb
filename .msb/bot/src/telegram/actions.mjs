@@ -7,25 +7,31 @@
  */
 import { invalidateFirstSession } from '../../shared/session-starts.mjs';
 import { normalizePermissionMode } from '../../shared/permission-modes.mjs';
+import { getClaudeModel, familyChoice, modelLocked } from '../agent/models.mjs';
 import { isClaudeEffort } from '../agent/effort.mjs';
-import { updateState } from '../state.mjs';
+import { updateState, NO_STATE_WRITE } from '../state.mjs';
 
+/** Early open-core compatibility export; choices/locks use shared catalogue. */
 export const MODEL_MAP = {
-  opus: 'claude-opus-4-6',
-  sonnet: 'claude-sonnet-4-6',
-  haiku: 'claude-haiku-4-5-20251001',
+  opus: 'opus',
+  sonnet: 'sonnet',
+  haiku: 'haiku',
   fable: 'claude-fable-5',
 };
 
-export async function applyModelFamily(family) {
-  const model = Object.hasOwn(MODEL_MAP, family) ? MODEL_MAP[family] : null;
-  if (!model) return null;
-  await updateState((s) => {
-    s.ccModel = family;
-    s.model = model;
+export async function applyModelFamily(family, version) {
+  if (family !== 'fable' && !getClaudeModel(family)) return null;
+  let applied = null;
+  await updateState(async (s) => {
+    const currentVersion = typeof version === 'function' ? await version() : version;
+    const option = family === 'fable' ? familyChoice('fable',currentVersion)?.model : getClaudeModel(family);
+    if (!option || modelLocked(option,currentVersion)) return NO_STATE_WRITE;
+    applied = option.cliModel;
+    s.ccModel = applied;
+    s.model = applied;
     return s;
   });
-  return model;
+  return applied;
 }
 
 export async function applyEffort(value) {

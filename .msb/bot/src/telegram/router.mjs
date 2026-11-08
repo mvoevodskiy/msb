@@ -1,7 +1,7 @@
 /**
  * Callback вход из [createBot](./bot.mjs): тот же callback_data и один context.
  * ROUTES ниже задаёт прежний порядок; только UNHANDLED передаёт управление дальше.
- * Настройки/формы → [settings](./routes/settings.mjs), модель/права → [agent](./routes/agent.mjs),
+ * Настройки/формы → [settings](./routes/settings.mjs), модели → [models](./routes/models.mjs), auth/права → [agent](./routes/agent.mjs),
  * выбор движка → [engines](./routes/engines.mjs), проекты/MCP → [workspace](./routes/workspace.mjs),
  * задачи → [autonomy](./routes/autonomy.mjs), источники → [monitor](./routes/monitor.mjs).
  * Остальные семейства видны в прямых imports ниже; rendering → [screens](./screens.mjs).
@@ -16,6 +16,7 @@ import { loadState } from '../state.mjs';
 import { editOrReply } from './edit.mjs';
 import { enginesScreen } from './screens.mjs';
 import { handleNavigationRoute, handleMiscRoute } from './routes/navigation.mjs';
+import { handleModelRoute, isModelSelectionCallback } from './routes/models.mjs';
 import { handleAgentRoute, handleSetupRoute } from './routes/agent.mjs';
 import { handleSystemRoute } from './routes/system.mjs';
 import { handleBotsRoute } from './routes/bots.mjs';
@@ -28,6 +29,7 @@ import { UNHANDLED } from './routes/shared.mjs';
 
 const ROUTES = [
   handleNavigationRoute,
+  handleModelRoute,
   handleAgentRoute,
   handleSystemRoute,
   handleBotsRoute,
@@ -51,11 +53,17 @@ export async function handleCallback({ bot, cfg, pending, ctx, plan }) {
   const chatId = ctx.chat?.id;
   const msgId = ctx.callbackQuery.message?.message_id;
   const scope = beginCallbackRender(bot, ctx.callbackQuery);
-  // Only read-only status is detached. Authorized mutation routes retain their
+  // Read-only status/catalog views are detached. Authorized mutations retain their
   // existing execution order; navigation invalidates their rendering, not writes.
-  const deferred = data === 'eng:status' || data === 'settings:pult:refresh';
+  const deferred = ['eng:status','settings:pult:refresh','menu:agent','settings:model','settings:model:ver','settings:effort'].includes(data);
   if (data === 'settings:pult:refresh') cancelPultInput(pending, chatId);
-  await ctx.answerCallbackQuery().catch(() => {});
+  let answered = false;
+  const answer = async options => {
+    if (answered) return;
+    answered = true;
+    await ctx.answerCallbackQuery(options).catch(() => {});
+  };
+  if (!isModelSelectionCallback(data)) await answer();
   if (!chatId) return;
   if (['menu:back', 'menu:close', 'menu:agent', 'menu:settings', 'settings:back', 'mon:back', 'settings:bots:cancel'].includes(data)) pending.delete(chatId);
   const show = async view => {
@@ -68,7 +76,7 @@ export async function handleCallback({ bot, cfg, pending, ctx, plan }) {
     if (deferred && !scope.isCurrent()) return;
     const engineMenu = async snapshot => enginesScreen(state, snapshot,
       await bot[Symbol.for('msb.engineProviderView')]?.(state));
-    const context = { bot, cfg, pending, ctx, plan, data, chatId, msgId, show, state, engineMenu, signal: scope.signal };
+    const context = { bot, cfg, pending, ctx, plan, answer, data, chatId, msgId, show, state, engineMenu, signal: scope.signal };
     for (const route of ROUTES) {
       const result = await route(context);
       if (result !== UNHANDLED) return result;
@@ -76,9 +84,10 @@ export async function handleCallback({ bot, cfg, pending, ctx, plan }) {
     console.error(`[msb/bot] unhandled callback: ${data}`);
   };
   if (deferred) {
-    const task = runCallbackScope(scope, dispatch).catch(() => { if (!scope.signal.aborted) console.error('[msb/bot] status callback failed'); });
+    const task = runCallbackScope(scope, dispatch).catch(() => { if (!scope.signal.aborted) console.error('[msb/bot] read callback failed'); });
     trackCallbackTask(bot, task);
     return;
   }
-  return await runCallbackScope(scope, dispatch);
+  try { return await runCallbackScope(scope, dispatch); }
+  finally { await answer(); }
 }

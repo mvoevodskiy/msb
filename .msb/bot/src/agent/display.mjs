@@ -1,8 +1,10 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { botRoot, homeDir } from '../paths.mjs';
-import { supportsClaudeEffort } from './effort.mjs';
-import { resolveEffort, resolveModel } from '../state.mjs';
+import { readClaudeVersion } from './claude-version.mjs';
+import { modelShortLabel } from './models.mjs';
+import { effectiveClaudeEffort } from './effort.mjs';
+import { resolveModel } from '../state.mjs';
 
 const TITLES = { claude: 'Claude Code', codex: 'Codex', cursor: 'Cursor', qwen: 'Qwen' };
 
@@ -18,8 +20,9 @@ export async function agentDisplay(state, env = process.env) {
   catch { /* standalone core has no extension */ }
   const provider = env.JARVIS_CC_ONLY === '1' ? 'claude' : store.active || state.extAuthBypass || 'claude';
   if (provider === 'claude') {
-    const model = resolveModel(state);
-    return { engine: 'Claude Code', model, effort: supportsClaudeEffort(model) ? resolveEffort(state) || 'high' : null };
+    const model = resolveModel(state), version = await readClaudeVersion(env);
+    return { engine: 'Claude Code', model, label: modelShortLabel(model,version),
+      effort: effectiveClaudeEffort(model,state.ccEffort || state.effort,version) };
   }
   let native = {};
   if (provider === 'codex') {

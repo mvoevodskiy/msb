@@ -20,7 +20,7 @@ for (const overlay of [false, true]) test(`Claude model callback preserves nativ
   const { f, state } = await claude(t, overlay);
   const store = await fs.readFile(f.storeFile, 'utf8');
   await f.callback('settings:model:set:sonnet');
-  assert.deepEqual((await loadState()).state, { ...state, ccModel: 'sonnet', model: 'claude-sonnet-4-6' });
+  assert.deepEqual((await loadState()).state, { ...state, ccModel: 'sonnet', model: 'sonnet' });
   assert.equal(await fs.readFile(f.storeFile, 'utf8'), store, 'Claude model cannot change Codex model/effort');
 });
 
