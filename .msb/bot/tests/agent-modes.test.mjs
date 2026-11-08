@@ -2,23 +2,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import path from 'node:path';
-import os from 'node:os';
-import { spawnSync } from 'node:child_process';
-import { fileURLToPath } from 'node:url';
 import { fixture } from './helpers/menu-fixture.mjs';
 import { saveState, loadState } from '../src/state.mjs';
-const childFixture = fileURLToPath(new URL('./fixtures/agent-options.mjs', import.meta.url));
-function options(provider, mode, model = 'opus', effort = 'high') {
-  const child = spawnSync(process.execPath, [childFixture, provider, mode, model, effort], {
-    env: { PATH: path.dirname(process.execPath), TMPDIR: os.tmpdir() }, encoding: 'utf8', timeout: 8000 });
-  assert.equal(child.status, 0, child.stderr);
-  const line = child.stdout.split('\n').find(s => s.startsWith('AGENT_OPTIONS='));
-  assert.ok(line, child.stdout);
-  const out = JSON.parse(line.slice('AGENT_OPTIONS='.length));
-  assert.equal(out.ok, true); assert.equal(out.calls.length, 1);
-  return out.calls[0];
-}
+import { agentOptionsReport } from './helpers/agent-options.mjs';
+const options = (...args) => agentOptionsReport(...args).calls[0];
 const flag = (call, name) => call.args[call.args.indexOf(name) + 1];
 
 test('Claude mode screen restores the three old visible choices and current selection', async t => {

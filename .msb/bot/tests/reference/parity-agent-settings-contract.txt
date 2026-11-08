@@ -73,3 +73,15 @@ Comment map был по userID, без TTL/cancel/reply filter; callback gU11146
 терял topic, comment мог потребляться в другом чате. Эти старые ошибки не являются
 требованием: new ingress сохраняет свой chat/topic и существующий owner guard.
 Полную native безопасность не обещать: marker/always — разговорные инструкции.
+
+Глубина Claude — точная old политика
+DC275–287 запрещает настройку Haiku4.5. nU809–817 не передаёт --effort для
+неподдерживаемой модели; yW792–807 сводит xhigh/max к high для non-Opus и
+проверяет список effort у Opus. Каталог406–410/489–503: Opus4.6 поддерживает
+low/medium/high/max, но не xhigh. K0A52558–52615 показывает raw выбранный уровень
+и отдельно честную подсказку, во что он отображается; setter53275–53289 принимает
+только5значений, сохраняет preference без нормализации и не сбрасывает беседу.
+New текущие aliases resolveModel закреплены на Opus4.6/Sonnet4.6/Haiku4.5/Fable5;
+этот узкий этап не заменяет каталог и не заявляет перенос CLI-version locks.
+Нормализовать только фактический flag, не переписывать сохранённый preference,
+не трогать Codex provider effort/native config и выбранный владельцем low.
