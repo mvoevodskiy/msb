@@ -6,7 +6,8 @@
  * [Old contract](../../tests/reference/parity-forms-contract.txt),
  * [handler checks](../../tests/menu-handlers.test.mjs).
  */
-export const INPUT_TTL_MS = 10 * 60 * 1000;
+import { INPUT_TTL_MS, AUTH_INPUT_EXPIRED, ENV_INPUT_EXPIRED } from '../../shared/input-notices.mjs';
+export { INPUT_TTL_MS };
 const timed = kind => kind === 'auth-token' || kind === 'env-key-name' || kind?.startsWith('env:');
 
 export class PendingInputs extends Map {
@@ -32,9 +33,7 @@ export class PendingInputs extends Map {
 export function pendingInputNotice({ kind, expired }, text) {
   if (!timed(kind)) return null;
   const auth = kind === 'auth-token';
-  if (expired) return auth
-    ? '⏳ Время на ввод токена истекло (10 мин) — режим ввода сброшен. Начни заново: /settings → 🔌 Подключение.'
-    : '⏳ Время на ввод переменной истекло (10 мин) — режим ввода сброшен. Начни заново: /settings → 🔑 Переменные.';
+  if (expired) return auth ? AUTH_INPUT_EXPIRED : ENV_INPUT_EXPIRED;
   if (text.trimStart().startsWith('/')) return auth
     ? 'Вышел из режима ввода токена — команда не была сохранена. Отправь её ещё раз.'
     : 'Вышел из режима ввода переменной — команда не была сохранена как значение. Отправь её ещё раз.';

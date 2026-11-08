@@ -1,8 +1,10 @@
 /**
- * Ввод локального IP и ключей через общие pending-хранилища.
+ * Ввод локального IP и ключей: только в исходном чате, просроченный ввод
+ * поглощается до модели. State — auth/local-ssh; [проверки](../tests/input-scope.test.mjs).
  * Навигация: [Обвязка](../README.md).
  */
 import profile from '../../shared/profile.cjs';
+import { AUTH_INPUT_EXPIRED } from '../../shared/input-notices.mjs';
 import { setActive } from '../store.mjs';
 import { saveProviderSecret } from '../env.mjs';
 import { buildConnMenu, savedKeyText } from '../menu.mjs';
@@ -18,8 +20,13 @@ export async function handleLocalSshIpMessage(bot, msg) {
   const userId = msg.from?.id;
   const chatId = msg.chat?.id;
   if (!userId || !chatId) return false;
-  const pending = getPendingLocalIp(userId);
+  const pending = getPendingLocalIp(userId, { chatId, includeExpired: true });
   if (!pending) return false;
+  if (pending.expired) {
+    clearPendingLocalIp(userId);
+    await bot.api.sendMessage(chatId, '⏳ Время на ввод IP истекло (10 мин) — режим ввода сброшен. Начни заново: /settings → 🔌 Подключение.');
+    return true;
+  }
 
   const text = (msg.text || '').trim();
   if (!text || text.startsWith('/')) {
@@ -60,7 +67,7 @@ export async function handleAuthMessage(bot, msg) {
 
   if (await handleLocalSshIpMessage(bot, msg)) return true;
 
-  const pending = getPendingAuth(userId);
+  const pending = getPendingAuth(userId, { chatId, includeExpired: true });
   if (!pending) return false;
 
   // Codex не принимает секрет из Telegram — сбрасываем pending, если вдруг остался.
@@ -72,6 +79,12 @@ export async function handleAuthMessage(bot, msg) {
         'Для Codex секрет в чат не нужен. Открой «🔌 Подключение» → Codex → «Войти» (ChatGPT device code).',
       )
       .catch(() => {});
+    return true;
+  }
+
+  if (pending.expired) {
+    clearPendingAuth(userId);
+    await bot.api.sendMessage(chatId, AUTH_INPUT_EXPIRED);
     return true;
   }
 

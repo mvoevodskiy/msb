@@ -1,8 +1,12 @@
-/** Ожидание следующего сообщения с ключом провайдера. */
+/**
+ * Provider-input ownership, read by [text admission](./integration/text-input.mjs).
+ * Originating chat is checked before expiry; an expired entry remains available
+ * to consume its late reply instead of forwarding a secret to the model.
+ * [Checks](./tests/input-scope.test.mjs).
+ */
+import { INPUT_TTL_MS } from '../shared/input-notices.mjs';
 
 const pending = new Map(); // userId -> { providerId, at, chatId }
-
-const TTL_MS = 10 * 60 * 1000;
 
 export function setPendingAuth(userId, providerId, chatId) {
   pending.set(Number(userId), { providerId, chatId: Number(chatId), at: Date.now() });
@@ -12,10 +16,11 @@ export function clearPendingAuth(userId) {
   pending.delete(Number(userId));
 }
 
-export function getPendingAuth(userId) {
+export function getPendingAuth(userId, { chatId, includeExpired = false } = {}) {
   const row = pending.get(Number(userId));
-  if (!row) return null;
-  if (Date.now() - row.at > TTL_MS) {
+  if (!row || (chatId !== undefined && row.chatId !== Number(chatId))) return null;
+  if (Date.now() - row.at > INPUT_TTL_MS) {
+    if (includeExpired) return { ...row, expired: true };
     pending.delete(Number(userId));
     return null;
   }

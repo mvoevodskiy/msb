@@ -14,6 +14,7 @@ import { promisify } from 'node:util';
 import { botEnvPath, globalEnvPath, writeEnvKey } from './env.mjs';
 import { msbRoot } from './paths.mjs';
 import profile from '../shared/profile.cjs';
+import { INPUT_TTL_MS } from '../shared/input-notices.mjs';
 
 const execFileAsync = promisify(execFile);
 
@@ -551,10 +552,12 @@ export function setPendingLocalIp(userId, state) {
   pendingLocalIp.set(userId, { ...state, at: Date.now() });
 }
 
-export function getPendingLocalIp(userId) {
+/** Origin chat/expiry contract: [text input](./integration/text-input.mjs), [checks](./tests/input-scope.test.mjs). */
+export function getPendingLocalIp(userId, { chatId, includeExpired = false } = {}) {
   const s = pendingLocalIp.get(userId);
-  if (!s) return null;
-  if (Date.now() - s.at > 10 * 60 * 1000) {
+  if (!s || (chatId !== undefined && Number(s.chatId) !== Number(chatId))) return null;
+  if (Date.now() - s.at > INPUT_TTL_MS) {
+    if (includeExpired) return { ...s, expired: true };
     pendingLocalIp.delete(userId);
     return null;
   }
