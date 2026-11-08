@@ -59,3 +59,10 @@ test('persisted prototype-name modes cannot inject inherited object values into 
     assert.equal(flag(options('claude', mode), '--append-system-prompt'), ordinary);
   }
 });
+
+
+test('old or unknown native Claude CLI falls back from smart auto to acceptEdits', () => {
+  for (const version of ['2.1.153', 'unknown']) {
+    assert.equal(flag(options('claude', 'smart', 'opus', 'high', version), '--permission-mode'), 'acceptEdits');
+  }
+});

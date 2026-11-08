@@ -62,3 +62,12 @@ CLI effort/UI должны пользоваться тем же catalogue metada
 DC275–287,yW792–807,nU809–817; не перезаписывать raw effort или native session.
 Модули/заголовки/README ведут по imports к ответственности и проверке, без
 ещё одной карты файлов. Реальные внешние авторизации — отдельная граница приёмки.
+
+Уточнения legacy state и CLI mode guard
+Q1/updateChatId 55577–55609 создавал новую запись с ccEffort:xhigh, но existing
+state без этого поля не дополнялся. New /start пока добавляет xhigh всякий раз,
+что перекрывает FY у legacy state. При восстановлении различать новый профиль
+и существующий unset; явный выбор владельца никогда не заменять default.
+Old ni20377–20398 / On21057 / Pn20993 / OY20633–20638: smart→native auto только
+при CLI>=2.1.154, иначе acceptEdits. Plan/control уже acceptEdits. Внедрение
+общей метаинформации версии должно восстановить этот guard без смены UI/Codex прав.

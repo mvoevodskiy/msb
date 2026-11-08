@@ -6,11 +6,13 @@ import cp from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { syncBuiltinESMExports } from 'node:module';
-const [provider, mode, model = 'opus', effort = 'high'] = process.argv.slice(2);
+const [provider, mode, model = 'opus', effort = 'high', cliVersion = '2.1.154'] = process.argv.slice(2);
 const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-agent-options-'));
 for (const key of Object.keys(process.env)) delete process.env[key];
 Object.assign(process.env, { HOME: home, MSB_BOT_ID: 'default', MSB_WORKSPACE_DIR: home,
   MSB_SESSION_DIR: path.join(home, 'sessions'), PATH: path.dirname(process.execPath), CLAUDE_CODE_OAUTH_TOKEN: 'fixture-only' });
+const { fixtureClaudeVersion } = await import('../helpers/claude-version-fixture.mjs');
+await fixtureClaudeVersion(home, cliVersion);
 const calls = [];
 cp.spawn = (command, args, options) => {
   if (command !== 'claude' || options.env.HOME !== home) throw Error('Unexpected CLI');

@@ -6,11 +6,12 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fixtureClaudeVersion } from './claude-version-fixture.mjs';
 import { createBot } from '../../src/telegram/bot.mjs';
 import { saveState } from '../../src/state.mjs';
 import { installUpdateHook } from '../../../../overlay/bot/ext/install.mjs';
 
-export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixture' }), { overlay = true, now = Date.now, runtimeProfile = 'msb' } = {}) {
+export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixture' }), { overlay = true, now = Date.now, runtimeProfile = 'msb', claudeCliVersion = '2.1.154' } = {}) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-menu-'));
   const previous = { ...process.env };
   let bot;
@@ -19,6 +20,7 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
   process.env.MSB_RUNTIME_PROFILE = runtimeProfile;
   process.env.MSB_RUNTIME_ROOT = path.join(home, runtimeProfile === 'jar1' ? '.iia' : '.msb');
   delete process.env.JARVIS_CC_ONLY;
+  await fixtureClaudeVersion(home, claudeCliVersion);
   t.after(async () => {
     await bot?.stop();
     for (const key of Object.keys(process.env)) if (!(key in previous)) delete process.env[key];
@@ -26,7 +28,7 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
     await fs.rm(home, { recursive: true, force: true });
   });
   const restartRequests = [];
-  const markupEdits = [];
+  const markupEdits = [], callbackAnswers = [];
   const messages = [], edits = [], editOptions = [], deleted = [], messageOptions = [], typingSignals = [], editSignals = [], replySignals = [];
   class Harness {
     handlers = new Map(); commands = new Map(); middleware = [];
@@ -38,7 +40,7 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
       sendMessage: async (_chat, text, opts, signal) => { messages.push(text); messageOptions.push(opts); replySignals.push(signal); return { message_id: messages.length }; },
       editMessageText: async (_chat, _id, text, options, signal) => { edits.push(text); editOptions.push(options); editSignals.push(signal); },
       editMessageReplyMarkup: async (chatId, messageId, options) => { markupEdits.push({ chatId, messageId, options }); },
-      answerCallbackQuery: async () => {},
+      answerCallbackQuery: async (...args) => { callbackAnswers.push(args); },
       deleteMessage: async (_chat, id) => { deleted.push(id); },
     };
     use(fn) { this.middleware.push(fn); }
@@ -48,7 +50,7 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
       const event = update.callback_query || update.message;
       const ctx = { from: event.from, chat: event.message?.chat || event.chat, message: update.message,
         callbackQuery: update.callback_query, api: this.api,
-        reply: (text, opts, signal) => this.api.sendMessage(ctx.chat.id, text, opts, signal), answerCallbackQuery: async () => {} };
+        reply: (text, opts, signal) => this.api.sendMessage(ctx.chat.id, text, opts, signal), answerCallbackQuery: async (...args) => { callbackAnswers.push(args); } };
       const text = ctx.message?.text;
       const command = text?.match(/^\/([^@\s]+)(?:@\S+)?(?:\s+([\s\S]*))?$/);
       if (command) ctx.match = command[2] || '';
@@ -65,5 +67,5 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
   await fs.writeFile(storeFile, JSON.stringify({ version: 1, active: 'codex', models: { codex: 'gpt-6.1-terra' }, efforts: { codex: 'max' } }));
   const callback = (data, uid = 42, { chatId = 42, messageId = 1, threadId } = {}) => bot.handleUpdate({ callback_query: { id: 'q', data, from: { id: uid }, message: { message_id: messageId, chat: { id: chatId }, ...(threadId ? { message_thread_id: threadId } : {}) } } });
   const message = (text, uid = 42) => bot.handleUpdate({ message: { message_id: 99, text, from: { id: uid }, chat: { id: 42 } } });
-  return { home, bot, callback, message, markupEdits, messages, edits, editOptions, deleted, messageOptions, typingSignals, editSignals, replySignals, storeFile, restartRequests };
+  return { home, bot, callback, message, markupEdits, callbackAnswers, messages, edits, editOptions, deleted, messageOptions, typingSignals, editSignals, replySignals, storeFile, restartRequests };
 }
