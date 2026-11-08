@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fixture } from './helpers/menu-fixture.mjs';
-import { readEnvMap } from '../src/env/store.mjs';
+import { readEnvMap, setEnvKey } from '../src/env/store.mjs';
 import { setPendingAuth, getPendingAuth, clearPendingAuth } from '../../../overlay/bot/ext/auth.mjs';
 import { setPendingLocalIp, getPendingLocalIp, clearPendingLocalIp } from '../../../overlay/bot/ext/local-ssh.mjs';
 
@@ -86,4 +86,21 @@ test('Pult input control: unrelated env input is not cancelled by a stale Pult b
     assert.equal((await readEnvMap()).map.get('FIXTURE_INPUT_KEY'), 'fixture value');
     assert.deepEqual(f.turns, []);
   }
+});
+
+// Optional deletion must bypass the new write-value guard, as before. Synthetic
+// helper acknowledgements prove only routing, not real service reload or secrets.
+for (const value of ['-', '   ']) test(`Pult input: optional alert token deletion via ${value === '-' ? 'dash' : 'blank'} retains reload`, async t => {
+  const f = await pultFixture(t);
+  await setEnvKey('PULT_TG_TOKEN', 'fixture-pult-value');
+  await setEnvKey('KEEP', 'fixture-keep');
+  await f.callback('settings:pult:tg-token');
+  await f.message(value);
+  const { map } = await readEnvMap();
+  assert.equal(map.has('PULT_TG_TOKEN'), false);
+  assert.equal(map.get('KEEP'), 'fixture-keep');
+  assert.equal(f.requests.length, 1);
+  assert.equal(f.requests[0].action, 'reload-pult');
+  assert.deepEqual(f.turns, []);
+  assert.deepEqual(f.restartRequests, []);
 });

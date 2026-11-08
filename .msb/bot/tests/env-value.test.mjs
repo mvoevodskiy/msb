@@ -5,6 +5,7 @@ import fs from 'node:fs/promises';
 import {fixture} from './helpers/menu-fixture.mjs';
 import {setEnvKey,readEnvMap,envFilePath} from '../src/env/store.mjs';
 import {loadState} from '../src/state.mjs';
+import {handleEnvValueInput} from '../src/telegram/forms/env.mjs';
 const LINE='Значение должно быть одной строкой, без переносов и служебных символов. Пришли только сам ключ/токен.';
 const JSON_NOTE='Похоже, это целый JSON (например ключ сервисного аккаунта), а не одно значение. Переменная окружения должна быть ОДНОЙ строкой — так вставлять нельзя. Напиши в поддержку, если нужно подключить именно такой ключ.';
 const TELEGRAM='Не похоже на токен Telegram-бота. Формат: <цифры>:<буквы/цифры> (как выдаёт @BotFather).';
@@ -33,7 +34,7 @@ const invalid=[
  ['first declared name wins','ANTHROPIC_OPENROUTER_KEY','sk-or-fixture',mismatch('OpenRouter','Anthropic')],
  ['Telegram fallback shape','TELEGRAM_BOT_2','fixture-is-not-a-token',TELEGRAM],
 ];
-for(const [label,key,value,reason] of invalid)test('env value: '+label+' rejects before description and allows retry',async t=>{
+for(const [label,key,value,reason] of invalid.filter(([, , value])=>value!==''))test('env value: '+label+' rejects before description and allows retry',async t=>{
  let turns=0;const f=await fixture(t,async()=>{turns++;return{ok:true,text:'unexpected'};});
  await setEnvKey('KEEP','fixture-keep');const file=envFilePath(),before=await fs.readFile(file,'utf8'),state=(await loadState()).state;
  const providers=await fs.readFile(f.storeFile,'utf8');await f.callback('settings:env:quick:'+key);await f.message(value);
@@ -44,6 +45,17 @@ for(const [label,key,value,reason] of invalid)test('env value: '+label+' rejects
  assert.equal((await readEnvMap()).map.get(key),valid);assert.equal((await readEnvMap()).map.get('KEEP'),'fixture-keep');
  assert.equal(turns,0);assert.deepEqual(f.restartRequests,[]);assert.ok(!f.deleted.includes(99));
  assert.deepEqual((await loadState()).state,state);assert.equal(await fs.readFile(f.storeFile,'utf8'),providers);
+});
+
+// Telegram cannot deliver an empty text message. Exercise the public production
+// form directly here; the ingress fixture correctly classifies textless media.
+test('env value: direct form rejects empty raw text before any draft or save',async t=>{
+ const f=await fixture(t,undefined,{overlay:false});
+ const replies=[],pending={advance(){assert.fail('empty value entered description');},delete(){assert.fail('ordinary key cleared input');}};
+ await handleEnvValueInput({kind:'env:CUSTOM_API',ctx:{reply:async text=>replies.push(text)},text:'',pending,chatId:42});
+ assert.deepEqual(replies,['Не сохранил: Значение пустое.']);
+ assert.equal(await fs.stat(envFilePath()).then(()=>true,()=>false),false);
+ assert.equal(process.env.CUSTOM_API,undefined);assert.deepEqual(f.restartRequests,[]);
 });
 
 const valid=[

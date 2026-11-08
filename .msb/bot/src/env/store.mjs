@@ -1,5 +1,6 @@
 /**
  * CRUD per-bot env по выбранному runtime profile.
+ * Pure raw value guard/normalization: [value](./value.mjs), repeated before IO.
  * Навигация: [Env](./README.md) → [shared profile](../../shared/README.md).
  */
 import fs from 'node:fs/promises';
@@ -8,6 +9,8 @@ import { botRoot, ensureDir } from '../paths.mjs';
 import profile from '../../shared/profile.cjs';
 import { serializeEnvMutation } from '../../shared/env-writes.mjs';
 import { inspectEnvLines, replaceEnvValue, removeEnvValue } from './lines.mjs';
+import { validateEnvValue } from './value.mjs';
+export { validateEnvValue } from './value.mjs';
 
 /** Old system-key boundary plus new equivalent bootstrap names; aliases agree.
  * Generic forms cannot replace/delete these; only stock auth uses explicit internal.
@@ -101,21 +104,21 @@ export async function setEnvKey(key, value, env = process.env, { internal = fals
   if (!/^[A-Z0-9_]+$/.test(key)) {
     throw new Error('Ключ: только A-Z, цифры и _');
   }
-  validateEnvValue(value);
-  validateEnvComment(comment);
   if (PROTECTED_KEYS.has(key) && internal !== true) {
     throw new Error(`${key} — защищённый системный ключ, изменение запрещено`);
   }
+  const normalized = validateEnvValue(value, key);
+  validateEnvComment(comment);
   const file = envFilePath(env);
   return serializeEnvMutation(async () => {
     const { lines } = await readEnvFile(file);
     ensureDir(path.dirname(file));
-    const kept = replaceEnvValue(lines, key, value, comment?.trim());
+    const kept = replaceEnvValue(lines, key, normalized, comment?.trim());
     const body = `${kept.join('\n').replace(/\n*$/, '')}\n`;
     const tmp = `${file}.tmp.${process.pid}`;
     await fs.writeFile(tmp, body, { mode: 0o600 });
     await fs.rename(tmp, file);
-    profile.setEnvValue(env, key, value);
+    profile.setEnvValue(env, key, normalized);
     return { file, key };
   });
 }
@@ -134,12 +137,6 @@ export async function deleteEnvKey(key, env = process.env) {
     profile.setEnvValue(env, key, undefined);
     return { file, key };
   });
-}
-
-export function validateEnvValue(value) {
-  if (typeof value !== 'string' || /[\r\n\0]/.test(value)) {
-    throw new Error('Значение должно быть одной строкой, без переводов строки и NUL.');
-  }
 }
 
 export function validateEnvComment(comment) {

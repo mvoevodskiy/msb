@@ -119,13 +119,13 @@ test('protected env: explicit internal auth write still validates values and cha
 test('protected env: old TELEGRAM_BOT_2 fallback and Deepgram service remain ordinary supported keys', async t => {
   const f=await fixture(t,undefined,{overlay:false});
   await f.callback('settings:env:quick:TELEGRAM_BOT_2');
-  await f.message('fixture-second-bot');
+  await f.message('12345:'+'F'.repeat(30));
   await f.callback('settings:env:skip-comment',42,{messageId:f.messages.length});
   await f.callback('settings:env:quick:DEEPGRAM_API_KEY');
   await f.message('fixture-deepgram');
   await f.callback('settings:env:skip-comment',42,{messageId:f.messages.length});
   const {map}=await readEnvMap();
-  assert.equal(map.get('TELEGRAM_BOT_2'),'fixture-second-bot');
+  assert.equal(map.get('TELEGRAM_BOT_2'),'12345:'+'F'.repeat(30));
   assert.equal(map.get('DEEPGRAM_API_KEY'),'fixture-deepgram');
   assert.deepEqual(f.restartRequests,[]);
 });

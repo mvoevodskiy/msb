@@ -55,3 +55,16 @@ protected priority/internal guard, trim storage, existing empty STT, Pult
 optional deletion/reload, auth OAT/API/opaque и oversize retry. Только fake data.
 Никаких реальных ключей/личного аудио/логина ради RED. Логические этапы отдельно.
 Откат возвращает пропуск плохих значений; code-only не меняет существующие env.
+
+Checkpoint восстановления
+Contract 268823a; RED fcbc1b8: первоначально34test,12PASS/22FAIL. Один из FAIL
+был неверным тестовым маршрутом пустого Telegram text (такой text невозможно
+получить от Telegram): он заменён прямой проверкой production form. Остальные
+17invalid rows идут через настоящий ingress; store повторяет все18guards.
+NUL/internalCRLF были запрещены и раньше — часть RED доказывает текст причины,
+а не новый класс пропущенного ввода. Не выдавать число FAIL за число дефектов.
+После fix34value tests GREEN; девять связанных наборов140PASS, независимые
+value/protected/auth/Pult/STT78PASS. Все externalAPI/CLI/helper здесь fake;
+реальные credentials, Pult reload, voice и Claude turn не проверялись этим этапом.
+Synthetic BOT_TOKEN fixtures приведены к старому format-only rule; validator
+ради них не ослабляется. Полный Docker/targetLinux и liveприёмка — отдельно.

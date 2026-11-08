@@ -3,6 +3,7 @@
  * Вход: [form dispatcher](../forms.mjs); pending и lifecycle принадлежат createBot.
  * [Контракт](../../../tests/reference/parity-forms-contract.txt),
  * [Description contract](../../../tests/reference/parity-env-description-contract.txt),
+ * Shared raw value guard → [value](../../env/value.mjs), before draft/IO.
  * [handler tests](../../../tests/env-description.test.mjs).
  */
 import { InlineKeyboard } from 'grammy';
@@ -14,9 +15,10 @@ import { protectedEnvNotice } from '../env-protection.mjs';
 export async function handleEnvValueInput({ kind, ctx, text, pending, chatId }) {
   const key = kind.slice(4);
   if (await refuseProtected({ key, ctx, pending, chatId })) return;
-  try { validateEnvValue(text.trim()); }
+  let value;
+  try { value = validateEnvValue(text, key); }
   catch (err) { await ctx.reply(`Не сохранил: ${err.message}`); return; }
-  const draft = { key, value:text.trim() };
+  const draft = { key, value };
   pending.advance(chatId, `env-comment:${key}`, draft);
   const prompt = await ctx.reply(`Описание для <code>${escapeHtml(key)}</code> (необязательно, видно тебе и агенту):`, {
     parse_mode:'HTML', reply_markup:new InlineKeyboard().text('Пропустить →','settings:env:skip-comment'),

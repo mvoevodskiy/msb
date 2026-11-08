@@ -584,12 +584,12 @@ test('env parity: returning to the env list or the old Cancel exits key input be
 
 test('env parity: protected keys stay protected at both deletion steps', async t => {
   const f = await fixture(t, undefined, {overlay:false});
-  await setEnvKey('BOT_TOKEN','synthetic-protected-value',process.env,{internal:true});
+  await setEnvKey('BOT_TOKEN','12345:'+'F'.repeat(30),process.env,{internal:true});
   await f.callback('settings:env:delete:BOT_TOKEN');
   assert.equal(f.edits.at(-1),'❌ BOT_TOKEN — защищённый ключ, удаление запрещено.');
   assert.deepEqual(f.editOptions.at(-1).reply_markup.inline_keyboard, [[{text:'« Назад',callback_data:'settings:env'}]]);
   await f.callback('settings:env:confirm-delete:BOT_TOKEN');
-  assert.equal((await readEnvMap()).map.get('BOT_TOKEN'),'synthetic-protected-value');
+  assert.equal((await readEnvMap()).map.get('BOT_TOKEN'),'12345:'+'F'.repeat(30));
 });
 
 test('env parity: env list and old Cancel clear provider input in the overlay too', async t => {

@@ -64,3 +64,11 @@ injection characters и не вводит UI-предел в API для суще
 [Контракт](../../tests/reference/parity-env-name-contract.txt),
 [проверки формы/CLI](../../tests/env-name.test.mjs). Загрузка `1A` при рестарте
 имеет отдельную границу EnvironmentFile; этот fix не добавляет dotenv loader.
+
+Проверка raw value и нормализация общие для формы и writer:
+[value.mjs](value.mjs) возвращает trimmed string до draft/IO; ошибки сохраняют
+шаг ввода и исходный TTL. Прежние empty/control/4000/Telegram/vendor guards —
+[контракт](../../tests/reference/parity-env-value-contract.txt),
+[проверки](../../tests/env-value.test.mjs). Это проверка формы значения,
+а не авторизация. Чтение существующих пустых overrides и отдельный delete
+не меняются; optional Pult deletion/reload и stock auth используют свои маршруты.

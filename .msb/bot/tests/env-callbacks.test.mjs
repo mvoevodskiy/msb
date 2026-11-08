@@ -85,7 +85,7 @@ test('long env callback: stale, malformed and foreign references cannot mutate a
 });
 
 test('long env callback: unauthorized callback and protected key retain their guards',async t=>{
- const f=await fixture(t);await setEnvKey(LONG,'fixture-value');await setEnvKey('BOT_TOKEN','fixture-only-protected',process.env,{internal:true});
+ const f=await fixture(t);await setEnvKey(LONG,'fixture-value');await setEnvKey('BOT_TOKEN','12345:'+'F'.repeat(30),process.env,{internal:true});
  const file=envFilePath(),before=await fs.readFile(file,'utf8');
  const yes=callback(envDeleteScreen(LONG),'🗑 Да, удалить');await f.callback(yes,43);
  await f.callback('settings:env:confirm-delete:BOT_TOKEN');
