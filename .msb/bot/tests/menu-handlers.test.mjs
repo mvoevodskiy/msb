@@ -592,3 +592,38 @@ test('reply stop parity: stop reply precedes timezone validation and leaves the 
     assert.equal((await loadState()).state.timezone, 'Pacific/Honolulu');
   } finally { if (!observed.aborted) await f.message('/stop'); }
 });
+
+test('env parity: delete opens the original confirmation before changing the file', async t => {
+  const f = await fixture(t, undefined, { overlay: false });
+  await setEnvKey('TEST_DELETE_KEY', 'synthetic-value');
+  const before = await fs.readFile(path.join(f.home, '.msb/bots/default/.env'), 'utf8');
+  await f.callback('settings:env:delete:TEST_DELETE_KEY');
+  assert.equal(await fs.readFile(path.join(f.home, '.msb/bots/default/.env'), 'utf8'), before);
+  assert.equal(f.edits.at(-1), 'Удалить <code>TEST_DELETE_KEY</code>?');
+  // Existing keyboard helper in this harness captures message options only;
+  // the selected callback below proves the actual confirm-delete route.
+  await f.callback('settings:env:confirm-delete:TEST_DELETE_KEY');
+  assert.equal((await readEnvMap()).map.has('TEST_DELETE_KEY'), false);
+});
+
+test('env parity: confirming deletion performs the action, while cancelling keeps the original value', async t => {
+  const f = await fixture(t, undefined, { overlay: false });
+  await setEnvKey('TEST_DELETE_KEY', 'keep-until-confirmed');
+  await f.callback('settings:env:delete:TEST_DELETE_KEY');
+  await f.callback('settings:env');
+  assert.equal((await readEnvMap()).map.get('TEST_DELETE_KEY'), 'keep-until-confirmed');
+  await f.callback('settings:env:confirm-delete:TEST_DELETE_KEY');
+  assert.equal((await readEnvMap()).map.has('TEST_DELETE_KEY'), false);
+});
+
+test('env parity: returning to the env list or the old Cancel exits key input before the next task', async t => {
+  let runs = 0;
+  const f = await fixture(t, async () => { runs++; return {ok:true,text:'accepted task'}; }, { overlay: false });
+  for (const cancel of ['settings:env','settings:env:cancel']) {
+    await f.callback('settings:env:quick:TEST_PENDING_KEY');
+    await f.callback(cancel);
+    await f.message('ordinary next task');
+    assert.equal((await readEnvMap()).map.has('TEST_PENDING_KEY'), false);
+  }
+  await until(() => runs === 2);
+});

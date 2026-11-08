@@ -1,0 +1,12 @@
+Stage2 old→new: env forms/deletion, existing UI/callbacks.
+Old master00f081f / readable blob73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11:
+53558–53562 settings:env clears env pending, then renders the list.
+53565–53585 settings:env:delete:KEY checks protected keys, then renders
+«Удалить <code>KEY</code>?», with «🗑 Да, удалить» → confirm-delete and
+«« Нет» → settings:env. It does not delete yet.
+53587–53592 confirm-delete performs deletion and returns to the list.
+The old Add UI also exposed settings:env:cancel (UI-SCREENS env contract).
+New3131916 swaps semantics: delete writes immediately, confirm-delete is a no-op;
+return to the list/old Cancel leaves env input active. Production handler tests
+reproduce both lost confirmation and the next task being saved as a key value.
+Synthetic keys/data only; existing services/preview/buttons must be preserved.
