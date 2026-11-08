@@ -24,3 +24,13 @@ Core env / Claude token TTL and slash input, old 54723–54750,55123,
   ten minutes on them or clear text pending when a voice message arrives.
 Quick env fields use the same iE value-stage state with startedAt (53804–53816),
 so they share the env deadline; this is not a newly imposed quick-key limit.
+
+Claude token text validation, old119416–119455:
+- Strip all whitespace, best-effort delete only this token message before validation.
+- Reject normalized length<20, or non-sk- token length<50; keep form for retry,
+  old reply: «Не похоже на токен. Запусти в терминале: <code>claude setup-token</code>».
+- Current open-core already offers API keys as well as setup-token. Keep this
+  accepted input route; sk-ant-oat* belongs to CLAUDE_CODE_OAUTH_TOKEN, only
+  sk-ant-api* goes to ANTHROPIC_API_KEY. Use one decision for file/process env.
+- This is routing/basic shape validation, not successful live authorization.
+  Preserve the other credential, active provider, session, model and effort.
