@@ -4,7 +4,7 @@ import path from 'node:path';
 import {fixture} from './menu-fixture.mjs';
 import {loadState,saveState} from '../../src/state.mjs';
 export async function codexSkillsFixture(t,mode='ok'){
- const f=await fixture(t),log=path.join(f.home,'native-skills-rpc.jsonl'),release=path.join(f.home,'native-skills-release');
+ const f=await fixture(t,undefined,{nativeSkills:true}),log=path.join(f.home,'native-skills-rpc.jsonl'),release=path.join(f.home,'native-skills-release');
  const project=path.join(f.home,'projects/alpha');await fs.mkdir(project,{recursive:true});
  const metadata=async(base,relative,name,scope,enabled=true)=>{const file=path.join(base,relative,'SKILL.md');await fs.mkdir(path.dirname(file),{recursive:true});await fs.writeFile(file,'---\nname: '+name+'\ndescription: Native description '+name+'\n---\nNATIVE_BODY_'+name);return{name,description:'Native description '+name,path:file,scope,enabled};};
  const user=await metadata(f.home,'.agents/skills/codex-user','codex-user','user'),system=await metadata(f.home,'.codex/skills/.system/creator','skill-creator','system'),disabled=await metadata(f.home,'.agents/skills/codex-paused','codex-paused','user',false);

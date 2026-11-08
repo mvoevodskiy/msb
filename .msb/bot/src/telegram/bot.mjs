@@ -1,4 +1,4 @@
-import { openCallbackRenders, stopCallbackRenders, cancelCallbackRenders, drainCallbackTasks } from '../../shared/callback-renders.mjs';
+import { beginCommandRender, runCallbackScope, trackCallbackTask, callbackTransportSignal, openCallbackRenders, stopCallbackRenders, cancelCallbackRenders, drainCallbackTasks } from '../../shared/callback-renders.mjs';
 import {resetCliConversation} from '../sessions/selection.mjs';
 /**
  * createBot собирает входящие Telegram события и lifecycle хода; UI не хранит
@@ -247,11 +247,15 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
 
   registerProjectCommands(bot,pending);
 
-  bot.command('skills', async (ctx) => {
-    const { skillsScreen } = await import('./screens.mjs');
-    const { state } = await loadState();
-    const view = await skillsScreen(state,process.env,{readProvider:bot[Symbol.for('msb.skillsProvider')]});
-    await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
+  bot.command('skills', (ctx) => {
+    const scope=beginCommandRender(bot,ctx.message);
+    const task=runCallbackScope(scope,async()=>{
+      const {skillsScreen}=await import('./screens.mjs');
+      const {state}=await loadState();if(!scope.isCurrent())return;
+      const view=await skillsScreen(state,process.env,{readProvider:bot[Symbol.for('msb.skillsProvider')],signal:scope.signal});
+      if(scope.isCurrent())await scope.render(()=>ctx.reply(view.text,{parse_mode:'HTML',reply_markup:view.keyboard},callbackTransportSignal(scope)));
+    }).catch(()=>{if(!scope.signal.aborted)console.error('[msb/bot] skills read failed');});
+    trackCallbackTask(bot,task);
   });
 
   bot.command('status', async (ctx) => {

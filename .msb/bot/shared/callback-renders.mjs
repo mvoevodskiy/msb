@@ -1,7 +1,8 @@
 /**
- * Latest callback view and ordered delivery per bot/chat; no profile/data I/O.
+ * Latest incoming UI read/view and ordered delivery per bot/chat; no profile/data I/O.
  * [Core router](../src/telegram/router.mjs) and [overlay admission](../../../overlay/bot/ext/integration/update-hook.mjs)
- * share the incoming-event scope across awaits/detached continuations.
+ * share actual incoming-event scopes across awaits/detached continuations.
+ * [Skills command](../src/telegram/bot.mjs) uses its real message, without synthetic callbacks.
  * Read observers/backoff may abort; an accepted Telegram edit drains before the next view.
  * [API policy](../src/telegram/presentation-api.mjs) separates those lifetimes.
  * [Bot stop](../src/telegram/bot.mjs) drains work; [checks](../tests/callback-refresh.test.mjs).
@@ -15,10 +16,10 @@ function stateFor(bot) {
   return states.get(bot);
 }
 
-export function beginCallbackRender(bot, query) {
-  const known = events.get(query);
+function beginViewRender(bot, event, chat) {
+  const known = events.get(event);
   if (known?.bot === bot) return known;
-  const state = stateFor(bot), chat = query.message?.chat?.id;
+  const state = stateFor(bot);
   state.chats.get(chat)?.controller.abort();
   const controller = new AbortController();
   const scope = { bot, chat, controller, signal: controller.signal,
@@ -36,9 +37,12 @@ export function beginCallbackRender(bot, query) {
   else state.chats.set(chat, scope);
   // Keep the selected view current after its handler returns. Provider login can
   // still update that view asynchronously, until the next user navigation.
-  events.set(query, scope);
+  events.set(event, scope);
   return scope;
 }
+export function beginCallbackRender(bot,query) {return beginViewRender(bot,query,query.message?.chat?.id);}
+/** A detached command read owns its real incoming message and the same navigation/stop fence. */
+export function beginCommandRender(bot,message) {return beginViewRender(bot,message,message.chat?.id);}
 export function runCallbackScope(scope, operation) { return context.run(scope, operation); }
 export function currentCallbackRender(bot, chatId) {
   const scope = context.getStore();

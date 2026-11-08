@@ -34,3 +34,29 @@ test('skills native: a late read must not replace a newer navigation view or cha
 test('skills native: ordinary Claude discovery uses its old files and never queries Codex',async t=>{
  const f=await codexSkillsFixture(t);await saveState({...await state(),extAuthBypass:'claude',ccSessionId:'claude-skills-native-control'});await f.callback('skills:folder:workspace');assert.ok(text(f).includes('🧠 claude-only'));assert.equal(text(f).includes('codex-user'),false);assert.deepEqual(await f.readCalls(),[]);
 });
+
+test('skills native: slow metadata read releases the polling handler while its own render task is still pending',async t=>{
+ const f=await codexSkillsFixture(t,'hold');let returned=false;const opening=f.callback('menu:skills',42,{waitForRender:false}).then(()=>{returned=true;});
+ try{
+  const until=Date.now()+1500;while(!(await f.readCalls()).some(c=>c.method==='skills/list')){assert.ok(Date.now()<until,'Native read must start before measuring polling responsiveness');await new Promise(r=>setTimeout(r,5));}
+  const deadline=Date.now()+150;while(!returned && Date.now()<deadline)await new Promise(r=>setTimeout(r,5));assert.equal(returned,true,'Polling must accept commands while native skills are loading');
+  assert.ok((f.bot[Symbol.for('msb.callbackTasks')]?.size||0)>0,'The read must still have an owned pending render task, not a fabricated immediate result');await f.callback('menu:back');assert.equal((await state()).extAuthBypass,'codex');
+ }finally{await f.release();await opening.catch(()=>{});}
+});
+
+test('skills native: a slow /skills command releases polling and /stop cancels its owned read',async t=>{
+ const f=await codexSkillsFixture(t,'hold');let returned=false;const opening=f.message('/skills',42,{waitForRender:false}).then(()=>{returned=true;});
+ try{
+  const until=Date.now()+1500;while(!(await f.readCalls()).some(c=>c.method==='skills/list')){assert.ok(Date.now()<until,'Command must reach native read before testing its polling lifecycle');await new Promise(r=>setTimeout(r,5));}
+  const deadline=Date.now()+150;while(!returned && Date.now()<deadline)await new Promise(r=>setTimeout(r,5));assert.equal(returned,true,'Native metadata must not keep the command polling handler blocked');assert.ok((f.bot[Symbol.for('msb.callbackTasks')]?.size||0)>0);
+  await f.message('/stop');await f.release();await opening;const tasks=[...(f.bot[Symbol.for('msb.callbackTasks')]||[])];await Promise.allSettled(tasks);assert.equal(f.messages.some(s=>s.includes('<b>Навыки')),false,'A stopped read must not deliver a stale catalog');
+ }finally{await f.release();await opening.catch(()=>{});}
+});
+test('skills native control: Claude-only mode rejects a stale Codex catalog without calling another provider',async t=>{
+ const f=await codexSkillsFixture(t);process.env.JARVIS_CC_ONLY='1';await f.callback('menu:skills');assert.deepEqual(await f.readCalls(),[]);assert.match(text(f),/Не удалось получить список навыков/);assert.equal((await state()).extAuthBypass,'codex');
+});
+
+test('skills native: a base-repo skill is not labeled as available in every independent project',async t=>{
+ const f=await codexSkillsFixture(t);await f.callback('skills:folder:workspace');assert.ok(text(f).includes('🧠 codex-base'));assert.equal(text(f).includes('Доступны агенту всегда, в любом проекте.'),false);assert.ok(text(f).includes('Доступны агенту в текущем workspace.'));
+ await f.selectProject();await f.callback('skills:folder:workspace');assert.equal(text(f).includes('codex-base'),false);assert.ok(text(f).includes('Доступны агенту всегда, в любом проекте.'));
+});

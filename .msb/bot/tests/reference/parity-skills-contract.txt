@@ -77,6 +77,13 @@ surrogate. Не добавлять новые видимые кнопки рад
 https://developers.openai.com/api/reference/cli#use-the-cli-from-a-coding-agent
 https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills
 https://learn.chatgpt.com/docs/app-server#skills
+Точное уточнение подписи Codex: при base repo skills workspace-папка содержит
+навыки только текущего workspace; прежнее «в любом проекте» было бы неверным.
+Для этой native группы подпись «Доступны агенту в текущем workspace.», остальные
+кнопки/layout прежние. В активном независимом проекте base repo skills не
+подмешиваются; user/system/admin остаются global с прежней подписью. Claude UI
+и его старые тексты не меняются. Это исправление доступности по actual native
+scope, без миграции навыков/инъекции body или добавления видимых действий.
 Native Codex0.166.0 отдельно проверен на JAR1 без auth/config владельца, в своём
 временном HOME. Schema и initialize→skills/list подтверждают cwds/forceReload,
 metadata(name,description,path,scope,enabled), scope user/repo/system/admin.
@@ -180,3 +187,34 @@ literal поддержан толькодляединственной извес
 новыйscopefence. No state/auth/provider/store/sourcefile changes вreadworkflow.
 CorefoundationSolreview blockingfindings0;208relative source-header/READMElinks
 проверены,missing0. Нетglobalmap.
+
+
+Native Codex catalog checkpoint (послеcb158d5, НЕ полныйрелиз)
+Существующийoverlay зарегистрировал msb.skillsProvider; core/screens/route используют
+его одинраз на view сcapturedcwd. Native initialize/initialized/skills/list только,
+forceReloadtrue, нативные scope/enabled/path и настоящийfile size; noClaude fallback.
+Нетauthgate/установщикаCLI/измененияconfig радиlist. Unknownschema/cwd/CLIerror —
+прежнееunavailable; disappearedfile пропускается. Nativeerrors не выводятся:
+это список доступныхполученныхmetadata, не доказательство всехфайловнадиске.
+
+Baseline43cases36PASS/7nativeassertFAIL→43GREEN. Дополнительныйslow /skills command
+доказалблокировкуpolling:0PASS/1assertFAIL. Команда теперьdetachedtracked task с
+реальнымincomingmessage scope, безsyntheticcallback. Navigation/stop/shutdown
+отменяютread, suppresslateview иdrain доclose. Callbackread используеттотжеscope;
+helperwaits тольконовыеtaskконкретногоevent, latencytest отключаетwait.
+Базовыеfixtures defaultnative seamunavailable; nativeSkills:true подключаетrealhook
+кownedfakeCLI, чтобыunrelatedtests невызывали hostCodex случайно.
+
+Base repo nativeavailabilitycaption: отдельный0PASS/1assertFAIL→GREEN, выводит
+'в текущем workspace' только приcurrent-workspace metadata;global/Claude text
+остаетсястарым,кнопки/layoutбезизменений. Этоисправлениепровайдернойсемантики,
+непереносnativeбазовыхskills вовсепроекты. Никакоймиграции/blanketbodyinjection.
+
+Finalfocused246PASS:46skills(core34/native12)+41menu+36sessions+8callbackrefresh+
+115overlay (97прежних+12readRPC+6mapping),0FAIL/cancelled/skip. RPCконтролирует
+framing/UTF8/ошибки/approval-refusal/лимит/таймаут/abort/close, mapping проверяет
+native scope/cwd aliases/size/metadata guards ине требуетauth. Solreview0blocking,
+165relativeheader/READMElinks,missing0. NativeAPIinternalsideeffects этимне
+доказаны; реальныеCLI/ownerprofile/Telegram вэтойпроверке неиспользовались.
+OCreadonly иINSTALL_SKILL pipeline всёещёнужны. FullsamecommitLinux/native/livegate
+ещёнепройден, JAR1остаётся830e3f6. НеобъявлятьAddadvice workinginstaller, неpush.

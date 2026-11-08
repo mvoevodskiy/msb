@@ -9,6 +9,10 @@ import {resolveSkillReference} from '../../skills/reference.mjs';
 import {skillsTopScreen,skillsFolderScreen,skillCardScreen,skillContentScreen,missingSkillScreen,skillReadErrorScreen,skillAddScreen} from '../screens/skills.mjs';
 import {hubScreen} from '../screens/hub.mjs';
 import {UNHANDLED} from './shared.mjs';
+/** Read-only views can outlive the polling handler; Add/Back-menu stay immediate. */
+export const isSkillReadCallback=data=>data==='menu:skills' || data==='skills:back'
+  || data==='skills:folder:workspace' || data==='skills:folder:project'
+  || data.startsWith('skills:view:') || data.startsWith('skills:content:');
 export async function handleSkillRoute({data,state,show,bot,msgId,signal}) {
   if(data!=='menu:skills' && !data.startsWith('skills:'))return UNHANDLED;
   if(data!=='menu:skills' && !msgId)return;

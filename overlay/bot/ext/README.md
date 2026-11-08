@@ -15,6 +15,7 @@
 | Задача | Модуль → функция / маршрут | Проверка |
 |---|---|---|
 | Сжать текущую беседу Codex | [`compact-codex.mjs`](compact-codex.mjs): resume → compact → подтверждённый `contextCompaction` | [compact-codex](tests/compact-codex.test.mjs), [core routing](../../../.msb/bot/tests/compact-routing.test.mjs) |
+| Прочитать доступные навыки Codex | [`codex-skills.mjs`](codex-skills.mjs): captured cwd/provider → native metadata → core catalog; [`codex-skills-rpc.mjs`](codex-skills-rpc.mjs) отвечает за stdio/close | [core ingress](../../../.msb/bot/tests/skills-native.test.mjs), [mapping](tests/codex-skills.test.mjs), [transport](tests/codex-skills-rpc.test.mjs) |
 | Подготовить авторизацию Codex для хода и `/compact` | [`codex-auth-env.mjs`](codex-auth-env.mjs): `codexChildEnvironment`, native login → per-bot/shared env | [codex-auth-env](tests/codex-auth-env.test.mjs) |
 | Найти доступные CLI-провайдеры | [`providers.mjs`](providers.mjs): `PROVIDERS`, `getProvider` | [menu](tests/menu.test.mjs), [store](tests/store.test.mjs) |
 | Показать Codex в «Движках» | [`engine-menu.mjs`](engine-menu.mjs): `buildEngineProviderView`, `registerEngineProviderView`; core `enginesScreen` | [core engine-menu](../../../.msb/bot/tests/engine-menu.test.mjs), [core + overlay](tests/reference/engine-menu.test.mjs) |

@@ -28,7 +28,7 @@ export function skillsFolderScreen(catalog,state,source) {
   if(!catalog.ok)return skillsUnavailableScreen();
   const rows=visible(catalog.entries).filter(row=>row.source===source),project=source==='project';
   let text=project?`<b>📂 ${escapeHtml(state.activeProject || 'project')}</b>\n\nДоступны агенту когда этот проект активен.\n\n`
-    :'<b>📂 workspace</b>\n\nДоступны агенту всегда, в любом проекте.\n\n';
+    :`<b>📂 workspace</b>\n\n${rows.some(row=>row.availability==='workspace')?'Доступны агенту в текущем workspace.':'Доступны агенту всегда, в любом проекте.'}\n\n`;
   const keyboard=new InlineKeyboard();
   for(const row of rows) {
     const title=`${row.disabled?'⏸':'🧠'} ${row.name}`;

@@ -1,5 +1,6 @@
 /**
- * Isolated production Telegram ingress with a fake Grammy transport/turn/restart.
+ * Isolated production ingress: fake Grammy/turn/restart and unavailable native catalog.
+ * Native protocol suites explicitly opt in, then install an owned fake CLI before reads.
  * The synthetic HOME owns all bot data; no credential, installer or network setup.
  * Workspace is HOME/workspace so old dirname(base)/projects stays inside HOME.
  * Used by [menu checks](../menu-handlers.test.mjs) and focused form suites.
@@ -10,9 +11,10 @@ import path from 'node:path';
 import { fixtureClaudeVersion } from './claude-version-fixture.mjs';
 import { createBot } from '../../src/telegram/bot.mjs';
 import { saveState } from '../../src/state.mjs';
+import {isSkillReadCallback} from '../../src/telegram/routes/skills.mjs';
 import { installUpdateHook } from '../../../../overlay/bot/ext/install.mjs';
 
-export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixture' }), { overlay = true, now = Date.now, runtimeProfile = 'msb', claudeCliVersion = '2.1.154' } = {}) {
+export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixture' }), { overlay = true, now = Date.now, runtimeProfile = 'msb', claudeCliVersion = '2.1.154', nativeSkills = false } = {}) {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-menu-'));
   const workspace = path.join(home, 'workspace');
   await fs.mkdir(workspace);
@@ -65,6 +67,7 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
   }
   bot = createBot({ botToken: 'fake', botId: 'default', adminId: 42, workspace, timezone: 'Europe/Moscow' }, { bot: new Harness(), runTurn, now, restart: () => restartRequests.push(0) });
   if (overlay) installUpdateHook(Harness, { ADMIN_ID: '42' });
+  if (!nativeSkills) bot[Symbol.for('msb.skillsProvider')] = async () => ({ok:false});
   await saveState({ engine: 'cc', extAuthBypass: 'codex', ccSessionId: 'ext:codex:0199a213-81c0-7800-8aa1-bbab2a035a53', dailySpendLimit: 10 });
   const storeFile = path.join(process.env.MSB_RUNTIME_ROOT, 'bots/default/ext-providers.json');
   await fs.writeFile(storeFile, JSON.stringify({ version: 1, active: 'codex', models: { codex: 'gpt-6.1-terra' }, efforts: { codex: 'max' } }));
@@ -74,10 +77,14 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
     await bot.handleUpdate({ callback_query: { id: 'q', data, from: { id: uid }, message: { message_id: messageId, chat: { id: chatId }, ...(threadId ? { message_thread_id: threadId } : {}) } } });
     // UI assertions wait only their own newly detached catalog view. Latency/
     // shutdown tests use waitForRender:false; never drain an older status task.
-    if (waitForRender && ['menu:agent','settings:model','settings:model:ver','settings:effort'].includes(data)) {
+    if (waitForRender && (['menu:agent','settings:model','settings:model:ver','settings:effort'].includes(data) || isSkillReadCallback(data))) {
       await Promise.allSettled([...(bot[tasks] || [])].filter(p => !prior.has(p)));
     }
   };
-  const message = (text, uid = 42) => bot.handleUpdate({ message: { message_id: 99, text, from: { id: uid }, chat: { id: 42 } } });
+  const message = async (text, uid = 42, {waitForRender=true}={}) => {
+    const tasks=Symbol.for('msb.callbackTasks'),prior=new Set(bot[tasks] || []);
+    await bot.handleUpdate({message:{message_id:99,text,from:{id:uid},chat:{id:42}}});
+    if(waitForRender && /^\/skills(?:@\S+)?(?:\s|$)/.test(text))await Promise.allSettled([...(bot[tasks] || [])].filter(p=>!prior.has(p)));
+  };
   return { home, workspace, bot, callback, message, markupEdits, callbackAnswers, messages, edits, editOptions, deleted, messageOptions, typingSignals, editSignals, replySignals, storeFile, restartRequests };
 }
