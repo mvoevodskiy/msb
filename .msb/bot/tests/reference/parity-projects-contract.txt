@@ -136,3 +136,14 @@ symlinks и UTC fallback. Начальный EACCES mock был исправле
 Startup сохраняет existing regular CLAUDE/link, missing reset guard защищает
 concurrent newer choice, EACCES не очищает saved session. Прежняя caveat native
 project instructions и legacy cwd provenance остаётся needs-evidence.
+
+
+Полный Docker gate735269c: core559PASS/1FAIL, overlay97/reference15/release13PASS,
+0cancelled/skip. Единственный failure — agent-modes prototype-name full-prompt
+comparison из разных synthetic HOME: runtime теперь правдиво включает cwd/base,
+поэтому разные пути ожидаемы. Test-only follow-up нормализует ТОЛЬКО JSON-quoted
+workspace из того же report, предварительно assert child.cwd==workspace и наличие
+его runtime строки. Полное сравнение остальных байтов сохраняется; constructor/
+toString/__proto__ injection по-прежнему ловится. Focusedagent-modes8PASS. Этот
+failed735 export не выложен, runtime нового follow-up не меняется; финальный
+same-commit Linux gate и приёмка должны выполняться заново отдельно.

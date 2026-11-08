@@ -54,9 +54,18 @@ test('overlay keeps unknown-mode auto fallback without resetting Codex native co
 
 
 test('persisted prototype-name modes cannot inject inherited object values into the system prompt', () => {
-  const ordinary = flag(options('claude', 'auto'), '--append-system-prompt');
+  const prompt = mode => {
+    const report = agentOptionsReport('claude', mode), call = report.calls[0];
+    assert.equal(call.cwd, report.workspace);
+    const text = flag(call, '--append-system-prompt');
+    assert.ok(text.includes('Рабочий каталог: ' + JSON.stringify(report.workspace)));
+    // Each probe owns a fresh HOME. Normalize only its verified runtime path;
+    // retain the full prompt comparison that catches inherited object values.
+    return text.replaceAll(JSON.stringify(report.workspace), JSON.stringify('$FIXTURE_WORKSPACE'));
+  };
+  const ordinary = prompt('auto');
   for (const mode of ['constructor', 'toString', '__proto__']) {
-    assert.equal(flag(options('claude', mode), '--append-system-prompt'), ordinary);
+    assert.equal(prompt(mode), ordinary);
   }
 });
 
