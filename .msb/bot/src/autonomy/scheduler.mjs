@@ -1,8 +1,9 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 import { autonomyDir, ensureDir } from '../paths.mjs';
 import { runAgentTurn } from '../agent/turn.mjs';
-import { listTasks, saveAllTasks } from './store.mjs';
+import { listTasks, saveTaskResult } from './store.mjs';
 import { trySessionOperation } from '../agent/session-operation.mjs';
 
 const START_DELAY_MS = 30_000;
@@ -10,7 +11,11 @@ const TICK_MS = 60_000;
 
 /**
  * Упрощённый планировщик фоновых задач (аналог [msb/scheduler]).
- * Навигация: [Автономка](./README.md) → [общий ход](../agent/turn.mjs).
+ * Вход: [main](../main.mjs); [общий ход](../agent/turn.mjs) получает только prompt.
+ * [Store](./store.mjs) условно сохраняет одну неизменённую задачу после каждого хода,
+ * не весь старый список; active run не держит lock файла.
+ * Проверки: [persistence](../../tests/autonomy-store-concurrency.test.mjs),
+ * [compact guard](../../tests/autonomy-compact-guard.test.mjs). [Контракт](./README.md).
  */
 export function startScheduler({ api, adminId, log = console.error, runTurn = runAgentTurn } = {}) {
   let stopped = false;
@@ -28,15 +33,17 @@ export function startScheduler({ api, adminId, log = console.error, runTurn = ru
     try {
       const tasks = await listTasks();
       const now = Date.now();
-      let changed = false;
-      for (const task of tasks) {
+      for (const snapshot of tasks) {
+        // Another task can run for minutes; do not execute a since-edited/deleted task.
+        const current = (await listTasks()).find(task => task.id === snapshot.id);
+        if (!current || !isDeepStrictEqual(current, snapshot)) continue;
+        const before = { ...current }, task = { ...current };
         if (task.enabled === false) continue;
         if ((task.nextAt || 0) > now) continue;
         if (!await runTask(task, api, adminId, log, runTurn)) continue;
         task.nextAt = now + Math.max(1, task.everyHours || 24) * 3600 * 1000;
-        changed = true;
+        await saveTaskResult(before, task);
       }
-      if (changed) await saveAllTasks(tasks);
     } catch (err) {
       log(`[msb/scheduler] tick error: ${err.message}`);
     } finally {

@@ -1,0 +1,21 @@
+Old→new audit: task persistence, not a new scheduler/UI.
+
+Old readable blob73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11, pinned to master00f081f:
+Rz→ir (24883,24928–24949) records the result of one action; U4 (4393–4408)
+updates that ID through oA's file transaction and keeps other IDs from the latest
+file. It does not save a whole action list captured before a long runner call.
+
+New baseline b5a781d store/scheduler lost concurrent addTask while the runner was
+pending, collided on same-PID temp writes and could resurrect a removed task.
+Five deterministic regressions RED; the fix reuses shared/file-lock.mjs, reloads
+before write and conditionally commits only one unchanged task's execution fields.
+A failed later task cannot roll back an already completed task checkpoint.
+Independent processes add tasks to the same JSON in a separate regression.
+All HOME/data/runner/notifications in these tests are synthetic; no real API/CLI.
+
+Scope: no new timer controls, rights, UI, task types or change to nextAt semantics.
+Old interval uses each run's start (Rz24757–24759,ir24883,lwA36099–36122), not its
+completion. The current tick-wide now issue for later tasks is a separate case.
+Task JSON locking does not reserve execution across multiple scheduler processes
+or external writers that bypass the store. A changed task's stale result is
+intentionally discarded; no exactly-once or instant abort-on-edit is promised.

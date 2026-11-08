@@ -3,13 +3,24 @@
 [← Вход ядра](../main.mjs) · [Исполнение](../agent/README.md) ·
 [Telegram](../telegram/README.md#callback-маршруты)
 
+`store` сериализует read/modify/write через общий [file lock](../../shared/file-lock.mjs).
+Scheduler перечитывает кандидата до запуска, а по завершении условно сохраняет
+только поля результата неизменённой задачи. Новый/удалённый/отредактированный
+вход не затирается старым снимком; lock не удерживается во время модели.
+[persistence regression](../../tests/autonomy-store-concurrency.test.mjs) проверяет
+также независимые процессы. [Контракт old→new](../../tests/reference/parity-autonomy-contract.txt). `saveAllTasks` — явная замена всего списка, не API
+будущих toggle/delete; их read/modify/write должно оставаться в store transaction.
+Lock сериализует запись JSON, не резервирует выполнение задачи между несколькими
+scheduler-процессами. При изменении задачи во время хода CAS отбрасывает старый
+результат; это сохраняет правку, но не даёт гарантии однократных внешних эффектов.
+
 Базовые интервальные задачи используют общий `runAgentTurn` и состояние бота.
 Данные — `<profile.root>/autonomy` либо явно заданный `AUTONOMY_DIR`.
 
 | Задача | Файл → функция |
 |---|---|
 | Разобрать сообщение «каждые N часов …» | [store.mjs](store.mjs): `tryParseScheduleMessage` |
-| Прочитать/сохранить задачи | [store.mjs](store.mjs): `listTasks`, `addTask`, `saveAllTasks` |
+| Прочитать/сохранить задачи | [store.mjs](store.mjs): `listTasks`, `addTask`, `saveTaskResult` (полная замена — только явный `saveAllTasks`) |
 | Выполнить наступившую задачу и сохранить `runs.jsonl` | [scheduler.mjs](scheduler.mjs): `startScheduler`, внутренний `runTask` |
 | Не начинать фоновый ход одновременно с `/compact` | [session-operation.mjs](../agent/session-operation.mjs): `trySessionOperation` |
 | Прочитать журнал и подготовить страницы истории | [history.mjs](history.mjs): `readRecentRuns`, `historyPages` |
