@@ -11,7 +11,7 @@ export function selectedSessionProvider(state) {
 /** Same accepted session shapes as the existing CLI adapters; never accept foreign/sentinel IDs. */
 export function isProviderSession(sessionId, provider) {
   if (typeof sessionId !== 'string' || !sessionId.trim() || !providers.has(provider)) return false;
-  if (provider === 'claude') return !sessionId.startsWith('ext:');
+  if (provider === 'claude') return !sessionId.startsWith('ext:') && !sentinel.test(sessionId.trim());
   const decoded = /^ext:([a-z]+):(.+)$/.exec(sessionId);
   if (!decoded || decoded[1] !== provider) return false;
   const native = decoded[2];

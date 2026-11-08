@@ -51,3 +51,9 @@ test('existing-ID turns never create a first-start reservation; OpenClaw remains
   assert.equal(completeFirstSession(s, first, { providerId: 'codex', sessionId: codex }), 'parked');
   assert.equal(s.ccSessionId, undefined);
 });
+
+
+test('Claude service placeholders cannot be used as native conversation IDs',()=>{
+ for(const id of ['unknown','failed','error','norestart','norestart-fixture',' UNKNOWN '])assert.equal(isProviderSession(id,'claude'),false,id);
+ for(const id of ['claude-valid-fixture','0199a213-81c0-7800-8aa1-bbab2a035a53'])assert.equal(isProviderSession(id,'claude'),true,id);
+});
