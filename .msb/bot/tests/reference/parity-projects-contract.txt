@@ -1,0 +1,109 @@
+Проекты: восстановить прежние действия, рабочий каталог и границы контекста
+
+База runtime432e5e6; правила per-bot keysfaf0c1c; privateworkspace fixture1fae0a2.
+Веткаcodex/open-core-reference-tests. Эталон master
+00f081f2220d0e6d3a186e8e1bb447b57acd6ebf, .msb/bot/vendor/deobfuscated.js,
+readableblob73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11. Читать git show BLOB |
+sed -n '3705,3717p;41795,41814p;8826,8833p;107365,107419p;112178,112400p;119337,119395p;121596,121643p;122030,122110p'.
+Дополнительный native cwd19514–19523; local memory8453–55/8666–69,
+knowledge8881–85. Нужные windows читать отдельно, не весь bundle.
+
+Пути/состояние
+qA41795–41806 — стабильныйbase IIA_WORKSPACE_DIR либо~/workspace. _A — текущий
+cwd, N1 выбирает проект, H4 возвращаетbase. Projects-root=dirname(qA)/projects,
+а не всегдаHOME/projects. Глобальные auth/env/state/session paths не меняются.
+Old select/default callback122055–122105 проверяет доступ, меняетcwd/activeProject
+и очищаетccSessionId, включая повторный выбор того же проекта. Приошибкеaccess
+не менять выбранныйпроект/сессию. OC pQ имел отдельный native reset; отсутствующий
+OpenClaw backend нового ядра не подменять фиктивным успешным ходом.
+
+Список/страницы, точные прежние controls
+/projects112250–112287 читает только dirs, сортирует .sort(). Ошибка чтения/пусто:
+«📁 Проектов пока нет.» + «➕ Новый проект»/menu:newproject.
+_h112178–112249:9кнопок/page,3/row; текст перечисляет ВСЕ проекты и currentmarker,
+кнопки — только страницу. Текст «📁 <b>Проекты</b> (N):» и подсказка
+«Переключить: /project <i>название</i>». Внутри code текущий «▸ NAME — текущий»,
+base «▸ ~/workspace — текущий» илибезстрелки. Первыйряд «📂 ~/workspace ✓»
+либо«📂 ~/workspace»→project:__default__. Projectbuttons «✓ NAME» илиNAME,
+callbackproject:NAME. Pagination◀️/n/N/noop/▶️→projects:page:n. Завершение:
+«➕ Новый проект», затем «« Назад»/menu:back изменю, «✖ Закрыть»/menu:close
+изкоманды. menu:projects /page callbacks используют тотжеrenderer.
+Select success «📍 Переключился на проект <code>NAME</code>», default success
+«📂 Переключился на базовый workspace (<code>~/workspace</code>)».
+Missing «❌ Проект <code>NAME</code> не найден.» сHTMLescaping.
+
+Создание/отмена
+Menu121596–121631: «Введи название проекта.\n\nЛатиницей, маленькими буквами,
+без пробелов. Можно цифры, дефис и подчёркивание.\nНапример: <code>youtube-asset</code>».
+Одна«✖ Отмена»/menu:cancel_newproject; cancel121633–642 закрываетформу и
+best-effort удаляетеёprompt, безmkdir/сбросасессии. Новый input owner — существующий
+PendingInputs чата; не закрывать другуюenv/authформу по старомуcancelcallback.
+Menu input119337–354:trim/lowercase, strict^[a-z0-9_-]{1,40}$. Invalid сохраняет
+форму дляretry и даёт «❌ Так не подойдёт.» + прежниеconstraints/example.
+Проектнойформе не добавлятьenv/authTTL. Reached slash очищает её, registered
+commands сохраняют прежнюю приоритетную обработку; команда не станетименем.
+Valid создаётmemory/knowledge, запускаетgitinit, выбираетпроект, сбрасывает
+ccSessionId. Successnq3705–3716:«✔ Проект <b>NAME</b> создан и активирован.»
+и«Пиши задачу — агент уже в нём.»; explicit/projectnew включаетpath.
+Oldgitinit былfire-and-forget, поэтомуsuccess не доказываетrepohealth. Новый
+код не запускаетshellснепровереннымименем/невыдаётgitуспехбезпроверки.
+Command/projectnew112288–341 имеет отдельноеold правило:удаляетневалидныеASCII
+символы, rejects толькоempty, не вводитьmenu40/lowercase вэтотстарыйпуть.
+/project безаргумента показываеттекущийпроект/путь; existingname/default выбор
+следуют112288–112400. Прочитатьточныеdefaultaliases передреализацией.
+
+Исполнение/контекст
+NativeClaude IJ19514–19523 захватывает_A какchildcwd. Новыйselectedcwd должен
+из одногоstate snapshot доходить вrunClaudeTurn.cwd→PATHshim→Claude/Codex,
+не черезprocess.chdir илиподменуbaseworkspace/env. УпоминаниеactiveProject в
+state либоответе не доказывает фактический cwd child/adapter.
+nHA8826–8833 читаетSOUL/USER/MEMORY/CLAUDE изbaseqA; не заменятьих проектными.
+Локальныеcurrent-day memory/state.timezone (8453–55/8666–69), .current-task.md
+(8829) иknowledge/_index.md(8881–85) относятсякactivecwd. Сохранятьэтусвязь,
+не читатьnativeconversations/чужиефайлы ради диагностики. Фактические native
+project-instruction особенности Claude/Codex отмечать отдельно отfakeargv.
+
+Сессии/гонки приадаптации
+Одинsuccessful projecttransition updateState: activeProject, clearccSessionId,
+clearoldlastCcUsage, clearALLparkedCcSessions иALLpendingCcSessionStarts,
+incrementexistingepoch; auth/model/provider/effort/остальныеполя сохраняются.
+Этоадаптацияoldresetкновымprovider slots, не удалениеnativehistories/store.sessions.
+Простогоepoch недостаточно дляID-lessfirstturn:completeFirstSession намеренно
+можетparklateID послеprovider switch; отмена всехoldtokens приworkspace reset
+обязательна. Capturebase/cwd/state доversion/promptawait, следующийход увидит
+новыйпроект, ужеисполняющийся сохранитстарыйcwd. Старыйрезультат/cleanup не
+восстановятoldID и не удалятновуюreservation. Oldbusycallbacks не запрещали
+сменупроекта; не добавлятьновыйpermission/busy gate без отдельного основания.
+
+Startup/error/data boundaries
+Old$4A107369–418 восстанавливалactiveProject послеaccesscheck;ENOENT/ENOTDIR
+очищалactiveProject, другиеошибки сохранялиего дляretry. Создавалprojectroot и
+CLAUDEsymlink наbase, но могrm существующийregularfile; этоопасноеoldповедение
+не переносить: сохранить пользовательскиеfiles/links, не перезаписыватьихмолча.
+Валидныйsavedproject не долженпропадать приrestart. Не запускатьход молча в
+другойпапке приinvalid/недоступномвыборе; подтверждённыйmissing иpermissionerror
+различать. Existingstates, созданныераннимcwdstub, требуют отдельнойоценки
+native-session-cwd provenance; не сбрасывать неизвестныеnativeID массойради
+новогомаркера. Выборновогопроектаявноначинаетновуюбеседу, самиисториисохраняются.
+
+Новый gap доfix
+StaticprojectsScreen нечитаетdirs, chooser/pagination/project command отсутствуют.
+Form sanitize/truncate64 вместоstrictmenu40/lowercase, pending удаляетсядо
+валидации; создаёттолькоfolder+activeProject, неscaffold/reset/cwd. Runnerвсегда
+используетbaseworkspace. Existingменютестподтверждалпапку/поле, неисполнение;
+его предположение«session unchanged послеcreate»нужно заменитьoldконтрактом.
+
+Проверки/этапы
+SyntheticHOME сbase=HOME/workspace, custombaseиprojects sibling внутриHOME.
+Productionmenu+command+form→filesystem/state→actualrunner→fakeClaude/Codex
+child/adaptercwd. Список/9page/3row/current/default/escaping/invalidpage,
+namelimits/retry/lowercase/cancel/slash/owner/stalecallback, scaffold/gitfailure,
+startupvalid/missing/accesserror инеперезаписьпользовательскихfiles.
+Длинныеexistingnames:callback<=64UTF8bytes, normalshortliteral сохранять;
+reserveddefaultname/unknown/stale/ambiguous refs не выбираютчужуюпапку/непишутstate.
+Cwd/basecontext/localcontext snapshot, queuednext, existing-ID иID-lessrace
+A→switchB→projectreset→newB→lateA→switchA, bootstrap, модели/auth неизменны.
+Не менятьserverprofile/переключатьпроект владельца радилокальногоRED. Отдельные
+contract/RED/узкиеfixкоммиты; финальныеLinuxgate/deploy/live отдельно. Полная
+projects+sessions parity недоказанапоодномуpwd илиэкрану. Откаттолькокода не
+удаляетсозданныедиректории/git иливозвращаетстарыйstate/nativehistory.
