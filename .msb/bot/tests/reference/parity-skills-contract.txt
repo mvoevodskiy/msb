@@ -1,0 +1,153 @@
+Навыки: достижимое old поведение и адаптация к выбранному native движку
+
+Цель и границы
+Восстановить меню/команду списка, папку, карточку, содержимое и существующий путь
+Add→просьба агенту→INSTALL_SKILL→файл→подтверждение. Старый интерфейс сохранить;
+не добавлять toggle/delete/create buttons, новые установщики, миграцию навыков,
+права или автоматическую загрузку неподтверждённых helper prompts.
+Это часть общего20-family аудита, не заявление полной эквивалентности всех модулей.
+
+Точный эталон
+Oldmaster00f081f2220d0e6d3a186e8e1bb447b57acd6ebf, исторический файл
+.msb/bot/vendor/deobfuscated.js; readableblob73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11.
+Читать git show BLOB | sed -n с узкими окнами:
+8450–52 THA,8553–8615 bHA/LG/Z4;41795–41805 и44244–48 base/currentcwd;
+111781 menu:skills;112090–112160 YC и /skills;
+121110–121225 folder/add/card;121297–121335 content/back;
+29845–29955 Hs/Ks/rw/uRA/aw OpenClaw list;
+19349–56 r$A promptmarker;19474–19514 actualIJ appendprompt;
+106467–469/106578–591 finishDelivery ordering;106731–755 applyInstallMarkers;
+57107–57212 enabled/parse/filewrite/success;57273–57331 markerreplacement/limits;
+110839–841 и110899–915 normal/error/abort finalization.
+
+CLI каталог и чтение
+Z4 последовательно сканирует HOME/.claude/skills и base/.claude/skills как
+workspace, затем captured currentcwd/.claude/skills как project, если отличается
+от base. HOME не сканируется дважды при строковом совпадении с base/current.
+LG рекурсивно обходит реальные Directory entries и читает только SKILL.md;
+symlink directory не является isDirectory, file symlink SKILL.md читается как
+обычный файл. Ошибка каталога/файла пропускается, другие файлы не открываются.
+Явной сортировки и дедупликации имён/relativepaths нет; сохраняется порядок
+readdir и последовательность корней. Не вводить precedence слияния по имени.
+
+bHA — не YAML parser: frontmatter начинается с---LF и заканчиваетсяLF---,
+name/description берутся regex, disabled только точная строка disabled:true
+с допустимым regex whitespace. Имя fallback=parent basename; описание fallback=
+первая строка '# ', иначеempty. Size=Buffer.byteLength всего SKILL.md, UTF8.
+Path=relative(root,dirname(file)); type=system при startsWith('_always'), иначеuser.
+UI скрывает только точное name==='system', а не type; disabled строки остаются
+в счётчиках и показываются с⏸, обычные с🧠. Native enable config не менять.
+
+UI
+Заголовок: 🧩 <b>Навыки</b>
+
+Инструкции и правила, которые расширяют возможности агента.
+⠀
+workspace(N) всегда, project(N) только если проектные записи есть; Back skills:back-menu.
+Folderworkspace: <b>📂 workspace</b> / Доступны агенту всегда, в любом проекте.
+Folderproject: <b>📂 activeProject</b> / Доступны агенту когда этот проект активен.
+Каждая строка=icon+escapedname, кнопка title до30UTF16, однакнопка/row.
+Пусто=<i>Нет навыков</i>; затем⠀,➕Добавить skills:add:workspace/project, Back skills:back.
+Card=<b>🧠 name</b>, optionaldescription, 'Расположение: проект/workspace',
+'Размер: (bytes/1024).toFixed(1) KB',⠀. Только Содержимое иBack вownfolder.
+Content=<b>📄 name</b>
+
+<pre>escapedbody</pre>; до3500UTF16, затем
+
+[...усечено].
+ContentBack возвращает втужеcard. Missing=⚠️Навык не найден +Backskills:back;
+readerror=❌error.message.slice(0,100)+Back. Escaping и Unicode сохранять корректными.
+Add — только старый совет попросить агента +2examples иBack ввыбраннуюfolder;
+это не новая форма. /skills и menu:skills используют общий источник/rendering;
+все read views не меняют state/auth/provider/effort/навыки или pendingform.
+Back-menu возвращает прежний hub. Старые тексты читать непосредственно вblob,
+пробелы здесь не являются snapshot ожиданиями.
+
+Доказанные старые дефекты, которые не нужно повторять
+Относительныйpath не уникален между HOME/base/project. Кнопки skills:view:review
+всеодинаковые; .find(path) открывает первый HOME review вместо нажатого project.
+В новом UI ID должен однозначно означать показанную запись/root/provider; legacy
+неоднозначныйcallback не выбирает чужойфайл. Длинные paths должны помещаться в
+callback64bytes через существующийstatelesscodec. Unicode clipping не режет
+surrogate. Не добавлять новые видимые кнопки ради исправления identity.
+
+Выбранный Codex: native источник, а не чужой Claude каталог
+Это адаптация старой логики 'покажи навыки текущего движка', не перенос имени
+.claude вCodex. Официальная документация:
+https://developers.openai.com/api/reference/cli#use-the-cli-from-a-coding-agent
+https://learn.chatgpt.com/docs/build-skills#where-codex-loads-local-skills
+https://learn.chatgpt.com/docs/app-server#skills
+Native Codex0.166.0 отдельно проверен на JAR1 без auth/config владельца, в своём
+временном HOME. Schema и initialize→skills/list подтверждают cwds/forceReload,
+metadata(name,description,path,scope,enabled), scope user/repo/system/admin.
+Документированное сейчас perCwdExtraUserRoots в этой версии schema отсутствует:
+не передавать новые поля по одному чтению современной документации.
+Proof:skills-native-0.166-protocol.json. Для base и project Codex видит свой
+repo/.agents/skills, user/.agents/skills и legacyuser/.codex/skills; .claude
+synthetic файлы не попали. Base repo skills не становятся навыками другого
+независимого project repo. Поэтому metadata брать из native skills/list с
+capturedcwd; не симулировать доступность legacyClaude metadata. UI папки прежние:
+native repo относится к текущему workspace или activeproject, user/system/admin
+кworkspace. Показывать native enabled, не писать config. Повторное чтение не
+должно resume/startturn/менятьmodel или запроситьновуюавторизацию.
+
+Old OpenClaw
+YC приengineoc выполняет openclaw skills list --json --eligible, показывает
+сгруппированный aw список иBack; нет карточек/Add. Ks принимаетarray либо
+skills/eligible/items, пропускает malformed/noname. Source группы workspace,
+project,managed,bundled,extra/other; sortingnames внутриgroups. Empty/nativeerror
+отдаёт 'Не удалось получить список навыков от движка — попробуй позже', allsystem
+отдаёт 'Пока пусто...'. Подробные строки иформат читать29845–29955.
+Этот readonly nativeмаршрут не требует запуска/миграции/включенияOSдвижка.
+
+Установка маркером — отдельный обязательный этап этого семейства
+r$A обычного CCхода требует INSTALL_SKILL JSON(name,description,body), обещание
+успеха только после исполнения. finishDelivery применяет marker до parsePlan.
+Normal completed pass и returnederror сpartialtext могут обрабатываться; abort
+обычногохода не вызываетfinish. Следоватьсуществующему lifecycle/stop, не второмуworker.
+FlagSKILL_INSTALL_ENABLED==='0' удаляетcompleteblocks, беззаписи.
+Парсер первыйcompleteblock; остальныеcompleteblocks удаляет. Name trim/lowercase,
+regex^[a-z0-9][a-z0-9-]{1,48}$; description/body trim, required, max200/60000 JSunits.
+Frontmatter:---LF name:NAME LF description:"collapsedWhitespaceEscapedQuotes" LF---
+LF LF BODY LF. Claude writes HOME/.claude/skills/NAME/SKILL.md, optionalOpenClaw
+mirror если егоHOMEdir существует иOA неотключает; Add folder/project scope не
+передавался установщику. Существующий файл получает SKILL.md.bak передзаменой.
+Не воспроизводить доказуемуюпотерюданных: oldcopyerror merelywarned+overwrite;
+если резервнуюкопию нельзясохранить, новыйwriter долженвернуть прежнююошибку,
+сохранивстарыйфайл. Symlink/TOCTOU boundary требует отдельного syntheticproof.
+Codex требует отдельный target реальногоnativeuserкаталога; не писатьClaude
+и не зеркалитьчужойдвижок при выбранномCodex. Capturedproviderbind от началахода,
+неcurrentmenuprovider послеawait. Для непроверенногоnativeprovider не притворяться
+успешнымinstall и не создавать новыйbackend снуля.
+Success: 'Поставил/Обновил навык «NAME»[ на обоих движках]. Заработает со следующего сообщения.'
+Invalid: 'Не понял описание навыка — назови имя латиницей, короткое описание и текст навыка.'
+Writefailure: 'Не получилось сохранить навык — попробуй ещё раз.'
+Окружающийtext сохраняется, trim финала. MCP ADD_MCP — отдельный backend/этап,
+не объявлять его исправленным вместе соskills.
+
+Не копировать неподтверждённую логику helper
+Exported cp8633/nHA8826 умеют fullbody _always/match summaries иcache, но nativeCC
+IJ19474–19514 реально вызывает r$A, неnHA. Поизученномуblob cpвызываетсятолькоnHA,
+nHA виденкакexport. Нельзя изэтого выводить, что всеобычныестарыеCCходы получали
+полныеskillbodyчерезэтотhelper. NativeClaude discovery/extensioncaller — отдельные
+needs-evidence. Не добавлять blanket injection вновый prompt ради зелёногоUItest.
+
+Исходное новое состояние830e3f6
+/skills/menu:skills ведут вplaceholder skillsScreen(), безdiscovery/cards/content.
+Skills callbacks отсутствуют; INSTALL_SKILL parser/writer иpromptinstruction не
+найденывsrc/overlay. Existing nativeCodexadapter может иметьсвоиskills; это не
+доказательствоUIintegration илиегоотсутствия. Core/overlay разнести: старыйClaude
+file reader, scopedskillmodel иrenderer; Codex native extension через существующий
+integration seam; OCreader отдельно. Навигация уисходников/тестов, неglobalmap.
+
+Приёмка
+Production command/callback RED на syntheticHOME, не прямойsnapshotnewhelper.
+Список/card/content/add/back, HOME/base/project, duplicateID/longpath/Unicode,
+disabled/system/frontmatter/errors/owner/pending/statepreservation.
+NativeCodex protocol+cwd/provider/error/timeout/abort/control tests безrealAPI;
+никаких thread/start/resume/account/login/config/write вызововрадиlist.
+Installer RED→GREEN: nativeproviderbinding,validation,write/backup/error/disable/
+multiples/partial/stop/plan ordering, sharedturn pipeline +journalprocessedtext.
+Затем samecommit fullLinuxDocker/target+manifest и разрешённая controllednative/
+Telegramприёмка. Одногоэкрананедостаточно. Пока productionfix неготов, JAR1 остаётся
+830e3f6; нетpush/переносасекретов/nativeисторий/настоящихowner skillcontent вGit.
