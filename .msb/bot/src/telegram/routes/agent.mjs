@@ -29,7 +29,7 @@ export async function handleAgentRoute({ data, state, show, pending, chatId, bot
     });
   }
   if (data.startsWith('settings:model:set:')) {
-    const family = data.split(':').pop();
+    const family = data.slice('settings:model:set:'.length);
     const model = await applyModelFamily(family);
     if (model) await bot.api.sendMessage(chatId, `Модель: <code>${model}</code>`, { parse_mode: 'HTML' });
     return show(await agentScreen((await loadState()).state));

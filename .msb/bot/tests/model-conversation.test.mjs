@@ -43,3 +43,10 @@ test('prototype property names are not Claude model choices', async t => {
     assert.deepEqual((await loadState()).state, state, family);
   }
 });
+
+
+test('the whole Claude model callback value is validated, not only its last segment', async t => {
+  const { f, state } = await claude(t, true);
+  await f.callback('settings:model:set:unknown-fixture:sonnet');
+  assert.deepEqual((await loadState()).state, state);
+});
