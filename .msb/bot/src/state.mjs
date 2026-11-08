@@ -7,7 +7,11 @@ import { ensureDir, statePath } from './paths.mjs';
  * Канон полей (CONTRACT-state-menus): authMode, hasSubscriptionAuth, engine,
  * ccSessionId, ccModel, ccEffort, permissionMode, extAuthBypass.
  * Алиасы model/effort/permMode читаются для старых записей.
- * Навигация: [Состояние](../../../docs/CODEMAP.md#состояние-и-конфигурация), [profile](../shared/README.md).
+ * Вход: [Telegram](./telegram/bot.mjs), [agent](./agent/turn.mjs); записи только updateState.
+ * Путь/profile → [paths](./paths.mjs), env CRUD → [env/store](./env/store.mjs).
+ * Отдельные provider IDs/model/effort → [ext store](../../../overlay/bot/ext/store.mjs);
+ * переключение бесед → [provider sessions](../../../overlay/bot/ext/provider-sessions.mjs).
+ * Проверки: [paths/state](../tests/paths-state.test.mjs), [session races](../tests/turn-lifecycle.test.mjs).
  */
 export async function loadState(env = process.env) {
   const file = statePath(env);

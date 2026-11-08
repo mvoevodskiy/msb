@@ -1,6 +1,6 @@
 # Мои боты
 
-[← Карта кода](../../../../docs/CODEMAP.md) · [Telegram](../telegram/README.md#callback-маршруты)
+[← Вход ядра](../main.mjs) · [Telegram](../telegram/README.md#callback-маршруты)
 
 [manage.mjs](manage.mjs) — локальный адаптер к `sudo bot-ctl.sh`.
 Работает с `<profile.root>/bots`; список, добавление и удаление имеют реальные

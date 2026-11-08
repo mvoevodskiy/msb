@@ -1,6 +1,6 @@
 # Open-core Telegram-агент
 
-[Карта кода: задача → модуль → функция → тест](docs/CODEMAP.md) ·
+[Вход ядра](.msb/bot/src/main.mjs) ·
 [Границы реализации](.msb/bot/OPEN-CORE.md) · [Сборка и выпуск](tools/release/README.md)
 
 Ветка **`open-core`**: одна исходная база для ядра и CLI-обвязки. Закрытый бандл снят.

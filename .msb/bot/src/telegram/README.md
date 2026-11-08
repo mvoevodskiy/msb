@@ -1,6 +1,6 @@
 # Telegram
 
-[← Карта кода](../../../../docs/CODEMAP.md) ·
+[← Вход ядра](../main.mjs) ·
 [Исполнение агента →](../agent/README.md) ·
 [CLI-провайдеры →](../../../../overlay/bot/ext/README.md)
 

@@ -1,7 +1,14 @@
 import { invalidateFirstSession } from '../../shared/session-starts.mjs';
 /**
- * Сборка handlers, общих pending/running и жизненного цикла хода.
- * Навигация: [Telegram](./README.md) → [callbacks](./router.mjs), [voice](./voice.mjs).
+ * createBot собирает входящие Telegram события и lifecycle хода; UI не хранит
+ * provider session отдельно. Вход: [main](../main.mjs), owner → [auth](./auth.mjs).
+ * Текст/voice → [inbox](./inbox.mjs) → executeTurn → [agent](../agent/turn.mjs).
+ * Кнопки → [router](./router.mjs) → routes/; вид → [screens](./screens.mjs).
+ * Формы: pending в этом процессе; записи → [state](../state.mjs) / [env](../env/store.mjs).
+ * Индикация → [progress](./progress.mjs), итог → [response](./response.mjs),
+ * журнал Пульта → [history](./history.mjs), STT → [voice](./voice.mjs).
+ * Проверки: [inbox lifecycle](../../tests/inbox-lifecycle.test.mjs),
+ * [polling/stop](../../tests/turn-lifecycle.test.mjs), [forms/menu](../../tests/menu-handlers.test.mjs).
  */
 import { Bot } from 'grammy';
 import { autoRetry } from '@grammyjs/auto-retry';

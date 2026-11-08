@@ -1,6 +1,6 @@
 # Media / STT
 
-[← Карта кода](../../../../docs/CODEMAP.md) · [Голос в Telegram ←](../telegram/README.md#голос)
+[← Вход ядра](../main.mjs) · [Голос в Telegram ←](../telegram/README.md#голос)
 
 Backend распознавания не отправляет Telegram-сообщения. Он принимает байты,
 signal отмены и возвращает полный transcript; download/preview/reply-context

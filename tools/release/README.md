@@ -1,6 +1,6 @@
 # Один commit → релиз JAR1
 
-[Карта кода](../../docs/CODEMAP.md) · [Профиль среды](../../.msb/bot/shared/README.md)
+[Вход ядра](../../.msb/bot/src/main.mjs) · [Профиль среды](../../.msb/bot/shared/README.md)
 
 Здесь нет патчей поведения и зависимости от прежней рабочей ветки. Сборщик
 читает Git-объекты выбранного commit, сохраняет байты и executable modes.

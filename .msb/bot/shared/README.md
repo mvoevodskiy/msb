@@ -1,6 +1,6 @@
 # Общий runtime profile
 
-[← Карта кода](../../../docs/CODEMAP.md) · [Core](../OPEN-CORE.md) ·
+[← Вход ядра](../src/main.mjs) · [Core](../OPEN-CORE.md) ·
 [Overlay](../../../overlay/bot/ext/README.md) · [Выпуск](../../../tools/release/README.md)
 
 [profile.cjs](profile.cjs) — единственный resolver для ядра, overlay и entrypoints.

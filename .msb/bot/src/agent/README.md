@@ -1,6 +1,6 @@
 # Исполнение агента
 
-[← Карта кода](../../../../docs/CODEMAP.md) ·
+[← Вход ядра](../main.mjs) ·
 [Telegram ←](../telegram/README.md) ·
 [CLI-провайдеры →](../../../../overlay/bot/ext/README.md)
 

@@ -1,6 +1,6 @@
 # OS-движки
 
-[← Карта кода](../../../../docs/CODEMAP.md) · [Runtime profile](../../shared/README.md) ·
+[← Вход ядра](../main.mjs) · [Runtime profile](../../shared/README.md) ·
 [CLI-провайдеры](../../../../overlay/bot/ext/README.md)
 
 Этот модуль управляет OS helper. Codex выбирается в overlay и сюда не направляется.

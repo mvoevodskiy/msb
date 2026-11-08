@@ -1,6 +1,6 @@
 # Автономка
 
-[← Карта кода](../../../../docs/CODEMAP.md) · [Исполнение](../agent/README.md) ·
+[← Вход ядра](../main.mjs) · [Исполнение](../agent/README.md) ·
 [Telegram](../telegram/README.md#callback-маршруты)
 
 Базовые интервальные задачи используют общий `runAgentTurn` и состояние бота.

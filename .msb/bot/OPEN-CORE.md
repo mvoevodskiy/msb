@@ -1,6 +1,6 @@
 # Открытое ядро
 
-[← Карта кода](../../docs/CODEMAP.md) · [Профили](shared/README.md) ·
+[← Вход ядра](src/main.mjs) · [Профили](shared/README.md) ·
 [Выпуск и откат](../../tools/release/README.md)
 
 Рабочая реализация находится в `src/`. Старый [vendor](vendor/README.md) — эталон

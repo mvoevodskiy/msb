@@ -1,6 +1,6 @@
 # Эталонные сценарии open-core
 
-[← Карта кода](../../../../docs/CODEMAP.md) · [Telegram](../../src/telegram/README.md) ·
+[← Вход ядра](../../src/main.mjs) · [Telegram](../../src/telegram/README.md) ·
 [Overlay](../../../../overlay/bot/ext/README.md) · [Release checks](../../../../tools/release/README.md)
 
 Набор проверяет требуемое поведение настоящих handlers/runner/overlay с fake

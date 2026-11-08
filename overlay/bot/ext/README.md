@@ -1,6 +1,6 @@
 # CLI-провайдеры и обвязка
 
-[← Карта кода](../../../docs/CODEMAP.md) ·
+[← Вход ядра](../../../.msb/bot/src/main.mjs) ·
 [Установка обвязки](../../README.md) ·
 [Telegram ←](../../../.msb/bot/src/telegram/README.md) ·
 [Исполнение агента ←](../../../.msb/bot/src/agent/README.md)
@@ -103,7 +103,7 @@ constructor-запросы в `handleLocalConstructorRequest`; здесь же �
 
 При дальнейшем разделении сохранять единственность pending-хранилищ, owner boundary,
 захват startup flags и порядок callback-ветвей. Исходники и установленный runtime различаются путями:
-[карта source/release/runtime](../../../docs/CODEMAP.md#исходники-сборка-и-runtime).
+[Вход ядра](../../../tools/release/README.md).
 
 ## Источник и выпуск
 

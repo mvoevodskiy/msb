@@ -1,7 +1,12 @@
 /**
- * Роутер callback_query — те же callback_data, что в закрытом ядре.
- * Один общий контекст; семейства вызываются в прежнем порядке.
- * Навигация: [Telegram](./README.md).
+ * Callback вход из [createBot](./bot.mjs): тот же callback_data и один context.
+ * ROUTES ниже задаёт прежний порядок; только UNHANDLED передаёт управление дальше.
+ * Настройки/формы → [settings](./routes/settings.mjs), модель/права → [agent](./routes/agent.mjs),
+ * выбор движка → [engines](./routes/engines.mjs), проекты/MCP → [workspace](./routes/workspace.mjs),
+ * задачи → [autonomy](./routes/autonomy.mjs), источники → [monitor](./routes/monitor.mjs).
+ * Остальные семейства видны в прямых imports ниже; rendering → [screens](./screens.mjs).
+ * Состояние → [state](../state.mjs), shared pending принадлежит createBot.
+ * Проверка переходов/отмены/owner: [menu handlers](../../tests/menu-handlers.test.mjs).
  */
 import { loadState } from '../state.mjs';
 import { editOrReply } from './edit.mjs';

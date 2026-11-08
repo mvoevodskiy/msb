@@ -12,8 +12,14 @@ import { readSessionContext } from './context.mjs';
 import { claimFirstSession, completeFirstSession, releaseFirstSession } from '../../shared/session-starts.mjs';
 
 /**
- * Один ход агента для чата или автономии.
- * Навигация: [Исполнение](./README.md) → [runner](./claude.mjs), [context](./context.mjs).
+ * runAgentTurn: prompt/signal → выбранный CLI → результат и guarded session/usage.
+ * Вызывают [Telegram](../telegram/bot.mjs) и [autonomy](../autonomy/scheduler.mjs).
+ * Аргументы/stream/abort → [runClaudeTurn](./claude.mjs) → существующий PATH shim;
+ * native dispatch → [provider runner](../../../../overlay/bot/ext/shim/run-turn.mjs).
+ * Контекст → [system prompt](./system-prompt.mjs), [metadata](./context.mjs);
+ * владелец записи сессии → [state](../state.mjs), [first-start token](../../shared/session-starts.mjs).
+ * Проверки: [polling/session fences](../../tests/turn-lifecycle.test.mjs),
+ * [provider isolation](../../../../overlay/bot/ext/tests/reference/provider-switch.test.mjs).
  */
 export async function runAgentTurn({
   prompt,

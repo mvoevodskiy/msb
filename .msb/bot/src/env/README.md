@@ -1,6 +1,6 @@
 # Переменные окружения
 
-[← Карта кода](../../../../docs/CODEMAP.md) · [Настройки Telegram](../telegram/README.md#настройки-и-кнопки) ·
+[← Вход ядра](../main.mjs) · [Настройки Telegram](../telegram/README.md#настройки-и-кнопки) ·
 [Runtime profile](../../shared/README.md)
 
 Модуль управляет per-bot `.env` по пути из профиля, а не native auth Codex.

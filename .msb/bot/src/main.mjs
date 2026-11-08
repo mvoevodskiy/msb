@@ -1,7 +1,14 @@
 /**
- * MSB open-core — точка входа открытого ядра.
- * Совместима с systemd ExecStart=node …/bot/index.js и overlay run.mjs.
- * Навигация: [Карта](../../../docs/CODEMAP.md) → [Telegram](./telegram/README.md).
+ * Владельцем процесса является main(): config → Telegram polling + schedulers;
+ * shutdown прекращает приём, дожидается ходов и останавливает heartbeat.
+ * Вход: [index.js](../index.js) после [overlay/run](../../../overlay/bot/run.mjs).
+ * По задаче: сообщения/команды/кнопки → [createBot](./telegram/bot.mjs);
+ * выполнение модели/сессия → [runAgentTurn](./agent/turn.mjs);
+ * интервальные задачи → [autonomy scheduler](./autonomy/scheduler.mjs);
+ * источники/дайджест → [monitor scheduler](./monitor/scheduler.mjs);
+ * профиль/папки → [paths](./paths.mjs), состояние → [state](./state.mjs).
+ * Проверка exported runtime/shutdown: [profile smoke](../../../tools/release/profile-smoke.mjs),
+ * [polling lifecycle](../tests/turn-lifecycle.test.mjs). Контракты — у модулей.
  */
 import { assertRuntimeConfig, readConfig } from './config.mjs';
 import { startHeartbeat } from './heartbeat.mjs';
