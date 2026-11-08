@@ -50,3 +50,8 @@ token, не history metadata или авторизация. Переключен
 [Native resolver](claude-binary.mjs) используется startup/shim и metadata reader,
 исключает собственный shim по realpath. Это чтение локальной CLI версии, без auth
 или provider turn. [Native checks](../tests/claude-version.test.mjs).
+
+[env-writes.mjs](env-writes.mjs) — единая process queue для core и provider
+read/modify/write env; scope/валидация остаются у вызывающих. Обе стороны
+импортируют одну копию shared. [Контракт](../tests/reference/parity-env-write-contract.txt),
+[проверки порядка/ошибок](../tests/env-write-order.test.mjs).

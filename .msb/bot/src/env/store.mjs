@@ -6,6 +6,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { botRoot, ensureDir } from '../paths.mjs';
 import profile from '../../shared/profile.cjs';
+import { serializeEnvMutation } from '../../shared/env-writes.mjs';
 
 /** Old system-key boundary plus new equivalent bootstrap names; aliases agree.
  * Generic forms cannot replace/delete these; only stock auth uses explicit internal.
@@ -59,7 +60,10 @@ export function envFilePath(env = process.env) {
 }
 
 export async function readEnvMap(env = process.env) {
-  const file = envFilePath(env);
+  return readEnvFile(envFilePath(env));
+}
+
+async function readEnvFile(file) {
   let raw = '';
   try {
     raw = await fs.readFile(file, 'utf8');
@@ -107,39 +111,45 @@ export async function setEnvKey(key, value, env = process.env, { internal = fals
   if (PROTECTED_KEYS.has(key) && internal !== true) {
     throw new Error(`${key} — защищённый системный ключ, изменение запрещено`);
   }
-  const { file, lines } = await readEnvMap(env);
-  ensureDir(path.dirname(file));
-  const kept = [];
-  let replaced = false;
-  for (const line of lines) {
-    if (line.startsWith(`${key}=`)) {
-      kept.push(`${key}=${value}`);
-      replaced = true;
-    } else {
-      kept.push(line);
+  const file = envFilePath(env);
+  return serializeEnvMutation(async () => {
+    const { lines } = await readEnvFile(file);
+    ensureDir(path.dirname(file));
+    const kept = [];
+    let replaced = false;
+    for (const line of lines) {
+      if (line.startsWith(`${key}=`)) {
+        kept.push(`${key}=${value}`);
+        replaced = true;
+      } else {
+        kept.push(line);
+      }
     }
-  }
-  if (!replaced) {
-    while (kept.length && kept[kept.length - 1] === '') kept.pop();
-    kept.push(`${key}=${value}`);
-  }
-  const body = `${kept.join('\n').replace(/\n*$/, '')}\n`;
-  const tmp = `${file}.tmp.${process.pid}`;
-  await fs.writeFile(tmp, body, { mode: 0o600 });
-  await fs.rename(tmp, file);
-  profile.setEnvValue(env, key, value);
-  return { file, key };
+    if (!replaced) {
+      while (kept.length && kept[kept.length - 1] === '') kept.pop();
+      kept.push(`${key}=${value}`);
+    }
+    const body = `${kept.join('\n').replace(/\n*$/, '')}\n`;
+    const tmp = `${file}.tmp.${process.pid}`;
+    await fs.writeFile(tmp, body, { mode: 0o600 });
+    await fs.rename(tmp, file);
+    profile.setEnvValue(env, key, value);
+    return { file, key };
+  });
 }
 
 export async function deleteEnvKey(key, env = process.env) {
   if (PROTECTED_KEYS.has(key)) {
     throw new Error(`Ключ ${key} защищён — не удаляется из бота`);
   }
-  const { file, lines } = await readEnvMap(env);
-  const kept = lines.filter((l) => !l.startsWith(`${key}=`));
-  const tmp = `${file}.tmp.${process.pid}`;
-  await fs.writeFile(tmp, `${kept.join('\n').replace(/\n*$/, '')}\n`, { mode: 0o600 });
-  await fs.rename(tmp, file);
-  profile.setEnvValue(env, key, undefined);
-  return { file, key };
+  const file = envFilePath(env);
+  return serializeEnvMutation(async () => {
+    const { lines } = await readEnvFile(file);
+    const kept = lines.filter((l) => !l.startsWith(`${key}=`));
+    const tmp = `${file}.tmp.${process.pid}`;
+    await fs.writeFile(tmp, `${kept.join('\n').replace(/\n*$/, '')}\n`, { mode: 0o600 });
+    await fs.rename(tmp, file);
+    profile.setEnvValue(env, key, undefined);
+    return { file, key };
+  });
 }

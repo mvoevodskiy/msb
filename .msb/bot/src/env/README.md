@@ -30,3 +30,10 @@ bootstrap MSB/IIA names (profile/root/paths/owner), без запрета обы
 [menu-handlers](../../tests/menu-handlers.test.mjs), [runtime-profile](../../tests/runtime-profile.test.mjs).
 Provider auth обвязки: [ext/env.mjs](../../../../overlay/bot/ext/env.mjs).
 Shared fallback для речи: [media/STT](../media/README.md).
+
+Set/delete и provider writer [ext/env](../../../../overlay/bot/ext/env.mjs)
+используют одну [process queue](../../shared/env-writes.mjs), как old xK.
+Target закреплён до ожидания; весь read/modify/rename/env update — внутри.
+Ошибка освобождает очередь. Это не lock внешних редакторов/других процессов.
+[Контракт](../../tests/reference/parity-env-write-contract.txt),
+[barrier regression](../../tests/env-write-order.test.mjs).

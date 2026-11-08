@@ -38,3 +38,8 @@ failure→next writer и независимые env objects/profiles. Сеть/�
 Описание/comment stage, global visibility/scope и восстановление данных — другие
 этапы. Revert fix вновь допускает потерю записи; code-only rollback не возвращает
 .env/ключи, сохранённые или удалённые пользователем.
+
+Проверенный checkpoint:da1cac9 контракт,2ce18ab RED:2PASS/6RED,безskip/todo.
+После общей process queue:8order PASS;40связанных core+provider tests PASS,
+независимый Sol повторил те же40PASS без findings. Это локальный результат,
+не target Linux/live приёмка. JAR1 на принятом5f439ba до следующего export.

@@ -1,9 +1,15 @@
+/**
+ * Provider credential file fallback and writes; stock Claude/native Codex keep
+ * their existing auth routes. Writes share core [env queue](../shared/env-writes.mjs).
+ * Read scopes/empty fallback are unchanged. [Tests](../../../.msb/bot/tests/env-write-order.test.mjs).
+ */
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { getProvider } from './providers.mjs';
 import { botDir, msbRoot } from './paths.mjs';
 import profile from '../shared/profile.cjs';
+import { serializeEnvMutation } from '../shared/env-writes.mjs';
 
 /** Per-bot .env — как у штатного setEnvVar при MSB_BOT_ID. */
 export function botEnvPath(env = process.env, home = env.HOME || os.homedir()) {
@@ -57,27 +63,29 @@ export async function readEnvKey(key, env = process.env, home = env.HOME || os.h
 
 export async function writeEnvKey(key, value, env = process.env, home = env.HOME || os.homedir()) {
   const file = botEnvPath(env, home);
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  let rows = [];
-  try {
-    rows = parseEnvFile(await fs.readFile(file, 'utf8'));
-  } catch (err) {
-    if (err?.code !== 'ENOENT') throw err;
-  }
-  const trimmed = String(value).trim();
-  const idx = rows.findIndex((r) => r.kind === 'kv' && r.key === key);
-  if (idx >= 0) rows[idx].value = trimmed;
-  else {
-    if (rows.length && rows[rows.length - 1].kind === 'raw' && rows[rows.length - 1].text === '') {
-      /* keep */
-    } else if (rows.length) rows.push({ kind: 'raw', text: '' });
-    rows.push({ kind: 'kv', key, value: trimmed });
-  }
-  const tmp = `${file}.tmp.${process.pid}`;
-  await fs.writeFile(tmp, serializeEnv(rows), { mode: 0o600 });
-  await fs.rename(tmp, file);
-  profile.setEnvValue(env, key, trimmed);
-  return trimmed;
+  return serializeEnvMutation(async () => {
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    let rows = [];
+    try {
+      rows = parseEnvFile(await fs.readFile(file, 'utf8'));
+    } catch (err) {
+      if (err?.code !== 'ENOENT') throw err;
+    }
+    const trimmed = String(value).trim();
+    const idx = rows.findIndex((r) => r.kind === 'kv' && r.key === key);
+    if (idx >= 0) rows[idx].value = trimmed;
+    else {
+      if (rows.length && rows[rows.length - 1].kind === 'raw' && rows[rows.length - 1].text === '') {
+        /* keep */
+      } else if (rows.length) rows.push({ kind: 'raw', text: '' });
+      rows.push({ kind: 'kv', key, value: trimmed });
+    }
+    const tmp = `${file}.tmp.${process.pid}`;
+    await fs.writeFile(tmp, serializeEnv(rows), { mode: 0o600 });
+    await fs.rename(tmp, file);
+    profile.setEnvValue(env, key, trimmed);
+    return trimmed;
+  });
 }
 
 export async function providerConfigured(provider, env = process.env, home = env.HOME || os.homedir()) {
