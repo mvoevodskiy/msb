@@ -218,7 +218,7 @@ try {
   } else if (scenario === 'reset-session') {
     await until(() => has('cli-init:1'), 'first native session before reset');
     send('/newtask');
-    await until(() => report.calls.some((call) => call.applied && call.text === 'Новая сессия. Пиши задачу.'), 'newtask during the first turn');
+    await until(() => report.calls.some((call) => call.applied && call.text === '🆕 Новая сессия. Предыдущий контекст сброшен.'), 'newtask during the first turn');
     report.events.push('reset-acknowledged');
     children[0].close('late-result');
     await until(() => hasAnswer(1), 'late answer after reset replacing its status');
@@ -226,7 +226,7 @@ try {
     await until(() => has('cli-init:1'), 'old provider turn before switch');
     if (scenario === 'provider-reset' || scenario === 'provider-clear') {
       send(scenario === 'provider-reset' ? '/newtask' : '/clear');
-      const ack = scenario === 'provider-reset' ? 'Новая сессия. Пиши задачу.' : 'Начата новая беседа. Файлы и native-история сохранены.';
+      const ack = scenario === 'provider-reset' ? '🆕 Новая сессия. Предыдущий контекст сброшен.' : '🧹 Контекст сброшен. Начинаем с чистого листа.';
       await until(() => report.calls.some((call) => call.applied && call.text === ack), 'reset before switching');
       report.events.push('reset-acknowledged');
     }
