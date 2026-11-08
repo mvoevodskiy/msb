@@ -107,3 +107,16 @@ OpenClawnative merge/reattach/restoreprev/runtime покаmissing-transfer (са
 newOCнеподключён); невыдаватьэтотCCэтапзаfullOCparity илиподменятьегоfakeуспехом.
 Полная20family цель остаётсяпрежней; этотлогическийшаг закрываетCLIhistorypath.
 Ничего наJAR1дляcontract/REDне менять; ownernativeистории не читать, не импортировать.
+
+
+UI RED checkpoint
+node --test --test-reporter=tap .msb/bot/tests/sessions.test.mjs:
+28tests,5PASS/23ERR_ASSERTION,0cancelled/skip/todo. Это число проверок, не23
+независимыхдефекта. PASS controls: invalidpage/envinput, unknownraw/opaqueID,
+stale foreignprovider и ownerguard; missingfeature cases реально идут через
+createBot/router/commands/state, безновыхмодулей/fake replacementrenderer.
+Два missingpagerender dereference в первоначальномtestbody заменены явной
+assertпроверкойналичияview; literalnewlines уточнены для oldтекста. Финальный
+RED содержит только assertfailures, неtest infrastructure/TypeError/importerror.
+Runnerledger/selection→actualresume и overlapraces требуют отдельныхпроверок.
+JAR1 остаётся на принятом01e867a; этот RED checkpoint не готов к выкладке.
