@@ -218,3 +218,27 @@ native scope/cwd aliases/size/metadata guards ине требуетauth. Solrevi
 доказаны; реальныеCLI/ownerprofile/Telegram вэтойпроверке неиспользовались.
 OCreadonly иINSTALL_SKILL pipeline всёещёнужны. FullsamecommitLinux/native/livegate
 ещёнепройден, JAR1остаётся830e3f6. НеобъявлятьAddadvice workinginstaller, неpush.
+
+
+OC read-list RED checkpoint (послеd3e35a4, локально)
+23productioncommand/callbackcases:1PASS/22ERR_ASSERTION,0cancelled/skip/infra.
+Собственныйfakeopenclaw вPATH, actual CLI/model/ownerprofile не используются.
+Проверяются старыеJSONenvelopes/nullishpriority/Stringtrim/groups/order/emptyvs
+all-system, userInvocablefalse, typing/loading/finalfallback, childHBfilter,
+pending/owner/state, freshreads, hangnavigation/stop, Unicode/HTML/longdelivery.
+OldHBt5(44249) удаляеттольковchildcopy:JARVIS_CC_ONLY,BOT_TOKEN,ANTHROPIC_API_KEY,
+IIA_ANTHROPIC_API_KEY,CLAUDE_CODE_OAUTH_TOKEN,SYNC_KEY,SYNC_URL;такжеGIT_*кроме
+GITHUB_TOKENиNPM_CONFIG_*. Не менятьparentprocess.env. Старыйrw неставилcwd,
+неимелтаймаута; boundedchildlifecycle — адаптацияустойчивости, неexactoldtiming.
+
+Luna boundedsearch старыхapi.config.use109604–109736 обнаружил cooldown/retry/
+getUpdates/spamguard, но не общийsplit. OldsendLongMessage107193–107209 относится
+к streamingfinalizer106617/106643, неYC. НельзяclaimконкретныйliveTelegramотказ
+безегофактическоговызова. Новаядоставка длинногоOCсписка проверяетсяизолированно
+противлимитаTelegram4096 и должнасохранить ВСЕзаписи/порядок/HTML иBackнапоследней
+части, безновойпагинации/кнопок и безпереформатированиянормальногоoldсписка.
+Desc90 сохраняет old ENCODEDbudget, но целыеentity/Unicodeunits; visible90
+изменил бы уже корректныеописания (например30ampersands). Sourceгруппыescape.
+Общий существующийHTMLsplitter finalresponse можно использовать какpureutility,
+не вызывать model/plan/INSTALL_SKILL parser на метаданных UI. NativeCLI/OCbrain/
+fullreleaseэтимREDнеподтверждены, JAR1остаётся830e3f6 иpushнет.
