@@ -17,7 +17,8 @@ export {
   sttScreen,
 } from './screens/system.mjs';
 export { enginesScreen } from './screens/engines.mjs';
-export { autonomyHomeScreen, autonomyWhatScreen, autonomyTasksScreen, autonomyTimersScreen, autonomyHistoryScreen, autonomyRightsScreen } from './screens/autonomy.mjs';
+export { autonomyHomeScreen, autonomyWhatScreen, autonomyTasksScreen, autonomyHistoryScreen, autonomyRightsScreen } from './screens/autonomy.mjs';
+export { autonomyTimersScreen } from './screens/legacy-timers.mjs';
 export { monitorScreen, monitorSourcesScreen, monitorDigestScreen, monitorHelpScreen, monitorSettingsScreen } from './screens/monitor.mjs';
 export { botsScreen, botDetailScreen } from './screens/bots.mjs';
 export { mcpScreen, mcpWorkspaceScreen, mcpAddScreen } from './screens/workspace.mjs';

@@ -39,8 +39,10 @@ const weekly = {
   enabled: true,
 };
 
-async function timerFixture(t, schedules) {
-  const bot = await fixture(t, async () => assert.fail('Timer menu must not run the model'));
+async function timerFixture(t, schedules, options) {
+  const bot = await fixture(t, async () => assert.fail('Timer menu must not run the model'), options);
+  delete process.env.MSB_SESSION_DIR;
+  delete process.env.IIA_SESSION_DIR;
   const file = path.join(botRoot(), 'schedules.json');
   const bytes = schedules === undefined ? undefined : JSON.stringify(schedules, null, 2);
   if (bytes !== undefined) await fs.writeFile(file, bytes);
@@ -136,4 +138,67 @@ test('timer delete: removes the selected legacy row and shows the old post-delet
   assert.match(text, /Ни одного не осталось\./);
   assert.deepEqual(buttons, [['« Назад', 'auto:home']]);
   assert.deepEqual(JSON.parse(await fs.readFile(f.file, 'utf8')), []);
+});
+
+test('timer list: follows the legacy session parent override and safely renders stored markup', async t => {
+  const f = await timerFixture(t, [daily], { runtimeProfile: 'jar1' });
+  const custom = path.join(f.home, 'legacy-profile');
+  await fs.mkdir(custom);
+  process.env.IIA_SESSION_DIR = path.join(custom, 'sessions');
+  const stored = { ...once, name: 'Почта <важно> & отчёт', prompt: 'Сравни 1 < 2 & 3' };
+  await fs.writeFile(path.join(custom, 'schedules.json'), JSON.stringify([stored]));
+
+  await f.callback('auto:timers');
+  assert.match(latestView(f).text, /Почта &lt;важно&gt; &amp; отчёт/);
+  assert.doesNotMatch(latestView(f).text, /Утренний отчёт/);
+  await f.callback('auto:timer:once-fixture');
+  assert.match(latestView(f).text, /Сравни 1 &lt; 2 &amp; 3/);
+  assert.equal(await fs.readFile(f.file, 'utf8'), f.bytes);
+});
+
+test('timer change: corrupted JSON is not replaced with an empty list', async t => {
+  const f = await timerFixture(t);
+  const corrupt = '[{"id":"once-fixture"';
+  await fs.writeFile(f.file, corrupt);
+
+  await f.callback('auto:timer-delete:once-fixture');
+  assert.match(latestView(f).text, /Ни одного\. Это старая механика повторов/);
+  assert.equal(await fs.readFile(f.file, 'utf8'), corrupt);
+});
+
+test('timer changes: concurrent callbacks do not undo each other', async t => {
+  const f = await timerFixture(t, [once, daily, weekly]);
+  await Promise.all([
+    f.callback('auto:timer-toggle:once-fixture', 42, { messageId: 101 }),
+    f.callback('auto:timer-delete:daily-fixture', 42, { messageId: 102 }),
+  ]);
+
+  assert.deepEqual(JSON.parse(await fs.readFile(f.file, 'utf8')), [{ ...once, enabled: false }, weekly]);
+});
+
+test('timer change: a pre-existing temporary symlink cannot redirect the write', async t => {
+  const f = await timerFixture(t, [once]);
+  const unrelated = path.join(f.home, 'unrelated.txt');
+  const oldTemporary = f.file + '.tmp.' + process.pid;
+  await fs.writeFile(unrelated, 'untouched bytes');
+  await fs.symlink(unrelated, oldTemporary);
+
+  await f.callback('auto:timer-toggle:once-fixture');
+  assert.equal(await fs.readFile(unrelated, 'utf8'), 'untouched bytes');
+  assert.equal(await fs.readlink(oldTemporary), unrelated);
+  assert.equal((await fs.lstat(f.file)).isSymbolicLink(), false);
+  assert.deepEqual(JSON.parse(await fs.readFile(f.file, 'utf8')), [{ ...once, enabled: false }]);
+});
+
+test('timer change: a linked schedules file keeps the link and updates its target', async t => {
+  const f = await timerFixture(t);
+  const target = path.join(f.home, 'existing-schedules.json');
+  await fs.writeFile(target, JSON.stringify([once]));
+  await fs.chmod(target, 0o640);
+  await fs.symlink(target, f.file);
+
+  await f.callback('auto:timer-toggle:once-fixture');
+  assert.equal(await fs.readlink(f.file), target);
+  assert.equal((await fs.stat(target)).mode & 0o777, 0o640);
+  assert.deepEqual(JSON.parse(await fs.readFile(target, 'utf8')), [{ ...once, enabled: false }]);
 });

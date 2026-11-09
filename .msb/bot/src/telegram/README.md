@@ -109,7 +109,8 @@ Owner boundary остаётся перед core router: middleware бота и h
 | [system](screens/system.mjs) | Системные пункты, обновления, restart, SSH и STT |
 | [engines](screens/engines.mjs) | `enginesScreen` — прежние controls и опциональный provider view |
 | [sessions](screens/sessions.mjs) → [list](screens/session-list.mjs) | CLI ledger/pages; `statusScreen` — текущий агент и native-контекст |
-| [autonomy](screens/autonomy.mjs) | Задачи, история, таймеры и права автономки |
+| [autonomy](screens/autonomy.mjs) | Задачи, история и права автономки |
+| [legacy-timers](screens/legacy-timers.mjs) | Список и карточка сохранённых таймеров |
 | [monitor](screens/monitor.mjs) | Источники, дайджест, настройки и справка мониторинга |
 | [bots](screens/bots.mjs) | `botsScreen`, `botDetailScreen` — список и карточка бота |
 | [projects](screens/projects.mjs) | Прежний список/страницы, выбор и форма проекта |

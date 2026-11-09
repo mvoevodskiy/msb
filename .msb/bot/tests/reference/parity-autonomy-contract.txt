@@ -1,6 +1,10 @@
-Old→new audit: task persistence, not a new scheduler/UI.
+Old→new audit: task persistence and legacy timer management.
 
-Old readable blob73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11, pinned to master00f081f:
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf holds .iia/bot/index.js.
+Readable cfa19389d535d48c161b4bbda7c54aa7649c90f6:.msb/bot/vendor/deobfuscated.js
+is blob 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11. Read it with git show BLOB.
+
+Interval persistence checkpoint.
 Rz→ir (24883,24928–24949) records the result of one action; U4 (4393–4408)
 updates that ID through oA's file transaction and keeps other IDs from the latest
 file. It does not save a whole action list captured before a long runner call.
@@ -19,3 +23,33 @@ completion. The current tick-wide now issue for later tasks is a separate case.
 Task JSON locking does not reserve execution across multiple scheduler processes
 or external writers that bypass the store. A changed task's stale result is
 intentionally discarded; no exactly-once or instant abort-on-edit is promised.
+
+Legacy timer management checkpoint.
+
+Old 111725 exposes auto:timers. 115192–115225 reads schedules.json and
+shows empty/list, count, status, file order and Back. 115227–115251 opens
+the selected timer or the missing warning, with a 200-character preview
+and explicit toggle/delete. 115253–115293 toggles enabled or removes an
+ID and rerenders the list. It keeps the execution stamp on toggle.
+z7/ZF at 18045–18068 reads/writes an array. o4 at 18305–18310 and UA
+at 55413–55415 use the parent of IIA_SESSION_DIR (55687–55689).
+j$A at 18284–18303 formats once, daily and weekly.
+
+53fb3fc reproduces six defects at the old Telegram ingress with a
+disposable HOME. The management fix uses sessionDir's mapped parent,
+preserves unknown fields and only updates the selected ID under the
+existing file lock. A damaged array/file is never replaced by a menu
+write. The UI keeps the old wording and callbacks and escapes stored
+markup. The session override, corrupt bytes and concurrent callbacks
+are checked separately. The old ZF write follows an existing link.
+The new lock and atomic replacement use its physical target and keep
+the link. An exclusive temporary file in an owned directory cannot
+overwrite another file through a pre-existing predictable temp link.
+Two cases reproduced both write defects before this correction.
+
+Dispatch is a separate step. 18259–18271 and 108800–108830 show the old
+once guard, triggerMessage and lastRunAt/disable after delivery. The
+conversation prompt at 24608/24644 and parser at 26729–26748 distinguish
+new SCHEDULE_TASK one-shot actions from legacy timer management. A
+new reminder must use the action path. An active legacy store or its
+global migration must not be inferred from these synthetic menu tests.

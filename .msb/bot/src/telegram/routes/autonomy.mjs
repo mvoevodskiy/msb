@@ -1,16 +1,36 @@
 /**
  * Действия автономки.
- * Навигация: [Telegram](../README.md).
+ * [Telegram](../README.md), [legacy timer store](../../autonomy/legacy-timers.mjs),
+ * [timer views](../screens/legacy-timers.mjs), [callback checks](../../../tests/autonomy-timers.test.mjs).
  */
 import { loadState, updateState } from '../../state.mjs';
-import { autonomyHistoryScreen, autonomyRightsScreen, autonomyTasksScreen, autonomyTimersScreen, autonomyWhatScreen, placeholder } from '../screens.mjs';
+import { autonomyHistoryScreen, autonomyRightsScreen, autonomyTasksScreen, autonomyWhatScreen, placeholder } from '../screens.mjs';
+import { changeLegacyTimer, listLegacyTimers } from '../../autonomy/legacy-timers.mjs';
+import { autonomyTimerScreen, autonomyTimersScreen } from '../screens/legacy-timers.mjs';
 import { UNHANDLED } from './shared.mjs';
 
 export async function handleAutonomyRoute({ data, show, bot, chatId }) {
   // —— autonomy ——
   if (data === 'auto:what') return show(autonomyWhatScreen());
   if (data === 'auto:tasks') return show(await autonomyTasksScreen());
-  if (data === 'auto:timers') return show(autonomyTimersScreen());
+  if (data === 'auto:timers') return show(autonomyTimersScreen(await listLegacyTimers()));
+  if (data.startsWith('auto:timer:')) {
+    const id = data.slice('auto:timer:'.length);
+    const timers = await listLegacyTimers();
+    return show(autonomyTimerScreen(timers.find(timer => timer.id === id)));
+  }
+  const remove = data.startsWith('auto:timer-delete:');
+  if (remove || data.startsWith('auto:timer-toggle:')) {
+    const id = data.slice((remove ? 'auto:timer-delete:' : 'auto:timer-toggle:').length);
+    let timers;
+    try {
+      timers = await changeLegacyTimer(id, { remove });
+    } catch (error) {
+      console.error('[msb/autonomy] Could not update saved timer:', error.code || error.name);
+      return show(autonomyTimersScreen(await listLegacyTimers()));
+    }
+    return show(autonomyTimersScreen(timers, { afterChange: true }));
+  }
   if (data === 'auto:history') {
     const view = await autonomyHistoryScreen();
     if (view.pages.length === 1) return show(view);
