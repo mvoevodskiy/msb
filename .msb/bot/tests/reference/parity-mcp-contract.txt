@@ -310,3 +310,14 @@ Gateway hot-reloads the registry and supplies the tool to the same
 named acpx 0.13.0 conversation. The paired JSON is the Docker evidence.
 OpenClaw gateway/install provisioning and live Telegram acceptance
 remain separate. JAR1's accepted running source is 736e6bc.
+
+Release review RED at 23dbcb4. The old producer and consumer remain
+19349–19356, 57210–57331 and 106578–106595. Old PY at 17989–17997
+upserted the selected name in one native Claude profile. The new
+per-bot boundary explicitly preserves inherited records of another
+profile. The runner captured bot/provider/cwd, while the finalizer
+could reread a different physical file after a path retarget. Two
+synthetic production-ingress cases reproduce silent replacement of
+the new profile for Claude and Codex. A third retargets the Claude
+profile while the private definition is staged. All three currently
+report success and commit state. These are intentional RED checks.

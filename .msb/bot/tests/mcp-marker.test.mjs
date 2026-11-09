@@ -376,3 +376,62 @@ test('ADD_MCP: an ordinary Codex user name is replaced and removed for this bot 
   }finally{process.env.MSB_BOT_ID=prior;}
   assert.deepEqual(await fs.readFile(f.native),original);
 });
+
+for(const provider of ['claude','codex']){
+  test('ADD_MCP: '+provider+' cannot change a native profile retargeted after the turn',async t=>{
+    let link,second;
+    const {f,native}=await prepare(t,provider,async options=>{
+      const result=await runAgentTurn(options);
+      await fs.unlink(link);
+      await fs.symlink(second,link);
+      return result;
+    });
+    link=provider==='claude'?f.config:f.native;
+    const first=link+'.first';
+    second=link+'.second';
+    const original=await fs.readFile(link);
+    await fs.rename(link,first);
+    await fs.writeFile(second,original);
+    await fs.symlink(first,link);
+    if(provider==='codex')await fs.writeFile(native.collision,'fixture_mcp');
+    const reply=await ask(f,native,block({...http,name:provider==='claude'?'zulu':'fixture_mcp'}));
+    assert.match(reply,/Не получилось подключить сервер/);
+    assert.doesNotMatch(reply,/Подключил MCP|fixture-private|ADD_MCP/);
+    const {state}=await loadState();
+    assert.equal(state.managedMcp,undefined);
+    assert.equal(state.removedNativeMcp,undefined);
+    assert.deepEqual(await fs.readFile(first),original);
+    assert.deepEqual(await fs.readFile(second),original);
+  });
+}
+
+test('ADD_MCP: profile retargeted while staging the private file leaves no registration',async t=>{
+  const {f,native}=await prepare(t,'claude');
+  const first=f.config+'.first',second=f.config+'.second';
+  const original=await fs.readFile(f.config);
+  await fs.rename(f.config,first);
+  await fs.writeFile(second,original);
+  await fs.symlink(first,f.config);
+  const directory=path.join(botRoot(),'mcp-config');
+  const write=fs.writeFile;
+  let changed=false;
+  fs.writeFile=async (file,body,opts)=>{
+    await write(file,body,opts);
+    if(!changed && typeof file==='string' && path.dirname(file)===directory){
+      changed=true;
+      await fs.unlink(f.config);
+      await fs.symlink(second,f.config);
+    }
+  };
+  let reply;
+  try{reply=await ask(f,native,block({...http,name:'zulu'}));}
+  finally{fs.writeFile=write;}
+  assert.ok(changed);
+  assert.match(reply,/Не получилось подключить сервер/);
+  const {state}=await loadState();
+  assert.equal(state.managedMcp,undefined);
+  assert.equal(state.removedNativeMcp,undefined);
+  assert.deepEqual(await fs.readdir(directory),[]);
+  assert.deepEqual(await fs.readFile(first),original);
+  assert.deepEqual(await fs.readFile(second),original);
+});
