@@ -6,6 +6,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import {createInterface} from 'node:readline';
+import {prepareCodexMcp} from '../../../../overlay/bot/ext/codex-mcp-launch.mjs';
 
 const binary=process.argv[2];
 assert.ok(binary && path.isAbsolute(binary),'Pass an absolute path to Codex 0.166.0');
@@ -21,7 +22,7 @@ const fixture=http.createServer(async(req,res)=>{
       res.writeHead(404).end();
       return;
     }
-    if(req.url!=='/mcp' || req.method!=='POST'){
+    if(!['/mcp','/managed','/native'].includes(req.url) || req.method!=='POST'){
       res.writeHead(405).end();
       return;
     }
@@ -30,8 +31,10 @@ const fixture=http.createServer(async(req,res)=>{
     const msg=JSON.parse(text);
     const bearer=req.headers.authorization==='Bearer '+active.bearer;
     const key=req.headers['x-api-key']===active.key;
-    headerChecks.push({profile:active.id,method:msg.method,bearer,key});
-    if(!bearer || !key){res.writeHead(401).end();return;}
+    const legacy=req.headers['x-legacy']==='fixture-late-native-header';
+    headerChecks.push({profile:active.id,method:msg.method,route:req.url,bearer,key,legacy});
+    const allowed=req.url==='/mcp'?bearer && key:req.url==='/managed'?bearer:legacy;
+    if(!allowed){res.writeHead(401).end();return;}
     if(msg.id===undefined){res.writeHead(202).end();return;}
     const outcomes={
       initialize:{protocolVersion:msg.params?.protocolVersion,serverInfo:{name:'fixture',version:'1'},capabilities:{tools:{}}},
@@ -62,8 +65,8 @@ const source=[
 ].join('\n');
 const common={HOME:home,CODEX_HOME:native,PATH:process.env.PATH,LANG:'C.UTF-8',TMPDIR:root};
 
-async function runApp(overrides,profile,action) {
-  const env={...common};
+async function runApp(overrides,profile,action,extraEnv) {
+  const env={...common,...extraEnv};
   if(profile){env.FIXTURE_BEARER=profile.bearer;env.FIXTURE_API_KEY=profile.key;}
   const argv=[...overrides.flatMap(value=>['-c',value]),'app-server'];
   assert.ok(!profile || !argv.some(value=>value.includes(profile.bearer) || value.includes(profile.key)));
@@ -134,6 +137,58 @@ async function tools(profile,overrides,call) {
     assert.notEqual(result.isError,true);
   });
 }
+async function lateNativeWrite() {
+  const own={id:'race',bearer:'apify_api_fixture_managed_race'};
+  active=own;
+  const projected=await prepareCodexMcp(binary,cwd,{...common,
+    MSB_TURN_MCP_TEMPLATES:'apify',MSB_MCP_APIFY_TOKEN:own.bearer});
+  assert.ok(projected.args.length>0,'Bot enrollment must reach the launch');
+  assert.ok(!projected.args.some(arg=>arg.includes(own.bearer)));
+  assert.ok(projected.args.filter((_,index)=>index%2===0).every(arg=>arg==='-c'));
+  // Simulate a different native writer after preparation, before the next CLI config load.
+  const inserted=source+[
+    '[mcp_servers.apify]','url = '+JSON.stringify(base+'/native'),
+    'http_headers = {"x-legacy" = "fixture-late-native-header"}','',
+  ].join('\n');
+  await fs.writeFile(config,inserted,{mode:0o600});
+  const overrides=projected.args.filter((_,index)=>index%2===1)
+    .map(arg=>arg.replace('https://mcp.apify.com',base+'/managed'));
+  try {
+    const result=await runApp(overrides,null,async request=>{
+      const view=await request('config/read',{cwd,includeLayers:false});
+      const definitions=Object.entries(view.config?.mcp_servers ?? {});
+      const managed=definitions.find(([,row])=>row.url===base+'/managed');
+      assert.ok(managed,'The managed tool must stay available');
+      const [managedName]=managed;
+      const {thread}=await request('thread/start',{cwd,ephemeral:true});
+      const status=await request('mcpServerStatus/list',{threadId:thread.id,detail:'toolsAndAuthOnly'});
+      const names=status.data.filter(row=>row.tools?.fixture_probe).map(row=>row.name);
+      assert.ok(names.includes(managedName),'The managed tool must be discovered');
+      const call=server=>request('mcpServer/tool/call',{threadId:thread.id,server,tool:'fixture_probe',arguments:{}});
+      assert.equal((await call(managedName)).content?.[0]?.text,'fixture-tool-result');
+      if(managedName!=='apify' && names.includes('apify')) {
+        assert.equal((await call('apify')).content?.[0]?.text,'fixture-tool-result');
+      }
+      return {
+        native_and_managed_distinct:managedName!=='apify' && names.includes('apify'),
+        managed_call_with_own_key:headerChecks.some(row=>row.route==='/managed' && row.method==='tools/call' && row.bearer),
+        native_call_with_native_header:headerChecks.some(row=>row.route==='/native' && row.method==='tools/call' && row.legacy),
+        native_header_at_managed_endpoint:headerChecks.some(row=>row.route==='/managed' && row.legacy),
+        bot_key_at_native_endpoint:headerChecks.some(row=>row.route==='/native' && row.bearer),
+      };
+    },projected.env);
+    result.native_file_exact=await fs.readFile(config,'utf8')===inserted;
+    console.error('race evidence '+JSON.stringify(result));
+    assert.equal(result.native_header_at_managed_endpoint,false,'The native header must not reach the managed endpoint');
+    assert.equal(result.bot_key_at_native_endpoint,false);
+    assert.ok(result.native_and_managed_distinct && result.managed_call_with_own_key && result.native_call_with_native_header);
+    assert.ok(result.native_file_exact);
+    return result;
+  }finally{
+    await fs.writeFile(config,source,{mode:0o600});
+  }
+}
+
 let proof;
 try {
   await fs.mkdir(cwd);await fs.mkdir(home);await fs.mkdir(native);
@@ -155,13 +210,14 @@ try {
     return view.config?.mcp_servers?.collision?.http_headers?.['x-legacy']==='fixture-legacy-header';
   });
   assert.ok(retained,'Native same-name overrides merge lower-layer header fields');
+  const race=process.argv.includes('--race')?await lateNativeWrite():null;
   assert.equal(await fs.readFile(config,'utf8'),source);
   await assert.rejects(fs.stat(path.join(native,'auth.json')),{code:'ENOENT'});
   assert.equal(modelRequests.filter(row=>row.path.includes('responses')).length,0);
   proof={version,profiles:['a','b'],same_native_home:true,
     native_methods:turnMethods,correct_headers_for_each_profile:true,other_profile_after_removal:true,
     missing_override_no_connection:true,native_config_byte_exact:true,same_name_keeps_existing_headers:retained,
-    auth_present:false,model_turns:0,model_endpoint_requests:modelRequests.length};
+    auth_present:false,model_turns:0,model_endpoint_requests:modelRequests.length,...(race?{race}:{})};
 }finally{
   fixture.closeAllConnections();
   await new Promise(resolve=>fixture.close(resolve));
