@@ -48,7 +48,7 @@ export async function main() {
   const shutdown = async (sig) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    const timerAdmission = scheduler.stop();
+    const savedDispatch = scheduler.stop();
     monitor.stop();
     console.error(`[msb/open] ${sig} — shutting down`);
     try {
@@ -56,7 +56,7 @@ export async function main() {
     } catch {
       /* ignore */
     }
-    await timerAdmission;
+    await savedDispatch;
     heartbeat.stop();
     process.exit(0);
   };

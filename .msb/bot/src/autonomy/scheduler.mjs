@@ -5,6 +5,7 @@ import { autonomyDir, ensureDir } from '../paths.mjs';
 import { runAgentTurn } from '../agent/turn.mjs';
 import { listTasks, saveTaskResult } from './store.mjs';
 import { trySessionOperation } from '../agent/session-operation.mjs';
+import { createReminderDispatcher } from './reminder-dispatch.mjs';
 import { dispatchLegacyTimers } from './legacy-dispatch.mjs';
 
 const START_DELAY_MS = 30_000;
@@ -13,7 +14,8 @@ const TICK_MS = 60_000;
 /**
  * Упрощённый планировщик фоновых задач (аналог [msb/scheduler]).
  * Вход: [main](../main.mjs). [Сохранённые таймеры](./legacy-dispatch.mjs) идут
- * в [очередь Telegram](../telegram/inbox.mjs), интервальные задачи используют [runner](../agent/turn.mjs).
+ * в [очередь Telegram](../telegram/inbox.mjs), [напоминания](./reminder-dispatch.mjs)
+ * отправляются напрямую, интервальные задачи используют [runner](../agent/turn.mjs).
  * [Store](./store.mjs) условно сохраняет одну неизменённую задачу после каждого хода,
  * не весь старый список; active run не держит lock файла.
  * Проверки: [persistence](../../tests/autonomy-store-concurrency.test.mjs),
@@ -23,7 +25,8 @@ export function startScheduler({ api, adminId, scheduledTurns, timezone, now = D
   log = console.error, runTurn = runAgentTurn } = {}) {
   let stopped = false;
   let busy = false;
-  let legacyTick;
+  let legacyTick, reminderTick;
+  const reminders = createReminderDispatcher({ api, adminId, now, log });
 
   log('[msb/scheduler] Starting (delay 30s)...');
   const boot = setTimeout(tick, START_DELAY_MS);
@@ -32,14 +35,16 @@ export function startScheduler({ api, adminId, scheduledTurns, timezone, now = D
   timer.unref?.();
 
   async function tick() {
-    if (stopped || busy) return;
+    if (stopped) return;
+    const direct = dispatchReminders();
+    if (busy) return direct;
     busy = true;
     const stopEpoch = scheduledTurns?.stopEpoch;
     const isInterrupted = () => stopped || scheduledTurns?.stopEpoch !== stopEpoch;
     try {
       if (scheduledTurns) {
         legacyTick = dispatchLegacyTimers({ scheduledTurns, timezone, now, isInterrupted })
-          .catch(err => log(`[msb/scheduler] legacy timer error: ${err.message}`));
+          .catch(error => log('[msb/scheduler] legacy timer error: ' + error.message));
         try { await legacyTick; } finally { legacyTick = undefined; }
       }
       if (isInterrupted() || scheduledTurns?.pending) return;
@@ -61,7 +66,16 @@ export function startScheduler({ api, adminId, scheduledTurns, timezone, now = D
       log(`[msb/scheduler] tick error: ${err.message}`);
     } finally {
       busy = false;
+      await direct;
     }
+  }
+
+  function dispatchReminders() {
+    // A slow Telegram send must not make the existing timer pass miss its minute.
+    reminderTick ??= reminders(() => stopped).catch(error => {
+      log('[msb/scheduler] reminder error: ' + (error.code || error.name));
+    }).finally(() => { reminderTick = undefined; });
+    return reminderTick;
   }
 
   return {
@@ -69,7 +83,7 @@ export function startScheduler({ api, adminId, scheduledTurns, timezone, now = D
       stopped = true;
       clearTimeout(boot);
       clearInterval(timer);
-      return legacyTick;
+      return Promise.all([legacyTick, reminderTick]);
     },
     tickNow: tick,
   };

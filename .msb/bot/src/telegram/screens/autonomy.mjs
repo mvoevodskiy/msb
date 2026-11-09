@@ -1,5 +1,6 @@
 /**
  * Автономка: задачи, история и сохранённые права. [Таймеры](./legacy-timers.mjs).
+ * Разовые [напоминания](./reminders.mjs) рядом с существующими интервальными задачами.
  * Навигация: [Telegram](../README.md).
  */
 import { InlineKeyboard } from 'grammy';
@@ -7,11 +8,12 @@ import { listTasks } from '../../autonomy/store.mjs';
 import { historyPages } from '../../autonomy/history.mjs';
 import { loadState } from '../../state.mjs';
 import { escapeHtml } from '../edit.mjs';
+import { reminderRows, reminderViews } from './reminders.mjs';
 import { BLANK } from './shared.mjs';
 
 export async function autonomyHomeScreen() {
-  const tasks = await listTasks();
-  const active = tasks.filter((t) => t.enabled !== false).length;
+  const [tasks, reminders] = await Promise.all([listTasks(), reminderViews()]);
+  const active = tasks.filter(t => t.enabled !== false).length + reminders.actions.filter(t => t.enabled).length;
   const kb = new InlineKeyboard()
     .text('📋 Задачи', 'auto:tasks')
     .text('📡 Мониторинг', 'auto:monitor')
@@ -40,7 +42,7 @@ export function autonomyWhatScreen() {
 Скажи словами, что делать и когда. Например: <i>«каждое утро в 9 смотри, что нового у конкурентов»</i> или <i>«раз в час проверяй сервер и пиши, только если сломалось»</i>. Штатный парсер сейчас поддерживает интервалы вида «каждые 6 часов …».
 
 <b>Что можно</b>
-Список задач и просмотр истории работают. Карточки, пауза и удаление пока не подключены.
+Список задач и просмотр истории работают. Разовое напоминание можно открыть, поставить на паузу или удалить.
 
 <b>Про права</b>
 Настройка прав сохраняется, но отдельные границы задач в open-core пока не реализованы. Используются права и сессия выбранного CLI.
@@ -52,28 +54,28 @@ ${BLANK}`,
   };
 }
 
-export async function autonomyTasksScreen() {
-  const tasks = await listTasks();
+export async function autonomyTasksScreen(state) {
+  const [tasks, reminders] = await Promise.all([listTasks(), reminderViews(state)]);
   const kb = new InlineKeyboard();
-  let text;
-  if (!tasks.length) {
-    text = `📋 <b>Задачи</b>
-
-Пока пусто. Скажи словами расписание, например:
-<i>«каждые 6 часов проверяй диск и пиши итог»</i>
-${BLANK}`;
-  } else {
-    const lines = tasks.map((t, i) => {
-      const mark = t.enabled === false ? '⏸' : '▶️';
-      return `${mark} <b>${i + 1}.</b> ${escapeHtml(t.title || t.prompt?.slice(0, 60) || t.id)}`;
-    });
-    text = `📋 <b>Задачи</b> (${tasks.length})\n\n${lines.join('\n')}\n${BLANK}`;
-    for (const t of tasks) {
-      kb.text(`${t.enabled === false ? '⏸' : '▶️'} ${(t.title || t.id).slice(0, 28)}`, `auto:task:${t.id}`).row();
-    }
+  const lines = tasks.map((task, index) => {
+    const mark = task.enabled === false ? '⏸' : '▶️';
+    kb.text(mark + ' ' + (task.title || task.id).slice(0, 28), 'auto:task:' + task.id).row();
+    return mark + ' <b>' + (index + 1) + '.</b> ' + escapeHtml(task.title || task.prompt?.slice(0, 60) || task.id);
+  });
+  const rows = reminderRows(reminders, kb);
+  if (rows.length && reminders.stopped) {
+    lines.push('⏸ Разовые напоминания на паузе.', '');
+  }
+  lines.push(...rows);
+  if (reminders.error) lines.push(reminders.error);
+  const count = tasks.length + rows.length;
+  const heading = '📋 <b>Задачи</b>' + (count ? ' (' + count + ')' : '');
+  if (!lines.length) {
+    lines.push('Пока пусто. Скажи словами расписание, например:',
+      '<i>«каждые 6 часов проверяй диск и пиши итог»</i>');
   }
   kb.text('« Назад', 'auto:home');
-  return { text, keyboard: kb };
+  return { text: [heading, '', ...lines, BLANK].join('\n'), keyboard: kb };
 }
 
 export async function autonomyHistoryScreen({ limit = 10, menu = true } = {}) {

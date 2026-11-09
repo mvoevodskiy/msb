@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { reminderRunPath } from '../src/autonomy/reminder-runs.mjs';
 import { historyLimit, historyPages, readRecentRuns } from '../src/autonomy/history.mjs';
 
 async function profile(t) {
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'autonomy-history-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
-  return { dir, env: { AUTONOMY_DIR: dir } };
+  return { dir, env: { HOME: dir, AUTONOMY_DIR: dir } };
 }
 
 test('history limit follows the previous command contract', () => {
@@ -60,4 +61,25 @@ test('history reports unreadable storage without exposing error details', async 
   const { dir, env } = await profile(t);
   await fs.mkdir(path.join(dir, 'runs.jsonl'));
   assert.deepEqual(await historyPages({ env }), ['✖ Не удалось прочитать журнал фоновых прогонов.']);
+});
+
+test('history merges the reminder and interval schemas without duplicating a linked journal', async t => {
+  const { dir, env } = await profile(t);
+  const intervals = path.join(dir, 'runs.jsonl');
+  const reminders = reminderRunPath(env);
+  const interval = { at: '2026-11-06T09:00:00Z', taskId: 'interval', ok: true };
+  const reminder = { ts: '2026-11-06T09:05:00Z', actionId: 'reminder', kind: 'reminder', status: 'ok' };
+  await fs.mkdir(path.dirname(reminders), { recursive: true });
+  const asLine = row => JSON.stringify(row) + '\n';
+  await fs.writeFile(intervals, asLine(interval));
+  await fs.writeFile(reminders, asLine(reminder));
+  const expected = ['reminder', 'interval'];
+  assert.deepEqual((await readRecentRuns({ env })).runs.map(run => run.taskId), expected);
+  assert.deepEqual((await readRecentRuns({ env, limit: 1 })).runs.map(run => run.taskId), ['reminder']);
+  await fs.appendFile(reminders, asLine(interval) + asLine({ ...reminder, status: 'stopped' }));
+  await fs.unlink(intervals);
+  await fs.symlink(reminders, intervals);
+  const combined = await readRecentRuns({ env });
+  assert.equal(combined.malformed, 0);
+  assert.deepEqual(combined.runs.map(run => run.taskId), ['interval', 'reminder']);
 });

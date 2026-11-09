@@ -12,6 +12,8 @@ import { runClaudeTurn } from './claude.mjs';
 import { runOpenClawTurn } from './openclaw-turn.mjs';
 import { conversationalModePrompt } from './mode-prompt.mjs';
 import { projectLocations, resolveProjectCwd } from '../projects/paths.mjs';
+import { isLocalReminderEngine } from '../autonomy/reminder-policy.mjs';
+import { reminderPrompt } from '../autonomy/reminder-protocol.mjs';
 import { buildSystemPrompt } from './system-prompt.mjs';
 import { readSessionContext } from './context.mjs';
 import { claimFirstSession, releaseFirstSession } from '../../shared/session-starts.mjs';
@@ -30,7 +32,8 @@ import {nativeMcpScope} from '../../shared/mcp-native-scope.mjs';
  * Аргументы/stream/abort → [runClaudeTurn](./claude.mjs) → существующий PATH shim;
  * native dispatch → [provider runner](../../../../overlay/bot/ext/shim/run-turn.mjs).
  * Captured project cwd → [projects](../projects/paths.mjs); base context stays global.
- * Контекст → [system prompt](./system-prompt.mjs), [metadata](./context.mjs);
+ * Контекст → [system prompt](./system-prompt.mjs), [metadata](./context.mjs).
+ * Ordinary owner turn → [reminder protocol](../autonomy/reminder-protocol.mjs) when enabled.
  * Skill install [target](../skills/install-target.mjs)/[protocol](../skills/install-protocol.mjs) captured with provider snapshot, final execution belongs to Telegram.
  * Managed MCP credentials/config → [launch](../mcp/launch.mjs); captured ADD_MCP
  * target → [Telegram installation](../telegram/install-markers.mjs).
@@ -46,6 +49,7 @@ export async function runAgentTurn({
   onStatus,
   autonomy = false,
   isAutoTurn = false,
+  reminderOwner = 0,
   env = process.env,
 } = {}) {
   const aborted = () => ({ ok: false, error: 'aborted', text: 'Остановлено.' });
@@ -97,7 +101,11 @@ export async function runAgentTurn({
     : selectedModel;
   const effort = resolveEffort(model === selectedModel ? state : { ...state, ccModel: model }, cliVersion);
   const permissionMode = resolvePermMode(state, cliVersion);
-  const systemPrompt = await buildSystemPrompt({ env, workspace:baseWorkspace, cwd, timezone:state.timezone || 'UTC', now:contextNow, extra: [conversationalModePrompt(state),skillInstallPrompt(skillInstall),mcpInstallPrompt(mcpInstall)].filter(Boolean).join('\n\n') });
+  const extra = [conversationalModePrompt(state), skillInstallPrompt(skillInstall), mcpInstallPrompt(mcpInstall)];
+  const reminderRail = reminderOwner && !autonomy && !isAutoTurn && isLocalReminderEngine(state.engine);
+  if (reminderRail) extra.push(await reminderPrompt(state, reminderOwner, env));
+  const systemPrompt = await buildSystemPrompt({ env, workspace: baseWorkspace, cwd, timezone: state.timezone || 'UTC',
+    now: contextNow, extra: extra.filter(Boolean).join('\n\n') });
 
   if (signal?.aborted) return aborted();
   mcp=await prepareMcpLaunch(state,providerId,env,cwd);
@@ -159,7 +167,10 @@ export async function runAgentTurn({
   // Error diagnostics can contain arbitrary text. A partial error is eligible
   // only when the CLI returned actual assistant text.
   const canInstallMcp=result.text && (!result.isError || (providerId==='claude' && result.assistantTextObserved));
-  return { ok: !result.isError, text, result, skillInstall, mcpInstall:canInstallMcp && mcpInstall?{...mcpInstall,cwd,nativeScope:installScope}:null };
+  return { ok: !result.isError, text, result, skillInstall,
+    mcpInstall:canInstallMcp && mcpInstall?{...mcpInstall,cwd,nativeScope:installScope}:null,
+    ...(reminderRail ? { reminderRail: 'cc' } : {}),
+  };
   } finally {
     await mcp?.close?.();
     if (firstSession) await updateState(s => releaseFirstSession(s, firstSession) ? s : NO_STATE_WRITE, env).catch(() => {});

@@ -97,3 +97,61 @@ or manual stop does not schedule a second run. The user profile's
 global legacy schedule adoption is outside this local checkpoint.
 24608/24644 and 26729–26748 route new SCHEDULE_TASK reminders to the
 separate action store. That conversation route is the next stage.
+
+Conversational one-shot reminder checkpoint.
+
+Old r$A/L7 at 19292–19295 and 24616–24644 asks for final SCHEDULE_TASK when
+enabled. 106557–106619 and 106646–106707 process it at final delivery,
+with engine/config/delivery gates. KB/WMA at 26602–26621, 26652–26677
+and 26703–26749 preserve adjacent prose, replace each full block in order,
+validate JSON and collect refusals. Ra at 25985–26018 corrects nearby success
+claims when registration fails. 27113–27125 uses actual turn chat and topic,
+not payload fields. Old qr/Dz at 22473–22497 and 22546–22588 normalize relative
+minutes/hours/days and absolute time. Pr/Or/_r at 22829–22851, 22934–22955
+and 23002–23064 define literal text, default name, narrow authority, once
+trigger and output. 23255–23319 checks the active limit and registers before
+confirming. 23203–23228 and 23372–23386 show the owner-local time and pause.
+11529–11546 defines the active limit and permits zero as unlimited.
+
+Local old registration 46174–46190 writes actions.json (UA/AL at
+55410–55415 and 55687–55689). Rl at 10670–10687 gives an explicit env
+flag precedence over per-bot config and remote auto-on, default off
+at 10778–10793. 10708–10712, 11221–11227 and 11494–11497 guard fleet
+and per-bot STOP. 3785–3795 and 3861 define the sleep marker. The due
+once predicate at 36114–36118 admits an overdue record with no run stamp.
+The old description at 23246–23253 says such an unstamped action will
+never run. The restored confirmation describes it as already due, in
+line with the runner. The pause response reports the state without a
+promise to resume via a marker outside this checkpoint.
+
+37373–37381 binds the CC port to the saved owner chat. 37005–37036
+and 34360–34365 send the literal reminder with no further model turn.
+24829–24893 and 24928–24948 record one attempt as spent, even on
+transport error, and append an old-schema row to autonomy/runs.jsonl.
+101871–101910 and 114962–115165 display the old list/card and use the
+same toggle/delete callbacks. An ordinary spent reminder is hidden
+from the active list and cannot be turned back into a runnable row.
+
+ec12492 parsed SCHEDULE_TASK in incoming Telegram text as a 24-hour
+interval task, never processed the model's final marker and did not
+run a local once/reminder action. cc99019 reproduces five cases through
+the ordinary worker and scheduler. The fix puts registration in the
+worker finalizer before other marker consumers, validates and commits
+one old-compatible record, and adds the direct sender to the existing
+scheduler without holding the timer/interval pass. The captured CC
+route and current policy are both checked, so an OpenClaw result
+cannot be adopted after switching engines. Registration refuses a
+missing owner route. Markdown/HTML code and quoted marker examples
+stay inert for this protocol. The task card and history use the
+existing navigation, and native mappings, migrated/OC records and
+follow-up actions are excluded from the local ordinary runner.
+
+The send is claimed atomically before I/O, with no HTTP retry after an
+ambiguous result. A process crash after the claim and before delivery
+can lose the notification. A failed persistence claim does not send.
+Old caps/gates at 24757–24821 (fleet cost/run/token, breaker, subscription
+and spend), conversation-wide stop/resume, native OC registration and
+outbox (45672–45681, 45865–45970, 46199–46235, 28236–28315), other
+action kinds, follow-ups and global migration require separate work.
+Only disposable profiles, synthetic CLI and fake Telegram were used.
+This checkpoint is not a JAR1 rollout or full autonomy acceptance.

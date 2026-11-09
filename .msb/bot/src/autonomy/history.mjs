@@ -1,10 +1,11 @@
 /**
- * История выполненных фоновых задач; один журнал для всех CLI-провайдеров.
+ * История фоновых задач; локальные [напоминания](./reminder-runs.mjs) читаются рядом с интервалами.
  * Навигация: [Автономка](./README.md) → [Telegram](../telegram/README.md).
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { autonomyDir } from '../paths.mjs';
+import { parseReminderRun, reminderRunPath } from './reminder-runs.mjs';
 
 const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 const MESSAGE_LIMIT = 3500;
@@ -17,29 +18,29 @@ export function historyLimit(value) {
   return Math.min(50, Math.max(1, n));
 }
 
-/** Read only the current scheduler's recorded fields; malformed rows are skipped. */
-export async function readRecentRuns({ limit = 10, env = process.env } = {}) {
-  const file = path.join(autonomyDir(env), 'runs.jsonl');
+function parseIntervalRun(entry) {
+  if (!entry || typeof entry !== 'object' || Array.isArray(entry) ||
+      typeof entry.at !== 'string' || !Number.isFinite(Date.parse(entry.at)) ||
+      typeof entry.taskId !== 'string' || typeof entry.ok !== 'boolean') return null;
+  return entry;
+}
+
+async function readRunFile(file, count, parse) {
   let raw;
   try {
     raw = await fs.readFile(file, 'utf8');
-  } catch (err) {
-    if (err?.code === 'ENOENT') return { runs: [], malformed: 0 };
-    throw err;
+  } catch (error) {
+    if (error?.code === 'ENOENT') return { runs: [], malformed: 0 };
+    throw error;
   }
   const runs = [];
-  const count = historyLimit(limit);
   let malformed = 0;
   for (const line of raw.split('\n')) {
     if (!line.trim()) continue;
     try {
-      const entry = JSON.parse(line);
-      if (!entry || typeof entry !== 'object' || Array.isArray(entry) ||
-          typeof entry.at !== 'string' || !Number.isFinite(Date.parse(entry.at)) ||
-          typeof entry.taskId !== 'string' || typeof entry.ok !== 'boolean') {
-        malformed++;
-        continue;
-      }
+      const entry = parse(JSON.parse(line));
+      if (entry === undefined) continue;
+      if (entry === null) { malformed++; continue; }
       runs.push(entry);
       if (runs.length > count) runs.shift();
     } catch {
@@ -47,6 +48,27 @@ export async function readRecentRuns({ limit = 10, env = process.env } = {}) {
     }
   }
   return { runs: runs.reverse(), malformed };
+}
+
+/** Preserve the interval journal and include successful/failed direct reminders. */
+export async function readRecentRuns({ limit = 10, env = process.env } = {}) {
+  const physicalPath = file => fs.realpath(file).catch(() => file);
+  const [intervalFile, reminderFile] = await Promise.all([
+    physicalPath(path.resolve(autonomyDir(env), 'runs.jsonl')),
+    physicalPath(reminderRunPath(env)),
+  ]);
+  const count = historyLimit(limit);
+  if (intervalFile === reminderFile) {
+    return readRunFile(intervalFile, count, row => row?.kind === 'reminder' ? parseReminderRun(row) : parseIntervalRun(row));
+  }
+  const [interval, reminders] = await Promise.all([
+    readRunFile(intervalFile, count, parseIntervalRun),
+    readRunFile(reminderFile, count, parseReminderRun).catch(() => ({ runs: [], malformed: 1 })),
+  ]);
+  const runs = reminders.runs.length
+    ? [...interval.runs, ...reminders.runs].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, count)
+    : interval.runs;
+  return { runs, malformed: interval.malformed + reminders.malformed };
 }
 
 function dateLabel(value) {
@@ -57,7 +79,8 @@ function dateLabel(value) {
 }
 
 function runText(entry) {
-  const lines = [`${entry.ok ? '🟢' : '🔴'} ${dateLabel(entry.at)} · задача ${entry.taskId}`];
+  const label = typeof entry.name === 'string' && entry.name ? entry.name : 'задача ' + entry.taskId;
+  const lines = [`${entry.ok ? '🟢' : '🔴'} ${dateLabel(entry.at)} · ${label}`];
   if (entry.ok) lines.push('   ✅ готово');
   else lines.push(`   ошибка${typeof entry.error === 'string' && entry.error ? `: ${entry.error}` : ''}`);
   if (typeof entry.preview === 'string' && entry.preview) lines.push(`   ${entry.preview}`);

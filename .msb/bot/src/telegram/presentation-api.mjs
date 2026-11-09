@@ -1,10 +1,12 @@
 import { callbackTransportScope } from '../../shared/callback-renders.mjs';
-/** Presentation requests may fail quietly; never retry an obsolete animation. */
-const presentationSignals = new WeakSet();
-export function presentationSignal(signal) {
-  presentationSignals.add(signal);
+/** A request with stale UI or a non-repeatable send must bypass transport retries. */
+const singleRequests = new WeakSet();
+export function singleRequestSignal(signal) {
+  singleRequests.add(signal);
   return signal;
 }
+export const presentationSignal = singleRequestSignal;
+
 export function presentationAwareRetry(retry) {
   return (previous, method, payload, signal) => {
     const callback = callbackTransportScope(signal);
@@ -19,7 +21,7 @@ export function presentationAwareRetry(retry) {
         return result;
       }, method, payload, callback.signal);
     }
-    return presentationSignals.has(signal)
+    return singleRequests.has(signal)
       ? previous(method, payload, signal)
       : retry(previous, method, payload, signal);
   };

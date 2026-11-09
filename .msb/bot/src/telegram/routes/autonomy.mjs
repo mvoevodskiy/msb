@@ -1,18 +1,22 @@
 /**
  * Действия автономки.
  * [Telegram](../README.md), [legacy timer store](../../autonomy/legacy-timers.mjs),
+ * [once/reminder store](../../autonomy/reminder-store.mjs) and [cards](../screens/reminders.mjs),
  * [timer views](../screens/legacy-timers.mjs), [callback checks](../../../tests/autonomy-timers.test.mjs).
  */
 import { loadState, updateState } from '../../state.mjs';
 import { autonomyHistoryScreen, autonomyRightsScreen, autonomyTasksScreen, autonomyWhatScreen, placeholder } from '../screens.mjs';
 import { changeLegacyTimer, listLegacyTimers } from '../../autonomy/legacy-timers.mjs';
 import { autonomyTimerScreen, autonomyTimersScreen } from '../screens/legacy-timers.mjs';
+import { isLocalReminderEngine } from '../../autonomy/reminder-policy.mjs';
+import { changeReminder } from '../../autonomy/reminder-store.mjs';
+import { reminderCard, reminderViews } from '../screens/reminders.mjs';
 import { UNHANDLED } from './shared.mjs';
 
-export async function handleAutonomyRoute({ data, show, bot, chatId }) {
+export async function handleAutonomyRoute({ data, show, bot, chatId, state }) {
   // —— autonomy ——
   if (data === 'auto:what') return show(autonomyWhatScreen());
-  if (data === 'auto:tasks') return show(await autonomyTasksScreen());
+  if (data === 'auto:tasks') return show(await autonomyTasksScreen(state));
   if (data === 'auto:timers') return show(autonomyTimersScreen(await listLegacyTimers()));
   if (data.startsWith('auto:timer:')) {
     const id = data.slice('auto:timer:'.length);
@@ -56,10 +60,24 @@ export async function handleAutonomyRoute({ data, show, bot, chatId }) {
   }
   if (data.startsWith('auto:task:')) {
     const id = data.slice('auto:task:'.length);
+    const view = await reminderViews(state);
+    const action = view.actions.find(row => row.id === id);
+    if (action) return show(reminderCard(action, view));
     return show(placeholder(`Задача ${id.slice(0, 8)}`, 'auto:tasks'));
   }
-  if (data.startsWith('auto:task-toggle:') || data.startsWith('auto:task-delete:')) {
-    return show(await autonomyTasksScreen());
+  const deleteTask = data.startsWith('auto:task-delete:');
+  if (deleteTask || data.startsWith('auto:task-toggle:')) {
+    const id = data.slice((deleteTask ? 'auto:task-delete:' : 'auto:task-toggle:').length);
+    if (isLocalReminderEngine(state.engine)) {
+      try {
+        await changeReminder(id, deleteTask);
+      } catch (error) {
+        console.error('[msb/autonomy] Could not update reminder:', error.code || error.name);
+        const view = await autonomyTasksScreen(state);
+        return show({ ...view, text: '⚠️ Не удалось изменить напоминание.\n\n' + view.text });
+      }
+    }
+    return show(await autonomyTasksScreen(state));
   }
 
   return UNHANDLED;

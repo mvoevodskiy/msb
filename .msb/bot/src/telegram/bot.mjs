@@ -10,6 +10,7 @@ import {resetCliConversation} from '../sessions/selection.mjs';
  * Индикация → [progress](./progress.mjs), итог → [response](./response.mjs),
  * План/комментарий → [plan actions](./plan-actions.mjs) → тот же inbox; final marker → [plan](./plan.mjs).
  * журнал Пульта → [history](./history.mjs), STT → [voice](./voice.mjs).
+ * Final [one-shot reminder](./reminder-markers.mjs) → old per-bot action, then installation markers.
  * Model skill markers → [processor](../skills/response-markers.mjs) before plan/delivery/history, never UI metadata.
  * Prepared skills views/chunks → [view delivery](./view-delivery.mjs), context reply retained.
  * Skills command read options/OC loading → [read presentation](./skills-read.mjs), native OC reader is injectable.
@@ -29,6 +30,7 @@ import { createPlanActions } from './plan-actions.mjs';
 import { parsePlanResponse } from './plan.mjs';
 import { deliverTurnResponse } from './response.mjs';
 import { deliverView } from './view-delivery.mjs';
+import { processReminderMarkers } from './reminder-markers.mjs';
 import { processInstallMarkers } from './install-markers.mjs';
 import { registerProjectCommands } from './project-commands.mjs';
 import {prepareSkillRead,skillReadOptions} from './skills-read.mjs';
@@ -397,15 +399,6 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       return;
     }
 
-    // маркеры автономки из ответа агента
-    const marker = !batchInput && text.match(/\[SCHEDULE_TASK\]([\s\S]*?)\[\/SCHEDULE_TASK\]/i);
-    if (marker) {
-      const body = marker[1].trim();
-      const task = await addTask({ prompt: body, title: body.slice(0, 80), everyHours: 24 });
-      await ctx.reply(`Задача из маркера: <b>${escapeHtml(task.title)}</b>`, { parse_mode: 'HTML' });
-      return;
-    }
-
     if (!hasClaudeAuth(process.env, state)) {
       const view = setupScreen();
       await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
@@ -546,7 +539,9 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         progress.beginThinking();
       }
       signal.throwIfAborted();
+      const reminderOwner = !entry.isAutoTurn && isAdmin(ctx, cfg.adminId) ? cfg.adminId : 0;
       const out = await runTurn({ prompt: entry.prompt ?? text, signal,
+        ...(reminderOwner ? { reminderOwner } : {}),
         ...(entry.isAutoTurn ? { isAutoTurn: true } : {}), onStatus: ev => {
         if (ev.kind === 'provider') history?.provider(ev.providerId);
         progress.onStatus(ev);
@@ -555,7 +550,11 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       outcome = out.ok ? 'ok' : 'error';
       await progress.stop();
       if (signal.aborted || out.error === 'aborted') { await stopped(); return; }
-      const replyText=await processInstallMarkers(out,{signal,readProvider:bot[Symbol.for('msb.mcpProvider')]});
+      const reminderText = await processReminderMarkers(out.text, {
+        ownerId: reminderOwner, rail: out.reminderRail, ok: out.ok, chatId, threadId: thread,
+        timezone: cfg.timezone, now: now(), signal,
+      });
+      const replyText = await processInstallMarkers({ ...out, text: reminderText }, { signal, readProvider: bot[Symbol.for('msb.mcpProvider')] });
       signal.throwIfAborted();
       turn.completed = true;
       responseReady = true;
