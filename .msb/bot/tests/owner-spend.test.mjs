@@ -62,6 +62,10 @@ test('the old six limit choices and a positive limit change clear an existing pa
   ]);
   assert.equal(buttons[2].text, '[$25/день]');
   assert.match(f.edits.at(-1), /Сейчас: \$12\.34 из \$25/);
+  assert.match(f.edits.at(-1), /Автоматический учёт новых API-списаний пока недоступен/);
+  await f.callback('settings:limit:set:invalid');
+  assert.equal((await loadState()).state.dailySpendLimit, 25);
+  assert.equal((await loadState()).state.costPaused, true);
   await f.callback('settings:limit:set:100');
   const state = (await loadState()).state;
   assert.equal(state.dailySpendLimit, 100);
@@ -111,4 +115,12 @@ test('Claude subscription total is preserved as metered telemetry without a bill
   const state = (await loadState()).state;
   assert.deepEqual(state.costHistory, existing);
   assert.equal(state.costPaused, undefined);
+});
+
+test('/cost distinguishes missing current data from a real saved zero', async t => {
+  const f = await fixture(t, undefined, { overlay: false, now: () => now });
+  await putState({ costHistory: { '2026-02-08': 0 } });
+  await f.message('/cost');
+  assert.match(f.messages.at(-1), /Сегодня: нет сохранённых данных/);
+  assert.match(f.messages.at(-1), /2026-02-08: <code>\$0\.00<\/code>/);
 });

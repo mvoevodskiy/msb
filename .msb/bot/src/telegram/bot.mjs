@@ -10,6 +10,7 @@ import {resetCliConversation} from '../sessions/selection.mjs';
  * Индикация → [progress](./progress.mjs), итог → [response](./response.mjs),
  * План/комментарий → [plan actions](./plan-actions.mjs) → тот же inbox; final marker → [plan](./plan.mjs).
  * журнал Пульта → [history](./history.mjs), STT → [voice](./voice.mjs).
+ * /cost → [saved spend view](./screens/spend.mjs); saved owner pause gates the model turn.
  * Final [reminder](./reminder-markers.mjs) and [owner pause](./pause-markers.mjs), then installation markers.
  * Model skill markers → [processor](../skills/response-markers.mjs) before plan/delivery/history, never UI metadata.
  * Prepared skills views/chunks → [view delivery](./view-delivery.mjs), context reply retained.
@@ -45,8 +46,8 @@ import { addTask, tryParseScheduleMessage } from '../autonomy/store.mjs';
 import { adminGuard, isAdmin, isSetupMode } from './auth.mjs';
 import { HELP_CC, HELP_OC, commandsForEngine } from './commands.mjs';
 import { handleCallback } from './router.mjs';
-import { hubScreen, monitorScreen, setupScreen, settingsScreen } from './screens.mjs';
-import { describeSpendLimit } from './screens/shared.mjs';
+import { costScreen, hubScreen, monitorScreen, setupScreen, settingsScreen } from './screens.mjs';
+import { SPEND_PAUSED } from '../billing/owner-spend.mjs';
 
 /**
  * @param {ReturnType<import('../config.mjs').readConfig>} cfg
@@ -295,13 +296,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
 
   bot.command('cost', async (ctx) => {
     const { state } = await loadState();
-    const day = new Date().toISOString().slice(0, 10);
-    const spent = state.costHistory?.[day];
-    const limit = describeSpendLimit(state.dailySpendLimit);
-    await ctx.reply(
-      `${typeof spent === 'number' && Number.isFinite(spent) ? `В сохранённой статистике за сегодня: <b>$${spent.toFixed(2)}</b>.` : 'В сохранённой статистике нет данных за сегодня.'}\nСохранённый лимит: ${limit}.\nСбор стоимости и применение лимита в open-core пока не подключены.`,
-      { parse_mode: 'HTML' },
-    );
+    await ctx.reply(costScreen(state, now()).text, { parse_mode: 'HTML' });
   });
 
   bot.command('autostatus', async (ctx) => {
@@ -343,7 +338,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   });
 
   bot.on('callback_query:data', async (ctx) => {
-    await handleCallback({ bot, cfg, pending, ctx, plan });
+    await handleCallback({ bot, cfg, pending, ctx, plan, now });
   });
 
   bot.on('message:text', async (ctx) => {
@@ -541,14 +536,17 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       }
       signal.throwIfAborted();
       const reminderOwner = !entry.isAutoTurn && isAdmin(ctx, cfg.adminId) ? cfg.adminId : 0;
-      const out = await runTurn({ prompt: entry.prompt ?? text, signal,
+      const { state } = await loadState();
+      signal.throwIfAborted();
+      const paused = Boolean(state.costPaused);
+      const out = paused ? { ok: false, text: SPEND_PAUSED } : await runTurn({ prompt: entry.prompt ?? text, signal,
         ...(reminderOwner ? { reminderOwner } : {}),
         ...(entry.isAutoTurn ? { isAutoTurn: true } : {}), onStatus: ev => {
         if (ev.kind === 'provider') history?.provider(ev.providerId);
         progress.onStatus(ev);
       } });
       result = out.result;
-      outcome = out.ok ? 'ok' : 'error';
+      outcome = paused ? 'blocked' : out.ok ? 'ok' : 'error';
       await progress.stop();
       if (signal.aborted || out.error === 'aborted') { await stopped(); return; }
       const autonomy = {

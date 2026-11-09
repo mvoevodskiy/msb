@@ -119,7 +119,8 @@ Owner boundary остаётся перед core router: middleware бота и h
 | [hub](screens/hub.mjs) | `hubKeyboard`, `hubScreen` — главное меню |
 | [agent](screens/agent.mjs) | Агент, effort, права, Claude connection/setup; совместимый re-export моделей |
 | [models](screens/models.mjs) | Прежние family/Versions, selected/locks и Back; pure renderer |
-| [settings](screens/settings.mjs) | Настройки, `.env`, timezone, лимит, сведения о сервере, уведомления |
+| [settings](screens/settings.mjs) | Настройки, `.env`, timezone, сведения о сервере, уведомления |
+| [spend](screens/spend.mjs) | /cost, история по дням владельца и прежние значения дневного лимита |
 | [system](screens/system.mjs) | Системные пункты, обновления, restart, SSH и STT |
 | [engines](screens/engines.mjs) | `enginesScreen` — прежние controls и опциональный provider view |
 | [sessions](screens/sessions.mjs) → [list](screens/session-list.mjs) | CLI ledger/pages; `statusScreen` — текущий агент и native-контекст |

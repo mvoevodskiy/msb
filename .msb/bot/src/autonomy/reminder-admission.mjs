@@ -6,6 +6,7 @@
  */
 import path from 'node:path';
 import { actionRoot } from '../paths.mjs';
+import { ownerSpendDay } from '../billing/owner-spend.mjs';
 import { readBoxRunTotals } from './box-runs.mjs';
 import { readOptionalJson } from './record-file.mjs';
 import { claudeQuotaRefusal } from './subscription-gate.mjs';
@@ -49,16 +50,6 @@ async function boxRefusal(at, env) {
   }
 }
 
-function ownerDay(at, timezone) {
-  try {
-    return new Intl.DateTimeFormat('en-CA', {
-      timeZone: timezone, year: 'numeric', month: '2-digit', day: '2-digit',
-    }).format(new Date(at));
-  } catch {
-    return at.slice(0, 10);
-  }
-}
-
 function spendRefusal(action, state, at, reserveFraction) {
   const { maxUsdPerRun, maxUsdPerDay } = action.budget || {};
   if (maxUsdPerRun !== undefined && estimate > maxUsdPerRun) {
@@ -71,7 +62,7 @@ function spendRefusal(action, state, at, reserveFraction) {
   if (state.costPaused) return 'дневной лимит расходов уже достигнут (costPaused)';
   const limit = Number(state.dailySpendLimit);
   if (!(limit > 0) || !Number.isFinite(limit)) return;
-  const recorded = state.costHistory?.[ownerDay(at, state.timezone)];
+  const recorded = state.costHistory?.[ownerSpendDay(at, state.timezone)];
   const spent = Number.isFinite(recorded) ? recorded : 0;
   const reserve = limit * reserveFraction;
   const ceiling = limit - reserve;

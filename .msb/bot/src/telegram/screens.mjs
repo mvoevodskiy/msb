@@ -6,7 +6,8 @@
  */
 export { hubKeyboard, hubScreen } from './screens/hub.mjs';
 export { agentScreen, modelScreen, modelVersionsScreen, effortScreen, permModeScreen, connScreen, setupScreen } from './screens/agent.mjs';
-export { settingsScreen, envScreen, envDeleteScreen, tzScreen, limitScreen, serverStatusScreen, notificationsScreen } from './screens/settings.mjs';
+export { settingsScreen, envScreen, envDeleteScreen, tzScreen, serverStatusScreen, notificationsScreen } from './screens/settings.mjs';
+export { costScreen, limitScreen } from './screens/spend.mjs';
 export {
   extrasScreen,
   pultScreen,

@@ -5,8 +5,9 @@
  * [Old form contract](../../../tests/reference/parity-forms-contract.txt),
  * [handler tests](../../../tests/menu-handlers.test.mjs).
  */
-import { loadState, updateState } from '../../state.mjs';
-import { envScreen, envDeleteScreen, limitScreen, notificationsScreen, serverStatusScreen, sttScreen, tzScreen } from '../screens.mjs';
+import { SPEND_LIMIT_CHOICES } from '../../billing/owner-spend.mjs';
+import { updateState } from '../../state.mjs';
+import { envScreen, envDeleteScreen, limitScreen, settingsScreen, notificationsScreen, serverStatusScreen, sttScreen, tzScreen } from '../screens.mjs';
 import { skipEnvComment } from '../forms/env.mjs';
 import { deleteEnvKey, listEnvEntries } from '../../env/store.mjs';
 import { resolveEnvKeyReference } from '../../env/callback-key.mjs';
@@ -14,7 +15,7 @@ import { UNHANDLED } from './shared.mjs';
 import { protectedEnvNotice } from '../env-protection.mjs';
 import { escapeHtml } from '../edit.mjs';
 
-export async function handleSettingsRoute({ data, state, show, pending, chatId, bot, cfg, ctx }) {
+export async function handleSettingsRoute({ data, state, show, pending, chatId, bot, cfg, ctx, now = Date.now }) {
   if (data === 'settings:env' || data === 'settings:env:cancel') {
     pending.delete(chatId);
     return show(await envScreen());
@@ -56,15 +57,17 @@ export async function handleSettingsRoute({ data, state, show, pending, chatId, 
     pending.set(chatId, 'timezone');
     return show(tzScreen(state));
   }
-  if (data === 'settings:limit') return show(limitScreen(state));
-  if (data.startsWith('settings:limit:set:')) {
-    const n = Number(data.split(':').pop());
-    await updateState((s) => {
-      s.dailySpendLimit = Number.isFinite(n) ? n : 0;
-      if (n === 0) s.costPaused = false;
-      return s;
+  if (data === 'settings:limit') return show(limitScreen(state, now()));
+  if (data === 'settings:cost:resume' || data.startsWith('settings:limit:set:')) {
+    const raw = data.slice('settings:limit:set:'.length);
+    const limit = SPEND_LIMIT_CHOICES.find(choice => String(choice) === raw);
+    if (data !== 'settings:cost:resume' && limit === undefined) return;
+    const saved = await updateState(current => {
+      if (limit !== undefined) current.dailySpendLimit = limit;
+      current.costPaused = false;
+      return current;
     });
-    return show(limitScreen((await loadState()).state));
+    return show(settingsScreen(saved));
   }
   if (data === 'settings:server-status') return show(serverStatusScreen(cfg));
   if (data === 'settings:stt') return show(sttScreen());

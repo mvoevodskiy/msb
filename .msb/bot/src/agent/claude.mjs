@@ -3,6 +3,7 @@
  * Контракт совместим с закрытым [msb/agent-cc] и overlay shim (PATH→claude).
  * Навигация: [Исполнение](./README.md), [provider shim](../../../../overlay/bot/ext/shim/run-turn.mjs).
  * Managed MCP launch metadata comes from [turn preparation](../mcp/launch.mjs).
+ * Native total_cost_usd is CLI metering; paid spend belongs to a verified billing source.
  * Result provenance (spawned/sessionIdObserved) lets [session-result](./session-result.mjs)
  * count actual returned attempts without inventing history for a pre-spawn abort.
  */
@@ -205,7 +206,7 @@ export async function runClaudeTurn(opts) {
     let outputTokens = 0;
     let cacheReadTokens = 0;
     let cacheCreationTokens = 0;
-    let costUsd;
+    let reportedCostUsd;
     const toolsUsed = [];
     let toolCount = 0;
 
@@ -252,7 +253,7 @@ export async function runClaudeTurn(opts) {
             break;
           }
           case 'result':
-            if (Number.isFinite(ev.total_cost_usd) && ev.total_cost_usd >= 0) costUsd = ev.total_cost_usd;
+            if (Number.isFinite(ev.total_cost_usd) && ev.total_cost_usd >= 0) reportedCostUsd = ev.total_cost_usd;
             if (ev.session_id) { sessionId = ev.session_id; sessionIdObserved = true; }
             if (ev.subtype) subtype = ev.subtype;
             if (typeof ev.is_error === 'boolean') isError = ev.is_error;
@@ -296,7 +297,9 @@ export async function runClaudeTurn(opts) {
         signal,
         aborted: Boolean(opts.signal?.aborted),
         usage: { inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens },
-        costUsd,
+        // Alternate stream adapters supply a compatibility zero, not a meter.
+        meteredCostUsd: (!opts.providerId || opts.providerId === 'claude') &&
+          (!providerId || providerId === 'claude') ? reportedCostUsd : undefined,
         toolsUsed,
         toolCount,
         stderr: stderr.slice(0, 4000),

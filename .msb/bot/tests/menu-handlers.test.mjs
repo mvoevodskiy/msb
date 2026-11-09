@@ -326,7 +326,14 @@ test('all baseline menu button routes remain reachable', async (t) => {
     // The pinned open-core snapshot exposed NODE_ENV deletion. Old bY55151
     // protects it; this one unsafe action is restored by the env contract.
     const restored = name === 'envScreen' ? expected.filter(data => data !== 'settings:env:delete:NODE_ENV') : expected;
-    assert.deepEqual(callbacks(await screens[name](screenInput[name] ?? state)), restored, name);
+    const actual = callbacks(await screens[name](screenInput[name] ?? state));
+    if (name === 'limitScreen') {
+      // Old 52919–52927 restores two missing choices and their original order.
+      // This pinned snapshot still proves that all of its buttons are reachable.
+      assert.deepEqual(actual.filter(data => restored.includes(data)).sort(), restored.toSorted(), name);
+    } else {
+      assert.deepEqual(actual, restored, name);
+    }
   }
   for (const [name, expected] of Object.entries(contract.overlay)) assert.deepEqual(callbacks(await overlay[name](process.env, f.home)), expected, name);
 });
@@ -336,10 +343,10 @@ test('stored settings and cost history survive a real project selection reset', 
   const epoch = (await loadState()).state.sessionEpoch || 0;
   await f.callback('settings:limit:set:25');
   assert.equal((await loadState()).state.dailySpendLimit, 25);
-  await saveState({ ...(await loadState()).state, costPaused: true, costHistory: { [new Date().toISOString().slice(0, 10)]: 2.34 } });
+  await saveState({ ...(await loadState()).state, timezone: 'UTC', costPaused: true, costHistory: { [new Date().toISOString().slice(0, 10)]: 2.34 } });
   await f.message('/cost');
   assert.match(f.messages.at(-1), /\$2\.34/);
-  assert.match(f.messages.at(-1), /25\/день/);
+  assert.match(f.messages.at(-1), /из \$25/);
   await f.callback('settings:limit:set:0');
   assert.equal((await loadState()).state.costPaused, false);
   await f.callback('auto:rights-toggle');
