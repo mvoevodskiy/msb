@@ -957,3 +957,26 @@ still-unclaimed due one-off, the time is reported as due because the
 local scheduler can still pick it up. A claim stamp without a result
 is not reported as a success. The existing menu and native routes
 continue to own their current actions.
+
+Confirmed cleanup of historical one-offs
+---------------------------------------
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js, readable with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+The streaming dispatcher (106646–106707) injects a same-chat/topic
+askOwner callback into GMA (27113–27124). xg (23512–23542) offers
+«Убрать ✖» / «Оставить» only for enabled rows with G4 (23243–23245),
+an old once record with a run stamp and no pending confirmation.
+A routine disabled spent_once, a pending row, an unclaimed once,
+and a recurring row are outside that group. O7 (23148–23160) supplies
+the plural forms. Clicking ct-keep (113219–113226) only closes the card.
+
+ct-spent (113143–113178) calls kg (23565–23587), which reloads that
+group, unregisters each action and reports full or partial success.
+zw/X9 (46243–46257, 45980–46015) delete a mapped native job first and
+keep the action if native removal fails. With no native job, DG
+(4456–4465) only removes the action record. Timers and run history
+are independent. The old static button can select a later record
+because the group is reloaded without the displayed binding. For
+the new owner callback, restrict deletion to the reviewed records
+and verify each against the current per-bot store under its lock.
