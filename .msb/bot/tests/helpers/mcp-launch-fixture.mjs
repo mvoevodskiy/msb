@@ -35,6 +35,7 @@ fs.appendFileSync(data.log,JSON.stringify({kind:'claude',argv,file,projection,
 const reply=fs.existsSync(data.response)?JSON.parse(fs.readFileSync(data.response,'utf8')):{text:'fixture complete'};
 const session_id='fixture-claude-session';
 console.log(JSON.stringify({type:'system',subtype:'init',session_id,model:'claude-opus-4-8'}));
+if(reply.assistant)console.log(JSON.stringify({type:'assistant',message:{content:[{type:'text',text:reply.text}]}}));
 console.log(JSON.stringify({type:'result',subtype:'success',session_id,is_error:Boolean(reply.error),result:reply.text,usage:{input_tokens:1,output_tokens:1}}));`;
   const codexSource=`import fs from 'node:fs';
 import path from 'node:path';
@@ -76,11 +77,15 @@ if(argv.at(-1)==='app-server'){
  const prompt=fs.readFileSync(0,'utf8');
  const reply=fs.existsSync(data.response)?JSON.parse(fs.readFileSync(data.response,'utf8')):{text:'fixture complete'};
  const apify=process.env.MSB_BOT_ID==='other'?data.apifyB:data.apifyA;
- record({kind:'codex-exec',argv,prompt,bot:process.env.MSB_BOT_ID,...presence(),
+ const index=argv.indexOf('--profile');
+ const profileFile=index<0?null:path.join(process.env.CODEX_HOME,argv[index+1]+'.config.toml');
+ const profile=profileFile?fs.readFileSync(profileFile,'utf8'):null;
+ record({kind:'codex-exec',argv,prompt,profileFile,profile,profileMode:profileFile?fs.statSync(profileFile).mode&0o777:null,
+  privateHandoffPresent:Boolean(process.env.MSB_TURN_MCP_CUSTOM),bot:process.env.MSB_BOT_ID,...presence(),
   correctApify:process.env.MSB_MCP_APIFY_TOKEN===apify,correctSupadata:process.env.MSB_MCP_SUPADATA_TOKEN===data.supadata});
  console.log(JSON.stringify({type:'thread.started',thread_id:data.modelThread}));
  console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:reply.text}}));
- console.log(JSON.stringify({type:reply.error?'turn.failed':'turn.completed',error:reply.error?{message:'fixture returned error'}:undefined,usage:{input_tokens:1,output_tokens:1}}));
+ console.log(JSON.stringify({type:reply.error?'turn.failed':'turn.completed',error:reply.error?{message:typeof reply.error==='string'?reply.error:'fixture returned error'}:undefined,usage:{input_tokens:1,output_tokens:1}}));
 }else process.exit(4);`;
   await fs.writeFile(log,'',{mode:0o600});
   await fs.writeFile(nativeClaude,claudeSource,{mode:0o600});
@@ -92,7 +97,7 @@ if(argv.at(-1)==='app-server'){
   delete process.env.CODEX_ACCESS_TOKEN;
   return {
     collision,hold,readError,
-    async respond(text,{error=false}={}){await fs.writeFile(response,JSON.stringify({text,error}),{mode:0o600});},
+    async respond(text,{error=false,assistant=false}={}){await fs.writeFile(response,JSON.stringify({text,error,assistant}),{mode:0o600});},
     async trace(){return (await fs.readFile(log,'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse);},
   };
 }

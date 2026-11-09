@@ -135,6 +135,7 @@ export async function runClaudeTurn(opts) {
           ...opts.mcp?.env,
           MSB_TURN_MCP_TEMPLATES: opts.mcp?.codexTemplates?.join(','),
           MSB_TURN_MCP_REMOVE: opts.mcp?.codexNativeRemoval?JSON.stringify(opts.mcp.codexNativeRemoval):undefined,
+          MSB_TURN_MCP_CUSTOM: opts.mcp?.codexCustom?JSON.stringify(opts.mcp.codexCustom):undefined,
           MSB_TURN_PROVIDER: opts.providerId || undefined,
           CI: '1',
           CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
@@ -195,6 +196,7 @@ export async function runClaudeTurn(opts) {
     let sessionId = opts.sessionId || '';
     let sessionIdObserved = false;
     let text = '';
+    let assistantTextObserved = false;
     let model;
     let providerId = null;
     let subtype;
@@ -238,7 +240,10 @@ export async function runClaudeTurn(opts) {
               cacheCreationTokens = msg.usage.cache_creation_input_tokens || 0;
             }
             for (const part of msg?.content || []) {
-              if (part.type === 'text' && part.text) text += part.text;
+              if (part.type === 'text' && part.text) {
+                text += part.text;
+                assistantTextObserved = true;
+              }
               if (part.type === 'tool_use' && part.name) {
                 toolCount += 1;
                 if (!toolsUsed.includes(part.name)) toolsUsed.push(part.name);
@@ -282,6 +287,7 @@ export async function runClaudeTurn(opts) {
         spawned: true,
         sessionIdObserved,
         text: text.trim(),
+        assistantTextObserved,
         model,
         providerId,
         subtype,

@@ -63,7 +63,7 @@ test('skill install: unsupported native providers cannot fabricate success or wr
  const f=await installFixture(t,{provider:'qwen'});await f.run();assert.ok(f.final().includes(failed));for(const name of ['.agents','.claude','.openclaw'])assert.equal(await f.exists(path.join(f.home,name)),false);
 });
 for(const provider of ['claude','codex'])test('skill install prompt: actual '+provider+' runner carries marker schema and captures the native user target',()=>{
- const out=agentOptionsProbe(provider,'auto','opus','high','2.1.316',false,'','skills-enabled');assert.ok(out.calls[0].nativePrompt.includes('[INSTALL_SKILL]'));assert.ok(out.calls[0].nativePrompt.includes('Успех словами НЕ обещай до результата'));assert.deepEqual(out.skillInstall,{providerId:provider,home:out.workspace,mirrorOpenClaw:true});assert.equal(out.calls[0].nativePrompt.includes('[ADD_MCP]'),false);
+ const out=agentOptionsProbe(provider,'auto','opus','high','2.1.316',false,'','skills-enabled');assert.ok(out.calls[0].nativePrompt.includes('[INSTALL_SKILL]'));assert.ok(out.calls[0].nativePrompt.includes('Успех словами НЕ обещай до результата'));assert.deepEqual(out.skillInstall,{providerId:provider,home:out.workspace,mirrorOpenClaw:true});assert.ok(out.calls[0].nativePrompt.includes('[ADD_MCP]'));
 });
 
 

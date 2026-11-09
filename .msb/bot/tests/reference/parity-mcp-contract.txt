@@ -219,3 +219,50 @@ match. An absent name before preparation does not get an overlay. The
 separate --late-absence case shows that a native target removed between
 the two processes can stop native startup. No automatic replay was added.
 All native probes use loopback, synthetic credentials and owned profiles.
+
+ADD_MCP restoration. 908677b recorded ten failing ingress cases.
+The restored Telegram finalizer replaces the first complete payload,
+discards later blocks, and preserves ordinary response ordering and
+the shared disable flag. It carries the bot and provider observed at
+turn start. Completed partial Claude assistant text stays eligible.
+Codex error diagnostics, infrastructure errors and stopped turns
+cannot publish an MCP entry. Cancellation before the atomic state
+rename discards the newly staged private configuration.
+
+The old PY assignment replaced the native key at the same name.
+For this bot, when the marker replaces a name inherited from the
+user layer, the writer records the existing scoped exclusion in the
+same state update as its private entry. Delete removes the owned
+entry and keeps the inherited name hidden here. The native file and
+a sibling bot's view remain available. Replacing a bot template
+retires its registration and preserves its separate .env value.
+An occupied Codex reserved alias fails before enrollment. An external
+write targeting the alias between CLI preparation and launch retains
+the existing native layer boundary.
+
+Two old regex flaws were reproduced with synthetic headers. Quoted
+closing-tag text caused the remaining payload to be exposed, and a
+truncated JSON payload was delivered verbatim. The parser respects
+JSON string boundaries and removes incomplete payloads before Telegram
+and the diary, preserving ordinary mentions. The established invalid
+message covers an incomplete JSON payload.
+
+The private configuration is under the bot's mcp-config directory,
+mode 0600. State stores only its identifier and transport. Claude uses
+the existing managed config and permissions path. The Codex adapter
+checks the effective native config before composing a temporary named
+profile. The selected profile overlays the base Codex configuration
+for one normal exec and uses the existing per-bot alias. URLs, headers,
+and command arguments stay out of the Codex CLI argv. The core owns
+cleanup after launch. Loader reference:
+https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/core/src/config/mod.rs#L1990-L1997
+
+The corresponding .mjs native probe runs in an owned loopback-only
+profile, with a synthetic local model endpoint. The paired .json
+records HTTP and stdio tools/call after resuming the same actual
+Codex thread. The sibling kept its original native entries, the shared config
+matched its original bytes and the temporary profile was removed.
+The Telegram tests cover the prompt/marker/store/launch UI using
+synthetic CLI binaries. 24 marker, 74 related and 1,026 full local
+checks passed. JAR1 production and the OpenClaw turn/write routes
+are outside this local checkpoint.

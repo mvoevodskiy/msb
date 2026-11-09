@@ -29,7 +29,7 @@ import { createPlanActions } from './plan-actions.mjs';
 import { parsePlanResponse } from './plan.mjs';
 import { deliverTurnResponse } from './response.mjs';
 import { deliverView } from './view-delivery.mjs';
-import { processSkillMarkers } from '../skills/response-markers.mjs';
+import { processInstallMarkers } from './install-markers.mjs';
 import { registerProjectCommands } from './project-commands.mjs';
 import {prepareSkillRead,skillReadOptions} from './skills-read.mjs';
 import {readOpenClawSkills as nativeOpenClawSkills} from '../skills/openclaw.mjs';
@@ -526,7 +526,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       outcome = out.ok ? 'ok' : 'error';
       await progress.stop();
       if (signal.aborted || out.error === 'aborted') { await stopped(); return; }
-      const replyText=out.skillInstall?.providerId==='oc' && !out.ok?out.text:await processSkillMarkers(out.text,out.skillInstall,{signal});
+      const replyText=await processInstallMarkers(out,{signal,readProvider:bot[Symbol.for('msb.mcpProvider')]});
       signal.throwIfAborted();
       turn.completed = true;
       responseReady = true;

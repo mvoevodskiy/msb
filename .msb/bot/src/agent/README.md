@@ -153,10 +153,16 @@ metadata не переписывается. Это отдельное решен
 [install-target](../skills/install-target.mjs) и добавляет [protocol instruction](../skills/install-protocol.mjs)
 в append prompt. Возвращает descriptor `skillInstall`, без env/auth/секретов.
 Поздний выбор другого провайдера не перенаправляет запись. Сами файлы здесь
-не пишутся: [Telegram finalizer](../skills/response-markers.mjs) обрабатывает
+не пишутся: [Telegram finalizer](../telegram/install-markers.mjs) обрабатывает
 реальный законченный model text до plan/delivery/journal. Abort и infrastructure
 exceptions не исполняют marker. OC partial-error не расширяется до success path;
 родной OC model backend и отдельные background finish paths ещё не доказаны.
 [Сквозной тест](../../tests/fixtures/skills-install-ingress.mjs) вызывает реальный
 bot/runner/finalizer с подменой только внешнего child protocol, без auth/network.
 [Production contracts](../../tests/skills-install.test.mjs).
+
+В обычном Telegram-ходе runner также захватывает [цель ADD_MCP](../mcp/managed.mjs)
+и добавляет [схему старого маркера](../mcp/install-protocol.mjs). Ответ передаёт
+провайдера, идентичность бота и каталог хода. При частичной ошибке Claude
+проверяется наличие текста ассистента в потоке. Служебный ответ об ошибке
+Codex не получает права записи. [Вход и проверка](../../tests/mcp-marker.test.mjs).

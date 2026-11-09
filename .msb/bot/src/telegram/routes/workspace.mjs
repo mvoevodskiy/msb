@@ -6,7 +6,7 @@
  */
 import {mcpTemplate} from '../../../shared/mcp-templates.mjs';
 import {mcpCatalog,selectedMcpProvider} from '../../mcp/catalog.mjs';
-import {includeManagedMcp,managedMcpRows,removeManagedMcpTemplate,supportsManagedMcp} from '../../mcp/managed.mjs';
+import {includeManagedMcp,managedMcpRows,removeManagedMcp,supportsManagedMcp} from '../../mcp/managed.mjs';
 import {removeInheritedMcp,visibleNativeMcp} from '../../mcp/native-removal.mjs';
 import {loadState} from '../../state.mjs';
 import {statePath} from '../../paths.mjs';
@@ -46,7 +46,7 @@ export async function handleWorkspaceRoute({data,state,bot,show,signal,pending,c
     const row=resolveMcpReference(reference,{provider,entries});
     if(!row)return show(mcpMissingScreen(FOLDER));
     try {
-      const latest=await removeManagedMcpTemplate({provider,name:row.name});
+      const latest=await removeManagedMcp({provider,name:row.name});
       if(selectedMcpProvider(latest)!==provider)return;
     }catch{return show(placeholder('MCP',FOLDER,'Не удалось удалить MCP-сервер.'));}
   }else if(!deleting && !isMcpReadCallback(data))return show(placeholder('MCP',TOP));

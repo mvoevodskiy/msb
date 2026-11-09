@@ -143,6 +143,7 @@ Polling получает управление до окончания испол
 |---|---|---|
 | Допуск, отмена, завершение и следующий ход | [`createBot` / `executeTurn`](bot.mjs) | [turn-lifecycle](../../tests/turn-lifecycle.test.mjs), [stop-polling](../../tests/reference/stop-polling.test.mjs) |
 | Typing и прежний цикл статусов | [`startTurnProgress`](progress.mjs) | [progress](../../tests/progress.test.mjs), [voice-progress](../../tests/reference/voice-progress.test.mjs) |
+| Подставить результат установки перед планом и дневником | [`processInstallMarkers`](install-markers.mjs) | [skills](../../tests/skills-install.test.mjs), [MCP](../../tests/mcp-marker.test.mjs) |
 | Ответ, HTML, chunks, footer, edit/send fallback | [`deliverTurnResponse`, `renderResponseHtml`, `formatTurnFooter`](response.mjs) | [response-delivery](../../tests/response-delivery.test.mjs) |
 | Отмена presentation-запросов и retry_after | [`presentationSignal`, `presentationAwareRetry`](presentation-api.mjs) | [presentation-retry](../../tests/presentation-retry.test.mjs) |
 

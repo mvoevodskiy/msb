@@ -17,6 +17,8 @@ import {applySessionResult} from './session-result.mjs';
 import {captureSkillInstallTarget} from '../skills/install-target.mjs';
 import {skillInstallPrompt} from '../skills/install-protocol.mjs';
 import {prepareMcpLaunch} from '../mcp/launch.mjs';
+import {captureMcpInstallTarget} from '../mcp/managed.mjs';
+import {mcpInstallPrompt} from '../mcp/install-protocol.mjs';
 
 /**
  * runAgentTurn: prompt/signal → выбранный CLI → результат и guarded session/usage.
@@ -26,7 +28,8 @@ import {prepareMcpLaunch} from '../mcp/launch.mjs';
  * Captured project cwd → [projects](../projects/paths.mjs); base context stays global.
  * Контекст → [system prompt](./system-prompt.mjs), [metadata](./context.mjs);
  * Skill install [target](../skills/install-target.mjs)/[protocol](../skills/install-protocol.mjs) captured with provider snapshot, final execution belongs to Telegram.
- * Managed MCP credentials/config → [launch](../mcp/launch.mjs).
+ * Managed MCP credentials/config → [launch](../mcp/launch.mjs); captured ADD_MCP
+ * target → [Telegram installation](../telegram/install-markers.mjs).
  * владелец записи сессии → [result transaction](./session-result.mjs) / [state](../state.mjs),
  * [first-start token](../../shared/session-starts.mjs), [description ledger](../sessions/ledger.mjs).
  * Проверки: [polling/session fences](../../tests/turn-lifecycle.test.mjs),
@@ -42,10 +45,11 @@ export async function runAgentTurn({
 } = {}) {
   const aborted = () => ({ ok: false, error: 'aborted', text: 'Остановлено.' });
   if (signal?.aborted) return aborted();
-  let state, firstSession, baseWorkspace, contextNow, skillInstall, mcp;
+  let state, firstSession, baseWorkspace, contextNow, skillInstall, mcpInstall, mcp;
   await updateState(s => {
     state = { ...s };
     skillInstall=captureSkillInstallTarget(state,env);
+    if(!autonomy)mcpInstall=captureMcpInstallTarget(state,env);
     baseWorkspace = projectLocations(env).workspace;
     contextNow = Date.now();
     if (signal?.aborted || !hasClaudeAuth(env, s) || s.engine === 'oc' || s.ccSessionId) return NO_STATE_WRITE;
@@ -76,7 +80,7 @@ export async function runAgentTurn({
   const model = resolveModel(state);
   const effort = resolveEffort(state, cliVersion);
   const permissionMode = resolvePermMode(state, cliVersion);
-  const systemPrompt = await buildSystemPrompt({ env, workspace:baseWorkspace, cwd, timezone:state.timezone || 'UTC', now:contextNow, extra: [conversationalModePrompt(state),skillInstallPrompt(skillInstall)].filter(Boolean).join('\n\n') });
+  const systemPrompt = await buildSystemPrompt({ env, workspace:baseWorkspace, cwd, timezone:state.timezone || 'UTC', now:contextNow, extra: [conversationalModePrompt(state),skillInstallPrompt(skillInstall),mcpInstallPrompt(mcpInstall)].filter(Boolean).join('\n\n') });
 
   if (signal?.aborted) return aborted();
   const providerId=state.extAuthBypass || 'claude';
@@ -135,7 +139,10 @@ export async function runAgentTurn({
         ? `(ход без текста; последний инструмент: ${lastTool})`
         : '(пустой ответ)');
 
-  return { ok: !result.isError, text, result, skillInstall };
+  // Error diagnostics can contain arbitrary text. A partial error is eligible
+  // only when the CLI returned actual assistant text.
+  const canInstallMcp=result.text && (!result.isError || (providerId==='claude' && result.assistantTextObserved));
+  return { ok: !result.isError, text, result, skillInstall, mcpInstall:canInstallMcp && mcpInstall?{...mcpInstall,cwd}:null };
   } finally {
     await mcp?.close?.();
     if (firstSession) await updateState(s => releaseFirstSession(s, firstSession) ? s : NO_STATE_WRITE, env).catch(() => {});

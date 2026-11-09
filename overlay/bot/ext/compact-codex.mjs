@@ -26,7 +26,7 @@ export async function compactCodex(snapshot, { signal, isCurrent = async () => t
   let mcp;
   if(removal){
     mcp=await prepareCodexMcp(bin,cwd,{
-      ...auth.env,MSB_TURN_MCP_TEMPLATES:undefined,MSB_TURN_MCP_REMOVE:JSON.stringify(removal),
+      ...auth.env,MSB_TURN_MCP_TEMPLATES:undefined,MSB_TURN_MCP_CUSTOM:undefined,MSB_TURN_MCP_REMOVE:JSON.stringify(removal),
     },{signal,ownProcessGroup:true});
     if(signal?.aborted || !await isCurrent())return {ok:false,aborted:true};
     if(mcp.blocked)return {ok:false,error:CODEX_NATIVE_MCP_ERROR};

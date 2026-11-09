@@ -24,14 +24,18 @@ export function visibleNativeMcp(catalog,state) {
   return {...catalog,entries:catalog.entries.filter(row=>!removed.has(row.name))};
 }
 
+export function recordNativeMcpRemoval(state,{provider,scope,name}) {
+  const names=removedNativeNames(state,provider,scope);
+  if(names.includes(name))return false;
+  const all=state.removedNativeMcp ?? {},profiles=all[provider] ?? {};
+  if(!isConfigObject(all) || !isConfigObject(profiles))throw new Error('Invalid native MCP removal state');
+  state.removedNativeMcp={...all,[provider]:{...profiles,[scope]:[...names,name]}};
+  return true;
+}
+
 export function removeInheritedMcp({provider,scope,name,env=process.env}) {
   return updateState(state=>{
     if(selectedMcpProvider(state)!==provider)return NO_STATE_WRITE;
-    const names=removedNativeNames(state,provider,scope);
-    if(names.includes(name))return NO_STATE_WRITE;
-    const all=state.removedNativeMcp ?? {},profiles=all[provider] ?? {};
-    if(!isConfigObject(all) || !isConfigObject(profiles))throw new Error('Invalid native MCP removal state');
-    state.removedNativeMcp={...all,[provider]:{...profiles,[scope]:[...names,name]}};
-    return state;
+    return recordNativeMcpRemoval(state,{provider,scope,name})?state:NO_STATE_WRITE;
   },env);
 }

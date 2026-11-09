@@ -18,6 +18,7 @@ import { ensureDir, statePath } from './paths.mjs';
  * переключение бесед → [provider sessions](../../../overlay/bot/ext/provider-sessions.mjs).
  * Effort flag (без записи preference) → [Claude policy](./agent/effort.mjs).
  * removedNativeMcp хранит [удаления из профиля бота](./mcp/native-removal.mjs).
+ * managedMcp хранит только [ссылки подключений](./mcp/managed.mjs).
  * sessionHistory (описания/ID, не native transcript) → [sessions](./sessions/README.md);
  * записи ID/usage/ledger атомарны через [result](./agent/session-result.mjs).
  * Проверки: [paths/state](../tests/paths-state.test.mjs), [session races](../tests/turn-lifecycle.test.mjs).
@@ -43,11 +44,16 @@ function normalizeState(state) {
   return state;
 }
 
-export async function saveState(state, env = process.env) {
+export async function saveState(state, env = process.env, {signal} = {}) {
+  signal?.throwIfAborted();
   const file = statePath(env);
   ensureDir(path.dirname(file));
   const tmp = `${file}.tmp.${process.pid}`;
   await fs.writeFile(tmp, `${JSON.stringify(state, null, 2)}\n`, { mode: 0o600 });
+  if(signal?.aborted){
+    await fs.unlink(tmp).catch(()=>{});
+    signal.throwIfAborted();
+  }
   await fs.rename(tmp, file);
   return file;
 }
@@ -57,7 +63,7 @@ export async function saveState(state, env = process.env) {
 const stateUpdates = globalThis[Symbol.for('msb.stateUpdates')] ||= new Map();
 // A serialized snapshot/no-op may opt out of rewriting an otherwise unchanged profile.
 export const NO_STATE_WRITE = Symbol('NO_STATE_WRITE');
-export function updateState(mutator, env = process.env) {
+export function updateState(mutator, env = process.env, {signal} = {}) {
   const file = statePath(env);
   const previous = stateUpdates.get(file) || Promise.resolve();
   const update = previous.catch(() => {}).then(async () => {
@@ -65,7 +71,7 @@ export function updateState(mutator, env = process.env) {
     const changed = await mutator({ ...state }, { exists });
     if (changed === NO_STATE_WRITE) return state;
     const next = changed || state;
-    await saveState(next, env);
+    await saveState(next, env, {signal});
     return next;
   });
   stateUpdates.set(file, update);

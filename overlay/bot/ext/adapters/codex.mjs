@@ -6,7 +6,7 @@ import os from 'node:os';
 import profile from '../../shared/profile.cjs';
 import { findBin, runCli } from './run-cli.mjs';
 import { codexChildEnvironment } from '../codex-auth-env.mjs';
-import {CODEX_NATIVE_MCP_ERROR,prepareCodexMcp} from '../codex-mcp-launch.mjs';
+import {prepareCodexMcp} from '../codex-mcp-launch.mjs';
 import { decodeExtSession, getSelectedModel, getSelectedEffort } from '../store.mjs';
 import { enrichPath, ensureProviderCli } from '../ensure-cli.mjs';
 import {
@@ -277,8 +277,8 @@ export async function runCodexTurn({ prompt, parsed, cwd, env, home = os.homedir
   const model = resolveCodexModel(parsed?.model, nativeConfig, preferred);
   const effort = preferredEffort || resolveCodexEffort(nativeConfig);
 
-  const {env:childEnv,args:mcpArgs,blocked}=await prepareCodexMcp(bin,cwd,auth.env);
-  if(blocked)return {ok:false,text:'Codex: '+CODEX_NATIVE_MCP_ERROR};
+  const {env:childEnv,args:mcpArgs,blocked,error:mcpError}=await prepareCodexMcp(bin,cwd,auth.env);
+  if(blocked)return {ok:false,text:'Codex: '+mcpError};
 
   const { resumeId: resumeRequested } = resolveResumeId(parsed);
 

@@ -9,8 +9,10 @@ import {codexManagedMcpName} from '../shared/codex-mcp-name.mjs';
 import {isConfigObject} from '../shared/mcp-user-entries.mjs';
 import {readCodexAppServer} from './codex-app-read.mjs';
 import {codexMcpUserLayer} from './codex-mcp-layer.mjs';
+import {prepareCodexCustomMcp} from './codex-mcp-custom.mjs';
 
 export const CODEX_NATIVE_MCP_ERROR='Не удалось проверить отключённые MCP в выбранном профиле.';
+const CODEX_CUSTOM_MCP_ERROR='Не удалось загрузить MCP выбранного бота.';
 
 function override(template,nativeName) {
   const url='url='+JSON.stringify(template.url);
@@ -34,18 +36,21 @@ function presentNativeServer(server) {
 }
 
 export async function prepareCodexMcp(command,cwd,env,{signal,ownProcessGroup=false}={}) {
-  const hasRemoval=Boolean(env.MSB_TURN_MCP_REMOVE);
-  if(!env.MSB_TURN_MCP_TEMPLATES && !hasRemoval)return {args:[],env};
+  const hasRemoval=Boolean(env.MSB_TURN_MCP_REMOVE),custom=env.MSB_TURN_MCP_CUSTOM;
+  if(!env.MSB_TURN_MCP_TEMPLATES && !hasRemoval && !custom)return {args:[],env};
   const names=new Set((env.MSB_TURN_MCP_TEMPLATES || '').split(','));
   const selected=[...names].map(mcpTemplate).filter(template=>template && env[template.childKey]);
   const childEnv={...env};
   delete childEnv.MSB_TURN_MCP_TEMPLATES;
   delete childEnv.MSB_TURN_MCP_REMOVE;
+  delete childEnv.MSB_TURN_MCP_CUSTOM;
   for(const template of selected)delete childEnv[template.childKey];
   const empty={args:[],env:childEnv};
-  if(!selected.length && !hasRemoval)return empty;
+  if(!selected.length && !hasRemoval && !custom)return empty;
 
-  const failed=hasRemoval?{...empty,blocked:true}:empty;
+  const failed=hasRemoval || custom
+    ? {...empty,blocked:true,error:custom?CODEX_CUSTOM_MCP_ERROR:CODEX_NATIVE_MCP_ERROR}
+    : empty;
   let removal;
   if(hasRemoval){
     try{removal=nativeRemoval(env.MSB_TURN_MCP_REMOVE);}catch{return failed;}
@@ -66,6 +71,11 @@ export async function prepareCodexMcp(command,cwd,env,{signal,ownProcessGroup=fa
     const matches=[...new Set(removal.names)].filter(name=>Object.hasOwn(current,name) && Object.hasOwn(servers,name) && presentNativeServer(servers[name]));
     // A quoted table key preserves exact names and comes before managed entries.
     if(matches.length)args.push('-c','mcp_servers={'+matches.map(name=>JSON.stringify(name)+'={enabled=false}').join(',')+'}');
+  }
+
+  if(custom){
+    try{args.push(...await prepareCodexCustomMcp(custom,cwd,env,servers));}
+    catch{return failed;}
   }
 
   for(const template of selected) {

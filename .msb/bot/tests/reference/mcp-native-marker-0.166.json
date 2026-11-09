@@ -1,0 +1,14 @@
+{
+  "version": "codex-cli 0.166.0",
+  "normal_exec": true,
+  "resumed_same_thread": true,
+  "http_headers_and_query_verified": true,
+  "stdio_arguments_verified": true,
+  "both_tools_called": true,
+  "original_name_disabled_for_this_bot": true,
+  "shared_config_exact": true,
+  "sibling_native_names_preserved": true,
+  "profile_removed": true,
+  "network": "loopback-only",
+  "production_auth": false
+}
