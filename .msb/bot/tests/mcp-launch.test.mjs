@@ -9,6 +9,7 @@ import path from 'node:path';
 import {mcpFixture} from './helpers/mcp-fixture.mjs';
 import {codexManagedMcpName} from '../shared/codex-mcp-name.mjs';
 import {runAgentTurn} from '../src/agent/turn.mjs';
+import {runClaudeTurn} from '../src/agent/claude.mjs';
 import {deleteEnvKey,readEnvMap} from '../src/env/store.mjs';
 import {loadState,saveState} from '../src/state.mjs';
 
@@ -109,7 +110,11 @@ async function removeApify(f,label='apify') {
 
 test('native Claude launch reads the current bot key into a temporary reference-only MCP file',async t=>{
   const f=await mcpFixture(t,'claude'),native=await nativeFixtures(f);
-  const original=await fs.readFile(f.config,'utf8');
+  const initial=JSON.parse(await fs.readFile(f.config,'utf8'));
+  initial.mcpServers.team__notes={command:'fixture'};
+  initial.mcpServers['unsafe,Bash(*)']={command:'fixture'};
+  const original=JSON.stringify(initial);
+  await fs.writeFile(f.config,original);
   await register(f,'supadata',supadata);
   await turn();
   const call=(await native.trace()).at(-1);
@@ -119,6 +124,8 @@ test('native Claude launch reads the current bot key into a temporary reference-
   const allowed=call.argv[call.argv.indexOf('--allowedTools')+1].split(',');
   assert.ok(allowed.includes('mcp__zulu'),'Allow the native Claude workspace server like the old runner');
   assert.ok(allowed.includes('mcp__supadata'),'Allow the bot-managed Claude server through the same CLI option');
+  assert.ok(allowed.includes('mcp__team__notes__*'));
+  assert.ok(!allowed.includes('mcp__unsafe') && !allowed.includes('Bash(*)'));
   assert.ok(!call.argv.some(arg=>arg.includes(supadata)));
   assert.ok(!call.projection.includes(supadata));
   assert.deepEqual(JSON.parse(call.projection),{mcpServers:{supadata:{
@@ -272,4 +279,14 @@ test('an occupied Codex bot key does not accept credentials or advertise setup',
   const names=f.editOptions.at(-1).reply_markup.inline_keyboard.flat().map(row=>row.text);
   assert.ok(!names.includes('Apify'));
   assert.ok(names.includes('Supadata'));
+});
+
+
+test('an explicit Claude tool list keeps its previous scope with MCP configured',async t=>{
+  const f=await mcpFixture(t,'claude'),native=await nativeFixtures(f);
+  const result=await runClaudeTurn({providerId:'claude',cwd:f.workspace,prompt:'owned fixture prompt',
+    allowedTools:['Read'],mcp:{claudeAllowedTools:['mcp__zulu']}});
+  assert.equal(result.isError,false);
+  const {argv}=(await native.trace()).at(-1);
+  assert.equal(argv[argv.indexOf('--allowedTools')+1],'Read');
 });

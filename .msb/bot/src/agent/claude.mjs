@@ -13,6 +13,7 @@ import path from 'node:path';
 import { workspaceDir } from '../paths.mjs';
 
 const DEFAULT_MAX_TURNS = 200;
+const DEFAULT_ALLOWED_TOOLS = 'Bash,WebSearch,WebFetch,Agent,Task,Workflow,Monitor,Skill,Read,Edit,Write,Glob,Grep';
 const PROMPT_FILE_THRESHOLD = 40 * 1024;
 
 /**
@@ -46,7 +47,7 @@ export async function runClaudeTurn(opts) {
   const allowed =
     opts.allowedTools?.length > 0
       ? opts.allowedTools.join(',')
-      : 'Bash,WebSearch,WebFetch,Agent,Task,Workflow,Monitor,Skill,Read,Edit,Write,Glob,Grep';
+      : [DEFAULT_ALLOWED_TOOLS, ...(opts.mcp?.claudeAllowedTools ?? [])].join(',');
 
   /** @type {string[]} */
   const args = [

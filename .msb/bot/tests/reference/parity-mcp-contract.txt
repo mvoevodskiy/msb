@@ -142,3 +142,26 @@ atomic native snapshot, and generated names belong to the bot namespace.
 The race RED and GREEN proof files only contain synthetic values or
 boolean outcomes. Reproduce in an owned, loopback-only namespace via
 node .msb/bot/tests/reference/mcp-native-0.166-transport.mjs /absolute/codex --race.
+
+Claude permissions checkpoint. Old kn at 20907–20910 reads user
+mcpServers keys. Runner 20834–20838 appends mcp__<name> to its default
+--allowedTools path and keeps its separate explicit --tools branch.
+The new normal launch had omitted those arguments. Restore scoped
+rules for configured native names and the bot-owned entries that will
+actually launch. Plain names use the old server rule. An unambiguous
+wildcard is used for plain names containing a double underscore or
+ending in underscore, as Claude documents. Names containing characters
+that could split or change permission rules do not create an automatic
+allow rule. A caller's explicit tool list and existing deny rules still
+apply unchanged. The real core/shim fixture checks the exact argv.
+
+Native proof correction. The earlier Claude transport fixture logged
+tools/list requests but returned HTTP 500 because it read params on
+every RPC, including list requests that omitted them. This was a fixture
+error. The corrected loopback fixture returns the tool catalog and the
+local model stub requests an offered tool. Installed Claude 2.1.316
+reaches tools/call with two synthetic bot credentials using the old
+server-level permission. Per-invocation denial of a separate native
+server still works, with original native definitions preserved. The
+evidence covers the native CLI with a local protocol stub and no real
+commercial-service or model account.

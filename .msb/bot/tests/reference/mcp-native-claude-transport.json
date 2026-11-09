@@ -7,7 +7,7 @@
   "same_native_home": true,
   "template_env_expansion": true,
   "tool_discovery": true,
-  "tools_called": false,
+  "tools_called": true,
   "native_user_entry_preserved": true,
   "overlay_same_name_replaces_headers": true,
   "cli_settings_denial_suppresses_native": true,
@@ -18,5 +18,7 @@
   "stub_received_tool_results": true,
   "owned_profile_removed": true,
   "network_namespace": "loopback-only",
-  "scope": "installed native CLI configuration/discovery, using a local Anthropic protocol stub"
+  "scope": "installed native CLI tool discovery and call through a local Anthropic protocol stub",
+  "workspace_permission_rule": "mcp__apify",
+  "prior_probe_correction": "The fixture returned HTTP 500 on tools/list without params. The corrected fixture accepts the request and observes a tools/call with the right key in each profile."
 }

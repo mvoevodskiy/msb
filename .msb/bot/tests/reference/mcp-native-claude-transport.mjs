@@ -28,7 +28,7 @@ const server=http.createServer(async (req,res)=>{
       if(!keyOk){res.writeHead(401).end();return;}
       if(body.id===undefined){res.writeHead(202).end();return;}
       const results={
-        initialize:{protocolVersion:body.params.protocolVersion,serverInfo:{name:'fixture',version:'1'},capabilities:{tools:{}}},
+        initialize:{protocolVersion:body.params?.protocolVersion,serverInfo:{name:'fixture',version:'1'},capabilities:{tools:{}}},
         'tools/list':{tools:[{name:'fixture_probe',description:'Probe fixture',_meta:{'anthropic/alwaysLoad':true},inputSchema:{type:'object',properties:{}}}]},
         'tools/call':{content:[{type:'text',text:'fixture-probed'}]},
       };
@@ -40,7 +40,7 @@ const server=http.createServer(async (req,res)=>{
     const tools=body.tools?.map(item=>item.name) || [];
     const toolResults=body.messages?.flatMap(item=>Array.isArray(item.content)?item.content:[])
       .filter(part=>part.type==='tool_result').map(part=>part.tool_use_id) || [];
-    const sendMcp=!toolResults.includes('toolu_fixture_mcp');
+    const sendMcp=tools.includes(tool) && !toolResults.includes('toolu_fixture_mcp');
     const sendWait=!sendMcp && !toolResults.includes('toolu_fixture_mcp') &&
       tools.includes('WaitForMcpServers') && !toolResults.includes('toolu_fixture_wait');
     const useTool=sendMcp || sendWait;
@@ -89,7 +89,7 @@ try{
   async function run(id,key,deny){
     profile={id,key};
     const argv=['-p','Use the apify fixture tool once, then reply fixture finished.','--verbose','--output-format','stream-json','--model',model,
-      '--permission-mode','bypassPermissions','--max-turns','4','--allowedTools',tool,'--mcp-config',managedFile];
+      '--permission-mode','bypassPermissions','--max-turns','4','--allowedTools','Bash,Read,mcp__apify,mcp__legacy,mcp__collision','--mcp-config',managedFile];
     if(deny)argv.push('--settings',JSON.stringify({deniedMcpServers:[{serverName:'legacy'}]}));
     assert.ok(argv.every(arg=>!arg.includes(key)));
     const child=spawn(binary,argv,{env:{...env,MSB_MCP_APIFY_TOKEN:key},cwd,stdio:['ignore','pipe','ignore']});
@@ -118,6 +118,7 @@ try{
     assert.ok(own.some(row=>row.name==='override'&&row.keyOk));
     assert.ok(!own.some(row=>row.name==='old'));
   }
+  assert.ok(toolsCalled,'Both native Claude turns must reach the MCP tool endpoint');
   assert.ok(calls.some(row=>row.profile==='a'&&row.name==='native'&&row.keyOk));
   const denied=calls.every(row=>row.profile!=='b'||row.name!=='native');
   assert.deepEqual(JSON.parse(await fs.readFile(nativeFile,'utf8')).mcpServers,native);

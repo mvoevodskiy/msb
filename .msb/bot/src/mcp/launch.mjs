@@ -9,25 +9,29 @@ import os from 'node:os';
 import path from 'node:path';
 import {readEnvMap} from '../env/store.mjs';
 import {configuredMcpTemplates} from './managed.mjs';
-import {readClaudeMcp} from './claude.mjs';
+import {claudeMcpPermission,readClaudeMcp} from './claude.mjs';
 
 export async function prepareMcpLaunch(state,provider,env=process.env) {
   const templates=configuredMcpTemplates(state,provider);
-  if(!templates.length)return null;
-  let directory;
+  if(provider!=='claude' && !templates.length)return null;
+  let directory,claudeLaunch=null;
   try {
-    const {map}=await readEnvMap(env);
-    const values={},selected=[];
     const native=provider==='claude'?await readClaudeMcp({env}):null;
     if(provider==='claude' && !native)return null;
     const nativeNames=new Set(native?.entries.map(row=>row.name));
+    const claudeAllowedTools=[...nativeNames].map(claudeMcpPermission).filter(Boolean);
+    if(claudeAllowedTools.length)claudeLaunch={claudeAllowedTools};
+    if(!templates.length)return claudeLaunch;
+
+    const {map}=await readEnvMap(env);
+    const values={},selected=[];
     for(const template of templates){
       const value=map.get(template.key)?.trim();
       if(!value?.startsWith(template.prefix) || /\s/.test(value) || nativeNames.has(template.name))continue;
       selected.push(template);
       values[template.childKey]=value;
     }
-    if(!selected.length)return null;
+    if(!selected.length)return claudeLaunch;
     if(provider==='codex')return {env:values,codexTemplates:selected.map(template=>template.name)};
 
     const mcpServers={};
@@ -42,9 +46,10 @@ export async function prepareMcpLaunch(state,provider,env=process.env) {
     const claudeConfig=path.join(directory,'config.json');
     await fs.writeFile(claudeConfig,JSON.stringify({mcpServers}),{mode:0o600});
     const close=()=>fs.rm(directory,{recursive:true,force:true}).catch(()=>{});
-    return {env:values,claudeConfig,close};
+    claudeAllowedTools.push(...selected.map(template=>claudeMcpPermission(template.name)));
+    return {env:values,claudeConfig,claudeAllowedTools,close};
   }catch{
     if(directory)await fs.rm(directory,{recursive:true,force:true}).catch(()=>{});
-    return null;
+    return claudeLaunch;
   }
 }

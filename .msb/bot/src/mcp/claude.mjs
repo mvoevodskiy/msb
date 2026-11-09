@@ -36,3 +36,10 @@ export async function readClaudeMcp({env=process.env,signal,withStatus=false}={}
   const {byName,at}=await readStatus(env,signal);
   return {root,at,entries:entries.map(entry=>({...entry,status:byName?.get(entry.name)}))};
 }
+
+export function claudeMcpPermission(name) {
+  // Do not turn an unsupported raw config name into a CLI pattern or separator.
+  if(!name || /[^a-z0-9_-]/i.test(name))return null;
+  const rule='mcp__'+name;
+  return name.includes('__') || name.endsWith('_') ? rule+'__*' : rule;
+}
