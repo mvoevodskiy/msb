@@ -4,6 +4,7 @@
  */
 import {InlineKeyboard} from 'grammy';
 import {BLANK} from './shared.mjs';
+import {codexManagedMcpName} from '../../../shared/codex-mcp-name.mjs';
 
 const descriptions={
   supadata:{
@@ -22,7 +23,7 @@ export function mcpAddScreen({entries=[],provider}={}) {
   const installed=new Set(entries.map(row=>row.name));
   const keyboard=new InlineKeyboard(),lines=[];
   for(const [name,{label,body}] of Object.entries(descriptions)){
-    if(installed.has(name))continue;
+    if(installed.has(name) || (provider==='codex' && installed.has(codexManagedMcpName(name))))continue;
     lines.push(`[+] <b>${label}</b> — ${body}`);
     keyboard.text(label,'mcp:setup:'+name);
   }

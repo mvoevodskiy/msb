@@ -6,6 +6,7 @@
 import {loadState} from '../../state.mjs';
 import {statePath} from '../../paths.mjs';
 import {mcpTemplate} from '../../../shared/mcp-templates.mjs';
+import {codexManagedMcpName} from '../../../shared/codex-mcp-name.mjs';
 import {mcpCatalog,selectedMcpProvider} from '../../mcp/catalog.mjs';
 import {enrollMcpTemplate} from '../../mcp/managed.mjs';
 
@@ -39,7 +40,8 @@ export async function handleMcpInput({ctx,text,pending,chatId}) {
     await ctx.reply('❌ Не удалось прочитать настройки MCP выбранного движка.');
     return;
   }
-  if(catalog.entries.some(row=>row.name===template.name)){
+  const nativeName=draft.provider==='codex'?codexManagedMcpName(template.name):template.name;
+  if(catalog.entries.some(row=>row.name===template.name || row.name===nativeName)){
     await ctx.reply('Этот сервер уже настроен в профиле выбранного движка.');
     return;
   }

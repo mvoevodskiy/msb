@@ -20,5 +20,18 @@
   "model_endpoint_requests": 0,
   "owned_profile_removed": true,
   "network_namespace": "loopback-only",
-  "scope": "pinned native transport capability, independent of the bot writer"
+  "scope": "pinned native transport capability, independent of the bot writer",
+  "late_native_write_after_namespace_fix": {
+    "check": "mcp-native-0.166-transport.mjs /absolute/codex --race",
+    "network": "loopback-only",
+    "synthetic_headers_only": true,
+    "observed": {
+      "native_and_managed_distinct": true,
+      "managed_call_with_own_key": true,
+      "native_call_with_native_header": true,
+      "native_header_at_managed_endpoint": false,
+      "bot_key_at_native_endpoint": false,
+      "native_file_exact": true
+    }
+  }
 }

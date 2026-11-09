@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {mcpFixture} from './helpers/mcp-fixture.mjs';
+import {codexManagedMcpName} from '../shared/codex-mcp-name.mjs';
 import {runAgentTurn} from '../src/agent/turn.mjs';
 import {deleteEnvKey,readEnvMap} from '../src/env/store.mjs';
 import {loadState,saveState} from '../src/state.mjs';
@@ -15,8 +16,8 @@ const apifyA='apify_api_fixture_launch_a';
 const apifyB='apify_api_fixture_launch_b';
 const supadata='sd_fixture_launch';
 const modelThread='0199a213-81c0-7800-8aa1-bbab2a035a53';
-const apifyOverride='mcp_servers.apify={url="https://mcp.apify.com",bearer_token_env_var="MSB_MCP_APIFY_TOKEN"}';
-const supadataOverride='mcp_servers.supadata={url="https://api.supadata.ai/mcp",env_http_headers={"x-api-key"="MSB_MCP_SUPADATA_TOKEN"}}';
+const apifyOverride=(env=process.env)=>'mcp_servers.'+codexManagedMcpName('apify',env)+'={url="https://mcp.apify.com",bearer_token_env_var="MSB_MCP_APIFY_TOKEN"}';
+const supadataOverride=()=>'mcp_servers.'+codexManagedMcpName('supadata')+'={url="https://api.supadata.ai/mcp",env_http_headers={"x-api-key"="MSB_MCP_SUPADATA_TOKEN"}}';
 const shim=new URL('../../../overlay/bot/ext/shim/run-turn.mjs',import.meta.url).href;
 
 async function nativeFixtures(f) {
@@ -55,8 +56,9 @@ if(argv[0]==='app-server'){
   if(request.method==='initialize'){console.log(JSON.stringify({id:request.id,result:{}}));return;}
   if(request.method==='initialized')return;
   if(request.method!=='config/read')process.exit(3);
-  const config={mcp_servers:fs.existsSync(data.collision)?{apify:{url:'https://native.invalid',http_headers:{Authorization:'fixture-native-only'}}}:{}};
-  const user={name:{type:'user',file:data.nativeCodex},config:{mcp_servers:{}}};
+  const occupied=fs.existsSync(data.collision)?fs.readFileSync(data.collision,'utf8').trim():'';
+  const config={mcp_servers:occupied?{[occupied]:{url:'https://native.invalid',http_headers:{Authorization:'fixture-native-only'}}}:{}};
+  const user={name:{type:'user',file:data.nativeCodex},config};
   record({kind:'codex-read',layers:request.params.includeLayers,pid:process.pid,...presence()});
   if(!request.params.includeLayers && fs.existsSync(data.hold))return;
   console.log(JSON.stringify({id:request.id,result:{config,layers:[user]}}));
@@ -94,10 +96,10 @@ async function turn() {
   assert.equal(result.ok,true,result.text);
 }
 
-async function removeApify(f) {
+async function removeApify(f,label='apify') {
   const button=label=>f.editOptions.at(-1)?.reply_markup?.inline_keyboard.flat().find(row=>row.text===label)?.callback_data;
   await f.callback('mcp:folder:workspace');
-  const card=button('apify');
+  const card=button(label);
   assert.ok(card);
   await f.callback(card);
   const remove=button('🗑 Удалить');
@@ -133,6 +135,9 @@ test('Codex launch uses each enrolled bot key and stops projecting a removed ent
   const f=await mcpFixture(t,'codex'),native=await nativeFixtures(f);
   const original=await fs.readFile(f.native,'utf8');
   const base=(await loadState()).state,primary=process.env.MSB_BOT_ID;
+  const firstOverride=apifyOverride();
+  const otherOverride=apifyOverride({...process.env,MSB_BOT_ID:'other'});
+  assert.notEqual(firstOverride,otherOverride);
   await register(f,'apify',apifyA);
   await turn();
   process.env.MSB_BOT_ID='other';
@@ -145,7 +150,7 @@ test('Codex launch uses each enrolled bot key and stops projecting a removed ent
   }finally{process.env.MSB_BOT_ID=primary;}
   await turn();
   const executions=(await native.trace()).filter(row=>row.kind==='codex-exec');
-  assert.deepEqual(executions.map(row=>[row.bot,row.correctApify,row.argv.includes(apifyOverride)]),[
+  assert.deepEqual(executions.map(row=>[row.bot,row.correctApify,row.argv.includes(row.bot===primary?firstOverride:otherOverride)]),[
     [primary,true,true],['other',true,true],['other',false,false],[primary,true,true],
   ]);
   assert.ok(executions.every(row=>!row.argv.some(arg=>arg.includes(apifyA)||arg.includes(apifyB))));
@@ -156,7 +161,7 @@ test('Codex checks effective native names before passing isolated credentials to
   const f=await mcpFixture(t,'codex'),native=await nativeFixtures(f);
   await register(f,'apify',apifyA);
   await register(f,'supadata',supadata);
-  await fs.writeFile(native.collision,'present');
+  await fs.writeFile(native.collision,codexManagedMcpName('apify'));
   await turn();
   const trace=await native.trace();
   const probe=trace.find(row=>row.kind==='codex-read' && !row.layers);
@@ -164,8 +169,8 @@ test('Codex checks effective native names before passing isolated credentials to
   assert.ok(probe);
   assert.equal(probe.apify,false);
   assert.equal(probe.supadata,false);
-  assert.ok(!execution.argv.includes(apifyOverride));
-  assert.ok(execution.argv.includes(supadataOverride));
+  assert.ok(!execution.argv.includes(apifyOverride()));
+  assert.ok(execution.argv.includes(supadataOverride()));
   assert.equal(execution.apify,false);
   assert.equal(execution.correctSupadata,true);
 });
@@ -221,4 +226,44 @@ test('stopping the turn also stops its pending native MCP config read',async t=>
     controller.abort();
     await Promise.allSettled([job]);
   }
+});
+
+
+test('a same-name native Codex entry keeps its own card and the bot entry still launches and deletes independently',async t=>{
+  const f=await mcpFixture(t,'codex'),native=await nativeFixtures(f);
+  await register(f,'apify',apifyA);
+  await fs.writeFile(native.collision,'apify');
+  await f.callback('mcp:folder:workspace');
+  const buttons=f.editOptions.at(-1).reply_markup.inline_keyboard.flat();
+  const normal=buttons.find(row=>row.text==='apify');
+  const managed=buttons.find(row=>row.text==='apify (бот)');
+  assert.ok(normal && managed);
+  assert.notEqual(normal.callback_data,managed.callback_data);
+  await f.callback(normal.callback_data);
+  assert.ok(f.edits.at(-1).includes('mcp__apify__*'));
+  assert.ok(!f.editOptions.at(-1).reply_markup.inline_keyboard.flat().some(row=>row.text==='🗑 Удалить'));
+  await f.callback(managed.callback_data);
+  assert.ok(f.edits.at(-1).includes('mcp__'+codexManagedMcpName('apify')+'__*'));
+  await turn();
+  const call=(await native.trace()).at(-1);
+  assert.ok(call.argv.includes(apifyOverride()));
+  assert.ok(!call.argv.some(arg=>arg.startsWith('mcp_servers.apify=')));
+  await removeApify(f,'apify (бот)');
+  const names=f.editOptions.at(-1).reply_markup.inline_keyboard.flat().map(row=>row.text);
+  assert.ok(names.includes('apify'));
+  assert.ok(!names.includes('apify (бот)'));
+  assert.equal((await readEnvMap()).map.get('APIFY_API_KEY'),apifyA);
+});
+
+test('an occupied Codex bot key does not accept credentials or advertise setup',async t=>{
+  const f=await mcpFixture(t,'codex'),native=await nativeFixtures(f);
+  await fs.writeFile(native.collision,codexManagedMcpName('apify'));
+  await f.callback('mcp:setup:apify');
+  await f.message(apifyA);
+  assert.match(f.messages.at(-1),/уже настроен в профиле/);
+  assert.ok(!(await readEnvMap()).map.has('APIFY_API_KEY'));
+  await f.callback('mcp:add');
+  const names=f.editOptions.at(-1).reply_markup.inline_keyboard.flat().map(row=>row.text);
+  assert.ok(!names.includes('Apify'));
+  assert.ok(names.includes('Supadata'));
 });

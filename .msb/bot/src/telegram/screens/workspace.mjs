@@ -26,7 +26,8 @@ export function mcpWorkspaceScreen(catalog) {
   const {entries,at}=catalog;
   const keyboard=new InlineKeyboard();
   const lines=entries.map(row=>{
-    const {name,transport,status}=row;
+    const {transport,status}=row;
+    const name=row.label ?? row.name;
     keyboard.text(name,'mcp:server:'+mcpReference(catalog,row)).row();
     const server=`<b>${escapeHtml(name)}</b> (${escapeHtml(transport)})`;
     if(!status)return `[+] ${server}`;
@@ -47,10 +48,11 @@ ${BLANK}`,
 }
 
 export function mcpCardScreen(row,deleteCallback) {
-  const name=escapeHtml(row.name);
+  const name=escapeHtml(row.label ?? row.name);
+  const toolName=escapeHtml(row.toolName ?? row.name);
   const keyboard=new InlineKeyboard();
   if(deleteCallback)keyboard.text('🗑 Удалить',deleteCallback).row();
-  return {text:`🔌 <b>${name}</b>\n\nTools: <code>mcp__${name}__*</code>\n${BLANK}`,keyboard:keyboard.text('« Назад','mcp:folder:workspace')};
+  return {text:`🔌 <b>${name}</b>\n\nTools: <code>mcp__${toolName}__*</code>\n${BLANK}`,keyboard:keyboard.text('« Назад','mcp:folder:workspace')};
 }
 
 export function mcpMissingScreen(destination) {

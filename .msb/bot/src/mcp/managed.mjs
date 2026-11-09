@@ -5,6 +5,7 @@
  */
 import {isConfigObject} from '../../shared/mcp-user-entries.mjs';
 import {mcpTemplate} from '../../shared/mcp-templates.mjs';
+import {codexManagedMcpName} from '../../shared/codex-mcp-name.mjs';
 import {NO_STATE_WRITE,updateState} from '../state.mjs';
 import {setEnvKey} from '../env/store.mjs';
 import {statePath} from '../paths.mjs';
@@ -29,12 +30,23 @@ export function configuredMcpTemplates(state,provider) {
 
 export function managedMcpRows(state,provider,env=process.env) {
   const root=statePath(env);
-  return configuredMcpTemplates(state,provider).map(({name})=>({name,root,managed:true,transport:'http'}));
+  return configuredMcpTemplates(state,provider).map(({name})=>({
+    name,root,managed:true,transport:'http',toolName:provider==='codex'?codexManagedMcpName(name,env):name,
+  }));
 }
 
 export function includeManagedMcp(catalog,state,env=process.env) {
   const owned=managedMcpRows(state,catalog.provider,env);
   if(!owned.length)return catalog;
+  if(catalog.provider==='codex') {
+    const names=new Set(catalog.entries.map(row=>row.name));
+    const managed=owned.map(row=>({
+      ...row,
+      ...(names.has(row.name)?{label:row.name+' (бот)'}:{}),
+      ...(names.has(row.toolName)?{status:'совпадает с сервером в профиле движка'}:{}),
+    }));
+    return {...catalog,entries:[...catalog.entries,...managed]};
+  }
   const rows=new Map(catalog.entries.map(row=>[row.name,row]));
   for(const row of owned) {
     const collision=rows.has(row.name);

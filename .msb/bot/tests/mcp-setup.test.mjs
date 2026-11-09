@@ -7,6 +7,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import {mcpFixture} from './helpers/mcp-fixture.mjs';
+import {codexManagedMcpName} from '../shared/codex-mcp-name.mjs';
 import {envFilePath,readEnvMap} from '../src/env/store.mjs';
 import {msbRoot} from '../src/paths.mjs';
 import {loadState,saveState} from '../src/state.mjs';
@@ -118,7 +119,7 @@ test('MCP delete clears only the bot registration and keeps the saved service ke
   await addApify(f);
   await f.callback('mcp:folder:workspace');
   await f.callback(callbackFor(f,'apify'));
-  assert.match(text(f),/mcp__apify__\*/);
+  assert.ok(text(f).includes('mcp__'+codexManagedMcpName('apify')+'__*'));
   const action=callbackFor(f,'🗑 Удалить');
   assert.ok(Buffer.byteLength(action,'utf8')<=64);
   await f.callback(action);

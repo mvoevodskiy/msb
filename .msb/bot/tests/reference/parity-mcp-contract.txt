@@ -121,3 +121,24 @@ config/src/overrides.rs 8–14 and exec/src/lib.rs 484–505. CLI override
 maps are merged recursively and exec independently reloads its layers.
 The checkpoint must stay local while that race, inherited-native
 removal, ADD_MCP and the unimplemented OpenClaw turn/setup route remain.
+
+Codex namespace checkpoint. 6e4e083 uses the production launcher to
+reproduce the native same-name race with actual tools/call. A normal
+native apify definition is added after preparation. Installed 0.166
+sent its synthetic header to the managed endpoint before the fix.
+Now bot-owned Codex entries derive a reserved key from the bot profile
+and service, and share this calculation between launch and card. A
+normal native entry can arrive in the same window and both tools still
+call their own endpoints with separate credentials. The list retains
+both rows and disambiguates the bot row only on duplicate display names.
+Native and Claude tool names, and provider/root callback binding, keep
+their own rules. A native entry already occupying the generated key
+prevents both registration through the form and runtime projection.
+
+This isolates ordinary externally edited names. The pinned native merge
+still applies if an external writer deliberately targets the exact
+generated bot key after the guard. The selected-name guard is not an
+atomic native snapshot, and generated names belong to the bot namespace.
+The race RED and GREEN proof files only contain synthetic values or
+boolean outcomes. Reproduce in an owned, loopback-only namespace via
+node .msb/bot/tests/reference/mcp-native-0.166-transport.mjs /absolute/codex --race.
