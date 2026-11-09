@@ -6,6 +6,7 @@ import os from 'node:os';
 import profile from '../../shared/profile.cjs';
 import { findBin, runCli } from './run-cli.mjs';
 import { codexChildEnvironment } from '../codex-auth-env.mjs';
+import {prepareCodexMcp} from '../codex-mcp-launch.mjs';
 import { decodeExtSession, getSelectedModel, getSelectedEffort } from '../store.mjs';
 import { enrichPath, ensureProviderCli } from '../ensure-cli.mjs';
 import {
@@ -78,7 +79,7 @@ export function parseCodexStdout(stdout) {
   };
 }
 
-export function buildCodexExecArgs({ model, effort, resumeId, forceHttp = true, httpProviderId }) {
+export function buildCodexExecArgs({ model, effort, resumeId, forceHttp = true, httpProviderId, mcpArgs=[] }) {
   const args = [
     'exec',
     '--json',
@@ -88,6 +89,7 @@ export function buildCodexExecArgs({ model, effort, resumeId, forceHttp = true, 
     '-c',
     'approval_policy="never"',
     ...codexHttpProviderOverrides(forceHttp, httpProviderId),
+    ...mcpArgs,
   ];
   if (model) {
     args.push('-m', model);
@@ -142,8 +144,9 @@ async function execOnce({
   resumeId,
   forceHttp,
   httpProviderId,
+  mcpArgs,
 }) {
-  const args = buildCodexExecArgs({ model, effort, resumeId, forceHttp, httpProviderId });
+  const args = buildCodexExecArgs({ model, effort, resumeId, forceHttp, httpProviderId, mcpArgs });
   const res = await runCli(bin, args, {
     cwd,
     env: childEnv,
@@ -274,7 +277,7 @@ export async function runCodexTurn({ prompt, parsed, cwd, env, home = os.homedir
   const model = resolveCodexModel(parsed?.model, nativeConfig, preferred);
   const effort = preferredEffort || resolveCodexEffort(nativeConfig);
 
-  const childEnv = auth.env;
+  const {env:childEnv,args:mcpArgs}=await prepareCodexMcp(bin,cwd,auth.env);
 
   const { resumeId: resumeRequested } = resolveResumeId(parsed);
 
@@ -289,6 +292,7 @@ export async function runCodexTurn({ prompt, parsed, cwd, env, home = os.homedir
       resumeId,
       forceHttp,
       httpProviderId,
+      mcpArgs,
     });
 
   const raw = await run(resumeRequested);

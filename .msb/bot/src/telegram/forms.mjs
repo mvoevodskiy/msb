@@ -3,7 +3,7 @@
  * входящих сообщений: [createBot](./bot.mjs) владеет pending и принимает результат.
  * Auth → [forms/auth](./forms/auth.mjs), env → [forms/env](./forms/env.mjs),
  * Pult → [forms/pult](./forms/pult.mjs), проект → [forms/projects](./forms/projects.mjs);
- * остальные короткие input adapters ниже.
+ * MCP → [forms/mcp](./forms/mcp.mjs), остальные короткие adapters ниже.
  * Timezone остаётся после reply-stop в createBot, чтобы сохранить прежний приоритет.
  * [Контракт](../../tests/reference/parity-forms-contract.txt), [проверки](../../tests/menu-handlers.test.mjs).
  */
@@ -15,12 +15,13 @@ import { escapeHtml } from './edit.mjs';
 import { handleProjectNameInput } from './forms/projects.mjs';
 import { handleAuthInput } from './forms/auth.mjs';
 import { handleEnvNameInput, handleEnvValueInput, handleEnvCommentInput } from './forms/env.mjs';
+import {handleMcpInput} from './forms/mcp.mjs';
 import { handlePultInput, PULT_KINDS } from './forms/pult.mjs';
 
 const HANDLERS = {
   'auth-token': handleAuthInput, 'env-key-name': handleEnvNameInput,
   'feedback': handleFeedback, 'new-project': handleProjectNameInput,
-  'bot-token': handleBotToken, 'mon-source': handleSource,
+  'bot-token': handleBotToken, 'mon-source': handleSource, 'mcp-setup':handleMcpInput,
 };
 export async function handleFormInput(options) {
   const {kind,ctx} = options;

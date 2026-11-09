@@ -25,8 +25,9 @@ ${BLANK}`,
 export function mcpWorkspaceScreen(catalog) {
   const {entries,at}=catalog;
   const keyboard=new InlineKeyboard();
-  const lines=entries.map(({name,transport,status})=>{
-    keyboard.text(name,'mcp:server:'+mcpReference(catalog,name)).row();
+  const lines=entries.map(row=>{
+    const {name,transport,status}=row;
+    keyboard.text(name,'mcp:server:'+mcpReference(catalog,row)).row();
     const server=`<b>${escapeHtml(name)}</b> (${escapeHtml(transport)})`;
     if(!status)return `[+] ${server}`;
     const reason=status==='needs-auth'?'нужен вход заново':status==='failed'?'не запускается':status;
@@ -45,9 +46,11 @@ ${BLANK}`,
   };
 }
 
-export function mcpCardScreen(row) {
+export function mcpCardScreen(row,deleteCallback) {
   const name=escapeHtml(row.name);
-  return {text:`🔌 <b>${name}</b>\n\nTools: <code>mcp__${name}__*</code>\n${BLANK}`,keyboard:back('mcp:folder:workspace')};
+  const keyboard=new InlineKeyboard();
+  if(deleteCallback)keyboard.text('🗑 Удалить',deleteCallback).row();
+  return {text:`🔌 <b>${name}</b>\n\nTools: <code>mcp__${name}__*</code>\n${BLANK}`,keyboard:keyboard.text('« Назад','mcp:folder:workspace')};
 }
 
 export function mcpMissingScreen(destination) {
@@ -77,16 +80,4 @@ export function openClawMcpScreen(entries) {
   return {text,keyboard};
 }
 
-export function mcpAddScreen() {
-  return {
-    text: `<b>➕ MCP сервер</b>
-
-Прежние пункты настройки. Их установка в open-core пока не подключена.
-${BLANK}`,
-    keyboard: new InlineKeyboard()
-      .text('Supadata', 'mcp:setup:supadata')
-      .text('Apify', 'mcp:setup:apify')
-      .row()
-      .text('« Назад', 'mcp:folder:workspace'),
-  };
-}
+export {mcpAddScreen} from './mcp-setup.mjs';

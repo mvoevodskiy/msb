@@ -1,35 +1,67 @@
 /**
- * MCP callback -> captured provider catalog -> [workspace views](../screens/workspace.mjs).
- * [Readers](../../mcp/catalog.mjs), [owner/render scope](../router.mjs),
- * [production ingress checks](../../../tests/mcp-catalog.test.mjs).
+ * MCP callbacks -> current provider catalog, token form and scoped deletion.
+ * [Readers](../../mcp/catalog.mjs), [enrollment](../../mcp/managed.mjs),
+ * [views](../screens/workspace.mjs), [catalog](../../../tests/mcp-catalog.test.mjs) /
+ * [form and removal checks](../../../tests/mcp-setup.test.mjs).
  */
+import {mcpTemplate} from '../../../shared/mcp-templates.mjs';
 import {mcpCatalog,selectedMcpProvider} from '../../mcp/catalog.mjs';
+import {includeManagedMcp,managedMcpRows,removeManagedMcpTemplate,supportsManagedMcp} from '../../mcp/managed.mjs';
 import {loadState} from '../../state.mjs';
-import {resolveMcpReference} from '../../mcp/reference.mjs';
-import {mcpAddScreen,mcpCardScreen,mcpReadErrorScreen,mcpMissingScreen,mcpScreen,
-  mcpWorkspaceScreen,openClawMcpScreen} from '../screens/workspace.mjs';
+import {statePath} from '../../paths.mjs';
+import {resolveMcpReference,mcpReference} from '../../mcp/reference.mjs';
+import {mcpAddScreen,mcpTemplatePrompt} from '../screens/mcp-setup.mjs';
+import {mcpCardScreen,mcpReadErrorScreen,mcpMissingScreen,mcpScreen,mcpWorkspaceScreen,openClawMcpScreen} from '../screens/workspace.mjs';
 import {placeholder} from '../screens/shared.mjs';
 import {UNHANDLED} from './shared.mjs';
 
 const TOP='menu:mcp';
+const ADD='mcp:add';
 const FOLDER='mcp:folder:workspace';
 const CARD='mcp:server:';
-export const isMcpReadCallback=data=>data===TOP || data===FOLDER || data.startsWith(CARD);
+const SETUP='mcp:setup:';
+const DELETE='mcp:delete:';
+export const isMcpReadCallback=data=>data===TOP || data===ADD || data===FOLDER || data.startsWith(CARD);
 
-export async function handleWorkspaceRoute({data,state,bot,show,signal}) {
-  if(data==='mcp:add')return show(mcpAddScreen());
-  if(!isMcpReadCallback(data))return data.startsWith('mcp:') ? show(placeholder('MCP',TOP)) : UNHANDLED;
-  if(state.engine==='oc' && data!==TOP)return show(mcpMissingScreen(TOP));
+export async function handleWorkspaceRoute({data,state,bot,show,signal,pending,chatId}) {
+  if(data!==TOP && !data.startsWith('mcp:'))return UNHANDLED;
+  const provider=selectedMcpProvider(state);
+  const readProvider=bot[Symbol.for('msb.mcpProvider')];
+  if(data.startsWith(SETUP)){
+    const name=data.slice(SETUP.length);
+    if(!mcpTemplate(name) || !supportsManagedMcp(provider)){
+      return show(placeholder('MCP',ADD,'Настройка MCP недоступна для выбранного движка.'));
+    }
+    pending.set(chatId,'mcp-setup');
+    pending.advance(chatId,'mcp-setup',{name,provider,root:statePath(),readProvider});
+    return show(mcpTemplatePrompt(name));
+  }
 
-  const catalog=await mcpCatalog(state,{readProvider:bot[Symbol.for('msb.mcpProvider')],withStatus:data===FOLDER,signal});
+  const deleting=data.startsWith(DELETE);
+  if(deleting){
+    const entries=managedMcpRows(state,provider);
+    const row=resolveMcpReference(data.slice(DELETE.length),{provider,entries});
+    if(!row)return show(mcpMissingScreen(FOLDER));
+    try {
+      const latest=await removeManagedMcpTemplate({provider,name:row.name});
+      if(selectedMcpProvider(latest)!==provider)return;
+    }catch{return show(placeholder('MCP',FOLDER,'Не удалось удалить MCP-сервер.'));}
+  }else if(!isMcpReadCallback(data))return show(placeholder('MCP',TOP));
+
+  if(provider==='oc' && data!==TOP && data!==ADD)return show(mcpMissingScreen(TOP));
+  if(signal?.aborted)return;
+  const native=await mcpCatalog(state,{readProvider,withStatus:data===FOLDER || deleting,signal});
   if(signal?.aborted)return;
   // A switch in another owner chat does not abort this chat's render scope.
   const {state:current}=await loadState();
-  if(selectedMcpProvider(current)!==selectedMcpProvider(state))return;
-  if(!catalog)return show(mcpReadErrorScreen(data===TOP?'menu:back':TOP));
-  if(catalog.provider==='oc')return show(openClawMcpScreen(catalog.entries));
+  if(selectedMcpProvider(current)!==provider)return;
+  if(!native)return show(mcpReadErrorScreen(data===TOP?'menu:back':TOP));
+  const catalog=includeManagedMcp(native,current);
+  if(data===ADD)return show(mcpAddScreen(catalog));
+  if(provider==='oc')return show(openClawMcpScreen(catalog.entries));
   if(data===TOP)return show(mcpScreen(catalog.entries.length));
-  if(data===FOLDER)return show(mcpWorkspaceScreen(catalog));
+  if(data===FOLDER || deleting)return show(mcpWorkspaceScreen(catalog));
   const row=resolveMcpReference(data.slice(CARD.length),catalog);
-  return show(row?mcpCardScreen(row):mcpMissingScreen(FOLDER));
+  if(!row)return show(mcpMissingScreen(FOLDER));
+  return show(mcpCardScreen(row,row.managed?DELETE+mcpReference(catalog,row):undefined));
 }

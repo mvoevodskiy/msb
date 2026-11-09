@@ -93,3 +93,31 @@ Stage completion requires the actual read/add/remove/marker routes, old
 prompts and forms, scoped writes, test-defined external conditions and
 same-commit acceptance. The read checkpoint remains local while setup,
 removal and markers are incomplete. Preserve unrelated state and auth.
+
+Managed template checkpoint. Old 119219–119285 saved an env key and passed
+the submitted value to the selected native writer. Configuring the
+second engine did not rewrite the first engine's registered headers.
+The new writer keeps only a per-provider template/key reference in
+managedMcp state. The first uses the conventional key name and a second
+engine using the same template gets a provider suffix if the first
+still uses the conventional name. All values stay in the bot's .env.
+Deleting a bot-owned registration preserves its key and sibling profiles.
+
+Form and launch tests exercise the real ingress, core runner, shim and
+Codex adapter with owned fake executables. On installed Claude 2.1.316,
+the separate loopback probe reached initialize/tools/list with different
+bot credentials, preserved ordinary native entries and observed the
+provider's per-invocation deniedMcpServers setting. It did not observe a
+Claude MCP tool call. Native Codex 0.166 tool calls were observed using
+the separate raw transport probe. Both isolated probes used synthetic
+credentials. No authenticated commercial tool use is established.
+
+Codex preflight skips current effective same-name definitions and omits
+their dedicated credential variables. Normal app-owned enrollments do not
+edit native config. An external same-name native config edit after the
+preflight and before exec still creates a merge race. Pinned references:
+codex-rs/config/src/merge.rs 90–144, utils/cli/src/config_override.rs 44–75,
+config/src/overrides.rs 8–14 and exec/src/lib.rs 484–505. CLI override
+maps are merged recursively and exec independently reloads its layers.
+The checkpoint must stay local while that race, inherited-native
+removal, ADD_MCP and the unimplemented OpenClaw turn/setup route remain.

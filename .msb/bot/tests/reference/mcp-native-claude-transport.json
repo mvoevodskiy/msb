@@ -1,0 +1,22 @@
+{
+  "version": "2.1.316 (Claude Code)",
+  "profiles": [
+    "a",
+    "b"
+  ],
+  "same_native_home": true,
+  "template_env_expansion": true,
+  "tool_discovery": true,
+  "tools_called": false,
+  "native_user_entry_preserved": true,
+  "overlay_same_name_replaces_headers": true,
+  "cli_settings_denial_suppresses_native": true,
+  "model_stub_requests": 4,
+  "external_model_requests": 0,
+  "original_mcp_definitions_preserved": true,
+  "tool_search_disabled_in_fixture": true,
+  "stub_received_tool_results": true,
+  "owned_profile_removed": true,
+  "network_namespace": "loopback-only",
+  "scope": "installed native CLI configuration/discovery, using a local Anthropic protocol stub"
+}

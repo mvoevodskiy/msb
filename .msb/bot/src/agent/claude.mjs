@@ -2,6 +2,7 @@
  * Запуск Claude Code CLI в режиме stream-json.
  * Контракт совместим с закрытым [msb/agent-cc] и overlay shim (PATH→claude).
  * Навигация: [Исполнение](./README.md), [provider shim](../../../../overlay/bot/ext/shim/run-turn.mjs).
+ * Managed MCP launch metadata comes from [turn preparation](../mcp/launch.mjs).
  * Result provenance (spawned/sessionIdObserved) lets [session-result](./session-result.mjs)
  * count actual returned attempts without inventing history for a pre-spawn abort.
  */
@@ -19,6 +20,7 @@ const PROMPT_FILE_THRESHOLD = 40 * 1024;
  * @property {string} prompt
  * @property {string} [sessionId]
  * @property {string} [providerId]
+ * @property {object} [mcp]
  * @property {string} [model]
  * @property {string} [effort]
  * @property {string} [permissionMode]
@@ -83,6 +85,7 @@ export async function runClaudeTurn(opts) {
     }
   }
 
+  if (opts.mcp?.claudeConfig) args.push('--mcp-config', opts.mcp.claudeConfig);
   if (opts.model) args.push('--model', opts.model);
   if (opts.effort) args.push('--effort', opts.effort);
   if (opts.sessionId) args.push('--resume', opts.sessionId);
@@ -116,6 +119,8 @@ export async function runClaudeTurn(opts) {
         cwd,
         env: {
           ...process.env,
+          ...opts.mcp?.env,
+          MSB_TURN_MCP_TEMPLATES: opts.mcp?.codexTemplates?.join(','),
           MSB_TURN_PROVIDER: opts.providerId || undefined,
           CI: '1',
           CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,

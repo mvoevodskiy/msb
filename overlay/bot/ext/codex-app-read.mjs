@@ -6,22 +6,22 @@
  */
 import {spawn} from 'node:child_process';
 const reads=new Map([
-  ['skills/list',{clientName:'msb_skills',error:'list',params:cwd=>({cwds:[cwd],forceReload:true})}],
-  ['config/read',{clientName:'msb_mcp',error:'config',params:cwd=>({includeLayers:true,cwd})}],
+  ['skills/list',{clientName:'msb_skills',error:'list',params:({cwd})=>({cwds:[cwd],forceReload:true})}],
+  ['config/read',{clientName:'msb_mcp',error:'config',params:({cwd,includeLayers})=>({includeLayers,cwd})}],
 ]);
 
-export function readCodexAppServer(method,{command,cwd,env=process.env,signal,timeoutMs=12_000,cleanupGraceMs=5_000,maxBytes=4*1024*1024,spawnProcess=spawn}) {
+export function readCodexAppServer(method,{command,cwd,env=process.env,signal,timeoutMs=12_000,cleanupGraceMs=5_000,maxBytes=4*1024*1024,includeLayers=true,ownProcessGroup=true,spawnProcess=spawn}) {
   if(signal?.aborted)return Promise.resolve({ok:false,aborted:true});
   const read=reads.get(method);
   if(!read)return Promise.resolve({ok:false,error:'method'});
   return new Promise(resolve=>{
     let child;
-    try{child=spawnProcess(command,['app-server'],{cwd,env,detached:true,stdio:['pipe','pipe','ignore']});}
+    try{child=spawnProcess(command,['app-server'],{cwd,env,detached:ownProcessGroup,stdio:['pipe','pipe','ignore']});}
     catch{return resolve({ok:false,error:'spawn'});}
     let phase='init',buffer='',bytes=0,result=null,closed=false,leaderExited=false,resolved=false,timeout,termTimer,killTimer,forceTimer;
     function signalGroup(name) {
       if(closed || resolved || leaderExited || child.exitCode!=null || child.signalCode!=null)return;
-      try{if(child.pid){process.kill(-child.pid,name);return;}}catch{/* Fall back only to the still-live leader. */}
+      try{if(ownProcessGroup && child.pid){process.kill(-child.pid,name);return;}}catch{/* Fall back only to the still-live leader. */}
       if(child.exitCode==null && child.signalCode==null)try{child.kill(name);}catch{}
     }
     function complete() {
@@ -61,7 +61,7 @@ export function readCodexAppServer(method,{command,cwd,env=process.env,signal,ti
         if(typeof msg.method==='string' && msg.id!==undefined)return finish({ok:false,error:'server_request'});
         if(msg.id===1 && phase==='init') {
           if(msg.error || !msg.result || typeof msg.result!=='object' || Array.isArray(msg.result))return finish({ok:false,error:'initialize'});
-          phase='read';send({method:'initialized'});send({id:2,method,params:read.params(cwd)});
+          phase='read';send({method:'initialized'});send({id:2,method,params:read.params({cwd,includeLayers})});
         }else if(msg.id===2 && phase==='read') {
           if(msg.error || !msg.result)return finish({ok:false,error:read.error});
           finish({ok:true,data:msg.result});

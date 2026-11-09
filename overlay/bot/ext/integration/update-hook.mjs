@@ -37,7 +37,7 @@ export function installUpdateHook(BotClass, env = process.env) {
           'settings:tz', 'menu:newproject', 'mon:add-hint', 'settings:bots:add', 'ext:ssh:local:edit',
           'settings:pult:password', 'settings:pult:tg-token', 'settings:pult:url',
           'settings:pult:session', 'settings:pult:listen:custom',
-        ].includes(event.data) || /^(?:settings:env:quick:|ext:auth:|ext:conn:set:|settings:conn:set:|settings:engine:set:)/.test(event.data || '');
+        ].includes(event.data) || /^(?:settings:env:quick:|mcp:setup:|ext:auth:|ext:conn:set:|settings:conn:set:|settings:engine:set:)/.test(event.data || '');
         if (startsForm || ['menu:back', 'menu:close', 'menu:settings', 'menu:agent', 'settings:back', 'settings:env', 'settings:env:cancel', 'settings:auth', 'settings:conn', 'ext:conn', 'ext:ssh:local', 'mon:back', 'settings:bots:cancel'].includes(event.data)) {
           const chatId = event.message?.chat?.id;
           if (chatId != null) {

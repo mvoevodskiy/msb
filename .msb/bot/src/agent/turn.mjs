@@ -16,6 +16,7 @@ import { claimFirstSession, releaseFirstSession } from '../../shared/session-sta
 import {applySessionResult} from './session-result.mjs';
 import {captureSkillInstallTarget} from '../skills/install-target.mjs';
 import {skillInstallPrompt} from '../skills/install-protocol.mjs';
+import {prepareMcpLaunch} from '../mcp/launch.mjs';
 
 /**
  * runAgentTurn: prompt/signal → выбранный CLI → результат и guarded session/usage.
@@ -25,6 +26,7 @@ import {skillInstallPrompt} from '../skills/install-protocol.mjs';
  * Captured project cwd → [projects](../projects/paths.mjs); base context stays global.
  * Контекст → [system prompt](./system-prompt.mjs), [metadata](./context.mjs);
  * Skill install [target](../skills/install-target.mjs)/[protocol](../skills/install-protocol.mjs) captured with provider snapshot, final execution belongs to Telegram.
+ * Managed MCP credentials/config → [launch](../mcp/launch.mjs).
  * владелец записи сессии → [result transaction](./session-result.mjs) / [state](../state.mjs),
  * [first-start token](../../shared/session-starts.mjs), [description ledger](../sessions/ledger.mjs).
  * Проверки: [polling/session fences](../../tests/turn-lifecycle.test.mjs),
@@ -40,7 +42,7 @@ export async function runAgentTurn({
 } = {}) {
   const aborted = () => ({ ok: false, error: 'aborted', text: 'Остановлено.' });
   if (signal?.aborted) return aborted();
-  let state, firstSession, baseWorkspace, contextNow, skillInstall;
+  let state, firstSession, baseWorkspace, contextNow, skillInstall, mcp;
   await updateState(s => {
     state = { ...s };
     skillInstall=captureSkillInstallTarget(state,env);
@@ -77,6 +79,9 @@ export async function runAgentTurn({
   const systemPrompt = await buildSystemPrompt({ env, workspace:baseWorkspace, cwd, timezone:state.timezone || 'UTC', now:contextNow, extra: [conversationalModePrompt(state),skillInstallPrompt(skillInstall)].filter(Boolean).join('\n\n') });
 
   if (signal?.aborted) return aborted();
+  const providerId=state.extAuthBypass || 'claude';
+  mcp=await prepareMcpLaunch(state,providerId,env);
+  if (signal?.aborted) return aborted();
 
   let lastTool = '';
   const result = await runClaudeTurn({
@@ -84,7 +89,8 @@ export async function runAgentTurn({
     sessionId: state.ccSessionId || undefined,
     // Bind this turn to the provider observed with the session, even if the
     // menu changes the selected provider before the child process starts.
-    providerId: state.extAuthBypass || 'claude',
+    providerId,
+    mcp,
     model,
     effort,
     permissionMode,
@@ -131,6 +137,7 @@ export async function runAgentTurn({
 
   return { ok: !result.isError, text, result, skillInstall };
   } finally {
+    await mcp?.close?.();
     if (firstSession) await updateState(s => releaseFirstSession(s, firstSession) ? s : NO_STATE_WRITE, env).catch(() => {});
   }
 }
