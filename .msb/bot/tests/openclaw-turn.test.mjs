@@ -12,6 +12,7 @@ import {mcpFixture} from './helpers/mcp-fixture.mjs';
 import {runAgentTurn} from '../src/agent/turn.mjs';
 import {loadState,saveState} from '../src/state.mjs';
 import {resetCliConversation} from '../src/sessions/selection.mjs';
+import {botRoot} from '../src/paths.mjs';
 
 const ccSessionId='untouched-claude-session';
 const seen=(kind,rows)=>rows.find(row=>row.kind===kind);
@@ -27,7 +28,8 @@ async function prepare(t,{state={},behavior='ok'}={}){
   const lines=[
     "import fs from 'node:fs';",
     'const c='+config+';',
-    'const argv=process.argv.slice(2), command=argv.slice(argv.indexOf("openclaw")+1);',
+    'const argv=process.argv.slice(2);',
+    'const command=argv.slice(argv.includes("--agent")?argv.indexOf("--agent")+2:argv.indexOf("openclaw")+1);',
     'const kind=command[0];',
     'const file=argv.includes("--file")?argv[argv.indexOf("--file")+1]:null;',
     'const record={kind,argv,cwd:process.cwd(),prompt:file?fs.readFileSync(file,"utf8"):null,promptMode:file?fs.statSync(file).mode&0o777:null,',
@@ -75,7 +77,7 @@ test('OpenClaw ordinary turn uses old named ACP without Claude credentials and k
   assert.ok(create && prompt);
   const name=create.argv[create.argv.indexOf('--name')+1];
   assert.ok(name.startsWith('oc-'));
-  assert.deepEqual(prompt.argv.slice(0,6),['--format','json','--json-strict','--cwd',prompt.cwd,'openclaw']);
+  assert.deepEqual(prompt.argv.slice(0,6),['--format','json','--json-strict','--cwd',f.workspace,'openclaw']);
   assert.equal(await fs.realpath(prompt.cwd),await fs.realpath(f.workspace));
   assert.equal(prompt.argv[prompt.argv.indexOf('-s')+1],name);
   assert.ok(prompt.prompt.includes('Owned OC user input'));
@@ -130,6 +132,7 @@ test('OpenClaw reset clears only its active session and rejects a late reply fro
   const {state}=await loadState();
   assert.equal(state.ocSessionId,undefined);
   assert.equal(state.ocSessionName,undefined);
+  assert.deepEqual(state.ocPrevSessionIds,[fixtureSessionId]);
   assert.equal(state.ccSessionId,ccSessionId);
 });
 
@@ -144,4 +147,46 @@ test('OpenClaw cancellation targets exactly the current named session',async t=>
   assert.ok(cancel);
   assert.deepEqual(cancel.argv.slice(-3),['cancel','-s','fixture-cancel-me']);
   assert.equal((await loadState()).state.ocSessionName,'fixture-cancel-me');
+});
+
+async function nativePath(directory){
+  const file=path.join(directory,'openclaw.json');
+  await fs.mkdir(directory,{recursive:true,mode:0o700});
+  await fs.writeFile(file,'{"gateway":{"mode":"local"}}',{mode:0o600});
+  process.env.OPENCLAW_STATE_DIR=directory;
+  process.env.OPENCLAW_CONFIG_PATH=file;
+  return file;
+}
+
+test('OpenClaw rejects an explicit foreign profile instead of using the legacy agent fallback',async t=>{
+  const f=await prepare(t);
+  await nativePath(path.join(f.home,'neighbor-openclaw'));
+  const result=await runAgentTurn({prompt:'This fixture must never reach another Gateway.'});
+  assert.equal(result.ok,false);
+  assert.deepEqual(await f.calls(),[]);
+});
+
+test('OpenClaw changes both the acpx scope and active named session after switching owned profiles',async t=>{
+  const f=await prepare(t);
+  await nativePath(path.join(botRoot(),'native one'));
+  assert.equal((await runAgentTurn({prompt:'First Gateway.'})).ok,true);
+  const first=(await loadState()).state;
+  await nativePath(path.join(botRoot(),'native two'));
+  assert.equal((await runAgentTurn({prompt:'Second Gateway.'})).ok,true);
+  const calls=await f.calls(),prompts=calls.filter(row=>row.kind==='prompt');
+  const [a,b]=prompts.map(row=>row.argv[row.argv.indexOf('--agent')+1]);
+  assert.notEqual(a,b,'The acpx queue key must include the selected native profile');
+  const state=(await loadState()).state;
+  assert.notEqual(state.ocSessionName,first.ocSessionName);
+  assert.ok(state.ocPrevSessionIds.includes(first.ocSessionId));
+  assert.ok(!calls.some(row=>row.argv.includes('--resume-session')));
+});
+
+test('OpenClaw retains the explicit conventional native profile under its own HOME',async t=>{
+  const f=await prepare(t);
+  process.env.OPENCLAW_PROFILE='native';
+  await nativePath(path.join(f.home,'.openclaw-native'));
+  const result=await runAgentTurn({prompt:'Conventional legacy profile fixture.'});
+  assert.equal(result.ok,true,result.text);
+  assert.ok(seen('prompt',await f.calls()).argv.includes('openclaw'));
 });

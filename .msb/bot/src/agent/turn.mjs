@@ -8,6 +8,7 @@ import {
 } from '../state.mjs';
 import { readClaudeVersion } from './claude-version.mjs';
 import { runClaudeTurn } from './claude.mjs';
+import { runOpenClawTurn } from './openclaw-turn.mjs';
 import { conversationalModePrompt } from './mode-prompt.mjs';
 import { projectLocations, resolveProjectCwd } from '../projects/paths.mjs';
 import { buildSystemPrompt } from './system-prompt.mjs';
@@ -23,6 +24,7 @@ import {mcpInstallPrompt} from '../mcp/install-protocol.mjs';
 /**
  * runAgentTurn: prompt/signal → выбранный CLI → результат и guarded session/usage.
  * Вызывают [Telegram](../telegram/bot.mjs) и [autonomy](../autonomy/scheduler.mjs).
+ * OpenClaw ordinary turn → [named acpx](./openclaw-turn.mjs), before Claude auth.
  * Аргументы/stream/abort → [runClaudeTurn](./claude.mjs) → существующий PATH shim;
  * native dispatch → [provider runner](../../../../overlay/bot/ext/shim/run-turn.mjs).
  * Captured project cwd → [projects](../projects/paths.mjs); base context stays global.
@@ -58,6 +60,14 @@ export async function runAgentTurn({
   }, env);
   try {
   if (signal?.aborted) return aborted();
+  if(state.engine==='oc' && !autonomy){
+    const cwd=await resolveProjectCwd(state,env,baseWorkspace);
+    if(signal?.aborted)return aborted();
+    const systemPrompt=await buildSystemPrompt({env,workspace:baseWorkspace,cwd,timezone:state.timezone || 'UTC',
+      now:contextNow,extra:skillInstallPrompt(skillInstall)});
+    const result=await runOpenClawTurn({state,prompt,systemPrompt,cwd,env,signal,onStatus});
+    return {...result,skillInstall};
+  }
   if (!hasClaudeAuth(env, state)) {
     return {
       ok: false,

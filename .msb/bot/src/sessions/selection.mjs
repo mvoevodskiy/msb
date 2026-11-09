@@ -10,6 +10,7 @@ import {applyProjectSelection} from '../projects/selection.mjs';
 import {resolveProjectDirectory} from '../projects/paths.mjs';
 import {cliSessionEntries,historyProvider} from './scope.mjs';
 import {resolveSessionReference} from './callback-key.mjs';
+import {clearOpenClawSession} from './openclaw.mjs';
 const project=row=>row.project || undefined;
 const epoch=state=>state.sessionEpoch || 0;
 function clearParkedProvider(state,provider) {
@@ -20,7 +21,11 @@ function clearParkedProvider(state,provider) {
 }
 export function resetCliConversation(env=process.env) {
   return updateState(state=>{
-    invalidateFirstSession(state);delete state.ccSessionId;
+    if(state.engine==='oc')clearOpenClawSession(state);
+    else{
+      invalidateFirstSession(state);
+      delete state.ccSessionId;
+    }
     state.sessionEpoch=(Number.isSafeInteger(state.sessionEpoch)?state.sessionEpoch:0)+1;
     return state;
   },env);

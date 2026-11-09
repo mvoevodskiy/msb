@@ -1,6 +1,7 @@
 /**
- * Bounded stdout from one owned, readonly OpenClaw command. No service or auth writes.
- * Callers: [skills](../skills/openclaw.mjs), [MCP](../mcp/openclaw.mjs).
+ * Bounded subprocess output and cancellation for OpenClaw CLI and acpx.
+ * [Readonly skills](../skills/openclaw.mjs), [MCP](../mcp/openclaw.mjs),
+ * [ordinary turn](openclaw-turn.mjs).
  * [Ownership and environment checks](../../tests/openclaw-skills-reader.test.mjs).
  */
 import {spawn} from 'node:child_process';
@@ -10,11 +11,17 @@ function childEnvironment(env) {
   for(const key of Object.keys(clean))if((key.startsWith('GIT_') && key!=='GITHUB_TOKEN') || key.startsWith('NPM_CONFIG_'))delete clean[key];
   return clean;
 }
-export function readOpenClawOutput(args,{env=process.env,signal,timeoutMs=12_000,cleanupGraceMs=5_000,maxBytes=4*1024*1024,spawnProcess=spawn}={}) {
+export async function readOpenClawOutput(args,options) {
+  const outcome=await runOpenClawCommand(args,options);
+  return outcome?.code===0?outcome.text:null;
+}
+
+export function runOpenClawCommand(args,{command='openclaw',cwd,env=process.env,signal,timeoutMs=12_000,
+  cleanupGraceMs=5_000,maxBytes=4*1024*1024,spawnProcess=spawn,onLine,onStart}={}) {
   if(signal?.aborted)return Promise.resolve(null);
   return new Promise(resolve=>{
-    let child;try{child=spawnProcess('openclaw',args,{env:childEnvironment(env),detached:true,stdio:['ignore','pipe','ignore']});}catch{return resolve(null);}
-    let text='',bytes=0,stopped=false,closed=false,leaderExited=false,resolved=false,timeout,termTimer,killTimer,forceTimer;
+    let child;try{child=spawnProcess(command,args,{cwd,env:childEnvironment(env),detached:true,stdio:['ignore','pipe','ignore']});}catch{return resolve(null);}
+    let text='',bytes=0,offset=0,stopped=false,closed=false,leaderExited=false,resolved=false,timeout,termTimer,killTimer,forceTimer;
     function signalGroup(name) {
       if(closed || resolved || leaderExited || child.exitCode!=null || child.signalCode!=null)return;
       try{if(child.pid){process.kill(-child.pid,name);return;}}catch{}
@@ -22,7 +29,9 @@ export function readOpenClawOutput(args,{env=process.env,signal,timeoutMs=12_000
     }
     function complete(code) {
       if(resolved)return;resolved=true;clearTimeout(timeout);clearTimeout(termTimer);clearTimeout(killTimer);clearTimeout(forceTimer);
-      signal?.removeEventListener('abort',onAbort);resolve(!stopped && code===0 ? text : null);
+      signal?.removeEventListener('abort',onAbort);
+      if(!stopped && onLine && offset<text.length)onLine(text.slice(offset));
+      resolve(stopped?null:{code,text});
     }
     function forceCleanup() {
       if(resolved)return;stopped=true;
@@ -39,11 +48,25 @@ export function readOpenClawOutput(args,{env=process.env,signal,timeoutMs=12_000
     }
     function onAbort(){cancel('SIGINT');}
     child.stdout.setEncoding('utf8');
-    child.stdout.on('data',chunk=>{if(stopped)return;bytes+=Buffer.byteLength(chunk,'utf8');if(bytes>maxBytes)return cancel('SIGTERM');text+=chunk;});
+    child.stdout.on('data',chunk=>{
+      if(stopped)return;
+      bytes+=Buffer.byteLength(chunk,'utf8');
+      if(bytes>maxBytes)return cancel('SIGTERM');
+      text+=chunk;
+      if(onLine){
+        let end;
+        while((end=text.indexOf('\n',offset))!==-1){
+          onLine(text.slice(offset,end));
+          offset=end+1;
+        }
+      }
+    });
     child.on('error',()=>{if(!child.pid)closed=true;cancel('SIGTERM');});
     child.on('exit',()=>{leaderExited=true;});
     child.on('close',code=>{closed=true;complete(code);});
     timeout=setTimeout(()=>cancel('SIGTERM'),timeoutMs);
-    signal?.addEventListener('abort',onAbort,{once:true});if(signal?.aborted)onAbort();
+    signal?.addEventListener('abort',onAbort,{once:true});
+    if(signal?.aborted)onAbort();
+    else onStart?.();
   });
 }

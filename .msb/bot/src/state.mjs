@@ -19,6 +19,8 @@ import { ensureDir, statePath } from './paths.mjs';
  * Effort flag (без записи preference) → [Claude policy](./agent/effort.mjs).
  * removedNativeMcp хранит [удаления из профиля бота](./mcp/native-removal.mjs).
  * managedMcp хранит только [ссылки подключений](./mcp/managed.mjs).
+ * ocSessionProfile binds the [named OpenClaw slot](./agent/openclaw-turn.mjs).
+ * ocPrevSessionIds keeps the [three preceding IDs](./sessions/openclaw.mjs).
  * sessionHistory (описания/ID, не native transcript) → [sessions](./sessions/README.md);
  * записи ID/usage/ledger атомарны через [result](./agent/session-result.mjs).
  * Проверки: [paths/state](../tests/paths-state.test.mjs), [session races](../tests/turn-lifecycle.test.mjs).

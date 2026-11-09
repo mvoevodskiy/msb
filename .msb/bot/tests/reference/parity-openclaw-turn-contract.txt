@@ -21,3 +21,65 @@ operation. An acpx success on a different Gateway cannot verify it.
 The new core at fd7c21e still rejects engine oc before starting
 acpx. The corresponding test verifies the ordinary path, with no
 gateway, credentials or network in the synthetic fixture.
+
+92889e6 reproduced six failures in the missing named runner.
+The restoration dispatches ordinary OpenClaw before Claude auth, reuses
+the selected project directory, emits structured ACP progress and waits
+for a terminal result. A partial failure can deliver assistant text
+without publishing a new active session or exposing diagnostic text.
+The prompt and assembled context stay in a temporary file with mode 0600.
+The existing workspace instructions stay on disk. Background dispatch,
+old queue recovery journals and OpenClaw compact have separate contracts.
+
+The reset helper preserves the three most recent previous IDs as old SP
+55416–55428 with My=3 at 55682. A completed turn publishes only when the
+captured engine, project, epoch, active slot and native profile still
+match. The current named turn sends the cancel to its own ACP scope.
+The model and gateway credentials stay under the existing native route.
+
+Two additional RED controls reproduced a foreign explicit native path
+falling through to the shared legacy runner and the same acpx queue
+key after switching two valid owned profiles. An owned route encodes
+both physical paths in the adapter command as well as the child env.
+It saves the profile with the active OC slot and never reuses a previous
+profile's name or ID as the active slot on the new Gateway. The previous
+ID stays in the legacy bounded list. Default and conventional same-HOME
+legacy paths retain the previous adapter route. A foreign explicit
+path fails before opening acpx. See openclaw-turn.test.mjs for the
+six initial scenarios and three profile controls.
+
+The native probe in openclaw-native-mcp-2026.9.5.mjs uses a Docker
+container with --network none and synthetic loopback services. It
+requires a pinned OpenClaw 2026.9.5 CLI and acpx 0.13.0. It uses the
+actual core, opens a real named conversation, adds MCP, calls the
+tool in the same conversation, then switches to a second live Gateway
+with the first queue owner still warm. It checks a distinct new ACP
+session, the archived first ID, and byte-exact sibling configuration.
+
+Reproduction uses the sealed client native-release/runtime.tar.gz with
+SHA-256 f7009c6c8c38528244115ce984e477e3789e033b217c42923f2bcfcf5cc62f6c.
+Use an installed acpx@0.13.0 tree in a temporary directory. The lab ran
+on node:24-alpine, linux/arm64, image
+sha256:06d7adf3e0ef61a13f1d28682726366f97a15aa1888c934d3ecec86c33918b53,
+Node v24.22.1. From the iia repository, set archive to the sealed archive
+path and acpx_lab to the directory containing node_modules/.bin/acpx:
+
+docker run --rm --pull never --network none \
+  --mount "type=bind,source=$archive,target=/fixture/runtime.tar.gz,readonly" \
+  --mount "type=bind,source=$acpx_lab,target=/fixture/acpx,readonly" \
+  --mount "type=bind,source=$PWD/.msb/bot/src,target=/fixture/iia/.msb/bot/src,readonly" \
+  --mount "type=bind,source=$PWD/.msb/bot/shared,target=/fixture/iia/.msb/bot/shared,readonly" \
+  --mount "type=bind,source=$PWD/.msb/bot/tests/reference,target=/fixture/iia/.msb/bot/tests/reference,readonly" \
+  --entrypoint /bin/sh node:24-alpine -c '
+    set -eu
+    mkdir /tmp/native
+    tar -xzf /fixture/runtime.tar.gz -C /tmp/native
+    node /fixture/iia/.msb/bot/tests/reference/openclaw-native-mcp-2026.9.5.mjs \
+      /tmp/native/openclaw/2026.9.5/lib/node_modules/openclaw/openclaw.mjs \
+      /fixture/acpx/node_modules/.bin/acpx
+  '
+
+The container owns all runtime writes. Host data and credentials are outside
+its mounts. The standalone script uses the local model/MCP stub instead of
+external accounts. The Gateway sessions and both temporary profiles disappear
+with the container.

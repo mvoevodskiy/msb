@@ -166,3 +166,14 @@ bot/runner/finalizer с подменой только внешнего child pro
 провайдера, идентичность бота и каталог хода. При частичной ошибке Claude
 проверяется наличие текста ассистента в потоке. Служебный ответ об ошибке
 Codex не получает права записи. [Вход и проверка](../../tests/mcp-marker.test.mjs).
+
+## Обычный ход OpenClaw
+
+[Общий runner](turn.mjs) направляет выбранный OpenClaw в [acpx](openclaw-turn.mjs)
+до проверки Claude auth. Запрос с контекстом уходит в закрытом временном файле.
+[ACP-поток](openclaw-protocol.mjs) передаёт текст, статусы инструментов и
+измеренный контекст в прежнюю доставку. [Профиль](openclaw-profile.mjs) фиксирует
+путь к Gateway в ключе очереди acpx. /stop адресуется текущему имени, а
+[сброс](../sessions/openclaw.mjs) сохраняет прежний ID и меняет только OC-слот.
+[Тесты хода](../../tests/openclaw-turn.test.mjs) и
+[старый контракт](../../tests/reference/parity-openclaw-turn-contract.txt).
