@@ -1,8 +1,13 @@
 import { readClaudeVersion } from './claude-version.mjs';
 import { runClaudeTurn } from './claude.mjs';
 import { resolveEffort, resolveModel, resolvePermMode } from '../state.mjs';
+import {workspaceDir} from '../paths.mjs';
+import {claudeNativeScope} from '../mcp/native-removal.mjs';
 
-/** Route the old Telegram action to a verified provider implementation. */
+/**
+ * Route the old Telegram action to a verified provider implementation.
+ * Keep [native MCP removals](../mcp/native-removal.mjs) active for the compact launch.
+ */
 export async function compactSession(state, { signal, isCurrent = async () => true,
   compactProvider, runClaude = runClaudeTurn, readVersion = readClaudeVersion } = {}) {
   if (state.engine === 'oc') return { ok: false, error: 'Сжатие OpenClaw в этом ядре пока не подключено.' };
@@ -19,10 +24,13 @@ export async function compactSession(state, { signal, isCurrent = async () => tr
   if (signal?.aborted || !await isCurrent()) return { ok: false, aborted: true };
 
   const version = await readVersion();
+  const removal=state.removedNativeMcp?.claude
+    ? await claudeNativeScope(state,workspaceDir(),process.env) : null;
   if (signal?.aborted || !await isCurrent()) return { ok: false, aborted: true };
   let boundary = false;
   const result = await runClaude({
     prompt: '/compact', sessionId: state.ccSessionId, providerId: 'claude',
+    ...(removal?{mcp:{claudeMcpScope:removal.scope,claudeDeniedMcp:removal.denied}}:{}),
     model: resolveModel(state), effort: resolveEffort(state,version), permissionMode: resolvePermMode(state,version), signal, maxTurns: 1,
     disallowedTools: ['Bash', 'WebSearch', 'WebFetch', 'Agent', 'Task', 'Workflow', 'Monitor', 'Skill', 'Read', 'Edit', 'Write', 'Glob', 'Grep'],
     onEvent: (event) => { if (event.type === 'system' && event.subtype === 'compact_boundary') boundary = true; },

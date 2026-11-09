@@ -1,9 +1,14 @@
-/** Native Codex compaction; an RPC acknowledgement alone is not success. */
+/**
+ * Native Codex compaction with [scoped MCP removal](./codex-mcp-launch.mjs).
+ * An RPC acknowledgement alone is not success.
+ */
 import { spawn } from 'node:child_process';
 import { findBin } from './adapters/run-cli.mjs';
 import { decodeExtSession, loadStore } from './store.mjs';
 import { isValidCodexThreadId } from './codex-native.mjs';
 import { codexChildEnvironment } from './codex-auth-env.mjs';
+import {codexNativeRemoval} from '../shared/mcp-native-scope.mjs';
+import {CODEX_NATIVE_MCP_ERROR,prepareCodexMcp} from './codex-mcp-launch.mjs';
 
 export async function compactCodex(snapshot, { signal, isCurrent = async () => true, env = process.env,
   run = runCodexCompaction } = {}) {
@@ -16,20 +21,31 @@ export async function compactCodex(snapshot, { signal, isCurrent = async () => t
   const bin = findBin('codex', auth.env);
   if (!bin) return { ok: false, error: 'Codex CLI не найден.' };
   const store = await loadStore(env);
+  const cwd=process.cwd();
+  const removal=await codexNativeRemoval(snapshot,cwd,auth.env);
+  let mcp;
+  if(removal){
+    mcp=await prepareCodexMcp(bin,cwd,{
+      ...auth.env,MSB_TURN_MCP_TEMPLATES:undefined,MSB_TURN_MCP_REMOVE:JSON.stringify(removal),
+    },{signal,ownProcessGroup:true});
+    if(signal?.aborted || !await isCurrent())return {ok:false,aborted:true};
+    if(mcp.blocked)return {ok:false,error:CODEX_NATIVE_MCP_ERROR};
+  }
   return run({
     command: bin, threadId: session.nativeId, model: store.models?.codex,
-    effort: store.efforts?.codex, signal, isCurrent, env: auth.env,
+    effort: store.efforts?.codex, signal, isCurrent, env: mcp?.env ?? auth.env,
+    ...(mcp?.args.length?{mcpArgs:mcp.args}:{}),
   });
 }
 
 export function runCodexCompaction({ command, threadId, model, effort, signal,
-  isCurrent = async () => true, env = process.env, timeoutMs = 180_000, spawnProcess = spawn } = {}) {
+  isCurrent = async () => true, env = process.env, mcpArgs=[], timeoutMs = 180_000, spawnProcess = spawn } = {}) {
   if (!isValidCodexThreadId(threadId)) return Promise.resolve({ ok: false, error: 'Нет активной сессии Codex.' });
   if (signal?.aborted) return Promise.resolve({ ok: false, aborted: true });
   return new Promise((resolve) => {
     let child;
     try {
-      child = spawnProcess(command, ['app-server'], { env, detached: true, stdio: ['pipe', 'pipe', 'ignore'] });
+      child = spawnProcess(command, [...mcpArgs,'app-server'], { env, detached: true, stdio: ['pipe', 'pipe', 'ignore'] });
     } catch {
       resolve({ ok: false, error: 'Не удалось запустить Codex CLI.' });
       return;

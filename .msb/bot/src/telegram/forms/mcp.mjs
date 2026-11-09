@@ -9,6 +9,7 @@ import {mcpTemplate} from '../../../shared/mcp-templates.mjs';
 import {codexManagedMcpName} from '../../../shared/codex-mcp-name.mjs';
 import {mcpCatalog,selectedMcpProvider} from '../../mcp/catalog.mjs';
 import {enrollMcpTemplate} from '../../mcp/managed.mjs';
+import {visibleNativeMcp} from '../../mcp/native-removal.mjs';
 
 const changed='Движок изменился. Открой /start → 🔌 MCP и попробуй ещё раз.';
 const html={parse_mode:'HTML'};
@@ -41,7 +42,8 @@ export async function handleMcpInput({ctx,text,pending,chatId}) {
     return;
   }
   const nativeName=draft.provider==='codex'?codexManagedMcpName(template.name):template.name;
-  if(catalog.entries.some(row=>row.name===template.name || row.name===nativeName)){
+  const reserved=nativeName!==template.name && catalog.entries.some(row=>row.name===nativeName);
+  if(reserved || visibleNativeMcp(catalog,state).entries.some(row=>row.name===template.name)){
     await ctx.reply('Этот сервер уже настроен в профиле выбранного движка.');
     return;
   }

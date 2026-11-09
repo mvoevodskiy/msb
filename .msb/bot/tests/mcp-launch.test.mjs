@@ -184,9 +184,12 @@ test('a same-name native Codex entry keeps its own card and the bot entry still 
   assert.notEqual(normal.callback_data,managed.callback_data);
   await f.callback(normal.callback_data);
   assert.ok(f.edits.at(-1).includes('mcp__apify__*'));
-  assert.ok(!f.editOptions.at(-1).reply_markup.inline_keyboard.flat().some(row=>row.text==='🗑 Удалить'));
+  const nativeDelete=f.editOptions.at(-1).reply_markup.inline_keyboard.flat().find(row=>row.text==='🗑 Удалить');
+  assert.match(nativeDelete?.callback_data,/^mcp:delete:d~/);
   await f.callback(managed.callback_data);
   assert.ok(f.edits.at(-1).includes('mcp__'+codexManagedMcpName('apify')+'__*'));
+  const ownDelete=f.editOptions.at(-1).reply_markup.inline_keyboard.flat().find(row=>row.text==='🗑 Удалить');
+  assert.match(ownDelete?.callback_data,/^mcp:delete:m~/);
   await turn();
   const call=(await native.trace()).at(-1);
   assert.ok(call.argv.includes(apifyOverride()));

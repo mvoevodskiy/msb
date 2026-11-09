@@ -9,19 +9,29 @@ import os from 'node:os';
 import path from 'node:path';
 import {readEnvMap} from '../env/store.mjs';
 import {configuredMcpTemplates} from './managed.mjs';
-import {claudeMcpPermission,readClaudeMcp} from './claude.mjs';
+import {claudeNativeScope} from './native-removal.mjs';
+import {codexNativeRemoval} from '../../shared/mcp-native-scope.mjs';
+import {claudeMcpPermission} from './claude.mjs';
 
-export async function prepareMcpLaunch(state,provider,env=process.env) {
+export async function prepareMcpLaunch(state,provider,env=process.env,cwd=process.cwd()) {
+  if(provider!=='claude' && provider!=='codex')return null;
   const templates=configuredMcpTemplates(state,provider);
-  if(provider!=='claude' && !templates.length)return null;
-  let directory,claudeLaunch=null;
+  let directory,base=null;
   try {
-    const native=provider==='claude'?await readClaudeMcp({env}):null;
-    if(provider==='claude' && !native)return null;
-    const nativeNames=new Set(native?.entries.map(row=>row.name));
-    const claudeAllowedTools=[...nativeNames].map(claudeMcpPermission).filter(Boolean);
-    if(claudeAllowedTools.length)claudeLaunch={claudeAllowedTools};
-    if(!templates.length)return claudeLaunch;
+    const nativeNames=new Set(),claudeAllowedTools=[];
+    if(provider==='claude') {
+      const {native,scope,denied:claudeDeniedMcp}=await claudeNativeScope(state,cwd,env);
+      const removed=new Set(claudeDeniedMcp);
+      for(const {name} of native?.entries ?? [])if(!removed.has(name))nativeNames.add(name);
+      claudeAllowedTools.push(...[...nativeNames].map(claudeMcpPermission).filter(Boolean));
+      const claudeMcpScope=state.removedNativeMcp?.claude?scope:undefined;
+      if(claudeAllowedTools.length || claudeMcpScope)base={claudeAllowedTools,claudeDeniedMcp,claudeMcpScope};
+      if(!native)return base;
+    }else{
+      const removal=await codexNativeRemoval(state,cwd,env);
+      if(removal)base={codexNativeRemoval:removal};
+    }
+    if(!templates.length)return base;
 
     const {map}=await readEnvMap(env);
     const values={},selected=[];
@@ -31,8 +41,8 @@ export async function prepareMcpLaunch(state,provider,env=process.env) {
       selected.push(template);
       values[template.childKey]=value;
     }
-    if(!selected.length)return claudeLaunch;
-    if(provider==='codex')return {env:values,codexTemplates:selected.map(template=>template.name)};
+    if(!selected.length)return base;
+    if(provider==='codex')return {...base,env:values,codexTemplates:selected.map(template=>template.name)};
 
     const mcpServers={};
     for(const template of selected){
@@ -47,9 +57,11 @@ export async function prepareMcpLaunch(state,provider,env=process.env) {
     await fs.writeFile(claudeConfig,JSON.stringify({mcpServers}),{mode:0o600});
     const close=()=>fs.rm(directory,{recursive:true,force:true}).catch(()=>{});
     claudeAllowedTools.push(...selected.map(template=>claudeMcpPermission(template.name)));
-    return {env:values,claudeConfig,claudeAllowedTools,close};
+    // A valid bot-owned replacement takes the place of the hidden native name.
+    const claudeDeniedMcp=base?.claudeDeniedMcp.filter(name=>!Object.hasOwn(mcpServers,name));
+    return {...base,env:values,claudeConfig,claudeAllowedTools,claudeDeniedMcp,close};
   }catch{
     if(directory)await fs.rm(directory,{recursive:true,force:true}).catch(()=>{});
-    return claudeLaunch;
+    return base;
   }
 }

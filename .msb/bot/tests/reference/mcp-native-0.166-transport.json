@@ -39,6 +39,13 @@
     "no_native_connection_for_a": true,
     "sibling_keeps_native_tool": true,
     "both_keep_other_tool": true,
-    "shared_config_exact": true
+    "readded_bot_tool_has_own_credential": true,
+    "sibling_keeps_its_original_tools": true,
+    "shared_config_exact": true,
+    "absent_native_target_skips_mask": true
+  },
+  "native_target_removed_after_preflight": {
+    "thread_started": false,
+    "scope": "native parser limitation verified with --late-absence in an owned loopback profile"
   }
 }

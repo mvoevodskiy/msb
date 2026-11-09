@@ -17,6 +17,7 @@ import { ensureDir, statePath } from './paths.mjs';
  * Отдельные provider IDs/model/effort → [ext store](../../../overlay/bot/ext/store.mjs);
  * переключение бесед → [provider sessions](../../../overlay/bot/ext/provider-sessions.mjs).
  * Effort flag (без записи preference) → [Claude policy](./agent/effort.mjs).
+ * removedNativeMcp хранит [удаления из профиля бота](./mcp/native-removal.mjs).
  * sessionHistory (описания/ID, не native transcript) → [sessions](./sessions/README.md);
  * записи ID/usage/ledger атомарны через [result](./agent/session-result.mjs).
  * Проверки: [paths/state](../tests/paths-state.test.mjs), [session races](../tests/turn-lifecycle.test.mjs).

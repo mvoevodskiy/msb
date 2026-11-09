@@ -19,11 +19,12 @@ const descriptions={
   },
 };
 
-export function mcpAddScreen({entries=[],provider}={}) {
+export function mcpAddScreen({entries=[],provider}={},nativeEntries=entries) {
   const installed=new Set(entries.map(row=>row.name));
+  const nativeNames=new Set(nativeEntries.map(row=>row.name));
   const keyboard=new InlineKeyboard(),lines=[];
   for(const [name,{label,body}] of Object.entries(descriptions)){
-    if(installed.has(name) || (provider==='codex' && installed.has(codexManagedMcpName(name))))continue;
+    if(installed.has(name) || (provider==='codex' && nativeNames.has(codexManagedMcpName(name))))continue;
     lines.push(`[+] <b>${label}</b> — ${body}`);
     keyboard.text(label,'mcp:setup:'+name);
   }

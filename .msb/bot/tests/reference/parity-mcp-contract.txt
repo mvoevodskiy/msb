@@ -165,3 +165,39 @@ server-level permission. Per-invocation denial of a separate native
 server still works, with original native definitions preserved. The
 evidence covers the native CLI with a local protocol stub and no real
 commercial-service or model account.
+
+Inherited removal checkpoint. 9506081 reproduces the missing old Delete
+action. Old 121073–121108 showed the button and refreshed the workspace
+after Ii at 17998–18005 deleted only the shared Claude mcpServers key.
+The accepted per-bot boundary keeps that shared file and its credentials.
+The new native delete reference binds bot, provider, physical user config
+file and name, while old managed delete references stay valid. It never
+treats an old raw read link as authority to remove. Catalog, Add and
+direct template setup use the same visible selection. Re-add preserves
+the independent bot credential and never removes the shared key.
+
+The scope metadata lives under removedNativeMcp in the bot state. Normal
+turns and /compact project it through native launch. Claude adds a
+per-invocation deniedMcpServers setting, which keeps user/project deny
+settings and their files. A validated managed replacement of the same
+name uses the existing native config precedence. Codex verifies the
+current user layer and overlays enabled=false only on present names.
+A failed preflight blocks the scoped Codex launch. Both runners also
+stop if the physical profile changes after preparation, including
+when the original profile has no exclusions and the new one does.
+The scope is by effective name for that bot/profile, including any
+same-name project override. Native administrative precedence applies.
+
+Two compact bypass RED assertions, one stale catalog RED assertion,
+and one launch-retarget RED assertion per CLI were reproduced during
+integration. The fixtures exercise the real compact routing/shim, reject
+stale cross-bot or file references, and capture the new scope on the
+next invocation.
+The Codex 0.166 owned probe applies the current production adapter with
+both disable and managed re-add options, then calls the retained and
+managed tools and verifies no disabled endpoint connection. The sibling
+invocation can still call the original native tool and the config bytes
+match. An absent name before preparation does not get an overlay. The
+separate --late-absence case shows that a native target removed between
+the two processes can stop native startup. No automatic replay was added.
+All native probes use loopback, synthetic credentials and owned profiles.

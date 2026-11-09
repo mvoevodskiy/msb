@@ -5,8 +5,9 @@
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import {homeDir,sessionDir} from '../paths.mjs';
+import {sessionDir} from '../paths.mjs';
 import {isConfigObject,mcpUserEntries} from '../../shared/mcp-user-entries.mjs';
+import {canonicalMcpPath,claudeMcpPath} from '../../shared/mcp-native-scope.mjs';
 
 async function readStatus(env,signal) {
   try {
@@ -22,19 +23,19 @@ async function readStatus(env,signal) {
   }catch{return {};}
 }
 
-export async function readClaudeMcp({env=process.env,signal,withStatus=false}={}) {
-  const root=path.resolve(env.CLAUDE_CONFIG_DIR || homeDir(env),'.claude.json');
+export async function readClaudeMcp({env=process.env,cwd=process.cwd(),signal,withStatus=false}={}) {
+  const root=claudeMcpPath(cwd,env),scope=await canonicalMcpPath(root);
   let definitions;
   try {
-    const config=JSON.parse(await fs.readFile(root,{encoding:'utf8',signal}));
+    const config=JSON.parse(await fs.readFile(scope,{encoding:'utf8',signal}));
     if(!isConfigObject(config))return null;
     definitions=config.mcpServers ?? undefined;
   }catch(error){if(error.code!=='ENOENT')return null;}
   const entries=mcpUserEntries(definitions);
   if(!entries)return null;
-  if(!withStatus || !entries.length)return {root,entries};
+  if(!withStatus || !entries.length)return {root,scope,entries};
   const {byName,at}=await readStatus(env,signal);
-  return {root,at,entries:entries.map(entry=>({...entry,status:byName?.get(entry.name)}))};
+  return {root,scope,at,entries:entries.map(entry=>({...entry,status:byName?.get(entry.name)}))};
 }
 
 export function claudeMcpPermission(name) {

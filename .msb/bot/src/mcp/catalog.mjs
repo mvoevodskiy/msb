@@ -21,8 +21,9 @@ export async function mcpCatalog(state,{env=process.env,readProvider,signal,with
       const entries=await readOpenClawMcp(options);
       return entries?{provider,entries}:null;
     }
-    const result=provider==='claude' ? await readClaudeMcp({...options,withStatus})
-      : provider==='codex' ? await readProvider?.(state,{...options,cwd:projectLocations(env).workspace})
+    const cwd=projectLocations(env).workspace;
+    const result=provider==='claude' ? await readClaudeMcp({...options,cwd,withStatus})
+      : provider==='codex' ? await readProvider?.(state,{...options,cwd})
       : null;
     return result && Array.isArray(result.entries) ? {...result,provider} : null;
   }catch{return null;}

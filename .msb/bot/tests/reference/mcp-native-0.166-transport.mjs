@@ -7,6 +7,7 @@ import os from 'node:os';
 import path from 'node:path';
 import {createInterface} from 'node:readline';
 import {prepareCodexMcp} from '../../../../overlay/bot/ext/codex-mcp-launch.mjs';
+import {codexManagedMcpName} from '../../shared/codex-mcp-name.mjs';
 
 const binary=process.argv[2];
 assert.ok(binary && path.isAbsolute(binary),'Pass an absolute path to Codex 0.166.0');
@@ -22,7 +23,7 @@ const fixture=http.createServer(async(req,res)=>{
       res.writeHead(404).end();
       return;
     }
-    if(!['/mcp','/managed','/native'].includes(req.url) || req.method!=='POST'){
+    if(!['/mcp','/managed','/native','/owned'].includes(req.url) || req.method!=='POST'){
       res.writeHead(405).end();
       return;
     }
@@ -33,7 +34,7 @@ const fixture=http.createServer(async(req,res)=>{
     const key=req.headers['x-api-key']===active.key;
     const legacy=req.headers['x-legacy']==='fixture-late-native-header';
     headerChecks.push({profile:active.id,method:msg.method,route:req.url,bearer,key,legacy});
-    const allowed=req.url==='/mcp'?bearer && key:req.url==='/managed'?bearer:legacy;
+    const allowed=req.url==='/mcp'?bearer && key:req.url==='/native'?legacy:bearer;
     if(!allowed){res.writeHead(401).end();return;}
     if(msg.id===undefined){res.writeHead(202).end();return;}
     const outcomes={
@@ -197,7 +198,7 @@ async function scopedNativeRemoval() {
     'bearer_token_env_var = "FIXTURE_BEARER"','',
   ].join('\n');
   await fs.writeFile(config,inserted,{mode:0o600});
-  async function one(profile,overrides) {
+  async function one(profile,overrides,extraEnv,ownName) {
     active=profile;
     return runApp(overrides,profile,async request=>{
       const {thread}=await request('thread/start',{cwd,ephemeral:true});
@@ -206,12 +207,23 @@ async function scopedNativeRemoval() {
       const call=server=>request('mcpServer/tool/call',{threadId:thread.id,server,tool:'fixture_probe',arguments:{}});
       assert.equal((await call('another-tool')).content?.[0]?.text,'fixture-tool-result');
       if(names.includes('native-shared'))assert.equal((await call('native-shared')).content?.[0]?.text,'fixture-tool-result');
+      if(ownName)assert.equal((await call(ownName)).content?.[0]?.text,'fixture-tool-result');
       return names.includes('native-shared');
-    });
+    },extraEnv);
   }
   try{
+    const scope=await fs.realpath(config);
+    const removal={scope,names:['native-shared']};
+    const aEnv={...common,MSB_TURN_MCP_REMOVE:JSON.stringify(removal),
+      MSB_TURN_MCP_TEMPLATES:'apify',MSB_MCP_APIFY_TOKEN:a.bearer};
+    const prepared=await prepareCodexMcp(binary,cwd,aEnv);
+    assert.ok(!prepared.blocked);
+    assert.ok(prepared.args.filter((_,index)=>index%2===0).every(arg=>arg==='-c'));
+    assert.ok(!prepared.args.some(arg=>arg.includes(a.bearer)));
+    const overrides=prepared.args.filter((_,index)=>index%2===1)
+      .map(arg=>arg.replace('https://mcp.apify.com',base+'/owned'));
     const start=headerChecks.length;
-    const aVisible=await one(a,['mcp_servers={"native-shared"={enabled=false}}']);
+    const aVisible=await one(a,overrides,prepared.env,codexManagedMcpName('apify',aEnv));
     const aCalls=headerChecks.slice(start);
     const split=headerChecks.length;
     const bVisible=await one(b,[]);
@@ -220,8 +232,22 @@ async function scopedNativeRemoval() {
       no_native_connection_for_a:aCalls.every(row=>row.route!=='/native'),
       sibling_keeps_native_tool:bVisible && bCalls.some(row=>row.route==='/native'&&row.method==='tools/call'&&row.legacy),
       both_keep_other_tool:[aCalls,bCalls].every(rows=>rows.some(row=>row.route==='/managed'&&row.method==='tools/call'&&row.bearer)),
+      readded_bot_tool_has_own_credential:aCalls.some(row=>row.route==='/owned'&&row.method==='tools/call'&&row.bearer&&!row.legacy),
+      sibling_keeps_its_original_tools:bCalls.every(row=>row.route!=='/owned'),
       shared_config_exact:await fs.readFile(config,'utf8')===inserted};
+    await fs.writeFile(config,source,{mode:0o600});
+    const missing=await prepareCodexMcp(binary,cwd,{...common,MSB_TURN_MCP_REMOVE:JSON.stringify(removal)});
+    observed.absent_native_target_skips_mask=!missing.blocked && missing.args.length===0;
     assert.ok(Object.values(observed).every(Boolean));
+    if(process.argv.includes('--late-absence')){
+      let started=false;
+      try{
+        await runApp([overrides[0]],a,async request=>{
+          await request('thread/start',{cwd,ephemeral:true});started=true;
+        });
+      }catch{}
+      console.error('late native absence '+JSON.stringify({started}));
+    }
     return observed;
   }finally{await fs.writeFile(config,source,{mode:0o600});}
 }

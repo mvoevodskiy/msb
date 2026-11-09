@@ -43,11 +43,23 @@ function record(row){fs.appendFileSync(data.log,JSON.stringify(row)+'\\n');}
 function presence(){
  return {apify:Boolean(process.env.MSB_MCP_APIFY_TOKEN),supadata:Boolean(process.env.MSB_MCP_SUPADATA_TOKEN)};
 }
-if(argv[0]==='app-server'){
+if(argv.at(-1)==='app-server'){
  createInterface({input:process.stdin}).on('line',line=>{
   const request=JSON.parse(line);
   if(request.method==='initialize'){console.log(JSON.stringify({id:request.id,result:{}}));return;}
   if(request.method==='initialized')return;
+  if(request.method==='thread/resume'){
+   record({kind:'codex-compact',argv});
+   console.log(JSON.stringify({id:request.id,result:{thread:{id:request.params.threadId}}}));
+   return;
+  }
+  if(request.method==='thread/compact/start'){
+   const {threadId}=request.params;
+   console.log(JSON.stringify({id:request.id,result:{}}));
+   console.log(JSON.stringify({method:'item/completed',params:{threadId,turnId:'turn-fixture',item:{type:'contextCompaction'}}}));
+   console.log(JSON.stringify({method:'turn/completed',params:{threadId,turn:{id:'turn-fixture',status:'completed'}}}));
+   return;
+  }
   if(request.method!=='config/read')process.exit(3);
   const occupied=fs.existsSync(data.collision)?fs.readFileSync(data.collision,'utf8').trim():'';
   const config={mcp_servers:occupied?{[occupied]:{url:'https://native.invalid',http_headers:{Authorization:'fixture-native-only'}}}:{}};
@@ -67,6 +79,7 @@ if(argv[0]==='app-server'){
  console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'fixture complete'}}));
  console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:1,output_tokens:1}}));
 }else process.exit(4);`;
+  await fs.writeFile(log,'',{mode:0o600});
   await fs.writeFile(nativeClaude,claudeSource,{mode:0o600});
   await fs.writeFile(path.join(bin,'claude'),'#!'+process.execPath+'\nawait import('+JSON.stringify(shim)+');\n',{mode:0o700});
   await fs.writeFile(path.join(bin,'codex'),'#!'+process.execPath+'\n'+codexSource,{mode:0o700});

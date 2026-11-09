@@ -80,7 +80,7 @@ export async function runAgentTurn({
 
   if (signal?.aborted) return aborted();
   const providerId=state.extAuthBypass || 'claude';
-  mcp=await prepareMcpLaunch(state,providerId,env);
+  mcp=await prepareMcpLaunch(state,providerId,env,cwd);
   if (signal?.aborted) return aborted();
 
   let lastTool = '';

@@ -11,6 +11,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { workspaceDir } from '../paths.mjs';
+import { canonicalMcpPath, claudeMcpPath } from '../../shared/mcp-native-scope.mjs';
 
 const DEFAULT_MAX_TURNS = 200;
 const DEFAULT_ALLOWED_TOOLS = 'Bash,WebSearch,WebFetch,Agent,Task,Workflow,Monitor,Skill,Read,Edit,Write,Glob,Grep';
@@ -87,6 +88,10 @@ export async function runClaudeTurn(opts) {
   }
 
   if (opts.mcp?.claudeConfig) args.push('--mcp-config', opts.mcp.claudeConfig);
+  if (opts.mcp?.claudeDeniedMcp?.length) {
+    const deniedMcpServers=opts.mcp.claudeDeniedMcp.map(serverName=>({serverName}));
+    args.push('--settings',JSON.stringify({deniedMcpServers}));
+  }
   if (opts.model) args.push('--model', opts.model);
   if (opts.effort) args.push('--effort', opts.effort);
   if (opts.sessionId) args.push('--resume', opts.sessionId);
@@ -96,6 +101,8 @@ export async function runClaudeTurn(opts) {
     throw new Error(`MESSAGE_TOO_LARGE:${(promptBytes / 1024 / 1024).toFixed(1)}`);
   }
 
+  const mcpScope = opts.mcp?.claudeMcpScope;
+  const scopeChanged = mcpScope && await canonicalMcpPath(claudeMcpPath(cwd, process.env)) !== mcpScope;
   if (opts.signal?.aborted) {
     if (sysPromptFile) await fs.unlink(sysPromptFile).catch(() => {});
     return {
@@ -103,6 +110,11 @@ export async function runClaudeTurn(opts) {
       exitCode: null, signal: null, aborted: true,
       usage: { inputTokens: 0, outputTokens: 0 }, toolsUsed: [], toolCount: 0, stderr: '',
     };
+  }
+
+  if (scopeChanged) {
+    if (sysPromptFile) await fs.unlink(sysPromptFile).catch(() => {});
+    throw new Error('Профиль Claude изменился при подготовке MCP.');
   }
 
   console.error(
@@ -122,6 +134,7 @@ export async function runClaudeTurn(opts) {
           ...process.env,
           ...opts.mcp?.env,
           MSB_TURN_MCP_TEMPLATES: opts.mcp?.codexTemplates?.join(','),
+          MSB_TURN_MCP_REMOVE: opts.mcp?.codexNativeRemoval?JSON.stringify(opts.mcp.codexNativeRemoval):undefined,
           MSB_TURN_PROVIDER: opts.providerId || undefined,
           CI: '1',
           CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
