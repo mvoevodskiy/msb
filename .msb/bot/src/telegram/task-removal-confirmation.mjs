@@ -100,7 +100,7 @@ async function bulkResponse(result) {
   if (archive) lines.push('Снимок задач сохранён на сервере: ' + archive + '.');
   if (failed.length) lines.push('⚠ Не удалось снять: ' + failed.join(', ') + '.');
   if (nativeMayStillRun) lines.push('🔴 Задания OpenClaw могут продолжать срабатывать по своему расписанию.');
-  if ((await listLegacyTimers().catch(() => [])).some(timer => timer.enabled !== false)) {
+  if ((await listLegacyTimers().catch(() => [])).some(timer => timer.enabled)) {
     lines.push('Таймеры с прошлой настройки работают отдельно.');
   }
   return { toast: partial ? 'Снёс не всё' : 'Снёс', text: lines.join('\n\n') };

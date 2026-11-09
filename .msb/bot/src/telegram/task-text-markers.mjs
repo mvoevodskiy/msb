@@ -7,7 +7,7 @@
 import { editSavedTaskText } from '../autonomy/saved-task-text-edit.mjs';
 import { savedTaskSpent } from '../autonomy/reminder-schedule.mjs';
 import { taskTextOperations } from '../autonomy/saved-task-text.mjs';
-import { replaceAutonomyMarkers, reserveAutonomyMarkers } from './autonomy-marker-text.mjs';
+import { replaceAutonomyMarkers, reserveAutonomyMarkers, restoreAutonomyLiterals } from './autonomy-marker-text.mjs';
 import { shownTaskSelectors, taskTextBlocks } from './task-text-marker-syntax.mjs';
 import { describeSavedTaskSchedule } from './screens/task-inspection.mjs';
 
@@ -72,6 +72,5 @@ export async function processTaskTextMarkers(text, context, { commands, shown })
 }
 
 export function restoreTaskTextLiterals(text, { commands }) {
-  if (!commands) return text;
-  return text.replace(tokenPattern, token => commands.get(token)?.literal ? commands.get(token)[0] : token);
+  return restoreAutonomyLiterals(text, commands, tokenPattern);
 }

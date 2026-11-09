@@ -1,7 +1,7 @@
 /**
  * Deliver a question, persist its message binding, then expose its buttons.
  * Used by [limits](./limit-confirmation.mjs), [task removal](./task-removal-confirmation.mjs)
- * and [rescheduling](./task-reschedule-confirmation.mjs).
+ * [rescheduling](./task-reschedule-confirmation.mjs), and [timer deletion](./legacy-timer-confirmation.mjs).
  * Retire the binding and clear the keyboard when publication fails.
  */
 import { escapeHtml } from './edit.mjs';

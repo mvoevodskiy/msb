@@ -3,7 +3,7 @@
  * [reminder](./reminder-markers.mjs), [pause](./pause-markers.mjs) and
  * [limit](./limit-markers.mjs), [inspection](./task-inspection-markers.mjs) and
  * [task control](./task-control-markers.mjs), [cleanup](./task-removal-markers.mjs)
- * and [reschedule](./task-reschedule-markers.mjs).
+ * [reschedule](./task-reschedule-markers.mjs), and [legacy timers](./legacy-timer-markers.mjs).
  */
 import { randomUUID } from 'node:crypto';
 import { escapeHtml } from './edit.mjs';
@@ -17,6 +17,8 @@ export const taskControlMarker = /\[(PAUSE_TASK|RESUME_TASK):([^\]\r\n]*)\]/g;
 export const taskCancelMarker = /\[CANCEL_TASK:(?:([^\[\]\r\n]*\[[^\]\r\n]*)\][ \t]*\]|([^\]\r\n]*)\])/g;
 // Protect a nested marker even if the reschedule was left open at line end.
 export const taskRescheduleMarker = /\[RESCHEDULE_TASK:(?:((?:[^\[\]\r\n]|\[[^\]\r\n]*\])*)\]|[^\r\n]*)/g;
+// A multiline selector is valid. Nested or unfinished syntax is only shielded.
+export const legacyTimerMarker = /\[(LIST_TIMERS)\]|\[(TIMER_OFF|TIMER_ON|TIMER_DELETE):(?:([^\[\]]*)\]|(?:[^\[\]\r\n]|\[[^\]\r\n]*\])*\]|\s*[^\r\n]*)/g;
 export const taskInspectionMarker = /\[(LIST_TASKS|TASK_RUNS)\]|\[(SHOW_TASK|TASK_RUNS):([^\]\r\n]*)\]/g;
 export const autonomyExample = /\x60{3}[\s\S]*?(?:\x60{3}|(?![\s\S]))|\x60[^\x60\r\n]+\x60|«[^»]*»|^[ \t]*>.*$|<(pre|code|blockquote)\b[^>]*>[\s\S]*?<\/\1>/gim;
 
@@ -35,15 +37,33 @@ const doubleQuoted = /"(?:\\[\s\S]|[^"\\])*"/g;
 const singleQuoted = /(?<![\p{L}\p{N}])'(?:\\[\s\S]|[^'\\]|'(?=[\p{L}\p{N}]))*'(?![\p{L}\p{N}])/gu;
 const structuredOpen = /\[(?:SCHEDULE_TASK|INSTALL_SKILL)\]/g;
 
+function autonomyQuoteRanges(text) {
+  // Delimiters inside verbatim text or examples cannot open a quote in the reply.
+  const quoteInput = text.replace(autonomyExample, block => block.replace(/["'\\]/g, ' '));
+  return [...quoteInput.matchAll(doubleQuoted), ...quoteInput.matchAll(singleQuoted)];
+}
+
+export function literalAutonomyRanges(text) {
+  return [...text.matchAll(autonomyExample), ...autonomyQuoteRanges(text)];
+}
+
+export function maskAutonomyRanges(text, ranges) {
+  const parts = [];
+  let offset = 0;
+  for (const range of ranges) {
+    parts.push(text.slice(offset, range.index), range[0].replace(/[^\r\n]/g, ' '));
+    offset = range.index + range[0].length;
+  }
+  return parts.join('') + text.slice(offset);
+}
+
 export function taskMutationRanges(text, adjacent = []) {
   const payloads = [
     ...adjacent, ...text.matchAll(scheduleMarker), ...text.matchAll(limitMarker),
     ...text.matchAll(taskControlMarker), ...text.matchAll(taskInspectionMarker), ...text.matchAll(SKILL_BLOCKS),
     ...mcpMarkerRanges(text).map(({ start, end }) => ({ index: start, 0: text.slice(start, end) })),
   ];
-  // Delimiters inside verbatim text or examples cannot open a quote in the reply.
-  const quoteInput = text.replace(autonomyExample, block => block.replace(/["'\\]/g, ' '));
-  const quotes = [...quoteInput.matchAll(doubleQuoted), ...quoteInput.matchAll(singleQuoted)];
+  const quotes = autonomyQuoteRanges(text);
   const unclosed = outsideExamples(text, structuredOpen, [...payloads, ...quotes]).find(block => {
     const tail = text.slice(block.index + block[0].length);
     return /^[ \t]*\r?\n/.test(tail) || /^\s*[\[{]/.test(tail);
@@ -66,6 +86,14 @@ export function reserveAutonomyMarkers(text, blocks, prefix) {
     offset = block.index + block[0].length;
   }
   return { text: parts.join('') + text.slice(offset), commands };
+}
+
+export function restoreAutonomyLiterals(text, commands, pattern) {
+  if (!commands) return text;
+  return text.replace(pattern, token => {
+    const block = commands.get(token);
+    return block?.literal ? block[0] : token;
+  });
 }
 
 const safeText = value => escapeHtml(value)

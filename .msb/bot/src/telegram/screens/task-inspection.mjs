@@ -110,7 +110,7 @@ function timerSchedule(timer) {
 }
 
 function timerSections(timers, entries) {
-  const enabled = timers.filter(timer => timer.enabled !== false);
+  const enabled = timers.filter(timer => timer.enabled);
   if (!enabled.length) return [];
   const rows = enabled.map(timer => '• ' + timer.name + ' — ' + timerSchedule(timer));
   const duplicates = [...new Set(enabled.filter(timer => entries.some(({ action }) => legacyTimerOverlap(timer, action)))

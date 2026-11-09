@@ -36,6 +36,7 @@ import { processPauseMarkers } from './pause-markers.mjs';
 import { processGroupTaskRemovalMarkers, processTaskCancelMarkers } from './task-removal-markers.mjs';
 import { prepareTaskRescheduleMarkers, processTaskRescheduleMarkers } from './task-reschedule-markers.mjs';
 import { prepareTaskTextMarkers, processTaskTextMarkers, restoreTaskTextLiterals } from './task-text-markers.mjs';
+import { prepareLegacyTimerMarkers, processLegacyTimerMarkers, restoreLegacyTimerLiterals } from './legacy-timer-markers.mjs';
 import { processTaskControlMarkers } from './task-control-markers.mjs';
 import { processTaskInspectionMarkers } from './task-inspection-markers.mjs';
 import { processLimitMarkers } from './limit-markers.mjs';
@@ -566,7 +567,8 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       };
       const textEdits = prepareTaskTextMarkers(out.text);
       const reschedule = prepareTaskRescheduleMarkers(textEdits.text);
-      const reminders = await processReminderMarkers(reschedule.text, autonomy);
+      const legacyTimers = prepareLegacyTimerMarkers(reschedule.text);
+      const reminders = await processReminderMarkers(legacyTimers.text, autonomy);
       const pausedTasks = await processPauseMarkers(reminders, autonomy, ctx);
       const askedRemoval = await processGroupTaskRemovalMarkers(pausedTasks, autonomy, ctx);
       const inspected = await processTaskInspectionMarkers(askedRemoval, autonomy, ctx);
@@ -574,12 +576,13 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       const editedTasks = await processTaskTextMarkers(rescheduled, autonomy, textEdits);
       const cancelled = await processTaskCancelMarkers(editedTasks, autonomy, ctx);
       const controlled = await processTaskControlMarkers(cancelled, autonomy);
-      const actionText = await processLimitMarkers(controlled, autonomy, ctx);
+      const timers = await processLegacyTimerMarkers(controlled, autonomy, ctx, legacyTimers);
+      const actionText = await processLimitMarkers(timers, autonomy, ctx);
       const replyText = await processInstallMarkers({ ...out, text: actionText }, { signal, readProvider: bot[Symbol.for('msb.mcpProvider')] });
       signal.throwIfAborted();
       turn.completed = true;
       responseReady = true;
-      const restoreText = value => restoreTaskTextLiterals(value, textEdits);
+      const restoreText = value => restoreLegacyTimerLiterals(restoreTaskTextLiterals(value, textEdits), legacyTimers);
       await deliverTurnResponse(ctx, status.message_id, replyText, out.ok ? {
         elapsedMs: performance.now() - startedAt, costUsd: out.result?.costUsd, context: out.result?.context,
       } : {}, { restoreText });

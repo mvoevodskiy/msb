@@ -44,7 +44,7 @@ export function legacyTimerOverlap(timer, action) {
 
 function legacyAdvice(action, timers) {
   for (const timer of timers) {
-    if (timer.enabled === false) continue;
+    if (!timer.enabled) continue;
     const reason = legacyTimerOverlap(timer, action);
     if (reason) return '⏳ Похоже, старый таймер «' + timer.name + '» делает то же самое (' + reason +
       '). Чтобы не было дубля, скажи «выключи таймер ' + timer.name + '».';

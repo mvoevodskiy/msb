@@ -57,7 +57,7 @@ async function describeStop(result, tasks, ctx, context) {
     listLegacyTimers(),
     readNativeJobMap().then(jobs => Object.values(jobs).filter(job => job?.jobId && !job.pausedBy).length, () => null),
   ]);
-  const count = timers.filter(timer => timer.enabled !== false).length;
+  const count = timers.filter(timer => timer.enabled).length;
   const summary = result.aborted ? 'оборвано идущих ходов: ' + result.aborted + ', ' : '';
   const lines = ['⛔ Автономка остановлена. ' + summary + 'снято с расписания задач: 0.'];
   if (native === null) lines.push('🔴 Расписание OpenClaw не удалось проверить.');

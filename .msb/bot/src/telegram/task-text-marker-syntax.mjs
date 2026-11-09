@@ -3,14 +3,14 @@
  * The [handler](./task-text-markers.mjs) reserves commands and quoted examples
  * before other processors see their bodies. [Checks](../../tests/task-text-edit.test.mjs).
  */
-import { autonomyExample, outsideExamples, taskCancelMarker, taskInspectionMarker,
+import { autonomyExample, legacyTimerMarker, literalAutonomyRanges, maskAutonomyRanges, outsideExamples, taskCancelMarker, taskInspectionMarker,
   taskMutationRanges, taskRescheduleMarker } from './autonomy-marker-text.mjs';
 
 const opening = /\[(EDIT_TASK|APPEND_TASK|DROP_FROM_TASK):/g;
 const contains = (range, position) => range.index <= position && position < range.index + range[0].length;
 
 function markerRanges(text) {
-  return taskMutationRanges(text, [...text.matchAll(taskCancelMarker), ...text.matchAll(taskRescheduleMarker)]);
+  return taskMutationRanges(text, [...text.matchAll(taskCancelMarker), ...text.matchAll(taskRescheduleMarker), ...text.matchAll(legacyTimerMarker)]);
 }
 
 function fullClose(text, from, tag, following) {
@@ -65,17 +65,6 @@ function readBlock(text, start, following, literal) {
   return malformed(limit);
 }
 
-function withoutBodies(text, blocks) {
-  const parts = [];
-  let offset = 0;
-  for (const block of blocks) {
-    if (!block.form) continue;
-    parts.push(text.slice(offset, block.index), block[0].replace(/[^\r\n]/g, ' '));
-    offset = block.index + block[0].length;
-  }
-  return parts.join('') + text.slice(offset);
-}
-
 export function taskTextBlocks(text) {
   if (typeof text !== 'string' || !/\[(?:EDIT_TASK|APPEND_TASK|DROP_FROM_TASK):/.test(text)) return [];
   const { payloads, quotes } = markerRanges(text);
@@ -91,8 +80,7 @@ export function taskTextBlocks(text) {
     blocks.push(readBlock(text, start, following, examples.find(enclosing)));
   }
   // A quote in a task body cannot quote a sibling command.
-  const masked = withoutBodies(text, blocks);
-  const literals = [...masked.matchAll(autonomyExample), ...markerRanges(masked).quotes];
+  const literals = literalAutonomyRanges(maskAutonomyRanges(text, blocks.filter(block => block.form)));
   return blocks.map(block => ({ ...block, literal: literals.some(range => contains(range, block.index)) }));
 }
 

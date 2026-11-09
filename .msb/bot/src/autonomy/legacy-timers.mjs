@@ -2,7 +2,7 @@
  * Legacy schedules.json belongs to the bot's session directory parent.
  * [Telegram management](../telegram/routes/autonomy.mjs), [profile paths](../paths.mjs),
  * [storage lock](../../shared/file-lock.mjs), [parity checks](../../tests/autonomy-timers.test.mjs).
- * [Dispatcher](./legacy-dispatch.mjs) reserves and stamps a due timer under the same lock.
+ * [Conversation](./legacy-timer-actions.mjs) and [dispatcher](./legacy-dispatch.mjs) share the writer.
  * [Interval tasks](./store.mjs) are separate.
  */
 import fs from 'node:fs/promises';
@@ -16,7 +16,7 @@ function timersPath(env) {
   return path.join(actionRoot(env), 'schedules.json');
 }
 
-function displayable(records) {
+export function savedLegacyTimers(records) {
   return records.filter(row => typeof row?.id === 'string' && typeof row.name === 'string');
 }
 
@@ -29,10 +29,14 @@ async function physicalTimersPath(env) {
   }
 }
 
+export async function readLegacyTimerRecords(env = process.env) {
+  const file = await physicalTimersPath(env);
+  return { file, timers: file ? savedLegacyTimers(await readRecordArray(file)) : [] };
+}
+
 export async function legacyTimerSnapshot(env = process.env) {
   try {
-    const file = await physicalTimersPath(env);
-    return { file, timers: file ? displayable(await readRecordArray(file)) : [] };
+    return await readLegacyTimerRecords(env);
   } catch (error) {
     console.error('[msb/autonomy] Could not read saved timers:', error.code || error.name);
     return { file: null, timers: [] };
@@ -43,12 +47,27 @@ export async function listLegacyTimers(env = process.env) {
   return (await legacyTimerSnapshot(env)).timers;
 }
 
-export async function changeLegacyTimer(id, { remove = false, env = process.env } = {}) {
+export async function withLegacyTimerUpdate(env, update, { expectedFile, signal } = {}) {
+  signal?.throwIfAborted();
   const file = await physicalTimersPath(env);
-  if (!file) return [];
+  if (!file || (expectedFile && file !== expectedFile)) return null;
   return withFileLock(file, async () => {
+    signal?.throwIfAborted();
+    if (await physicalTimersPath(env) !== file) return null;
     const records = await readRecordArray(file);
-    if (!records.some(row => row?.id === id)) return displayable(records);
+    const save = (next = records) => writeRecordArray(file, next, {
+      signal,
+      beforePublish: async () => {
+        if (await physicalTimersPath(env) !== file) throw new Error('Timer file changed');
+      },
+    });
+    return update(records, save);
+  });
+}
+
+export async function changeLegacyTimer(id, { remove = false, env = process.env } = {}) {
+  return (await withLegacyTimerUpdate(env, async (records, save) => {
+    if (!records.some(row => row?.id === id)) return savedLegacyTimers(records);
     const updated = remove
       ? records.filter(row => row?.id !== id)
       : records.map(row => {
@@ -57,21 +76,17 @@ export async function changeLegacyTimer(id, { remove = false, env = process.env 
         if (timer.disabledBy === 'stop') delete timer.disabledBy;
         return timer;
       });
-    await writeRecordArray(file, updated);
-    return displayable(updated);
-  });
+    await save(updated);
+    return savedLegacyTimers(updated);
+  })) ?? [];
 }
 
 /** Owner confirmation/resume affects only legacy rows carrying the stop provenance. */
 export async function changeStoppedLegacyTimers(stop, env = process.env) {
-  const file = await physicalTimersPath(env);
-  if (!file) return 0;
-  return withFileLock(file, async () => {
-    if (await physicalTimersPath(env) !== file) return 0;
-    const records = await readRecordArray(file);
+  return (await withLegacyTimerUpdate(env, async (records, save) => {
     let changed = 0;
-    for (const timer of displayable(records)) {
-      if (stop && timer.enabled !== false) {
+    for (const timer of savedLegacyTimers(records)) {
+      if (stop && timer.enabled) {
         timer.enabled = false;
         timer.disabledBy = 'stop';
       } else if (!stop && timer.enabled === false && timer.disabledBy === 'stop') {
@@ -80,15 +95,13 @@ export async function changeStoppedLegacyTimers(stop, env = process.env) {
       } else continue;
       changed++;
     }
-    if (changed) await writeRecordArray(file, records);
+    if (changed) await save();
     return changed;
-  });
+  })) ?? 0;
 }
 
 export async function publishLegacyTimerRun(file, timer, { reserve, now, env }) {
-  await withFileLock(file, async () => {
-    if (await physicalTimersPath(env) !== file) return;
-    const records = await readRecordArray(file);
+  await withLegacyTimerUpdate(env, async (records, save) => {
     const index = records.findIndex(row => row?.id === timer.id);
     if (index < 0 || !isDeepStrictEqual(records[index], timer)) return;
     const finishReservation = reserve();
@@ -98,13 +111,13 @@ export async function publishLegacyTimerRun(file, timer, { reserve, now, env }) 
       const next = { ...timer, lastRunAt: new Date(now()).toISOString() };
       if (timer.type === 'once') next.enabled = false;
       records[index] = next;
-      await writeRecordArray(file, records);
+      await save();
     } catch (error) {
       finishReservation(false);
       throw error;
     }
     finishReservation(true);
-  });
+  }, { expectedFile: file });
 }
 
 const weekdays = ['', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];

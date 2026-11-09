@@ -1356,3 +1356,30 @@ an exact owner, message, physical file and definition
 binding. A timer stamp or explicit pause does not change
 the approved definition. A replacement, wrong callback,
 foreign owner and repeated tap cannot remove another row.
+
+Open-core routes Claude, Codex and OpenClaw to the same
+local schedules file. Direct selection and writing share
+the physical file lock with menu, due dispatch and group
+pause. The active flag follows the actual dispatch gate
+in lists, pause counts and warnings. Group STOP never
+marks an unarmed row as stopped, so RESUME does not arm
+it. Existing stop provenance is still honored.
+
+The confirmation stores the owner, chat, message, timer
+definition and physical file. The same approved timer
+can be removed after the engine changes. Its applying
+binding is durable before the atomic schedule write.
+A known pre-publication failure leaves the card retryable.
+The confirmed write is recorded before releasing the
+schedule lock, so even a later release error cannot
+rearm the deletion. Duplicate and old prefix callbacks
+cannot delete a newly restored timer.
+
+The worker reserves original timer commands before other
+actions change the output. Legacy multiline selectors and
+quotes in names remain data. Quoted examples and nested
+work or configuration bodies do not become commands.
+Read telegram/legacy-timer-markers.mjs and its confirmation,
+then autonomy/legacy-timer-actions.mjs, legacy-timer-delete.mjs
+and legacy-timers.mjs. legacy-timer-conversation.test.mjs
+checks the old menu, shared writer, owner and due race.

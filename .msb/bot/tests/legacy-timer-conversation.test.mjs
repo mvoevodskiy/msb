@@ -6,6 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { runAgentTurn } from '../src/agent/turn.mjs';
 import { dispatchLegacyTimers } from '../src/autonomy/legacy-dispatch.mjs';
 import { actionRoot } from '../src/paths.mjs';
@@ -172,6 +173,23 @@ test('legacy timer conversation enables a record whose old enabled flag is missi
   await f.untouched();
 });
 
+test('legacy timer conversation group pause and resume cannot arm a timer with a missing flag', async t => {
+  const { enabled, ...stored } = daily;
+  let reply = '[STOP_ALL]';
+  const f = await profile(t, { timers: [stored, weekly], output: () => ({ ok: true, text: reply }) });
+  assert.match(await f.turn(), /Автономка остановлена/);
+  const question = f.question('Таймеры с прошлой настройки продолжают работать');
+  assert.ok(question);
+  const original = f.messages[question - 1];
+  await f.click('tmr-stop', { messageId: question });
+  reply = '[RESUME_ALL]';
+  const final = await f.turn();
+  assert.deepEqual(await f.timers(), [stored, weekly]);
+  assert.match(original, /продолжают работать \(1\)/);
+  assert.match(final, /снова работают \(1\)/);
+  await f.untouched();
+});
+
 test('legacy timer conversation OFF invalidates a due snapshot before dispatch reserves it', async t => {
   const f = await profile(t, { timers: [{ ...daily, enabled: true }], output: '[TIMER_OFF: daily]' });
   const originalLstat = fs.lstat;
@@ -318,6 +336,61 @@ test('legacy timer conversation cannot replay a completed removal after a retire
   await f.click('tmr-del:Exact-ID');
   assert.equal(f.toast(), 'Подтверждение устарело');
   assert.deepEqual(await f.timers(), [once]);
+  await f.untouched();
+});
+
+test('legacy timer conversation cannot rearm a delete after the schedule lock fails to release', async t => {
+  const f = await profile(t, { timers: [once], output: '[TIMER_DELETE: Exact-ID]' });
+  await f.turn();
+  assert.ok(f.question());
+  const Database = createRequire(import.meta.url)('better-sqlite3');
+  const { DatabaseSync } = await import('node:sqlite').catch(error => {
+    if (error.code !== 'ERR_UNKNOWN_BUILTIN_MODULE') throw error;
+    return {};
+  });
+  const drivers = [[Database.prototype, db => db.name]];
+  if (DatabaseSync) drivers.push([DatabaseSync.prototype, db => db.location?.('main')]);
+  let injected = false;
+  for (const [prototype, fileName] of drivers) {
+    const exec = prototype.exec;
+    t.mock.method(prototype, 'exec', function (sql, ...rest) {
+      const result = exec.call(this, sql, ...rest);
+      if (!injected && sql === 'ROLLBACK;' && path.basename(fileName(this) ?? '') === 'schedules.json.lock.sqlite') {
+        injected = true;
+        throw new Error('fixture release failure after schedules publication');
+      }
+      return result;
+    });
+  }
+  await f.click('tmr-del:Exact-ID');
+  assert.ok(injected, 'schedules lock release was not tested');
+  const firstToast = f.toast();
+  assert.deepEqual(await f.timers(), []);
+  await f.put([once]);
+  await f.click('tmr-del:Exact-ID');
+  assert.equal(f.toast(), 'Подтверждение устарело');
+  assert.deepEqual(await f.timers(), [once]);
+  assert.equal(firstToast, 'Удалил');
+  await f.untouched();
+});
+
+test('legacy timer conversation accepts the old line break before and after the selector', async t => {
+  const f = await profile(t, { output: '[TIMER_OFF:\n Exact-ID \n]' });
+  const final = await f.turn();
+  assert.match(final, /Готово: таймер «Письмо» выключил/);
+  assert.doesNotMatch(final, /Exact-ID \n\]/);
+  assert.deepEqual(await f.timers(), [{ ...once, enabled: false, disabledBy: 'owner' }, daily, weekly]);
+  await f.untouched();
+});
+
+test('legacy timer conversation treats a literal quote in the selector as timer data', async t => {
+  const named = { ...once, name: 'Письмо " архив' };
+  const f = await profile(t, { timers: [named, daily],
+    output: '[TIMER_OFF: Письмо " архив]\n[TIMER_ON: daily]\nСледующая "фраза".' });
+  const final = await f.turn();
+  assert.match(final, /«Письмо " архив» выключил/);
+  assert.match(final, /«Почта утром» снова работает/);
+  assert.deepEqual(await f.timers(), [{ ...named, enabled: false, disabledBy: 'owner' }, { ...daily, enabled: true }]);
   await f.untouched();
 });
 

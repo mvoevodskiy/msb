@@ -7,7 +7,8 @@
  * задачи → [autonomy](./routes/autonomy.mjs), источники → [monitor](./routes/monitor.mjs).
  * Подтверждение паузы таймеров → [pause](./pause-confirmation.mjs),
  * снятие лимита → [limit](./limit-confirmation.mjs), частота → [frequency](./frequency-confirmation.mjs),
- * удаление → [task removal](./task-removal-confirmation.mjs), перенос → [reschedule](./task-reschedule-confirmation.mjs).
+ * удаление задачи → [task removal](./task-removal-confirmation.mjs), перенос → [reschedule](./task-reschedule-confirmation.mjs).
+ * удаление таймера из разговора → [legacy timers](./legacy-timer-confirmation.mjs).
  * Остальные семейства видны в прямых imports ниже; rendering → [screens](./screens.mjs).
  * Состояние → [state](../state.mjs), shared pending принадлежит createBot.
  * Prepared views → [view delivery](./view-delivery.mjs); short views stay unchanged.
@@ -32,6 +33,7 @@ import { handlePauseConfirmation, isPauseConfirmation } from './pause-confirmati
 import { handleLimitConfirmation, isLimitConfirmation } from './limit-confirmation.mjs';
 import { handleTaskRemovalConfirmation, isTaskRemovalConfirmation } from './task-removal-confirmation.mjs';
 import { handleTaskRescheduleConfirmation, isTaskRescheduleConfirmation } from './task-reschedule-confirmation.mjs';
+import { handleLegacyTimerConfirmation, isLegacyTimerConfirmation } from './legacy-timer-confirmation.mjs';
 import { handleFrequencyConfirmation, isFrequencyConfirmation } from './frequency-confirmation.mjs';
 import { handleAutonomyRoute } from './routes/autonomy.mjs';
 import { handleMonitorRoute } from './routes/monitor.mjs';
@@ -84,8 +86,9 @@ export async function handleCallback({ bot, cfg, pending, ctx, plan, now = Date.
   const frequencyConfirmation = isFrequencyConfirmation(data);
   const removalConfirmation = isTaskRemovalConfirmation(data);
   const rescheduleConfirmation = isTaskRescheduleConfirmation(data);
+  const legacyTimerConfirmation = isLegacyTimerConfirmation(data);
   if (!isModelSelectionCallback(data) && !isPauseConfirmation(data) && !limitConfirmation && !frequencyConfirmation &&
-      !removalConfirmation && !rescheduleConfirmation) await answer();
+      !removalConfirmation && !rescheduleConfirmation && !legacyTimerConfirmation) await answer();
   if (!chatId) return;
   if (['menu:back', 'menu:close', 'menu:agent', 'menu:settings', 'settings:back', 'mon:back', 'settings:bots:cancel'].includes(data)) pending.delete(chatId);
   const show = async view => {
@@ -106,6 +109,7 @@ export async function handleCallback({ bot, cfg, pending, ctx, plan, now = Date.
     if ((limitConfirmation || data === 'ct-keep') && await handleLimitConfirmation(context)) return;
     if ((removalConfirmation || data === 'ct-keep') && await handleTaskRemovalConfirmation(context)) return;
     if ((rescheduleConfirmation || data === 'ct-keep') && await handleTaskRescheduleConfirmation(context)) return;
+    if ((legacyTimerConfirmation || data === 'ct-keep') && await handleLegacyTimerConfirmation(context)) return;
     if (isPauseConfirmation(data)) return handlePauseConfirmation(context);
     if (frequencyConfirmation) return handleFrequencyConfirmation(context);
     for (const route of ROUTES) {

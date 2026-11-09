@@ -5,7 +5,7 @@
  * [question](./task-reschedule-confirmation.mjs). [Checks](../../tests/task-reschedule.test.mjs).
  */
 import { rescheduleTaskFromTurn } from '../autonomy/saved-task-reschedule.mjs';
-import { outsideExamples, replaceAutonomyMarkers, reserveAutonomyMarkers, taskCancelMarker, taskMutationRanges, taskRescheduleMarker } from './autonomy-marker-text.mjs';
+import { legacyTimerMarker, outsideExamples, replaceAutonomyMarkers, reserveAutonomyMarkers, taskCancelMarker, taskMutationRanges, taskRescheduleMarker } from './autonomy-marker-text.mjs';
 import { describeSavedTaskSchedule } from './screens/task-inspection.mjs';
 import { askToRescheduleTask } from './task-reschedule-confirmation.mjs';
 
@@ -33,7 +33,7 @@ async function reschedule(payload, context, ctx) {
 
 export function prepareTaskRescheduleMarkers(text) {
   if (typeof text !== 'string' || !text.includes('[RESCHEDULE_TASK:')) return { text };
-  const { payloads, quotes } = taskMutationRanges(text, [...text.matchAll(taskCancelMarker)]);
+  const { payloads, quotes } = taskMutationRanges(text, [...text.matchAll(taskCancelMarker), ...text.matchAll(legacyTimerMarker)]);
   const blocks = outsideExamples(text, taskRescheduleMarker, [...payloads, ...quotes]);
   // Recognize original commands before neighboring results insert stored names.
   return reserveAutonomyMarkers(text, blocks, '[RESCHEDULE_TASK:');

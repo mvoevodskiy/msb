@@ -1,7 +1,8 @@
 /**
  * Former Telegram list and card for stored timers.
  * [Route](../routes/autonomy.mjs), [timer records](../../autonomy/legacy-timers.mjs),
- * [old UI regression](../../../tests/autonomy-timers.test.mjs).
+ * [menu checks](../../../tests/autonomy-timers.test.mjs).
+ * The old conversation wording serves [markers](../legacy-timer-markers.mjs) and its delete card.
  */
 import { InlineKeyboard } from 'grammy';
 import { formatLegacyTimer } from '../../autonomy/legacy-timers.mjs';
@@ -42,4 +43,37 @@ export function autonomyTimerScreen(timer) {
     .text('🗑 Удалить', 'auto:timer-delete:' + timer.id).row()
     .text('« Назад', 'auto:timers');
   return { text, keyboard };
+}
+
+const weekdayPhrases = ['воскресеньям', 'понедельникам', 'вторникам', 'средам', 'четвергам', 'пятницам', 'субботам'];
+
+export function describeLegacyTimerClock(timer) {
+  if (timer.type === 'once') return timer.at ? 'один раз, ' + timer.at : 'один раз';
+  const hour = String(Math.max(0, Math.min(23, timer.hour ?? 0))).padStart(2, '0');
+  const minute = String(Math.max(0, Math.min(59, timer.minute ?? 0))).padStart(2, '0');
+  const clock = ' в ' + hour + ':' + minute;
+  if (timer.type !== 'weekly') return 'каждый день' + clock;
+  const days = Array.isArray(timer.weekdays)
+    ? timer.weekdays.map(day => weekdayPhrases[day === 7 ? 0 : day]).filter(Boolean) : [];
+  return (days.length ? 'по ' + days.join(', ') : 'раз в неделю') + clock;
+}
+
+const timerPrompt = timer => String(timer.prompt ?? '').trim();
+
+export function describeLegacyTimerPhrase(timer) {
+  return [describeLegacyTimerClock(timer), timerPrompt(timer)].filter(Boolean).join(' ');
+}
+
+export function describeLegacyTimerList(timers) {
+  if (!timers.length) return 'Таймеров с прошлой настройки нет.';
+  const lines = timers.map(timer => {
+    const title = '«' + timer.name + '»: ' + describeLegacyTimerPhrase(timer);
+    return timer.enabled ? '▶ ' + title : '⏸ ' + title + ' (выключен)';
+  });
+  return 'Таймеры с прошлой настройки (' + timers.length + '):\n' + lines.join('\n');
+}
+
+export function describeLegacyTimerDeletion(timer) {
+  return 'Удалить таймер «' + timer.name + '» насовсем? Он ' + describeLegacyTimerClock(timer) +
+    ': ' + timerPrompt(timer).slice(0, 100).toWellFormed() + '. Вернуть будет нельзя.';
 }
