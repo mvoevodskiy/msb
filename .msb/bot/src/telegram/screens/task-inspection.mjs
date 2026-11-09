@@ -34,7 +34,11 @@ const nativePauseReasons = {
 };
 
 const label = (labels, key, fallback) => Object.hasOwn(labels, key) ? labels[key] : fallback;
-const kind = action => label(kinds, action.task.kind, 'задача');
+const kind = action => label(kinds, action.task?.kind, 'задача');
+
+export function savedTaskLabel(action) {
+  return action.name + ' (' + kind(action) + ')';
+}
 const note = value => value ? ' · ' + value : '';
 const runClock = (target, now, timezone) => reminderDateClock(target, now, timezone, { shortDate: true });
 
@@ -73,7 +77,7 @@ function schedule(action, now, timezone) {
 }
 
 function taskRow(action, now, timezone) {
-  return action.name + ' (' + kind(action) + ') — ' + schedule(action, now, timezone);
+  return savedTaskLabel(action) + ' — ' + schedule(action, now, timezone);
 }
 
 function nativePause(job, policy) {

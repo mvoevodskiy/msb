@@ -1029,3 +1029,19 @@ runs and other outcomes. The summary keeps paid cost and metered
 estimates distinct and reports only known token counts. A saturated
 tail gets the 1000-row notice. An unreadable file must reach the
 existing Gw read-failure reply, rather than look like a new journal.
+
+Open-core reuses the saved run tail and selector in its owner final
+marker route. The Telegram screen formats the projection with the
+owner clock. Claude and Codex use the same local prompt; ordinary
+OpenClaw gets only the history instruction on its captured native
+rail. The reader queries local per-bot storage after the model
+answer, even when background execution is paused. The stored run
+fields cannot turn into further control markers. Ordinary Markdown
+rendering follows the previous final renderer (106607 and 3132).
+
+Current Codex writers persist usageIncomplete when the measured
+input is partial. A positive observed amount is a lower bound and
+is shown without rounding it up. Missing numeric usage is stated
+as unknown. Paid cost and the separate metered estimate retain
+their old labels. Unusable numeric fields are excluded without
+discarding readable journal rows.

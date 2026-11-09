@@ -25,6 +25,7 @@ scheduler-процессами. При изменении задачи во вр
 | Запустить сохранённый таймер | [legacy-dispatch.mjs](legacy-dispatch.mjs) → [очередь Telegram](../telegram/inbox.mjs) |
 | Не начинать фоновый ход одновременно с `/compact` | [session-operation.mjs](../agent/session-operation.mjs): `trySessionOperation` |
 | Прочитать журнал и подготовить страницы истории | [history.mjs](history.mjs): `readRecentRuns`, `historyPages` |
+| Показать сводку прогонов из разговора | [saved-task-runs.mjs](saved-task-runs.mjs): `readSavedTaskRunHistory` |
 | Список, карточки и настройки UI | [screens/autonomy](../telegram/screens/autonomy.mjs), [routes/autonomy](../telegram/routes/autonomy.mjs) |
 
 `main` запускает scheduler; его `stop()` снимает таймеры. Отдельная отмена уже

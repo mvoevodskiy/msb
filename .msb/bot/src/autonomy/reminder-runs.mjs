@@ -1,6 +1,7 @@
 /**
  * Old per-bot runs.jsonl for local saved actions. [Dispatcher](./reminder-dispatch.mjs)
- * writes; [Telegram history](./history.mjs) and Pult read the same records.
+ * writes; [Telegram menu](./history.mjs), [conversation report](./saved-task-runs.mjs)
+ * and Pult read the same records.
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';

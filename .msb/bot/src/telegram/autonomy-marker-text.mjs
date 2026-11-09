@@ -9,7 +9,7 @@ import { escapeHtml } from './edit.mjs';
 export const scheduleMarker = /\[SCHEDULE_TASK\]([\s\S]*?)\[\/SCHEDULE_TASK\]/g;
 export const limitMarker = /\[SET_LIMIT\s+([^\]]+)\]/g;
 export const taskControlMarker = /\[(PAUSE_TASK|RESUME_TASK):([^\]\r\n]*)\]/g;
-export const taskInspectionMarker = /\[(LIST_TASKS)\]|\[(SHOW_TASK):([^\]\r\n]*)\]/g;
+export const taskInspectionMarker = /\[(LIST_TASKS|TASK_RUNS)\]|\[(SHOW_TASK|TASK_RUNS):([^\]\r\n]*)\]/g;
 const example = /\x60{3}[\s\S]*?(?:\x60{3}|(?![\s\S]))|\x60[^\x60\r\n]+\x60|«[^»]*»|^[ \t]*>.*$|<(pre|code|blockquote)\b[^>]*>[\s\S]*?<\/\1>/gim;
 
 export function outsideExamples(text, pattern, protectedRanges = []) {

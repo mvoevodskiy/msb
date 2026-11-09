@@ -155,6 +155,36 @@ test('a corrupt action registry does not hide the saved all-task journal', async
   assert.equal(await fs.readFile(f.actionFile, 'utf8'), '{"broken":');
 });
 
+test('unusable numeric metadata cannot hide the readable journal rows', async t => {
+  const opaque = { toString: null, valueOf: null };
+  const f = await profile(t, {
+    rows: [run('bad-time', now, { ts: opaque, status: 'error' }),
+      run('current', now - hour, { name: 'Читаемый прогон', tokensIn: opaque, meteredUsd: opaque })],
+  });
+  await f.request('Покажи историю');
+  const final = await f.final();
+  assert.match(final, /Фоновая работа за 7 суток: 1 прогон/);
+  assert.match(final, /Читаемый прогон — 1 прогон/);
+  assert.match(final, /Сколько это стоило, сказать не могу/);
+  assert.match(final, /Журнал ведётся с время неизвестно/);
+});
+
+test('incomplete Codex accounting is a lower bound or explicitly unknown', async t => {
+  const f = await profile(t, {
+    output: runMarker() + '\n' + runMarker('missing'),
+    actions: [action('missing', 'Нет числового отчёта')],
+    rows: [run('partial', now - hour, { tokensIn: 1479, usageIncomplete: true }),
+      run('complete', now - hour, { tokensIn: 12, meteredUsd: 0.75 }),
+      run('missing', now - hour, { usageIncomplete: true })],
+  });
+  await f.request('Сколько стоили фоновые задачи?');
+  const final = await f.final();
+  assert.match(final, /по счётчику модели ходы съели \$0\.75/);
+  assert.match(final, /прочитано не менее 1491 токенов, учёт неполный/);
+  assert.match(final, /учёт токенов неполный, число токенов неизвестно/);
+  assert.doesNotMatch(final, /прочитано 1\.5k|прочитано 0 токенов/);
+});
+
 test('the disabled collector and quoted markers cannot expose a stored run', async t => {
   const f = await profile(t, {
     enabled: '0', rows: [run('private', now, { name: 'Сохранённый закрытый прогон' })],

@@ -2,17 +2,22 @@
  * Old z9/lg/cg selection and individual state changes for the [action store](./reminder-store.mjs).
  * [Conversation](../telegram/task-control-markers.mjs) sets a requested state.
  * The [card](../telegram/routes/autonomy.mjs) toggles the same stored fields.
+ * [Run history](./saved-task-runs.mjs) shares matching with its own reply for ambiguities.
  * [Checks](../../tests/saved-task-control.test.mjs).
  */
 import { spentReminder } from './reminder-schedule.mjs';
 
-export function selectSavedAction(records, query) {
+export function matchingSavedActions(records, query) {
   const candidates = records.filter(row => typeof row?.id === 'string' && typeof row.name === 'string');
   const exact = candidates.find(row => row.id === query);
-  if (exact) return { action: exact };
+  if (exact) return [exact];
   const needle = query.toLowerCase();
-  const matches = candidates.filter(row =>
+  return candidates.filter(row =>
     [row.name, row.task?.prompt ?? '', row.task?.text ?? ''].join('\n').toLowerCase().includes(needle));
+}
+
+export function selectSavedAction(records, query) {
+  const matches = matchingSavedActions(records, query);
   if (!matches.length) return { error: 'Не нашёл задачу «' + query + '».' };
   if (matches.length > 1) return { error: 'Нашёл несколько — уточни:\n' + matches.map(row => '• ' + row.name).join('\n') };
   return { action: matches[0] };
