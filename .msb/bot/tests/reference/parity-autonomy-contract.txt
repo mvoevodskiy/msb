@@ -463,3 +463,51 @@ The probe runs the production native adapter against a local mock
 Anthropic API using a synthetic OAuth token. It issues actual Read,
 Write and Bash tool requests, records denial and permitted output,
 and checks owner state, MCP startup and native session persistence.
+
+Saved Codex prompt transport, native CLI 0.166.0.
+
+3936–3988 and 17159–17220/17260–17285 define the old read and
+edit postures. The default prompt capability adds local edits
+without Bash. Dn at 20560–20568 excludes sensitive paths. JO at
+36776–36919 has a separate workspace, deadline and continuity
+store. The legacy route used Claude. These are the tool and
+session requirements when adapting that route to Codex.
+
+The ordinary Codex exec route uses a full-access sandbox and
+persists provider conversation metadata. In the native probe,
+turning off shell removes text-file tools even with workspace-write.
+Turning shell back on exposes general command execution. A
+trusted-project override wrote a new trust entry to config.toml
+with ignore-user-config and ephemeral enabled. An empty MCP
+table alone also left a built-in personal search startup attempt
+under synthetic ChatGPT auth.
+
+The closed Linux probe uses ignore-user-config, ignore-rules and
+ephemeral with the native auth profile. SQLite and logs go to a
+temporary directory. It disables shell, apps, remote plugins,
+hooks and the other unneeded native features shown in the script.
+The fixed stdio fixture demonstrates per-tool permission with
+approval policy never. The read profile reads its own fixture
+file and rejects an outside path. The edit profile writes the
+fixture file. The native auth, config and earlier rollout files
+match the snapshot. Neither configured user nor project MCP
+starts. request_user_input remains advertised in the tool list.
+
+Run the probe from the source root using the official
+@openai/codex@0.166.0-linux-arm64 vendor directory in $native
+and the local Node 22 image. The test HTTP server uses loopback
+inside network-none Docker and a synthetic ChatGPT login.
+
+  docker run --rm --init --pull never --network none --read-only \
+    --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,exec,mode=1777 \
+    --mount type=bind,src="$native",dst=/native,readonly \
+    --mount type=bind,src="$PWD",dst=/probe,readonly \
+    msb-local-checks:node22-forms node \
+    /probe/.msb/bot/tests/reference/saved-prompt-codex-native-0.166.mjs \
+    /native/bin/codex
+
+See saved-prompt-codex-native-0.166.json for the actual tool lists.
+This checkpoint covers native transport and a fixed fixture.
+The saved action dispatcher still admits Claude. The production
+file policy, broader old tool set, cancellation, native OAuth
+refresh and scheduler integration remain separate checks.
