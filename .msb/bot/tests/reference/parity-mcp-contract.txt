@@ -66,6 +66,19 @@ Old Claude PY/Ii at 17989–18005 update only mcpServers. OC setup/unset at
 no row delete action. The old OC write may fail after saving the key. A
 stored key or config entry alone does not establish external availability.
 
+Write-stage capability. Official Supadata worker src/worker.ts retains a
+direct x-api-key branch on the hosted /mcp route. Apify's official MCP
+documentation describes the existing Bearer API token header. The native
+Codex 0.166 transport probe and report are mcp-native-0.166-transport.mjs
+and mcp-native-0.166-transport.json. The owned test loopback received
+initialize, tools/list and tools/call with distinct synthetic keys from
+two process environments sharing a native home. Omitting A's override
+stopped its calls while B kept working. Native config was byte-exact.
+An override with an empty http_headers table retained a lower-layer
+header under the same server name. Do not merge a managed server onto
+a native same-name definition. This proof exercises raw native transport
+independently of the bot's enrollment and launch wiring.
+
 Custom marker. 19349–56/19474–19515 demonstrate the actual Claude prompt
 producer. 106578–591/106731–755 process it before plan. 57210–57331 parse
 first complete ADD_MCP (HTTPS or stdio, string headers/args), remove later

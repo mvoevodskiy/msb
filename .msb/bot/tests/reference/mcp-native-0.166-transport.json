@@ -1,0 +1,24 @@
+{
+  "version": "codex-cli 0.166.0",
+  "profiles": [
+    "a",
+    "b"
+  ],
+  "same_native_home": true,
+  "native_methods": [
+    "initialize",
+    "tools/list",
+    "tools/call"
+  ],
+  "correct_headers_for_each_profile": true,
+  "other_profile_after_removal": true,
+  "missing_override_no_connection": true,
+  "native_config_byte_exact": true,
+  "same_name_keeps_existing_headers": true,
+  "auth_present": false,
+  "model_turns": 0,
+  "model_endpoint_requests": 0,
+  "owned_profile_removed": true,
+  "network_namespace": "loopback-only",
+  "scope": "pinned native transport capability, independent of the bot writer"
+}
