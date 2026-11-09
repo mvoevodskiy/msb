@@ -1,0 +1,23 @@
+Ordinary OpenClaw Telegram turn. Old master
+00f081f2220d0e6d3a186e8e1bb447b57acd6ebf, readable vendor blob
+73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11
+(.msb/bot/vendor/deobfuscated.js). Example:
+git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | sed -n '29210,29226p'.
+
+X1A at 55938–55955 routes explicit engine oc before Claude auth.
+xTA at 56331–56345 supplies the captured ID and named session, then
+persists returned identities. LF/Bs at 29210–29223 invoke acpx for a
+private prompt file, or create a named session, optionally resuming
+its legacy ID. 32195–32268 distinguishes named/default and retries
+NO_SESSION only before the prompt can be replayed safely. Us at
+29328–29506 reads strict ACP frames, chunks, tools, usage and final
+stop reason. OP at 32668–32674 creates the mode-0600 prompt.
+Ot at 32902–32938 uses an owned child and attempts a cancel; the old
+cancel omits the name, risking a different cwd-default session.
+The restoration must address the captured named session instead.
+
+The old local registry at 30437–30545 is a separate OpenClaw CLI
+operation. An acpx success on a different Gateway cannot verify it.
+The new core at fd7c21e still rejects engine oc before starting
+acpx. The corresponding test verifies the ordinary path, with no
+gateway, credentials or network in the synthetic fixture.
