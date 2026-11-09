@@ -183,13 +183,19 @@ test('a stopped once action with a published file change does not replay on resu
   assert.equal(await fs.readFile(effect, 'utf8'), 'effect\n');
 });
 
-test('an explicit helper requirement waits for its scoped Codex route', async t => {
-  const action = { ...original, task: { ...original.task, helpers: true } };
-  const f = await profile(t, { action });
-  await f.scheduler.tickNow();
-  assert.equal(await f.call(), null);
-  assert.deepEqual(await f.actions(), [action]);
-});
+for (const [label, helpers] of [['default', undefined], ['explicitly enabled', true], ['disabled', false]]) {
+  test('saved Codex helper grant ' + label, async t => {
+    const task = helpers === undefined ? original.task : { ...original.task, helpers };
+    const f = await profile(t, { action: { ...original, task } });
+    await f.scheduler.tickNow();
+    const call = await f.call();
+    assert.ok(call, 'The saved Codex prompt must launch');
+    const enabled = helpers !== false;
+    assert.ok(call.argv.includes('features.multi_agent=' + enabled));
+    assert.ok(call.argv.includes('features.multi_agent_v2=' + enabled));
+    assert.equal(call.input.includes('В этом задании можно привлекать помощников.'), enabled);
+  });
+}
 
 test('a saved Codex turn cannot read or edit a concurrently staged foreground MCP profile', async t => {
   const f = await profile(t);
