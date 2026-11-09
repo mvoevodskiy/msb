@@ -5,7 +5,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { autonomyDir } from '../paths.mjs';
-import { parseReminderRun, reminderRunPath } from './reminder-runs.mjs';
+import { parseSavedActionRun, reminderRunPath } from './reminder-runs.mjs';
 
 const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
 const MESSAGE_LIMIT = 3500;
@@ -59,11 +59,11 @@ export async function readRecentRuns({ limit = 10, env = process.env } = {}) {
   ]);
   const count = historyLimit(limit);
   if (intervalFile === reminderFile) {
-    return readRunFile(intervalFile, count, row => row?.kind === 'reminder' ? parseReminderRun(row) : parseIntervalRun(row));
+    return readRunFile(intervalFile, count, row => ['reminder', 'prompt'].includes(row?.kind) ? parseSavedActionRun(row) : parseIntervalRun(row));
   }
   const [interval, reminders] = await Promise.all([
     readRunFile(intervalFile, count, parseIntervalRun),
-    readRunFile(reminderFile, count, parseReminderRun).catch(() => ({ runs: [], malformed: 1 })),
+    readRunFile(reminderFile, count, parseSavedActionRun).catch(() => ({ runs: [], malformed: 1 })),
   ]);
   const runs = reminders.runs.length
     ? [...interval.runs, ...reminders.runs].sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, count)
@@ -79,7 +79,7 @@ function dateLabel(value) {
 }
 
 function isSkippedRun(entry) {
-  return !entry.ok && (entry.status === 'blocked' || entry.status === 'skipped');
+  return !entry.ok && ['blocked', 'skipped', 'stopped', 'deferred'].includes(entry.status);
 }
 
 function runText(entry) {
@@ -89,7 +89,7 @@ function runText(entry) {
   const lines = [`${mark} ${dateLabel(entry.at)} · ${label}`];
   if (entry.ok) lines.push('   ✅ готово');
   else if (skipped) {
-    const reason = entry.status === 'blocked' ? 'приостановлено (бюджет)' : 'пропущено';
+    const reason = { blocked: 'приостановлено (бюджет)', stopped: 'остановлено', deferred: 'отложено' }[entry.status] ?? 'пропущено';
     lines.push('   ' + reason + ': ' + (entry.detail || '—'));
   } else lines.push(`   ошибка${typeof entry.error === 'string' && entry.error ? `: ${entry.error}` : ''}`);
   if (typeof entry.preview === 'string' && entry.preview) lines.push(`   ${entry.preview}`);

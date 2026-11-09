@@ -5,16 +5,15 @@
  */
 import { InlineKeyboard } from 'grammy';
 import { listTasks } from '../../autonomy/store.mjs';
-import { reminderIsActive } from '../../autonomy/reminder-frequency.mjs';
 import { historyPages } from '../../autonomy/history.mjs';
 import { loadState } from '../../state.mjs';
 import { escapeHtml } from '../edit.mjs';
-import { reminderRows, reminderViews } from './reminders.mjs';
+import { savedActionIsActive, savedActionRows, savedActionViews } from './reminders.mjs';
 import { BLANK } from './shared.mjs';
 
 export async function autonomyHomeScreen() {
-  const [tasks, reminders] = await Promise.all([listTasks(), reminderViews()]);
-  const active = tasks.filter(t => t.enabled !== false).length + reminders.actions.filter(action => reminderIsActive(action, reminders.decisions)).length;
+  const [tasks, reminders] = await Promise.all([listTasks(), savedActionViews()]);
+  const active = tasks.filter(t => t.enabled !== false).length + reminders.actions.filter(action => savedActionIsActive(action, reminders)).length;
   const kb = new InlineKeyboard()
     .text('📋 Задачи', 'auto:tasks')
     .text('📡 Мониторинг', 'auto:monitor')
@@ -46,7 +45,7 @@ export function autonomyWhatScreen() {
 Список задач и просмотр истории работают. Напоминание можно открыть, поставить на паузу или удалить.
 
 <b>Про права</b>
-Настройка прав сохраняется, но отдельные границы задач в open-core пока не реализованы. Используются права и сессия выбранного CLI.
+Сохранённые задания Claude используют отдельную сессию и заданные для задачи инструменты. Упрощённые интервальные задачи работают в общем сеансе.
 
 <b>Чем это отличается от таймеров</b>
 Интервальные задачи выполняются планировщиком. Сохранённые таймеры можно посмотреть и изменить в меню «Таймеры».
@@ -56,14 +55,14 @@ ${BLANK}`,
 }
 
 export async function autonomyTasksScreen(state) {
-  const [tasks, reminders] = await Promise.all([listTasks(), reminderViews(state)]);
+  const [tasks, reminders] = await Promise.all([listTasks(), savedActionViews(state)]);
   const kb = new InlineKeyboard();
   const lines = tasks.map((task, index) => {
     const mark = task.enabled === false ? '⏸' : '▶️';
     kb.text(mark + ' ' + (task.title || task.id).slice(0, 28), 'auto:task:' + task.id).row();
     return mark + ' <b>' + (index + 1) + '.</b> ' + escapeHtml(task.title || task.prompt?.slice(0, 60) || task.id);
   });
-  const rows = reminderRows(reminders, kb);
+  const rows = savedActionRows(reminders, kb);
   if ((tasks.length || rows.length) && reminders.stopped) {
     lines.unshift('⏸ Всё на паузе: ни одна из них сейчас не сработает.', '');
   }
@@ -96,7 +95,7 @@ export async function autonomyRightsScreen() {
 
 Сохранённая настройка: <b>${on ? 'включены' : 'выключены'}</b>
 
-В open-core эта настройка пока не применяется исполнителем. Фоновые задачи используют права и сессию выбранного CLI.
+Сохранённые задания Claude используют отдельную сессию и инструменты задачи. Расширенные права пока ожидают отдельного подключения.
 ${BLANK}`,
     keyboard: new InlineKeyboard()
       .text(on ? '🔒 Выключить права' : '🔓 Включить права', 'auto:rights-toggle')

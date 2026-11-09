@@ -7,9 +7,10 @@
 import { setOwnerPause, readAutonomyPause } from '../autonomy/owner-pause.mjs';
 import { listLegacyTimers } from '../autonomy/legacy-timers.mjs';
 import { isLocalReminderEngine, readReminderPolicy } from '../autonomy/reminder-policy.mjs';
-import { reminderSnapshot, readNativeJobMap } from '../autonomy/reminder-store.mjs';
+import { savedActionSnapshot, readNativeJobMap } from '../autonomy/reminder-store.mjs';
 import { describeReminderSchedule, describeReminderTime } from '../autonomy/reminder-time.mjs';
 import { readReminderFrequencyDecisions, reminderIsActive } from '../autonomy/reminder-frequency.mjs';
+import { savedPromptPlan } from '../autonomy/prompt-policy.mjs';
 import { listTasks } from '../autonomy/store.mjs';
 import { loadState } from '../state.mjs';
 import { limitMarker, outsideExamples, replaceAutonomyMarkers, scheduleMarker } from './autonomy-marker-text.mjs';
@@ -31,13 +32,14 @@ async function checkPolicy(context) {
 }
 
 async function localActiveTasks(now) {
-  const [intervals, reminders, decisions] = await Promise.all([
+  const [intervals, saved, decisions, { state }] = await Promise.all([
     listTasks().catch(() => []),
-    reminderSnapshot().catch(() => ({ actions: [] })),
-    readReminderFrequencyDecisions(),
+    savedActionSnapshot().catch(() => ({ actions: [] })),
+    readReminderFrequencyDecisions(), loadState(),
   ]);
   return [
-    ...reminders.actions.filter(action => reminderIsActive(action, decisions))
+    ...saved.actions.filter(action => reminderIsActive(action, decisions) &&
+      (action.task.kind === 'reminder' || savedPromptPlan(action, state)))
       .map(action => ({ name: action.name, trigger: action.trigger })),
     ...intervals.filter(task => task && task.enabled !== false).map(task => {
       const next = new Date(task.nextAt ?? now);

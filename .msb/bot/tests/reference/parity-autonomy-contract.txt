@@ -418,3 +418,48 @@ per-action tool boundary or isolate owner state. A separate
 provider launch and enforced policy are prerequisites for
 restoring that route. Saved prompt rows, native jobs, and
 follow-up reminders never fall through to the literal sender.
+
+Saved stateless Claude prompt checkpoint.
+
+f831ae3 reproduces the missing dispatch. The local scheduler now
+executes the old stateless green-only/green-yellow Claude profile
+when native subscription/OAuth is selected. 20560–20568 and
+20827–20853 provide the old native path deny and tools boundary.
+Use the current paths, the native Read/Edit rule forms and a strict
+empty MCP config. The historical interactive transport may load
+configured MCP; this isolated launch holds that feature for its own
+capability proof. Hooks from user/project sources stay disabled in
+this session. Managed organization settings remain a live profile
+acceptance dependency. 41813–41829,44249 and 19517–19525 remove
+raw API credentials and restore OAuth. Account quota/session writes
+from background turns remain separate from the owner state.
+
+24848–24870 journals a stopped turn before committing its action.
+The scheduler registers the background controller under the claim's
+pause lock and drains it on shutdown. Stop before delivery rolls
+back the still-current claim. Stop after a report part consumes the
+attempt and holds subsequent parts. A delayed result cannot restore
+a replaced or migrated row. 15992–16049 and 33415–33446 distinguish
+a quiet final line from a code sample. The current prior decisions
+for recurring frequency and the simple tasks.json route are retained.
+
+Use the existing saved task card for pause and delete. Codex, Bash,
+continuous memory, explicit teams, MCP, verification and stored
+report modes require their own policy and are outside this stage.
+The CLI test uses synthetic accounts; no JAR1 launch or live user data.
+
+Optional native proof: extract the official Linux CLI 2.1.154 for
+the Docker architecture into a temporary directory. With the release
+export at $stage and binary under $native, run:
+
+  docker run --rm --init --pull never --network none --read-only \
+    --tmpfs /tmp:rw,exec,mode=1777 \
+    --mount type=bind,src="$stage/checks/source",dst=/probe,readonly \
+    --mount type=bind,src="$native",dst=/native,readonly \
+    --entrypoint node msb-local-checks:node22-forms \
+    /probe/.msb/bot/tests/fixtures/claude-saved-prompt-loopback.mjs /native/claude
+
+The probe runs the production native adapter against a local mock
+Anthropic API using a synthetic OAuth token. It issues actual Read,
+Write and Bash tool requests, records denial and permitted output,
+and checks owner state, MCP startup and native session persistence.

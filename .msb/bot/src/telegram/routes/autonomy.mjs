@@ -9,8 +9,8 @@ import { autonomyHistoryScreen, autonomyRightsScreen, autonomyTasksScreen, auton
 import { changeLegacyTimer, listLegacyTimers } from '../../autonomy/legacy-timers.mjs';
 import { autonomyTimerScreen, autonomyTimersScreen } from '../screens/legacy-timers.mjs';
 import { isLocalReminderEngine } from '../../autonomy/reminder-policy.mjs';
-import { changeReminder } from '../../autonomy/reminder-store.mjs';
-import { reminderCard, reminderViews } from '../screens/reminders.mjs';
+import { changeSavedAction } from '../../autonomy/reminder-store.mjs';
+import { savedActionCard, savedActionViews } from '../screens/reminders.mjs';
 import { UNHANDLED } from './shared.mjs';
 
 export async function handleAutonomyRoute({ data, show, bot, chatId, state }) {
@@ -60,9 +60,9 @@ export async function handleAutonomyRoute({ data, show, bot, chatId, state }) {
   }
   if (data.startsWith('auto:task:')) {
     const id = data.slice('auto:task:'.length);
-    const view = await reminderViews(state);
+    const view = await savedActionViews(state);
     const action = view.actions.find(row => row.id === id);
-    if (action) return show(reminderCard(action, view));
+    if (action) return show(savedActionCard(action, view));
     return show(placeholder(`Задача ${id.slice(0, 8)}`, 'auto:tasks'));
   }
   const deleteTask = data.startsWith('auto:task-delete:');
@@ -70,11 +70,11 @@ export async function handleAutonomyRoute({ data, show, bot, chatId, state }) {
     const id = data.slice((deleteTask ? 'auto:task-delete:' : 'auto:task-toggle:').length);
     if (isLocalReminderEngine(state.engine)) {
       try {
-        await changeReminder(id, deleteTask);
+        await changeSavedAction(id, deleteTask);
       } catch (error) {
         console.error('[msb/autonomy] Could not update reminder:', error.code || error.name);
         const view = await autonomyTasksScreen(state);
-        return show({ ...view, text: '⚠️ Не удалось изменить напоминание.\n\n' + view.text });
+        return show({ ...view, text: '⚠️ Не удалось изменить задачу.\n\n' + view.text });
       }
     }
     return show(await autonomyTasksScreen(state));

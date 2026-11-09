@@ -1,5 +1,5 @@
 /**
- * Per-bot actions.json for literal once and recurring reminders. Keep tasks.json and legacy timer
+ * Per-bot actions.json for saved literal and model actions. Keep tasks.json and legacy timer
  * files separate. [Marker](../telegram/reminder-markers.mjs), [sender](./reminder-dispatch.mjs),
  * [menu](../telegram/routes/autonomy.mjs), [contract](../../tests/reference/parity-autonomy-contract.txt).
  */
@@ -22,13 +22,13 @@ export async function readNativeJobMap(env) {
   return jobs;
 }
 
-function isLocalReminder(action, jobs) {
-  return typeof action?.id === 'string' && typeof action.name === 'string' &&
-    validReminderTrigger(action.trigger) && action.task?.kind === 'reminder' &&
-    typeof action.task.text === 'string' && Boolean(action.task.text.trim()) &&
-    !action.task.followUp && !action.pendingConfirm && !action.migratedToOc &&
-    (action.runner === undefined || action.runner === 'auto' || action.runner === 'cc') &&
-    !Object.hasOwn(jobs, action.id);
+function isLocalSavedAction(action, jobs) {
+  if (typeof action?.id !== 'string' || typeof action.name !== 'string' || !validReminderTrigger(action.trigger) ||
+      action.pendingConfirm || action.migratedToOc || ![undefined, 'auto', 'cc'].includes(action.runner) ||
+      Object.hasOwn(jobs, action.id)) return false;
+  const task = action.task;
+  if (task?.kind === 'reminder') return typeof task.text === 'string' && Boolean(task.text.trim()) && !task.followUp;
+  return task?.kind === 'prompt' && typeof task.prompt === 'string' && Boolean(task.prompt.trim());
 }
 
 async function withActions(env, update, { signal, create } = {}) {
@@ -45,11 +45,11 @@ async function withActions(env, update, { signal, create } = {}) {
   });
 }
 
-export async function reminderSnapshot(env = process.env) {
+export async function savedActionSnapshot(env = process.env) {
   const file = await actionFile(env);
   const records = await readRecordArray(file);
   const jobs = await readNativeJobMap(env);
-  return { file, actions: records.filter(action => isLocalReminder(action, jobs)) };
+  return { file, actions: records.filter(action => isLocalSavedAction(action, jobs)) };
 }
 
 export async function addReminder(action, { env = process.env, signal, check } = {}) {
@@ -73,13 +73,13 @@ export async function addReminder(action, { env = process.env, signal, check } =
   }, { signal, create: true });
 }
 
-export async function claimReminder(file, snapshot, at, { env = process.env, admit } = {}) {
+export async function claimSavedAction(file, snapshot, at, { env = process.env, admit } = {}) {
   if (await actionFile(env) !== file) return null;
   return withActions(env, async (records, save) => {
     if (await actionFile(env) !== file) return null;
     const index = records.findIndex(action => action?.id === snapshot.id);
     const action = records[index];
-    if (!isDeepStrictEqual(action, snapshot) || !isLocalReminder(action, await readNativeJobMap(env))) return null;
+    if (!isDeepStrictEqual(action, snapshot) || !isLocalSavedAction(action, await readNativeJobMap(env))) return null;
     return admit(action, async refusal => {
       const claimed = { ...action, lastRunAt: at };
       if (action.trigger.kind === 'once') {
@@ -109,30 +109,44 @@ function sameReminderClaim(current, claimed) {
   return ownerToggle && isDeepStrictEqual(withoutToggle(current), withoutToggle(claimed));
 }
 
-export async function finishReminder(file, claimed, result, env = process.env) {
+export async function finishSavedAction(file, before, claimed, result, env = process.env) {
   if (await actionFile(env) !== file) return;
   return withActions(env, async (records, save) => {
     if (await actionFile(env) !== file) return;
     const index = records.findIndex(action => action?.id === claimed.id);
     const current = records[index];
-    if (!sameReminderClaim(current, claimed) || !isLocalReminder(current, await readNativeJobMap(env))) return;
+    if (!sameReminderClaim(current, claimed) || !isLocalSavedAction(current, await readNativeJobMap(env))) return;
+    // Old Rz never stamped a stopped action. Revert only the still-owned claim.
+    if (result.status === 'stopped' || result.status === 'deferred') {
+      records[index] = isDeepStrictEqual(current, claimed) ? before : { ...current, lastRunAt: before.lastRunAt };
+      await save();
+      return;
+    }
     // A replacement may reuse the id. An owner's pause alone retains this claim.
     const minBackoffSeconds = Math.max(0, Math.round((reminderSpacing(claimed.trigger) ?? 0) * 120));
-    const breaker = await recordReminderBreaker(claimed.id, claimed.lastRunAt, result, {
+    const breakerResult = result.status === 'error' ? result : { status: 'ok' };
+    const breaker = await recordReminderBreaker(claimed.id, claimed.lastRunAt, breakerResult, {
       env, lockedActionFile: file, minBackoffSeconds,
     }).then(event => ({ event }), breakerError => ({ breakerError }));
-    records[index] = { ...current, lastStatus: result.status,
-      lastOutcome: result.status === 'ok' ? 'ok' : 'engine_error', lastError: result.error };
+    const outcomes = { ok: 'ok', error: 'engine_error', skipped: 'empty' };
+    records[index] = { ...current, lastStatus: result.status, lastOutcome: result.outcome ?? outcomes[result.status], lastError: result.error };
     const actionError = await save().then(() => undefined, error => error);
     return { ...breaker, actionError };
   });
 }
 
-export async function changeReminder(id, remove, env = process.env) {
+export async function savedActionClaimIsCurrent(file, claimed, env = process.env) {
+  if (await actionFile(env) !== file) return false;
+  const rows = await readRecordArray(file);
+  const current = rows.find(row => row?.id === claimed.id);
+  return isDeepStrictEqual(current, claimed) && isLocalSavedAction(current, await readNativeJobMap(env));
+}
+
+export async function changeSavedAction(id, remove, env = process.env) {
   await withActions(env, async (records, save) => {
     const index = records.findIndex(action => action?.id === id);
     const action = records[index];
-    if (!isLocalReminder(action, await readNativeJobMap(env)) || (!remove && spentReminder(action))) return;
+    if (!isLocalSavedAction(action, await readNativeJobMap(env)) || (!remove && spentReminder(action))) return;
     if (remove) records.splice(index, 1);
     else records[index] = { ...action, enabled: !action.enabled, disabledReason: action.enabled ? 'owner' : undefined };
     await save();

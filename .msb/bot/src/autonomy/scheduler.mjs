@@ -28,7 +28,8 @@ export function startScheduler({ api, adminId, scheduledTurns, timezone, now = D
   let stopped = false;
   let busy = false;
   let legacyTick, reminderTick;
-  const reminders = createReminderDispatcher({ api, adminId, timezone, now, log });
+  const shutdown = new AbortController();
+  const reminders = createReminderDispatcher({ api, adminId, timezone, now, log, signal: shutdown.signal });
 
   log('[msb/scheduler] Starting (delay 30s)...');
   const boot = setTimeout(tick, START_DELAY_MS);
@@ -83,6 +84,7 @@ export function startScheduler({ api, adminId, scheduledTurns, timezone, now = D
   return {
     stop() {
       stopped = true;
+      shutdown.abort();
       clearTimeout(boot);
       clearInterval(timer);
       return Promise.all([legacyTick, reminderTick]);

@@ -18,6 +18,16 @@ const DEFAULT_MAX_TURNS = 200;
 const DEFAULT_ALLOWED_TOOLS = 'Bash,WebSearch,WebFetch,Agent,Task,Workflow,Monitor,Skill,Read,Edit,Write,Glob,Grep';
 const PROMPT_FILE_THRESHOLD = 40 * 1024;
 
+function isolatedEnvironment() {
+  const env = { ...process.env };
+  for (const key of ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN', 'MSB_ANTHROPIC_API_KEY',
+    'IIA_ANTHROPIC_API_KEY', 'BOT_TOKEN', 'SYNC_KEY', 'SYNC_URL']) delete env[key];
+  for (const key of Object.keys(env)) {
+    if (key.startsWith('GIT_') || key.startsWith('NPM_CONFIG_')) delete env[key];
+  }
+  return env;
+}
+
 /**
  * @typedef {object} ClaudeTurnOptions
  * @property {string} prompt
@@ -35,12 +45,16 @@ const PROMPT_FILE_THRESHOLD = 40 * 1024;
  * @property {(ev: object) => void} [onEvent]
  * @property {boolean} [autonomy]
  * @property {number} [maxTurns]
+ * @property {{tools: string[], directories: string[]}} [isolated]
  */
 
 /**
  * @param {ClaudeTurnOptions} opts
  */
 export async function runClaudeTurn(opts) {
+  if (opts.isolated && (opts.sessionId || opts.mcp || opts.providerId !== 'claude')) {
+    throw new Error('Invalid isolated Claude launch');
+  }
   const cwd = opts.cwd || workspaceDir();
   const permissionMode = opts.permissionMode || 'bypassPermissions';
   const maxTurns = Number.isInteger(opts.maxTurns) && opts.maxTurns > 0
@@ -64,6 +78,13 @@ export async function runClaudeTurn(opts) {
     '--allowedTools',
     allowed,
   ];
+
+  if (opts.isolated) {
+    args.push('--tools', opts.isolated.tools.join(','), '--no-session-persistence', '--no-chrome',
+      '--setting-sources', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
+      '--settings', JSON.stringify({ disableAllHooks: true, disableClaudeAiConnectors: true }),
+      '--add-dir', ...opts.isolated.directories);
+  }
 
   const denied = [
     ...(opts.disallowedTools || []),
@@ -132,7 +153,7 @@ export async function runClaudeTurn(opts) {
       child = spawn('claude', args, {
         cwd,
         env: {
-          ...process.env,
+          ...(opts.isolated ? isolatedEnvironment() : process.env),
           ...opts.mcp?.env,
           MSB_TURN_MCP_TEMPLATES: opts.mcp?.codexTemplates?.join(','),
           MSB_TURN_MCP_REMOVE: opts.mcp?.codexNativeRemoval?JSON.stringify(opts.mcp.codexNativeRemoval):undefined,
@@ -281,7 +302,7 @@ export async function runClaudeTurn(opts) {
       cleanup();
       if (opts.signal) opts.signal.removeEventListener('abort', onAbort);
       console.error(
-        `[msb/agent-cc] Process closed: code=${code}, signal=${signal ?? '-'}, tools=${toolCount}, stderr=${stderr.slice(0, 200)}`,
+        `[msb/agent-cc] Process closed: code=${code}, signal=${signal ?? '-'}, tools=${toolCount}, stderr=${opts.isolated ? '[background]' : stderr.slice(0, 200)}`,
       );
       resolve({
         sessionId,

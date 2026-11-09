@@ -27,8 +27,10 @@ async function profile(t, actions, { state = {}, text = 'Отчёт задачи
   const f = await fixture(t, async () => assert.fail('Saved action must not call the shared owner turn'),
     { overlay: false, runtimeProfile: 'jar1' });
   for (const key of ['MSB_SESSION_DIR', 'IIA_SESSION_DIR', 'AUTONOMY_DIR', 'AUTONOMY_DAILY_CAP_USD',
-    'AUTONOMY_DAILY_CAP_RUNS', 'AUTONOMY_DAILY_CAP_TOKENS', 'AUTONOMY_RESERVE_FRACTION']) delete process.env[key];
+    'AUTONOMY_DAILY_CAP_RUNS', 'AUTONOMY_DAILY_CAP_TOKENS', 'AUTONOMY_RESERVE_FRACTION', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN',
+    'IIA_ANTHROPIC_API_KEY', 'MSB_ANTHROPIC_API_KEY', 'CLAUDE_CODE_OAUTH_TOKEN']) delete process.env[key];
   process.env.AUTONOMY_ENABLED = '1';
+  process.env.CC_AUTO_TURN_SONNET = '1';
   const root = actionRoot();
   const autonomy = path.join(root, 'autonomy');
   const actionsFile = path.join(root, 'actions.json');
@@ -43,7 +45,10 @@ const argv = process.argv.slice(2);
 if(argv[0] === '--version') { console.log('2.1.154 (Claude Code)'); process.exit(0); }
 if(argv[0] === '--help') { console.log('--tools <tools> --no-session-persistence --strict-mcp-config'); process.exit(0); }
 const input=fs.readFileSync(0,'utf8');
-fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({argv, input, cwd: process.cwd(), provider: process.env.MSB_TURN_PROVIDER})+'\\n');
+fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({argv, input, cwd: process.cwd(), provider: process.env.MSB_TURN_PROVIDER,
+  oauth: Boolean(process.env.CLAUDE_CODE_OAUTH_TOKEN), api: Boolean(process.env.ANTHROPIC_API_KEY),
+  legacyApi: Boolean(process.env.IIA_ANTHROPIC_API_KEY), msbApi: Boolean(process.env.MSB_ANTHROPIC_API_KEY),
+  proxyToken: Boolean(process.env.ANTHROPIC_AUTH_TOKEN)})+'\\n');
 const emit=(kind,obj)=>console.log(JSON.stringify({type:kind,...obj}));
 const session_id='77777777-7777-4777-8777-777777777777';
 emit('system',{subtype:'init',session_id,model:'sonnet'});
@@ -108,7 +113,7 @@ test('a saved Claude prompt uses the old isolated workspace, native tool boundar
   for (const name of ['Read', 'Write', 'Edit', 'NotebookEdit']) assert.ok(tools.includes(name));
   assert.ok(!tools.includes('Bash'));
   assert.ok(call.argv.includes('mcp__*'));
-  assert.ok(call.argv.some(arg => arg.startsWith('Write(//') && arg.includes('/state.json')));
+  assert.ok(call.argv.some(arg => arg.startsWith('Edit(//') && arg.includes('/state.json')));
   assert.match(call.input, /Задание default/);
   assert.ok(f.sent.some(row => row.chat === owner && row.text.includes('Отчёт задачи')));
   assert.deepEqual(await Promise.all([fs.readFile(statePath()), fs.readFile(f.storeFile)]), protectedBefore);
@@ -119,6 +124,10 @@ test('a saved Claude prompt uses the old isolated workspace, native tool boundar
   assert.deepEqual([run.kind, run.status, run.costUsd, run.meteredUsd, run.tokensIn, run.tokensOut], ['prompt', 'ok', 0, 0.02, 20, 4]);
   await f.callback('auto:history');
   assert.match(f.edits.at(-1), /Сбор default/);
+  await f.callback('auto:task:default');
+  assert.match(f.edits.at(-1), /Вид: сбор/);
+  await f.callback('auto:task-toggle:default');
+  assert.equal((await f.actions())[0].enabled, false);
 });
 
 test('an explicitly narrow saved prompt keeps quiet without writing or spawning helpers', async t => {
@@ -166,3 +175,130 @@ for (const reason of ['owner pause', 'scheduler shutdown']) {
     assert.deepEqual(f.sent, []);
   });
 }
+
+test('saved prompts keep old subscription authentication and remove inherited API credentials', async t => {
+  const original = action('account');
+  const f = await profile(t, [original], { state: { authMode: 'api', hasSubscriptionAuth: false } });
+  for (const key of ['ANTHROPIC_API_KEY', 'IIA_ANTHROPIC_API_KEY', 'MSB_ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN']) {
+    process.env[key] = 'synthetic-fixture';
+  }
+  await f.scheduler.tickNow();
+  assert.deepEqual(await f.calls(), []);
+  assert.deepEqual(await f.actions(), [original]);
+  await saveState({ ...(await loadState()).state, authMode: 'subscription', hasSubscriptionAuth: true });
+  process.env.CLAUDE_CODE_OAUTH_TOKEN = 'synthetic-fixture-oauth';
+  await f.scheduler.tickNow();
+  const [call] = await f.calls();
+  assert.ok(call.oauth);
+  assert.deepEqual([call.api, call.legacyApi, call.msbApi, call.proxyToken], [false, false, false, false]);
+});
+
+test('STOP during the first Telegram response part leaves later parts unsent and consumes the attempt', async t => {
+  const f = await profile(t, [action('report')]);
+  const entered = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const send = f.bot.api.sendMessage;
+  let held = false;
+  f.bot.api.sendMessage = async (...args) => {
+    if (!held) { held = true; entered.resolve(); await release.promise; }
+    return send(...args);
+  };
+  const tick = f.scheduler.tickNow();
+  try {
+    await Promise.race([entered.promise, tick.then(() => assert.fail('Expected first report part'))]);
+    await setOwnerPause(true, { now, check() {}, checkEngine() {} });
+  } finally {
+    release.resolve();
+  }
+  await tick;
+  assert.equal(f.sent.length, 1);
+  assert.equal((await f.actions())[0].lastRunAt, ts);
+  assert.equal((await f.actions())[0].lastOutcome, 'stopped');
+  assert.match((await f.runs())[0].detail, /выдача прервана/);
+});
+
+for (const fenced of [false, true]) {
+  test(`old quiet marker after prose ${fenced ? 'inside a fence is literal' : 'suppresses the report'}`, async t => {
+    const f = await profile(t, [action('quiet-final', { output: { emptyIsValidOutcome: true } })],
+      { text: 'Диагностика.\n' + (fenced ? '```text\n' : '') + '[NOTHING_TO_REPORT]' });
+    await f.scheduler.tickNow();
+    assert.equal((await f.runs())[0].status, fenced ? 'ok' : 'skipped');
+    assert.equal(f.sent.length > 0, fenced);
+  });
+}
+
+test('changing the provider during workspace preparation leaves the saved action ready without a launch', async t => {
+  const original = action('route');
+  const f = await profile(t, [original]);
+  const waiting = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const realpath = fs.realpath.bind(fs);
+  const workspace = path.join(f.autonomy, 'cc-workspace');
+  let held = false;
+  t.mock.method(fs, 'realpath', async (file, ...args) => {
+    if (file === workspace && !held) { held = true; waiting.resolve(); await release.promise; }
+    return realpath(file, ...args);
+  });
+  const tick = f.scheduler.tickNow();
+  try {
+    await Promise.race([waiting.promise, tick.then(() => assert.fail('Expected scoped workspace preparation'))]);
+    await saveState({ ...(await loadState()).state, extAuthBypass: 'codex' });
+  } finally {
+    release.resolve();
+  }
+  await tick;
+  assert.deepEqual(await f.calls(), []);
+  assert.deepEqual(await f.actions(), [original]);
+  assert.deepEqual(f.sent, []);
+});
+
+test('the old declared deadline aborts the child and records a timed-out attempt', async t => {
+  const f = await profile(t, [action('deadline', { budget: { maxRunSeconds: 45 } })], { hold: true });
+  const deadline = new AbortController();
+  const timeout = AbortSignal.timeout.bind(AbortSignal);
+  t.mock.method(AbortSignal, 'timeout', ms => ms === 30_000 ? deadline.signal : timeout(ms));
+  const tick = f.scheduler.tickNow();
+  await waitForNative(f, tick);
+  deadline.abort();
+  await tick;
+  assert.equal(await fs.readFile(f.closed, 'utf8'), 'signal');
+  assert.equal((await f.actions())[0].lastRunAt, ts);
+  assert.equal((await f.runs())[0].status, 'error');
+  assert.match((await f.runs())[0].detail, /по сроку/);
+  assert.match(f.sent[0].text, /Ход остановлен по сроку/);
+});
+
+test('a task paused while preparing its workspace does not spawn or consume the attempt', async t => {
+  const original = action('pause-preflight');
+  const f = await profile(t, [original]);
+  const waiting = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const realpath = fs.realpath.bind(fs);
+  const workspace = path.join(f.autonomy, 'cc-workspace');
+  let held = false;
+  t.mock.method(fs, 'realpath', async (file, ...args) => {
+    if (file === workspace && !held) { held = true; waiting.resolve(); await release.promise; }
+    return realpath(file, ...args);
+  });
+  const tick = f.scheduler.tickNow();
+  try {
+    await Promise.race([waiting.promise, tick.then(() => assert.fail('Expected scoped workspace preparation'))]);
+    await f.callback('auto:task-toggle:pause-preflight');
+  } finally {
+    release.resolve();
+  }
+  await tick;
+  assert.deepEqual(await f.calls(), []);
+  assert.deepEqual(await f.actions(), [{ ...original, enabled: false, disabledReason: 'owner' }]);
+  assert.deepEqual(await f.runs(), []);
+});
+
+test('a redirected background workspace cannot run in the owner project', async t => {
+  const original = action('workspace-link');
+  const f = await profile(t, [original]);
+  await fs.symlink(f.workspace, path.join(f.autonomy, 'cc-workspace'));
+  await f.scheduler.tickNow();
+  assert.deepEqual(await f.calls(), []);
+  assert.deepEqual(await f.actions(), [original]);
+  assert.deepEqual(await f.runs(), []);
+});
