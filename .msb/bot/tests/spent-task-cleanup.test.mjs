@@ -171,3 +171,142 @@ test('native ownership is checked again at confirmation and native map errors ar
   assert.equal(await fs.readFile(f.jobFile, 'utf8'), mapping);
   await f.untouched();
 });
+
+test('a native-only historical group stays readable without offering a local removal', async t => {
+  const f = await profile(t, [first]);
+  const mapping = '{"first":{"jobId":"foreign-native","enabled":true}}';
+  await fs.writeFile(f.jobFile, mapping);
+  assert.equal(await f.ask(), 0);
+  assert.match(await f.final(), /Уже не сработают \(1\)[\s\S]*Прежнее напоминание/);
+  await f.click(confirm, { messageId: 100 });
+  assert.equal(f.toast(), 'Подтверждение устарело');
+  assert.deepEqual(await f.records(), [first]);
+  assert.equal(await fs.readFile(f.jobFile, 'utf8'), mapping);
+});
+
+test('a job map change during the atomic action write preserves the row and the confirmation for retry', async t => {
+  const stable = finished('stable', 'Локальная');
+  const f = await profile(t, [first, stable]);
+  assert.ok(await f.ask());
+  const mapping = '{"first":{"jobId":"became-native","enabled":true}}';
+  const actionDirectory = path.dirname(await fs.realpath(f.actionFile));
+  const write = fs.writeFile;
+  let injected = false;
+  t.mock.method(fs, 'writeFile', async (file, ...args) => {
+    await write(file, ...args);
+    if (!injected && path.basename(file) === 'records.json' && path.dirname(path.dirname(file)) === actionDirectory) {
+      injected = true;
+      await write(f.jobFile, mapping);
+    }
+  });
+  await f.click(confirm);
+  assert.ok(injected);
+  assert.deepEqual(await f.records(), [first, stable]);
+  assert.equal(f.toast(), 'Не смог убрать, попробуй ещё раз');
+  await f.click(confirm);
+  assert.deepEqual(await f.records(), [first]);
+  assert.equal(f.toast(), 'Убрал не всё');
+  assert.equal(await fs.readFile(f.jobFile, 'utf8'), mapping);
+});
+
+test('a failed action rename does not need a second question write to make retry possible', async t => {
+  const f = await profile(t, [first]);
+  assert.ok(await f.ask());
+  const actionFile = await fs.realpath(f.actionFile);
+  const rename = fs.rename;
+  let fail = true, actionRefused = false;
+  t.mock.method(fs, 'rename', async (from, to) => {
+    if (fail && to === actionFile) {
+      actionRefused = true;
+      throw new Error('fixture action rename refused');
+    }
+    if (fail && actionRefused && path.basename(to) === 'spent-task-questions.json') {
+      throw new Error('fixture question rollback refused');
+    }
+    return rename(from, to);
+  });
+  await f.click(confirm);
+  assert.ok(actionRefused);
+  assert.equal(f.toast(), 'Не смог убрать, попробуй ещё раз');
+  assert.deepEqual(await f.records(), [first]);
+  fail = false;
+  await f.click(confirm);
+  assert.equal(f.toast(), 'Убрал');
+  assert.deepEqual(await f.records(), []);
+});
+
+test('a duplicate tap while the first acknowledgment waits still closes the exact original question', async t => {
+  const f = await profile(t, [first]);
+  assert.ok(await f.ask());
+  const editCount = f.edits.length;
+  const entered = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  f.bot.middleware.unshift(async (ctx, next) => {
+    const original = ctx.answerCallbackQuery;
+    ctx.answerCallbackQuery = async options => {
+      if (options?.text === 'Убрал') {
+        entered.resolve();
+        await release.promise;
+      }
+      return original(options);
+    };
+    return next();
+  });
+  const firstTap = f.click(confirm);
+  try {
+    await Promise.race([entered.promise, firstTap]);
+    assert.deepEqual(await f.records(), []);
+    await f.click(confirm);
+    assert.equal(f.toast(), 'Подтверждение устарело');
+  } finally {
+    release.resolve();
+  }
+  await firstTap;
+  assert.equal(f.edits.length, editCount + 1);
+  assert.match(f.edits.at(-1), /Снёс 1/);
+  assert.deepEqual(f.editOptions.at(-1).reply_markup.inline_keyboard, []);
+});
+
+test('a failed Keep write is reported on its own card and can be retried', async t => {
+  const f = await profile(t, [first]);
+  assert.ok(await f.ask());
+  const edits = f.edits.length;
+  const rename = fs.rename;
+  let refuse = true;
+  t.mock.method(fs, 'rename', async (from, to) => {
+    if (refuse && path.basename(to) === 'spent-task-questions.json') throw new Error('fixture Keep write refused');
+    return rename(from, to);
+  });
+  await f.click(keep);
+  assert.equal(f.toast(), 'Не смог закрыть вопрос, попробуй ещё раз');
+  assert.equal(f.edits.length, edits);
+  refuse = false;
+  await f.click(keep);
+  assert.equal(f.toast(), 'Оставил');
+  assert.deepEqual(await f.records(), [first]);
+});
+
+test('a second bot profile cannot spend the first bot’s confirmation in the same chat', async t => {
+  const f = await profile(t, [first]);
+  assert.ok(await f.ask());
+  const sibling = path.join(path.dirname(f.directory), 'other');
+  const siblingActions = path.join(sibling, 'actions.json');
+  const siblingBytes = JSON.stringify([first]);
+  await fs.mkdir(sibling);
+  await fs.writeFile(siblingActions, siblingBytes);
+  const profileId = process.env.MSB_BOT_ID;
+  process.env.MSB_BOT_ID = 'other';
+  try {
+    await saveState({ engine: 'cc' });
+    await f.click(confirm);
+    assert.equal(f.toast(), 'Подтверждение устарело');
+    assert.equal(await fs.readFile(siblingActions, 'utf8'), siblingBytes);
+    assert.deepEqual(await f.records(), [first]);
+  } finally {
+    process.env.MSB_BOT_ID = profileId;
+  }
+  await f.click(confirm);
+  assert.equal(f.toast(), 'Убрал');
+  assert.deepEqual(await f.records(), []);
+  assert.equal(await fs.readFile(siblingActions, 'utf8'), siblingBytes);
+});

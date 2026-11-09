@@ -8,13 +8,9 @@ import { listLegacyTimers } from './legacy-timers.mjs';
 import { readSavedActionRunTail } from './reminder-runs.mjs';
 import { reminderFrequencyAllows } from './reminder-frequency.mjs';
 import { readReminderFrequencyDecisions } from './frequency-decisions.mjs';
-import { nextReminderCronAt, spentReminder, validReminderTimezone } from './reminder-schedule.mjs';
+import { nextReminderCronAt, savedTaskSpent, validReminderTimezone } from './reminder-schedule.mjs';
 import { savedPromptPlan } from './prompt-policy.mjs';
 import { promptRegistrationReady } from './prompt-registration.mjs';
-
-export function savedTaskSpent(action) {
-  return action.trigger?.kind === 'once' && spentReminder(action) && !action.pendingConfirm;
-}
 
 export function savedTaskIsNative(action, job) {
   return Boolean(job || action.runner === 'oc' || action.migratedToOc);

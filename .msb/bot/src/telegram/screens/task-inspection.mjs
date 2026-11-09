@@ -4,9 +4,9 @@
  * are read independently of [event and optional settings](./task-inspection-options.mjs).
  * [Telegram checks](../../../tests/saved-task-inspection.test.mjs).
  */
-import { validReminderTrigger } from '../../autonomy/reminder-schedule.mjs';
+import { savedTaskSpent, validReminderTrigger } from '../../autonomy/reminder-schedule.mjs';
 import { describeReminderScheduleWithNext, reminderDateClock } from '../../autonomy/reminder-time.mjs';
-import { savedTaskSpent, savedTaskTimezone } from '../../autonomy/saved-task-inspection.mjs';
+import { savedTaskTimezone } from '../../autonomy/saved-task-inspection.mjs';
 import { legacyTimerOverlap } from '../../autonomy/reminder-registration-advice.mjs';
 import { eventSchedule, taskInspectionOptions } from './task-inspection-options.mjs';
 

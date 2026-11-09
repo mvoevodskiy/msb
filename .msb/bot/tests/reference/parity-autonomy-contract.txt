@@ -980,3 +980,25 @@ are independent. The old static button can select a later record
 because the group is reloaded without the displayed binding. For
 the new owner callback, restrict deletion to the reviewed records
 and verify each against the current per-bot store under its lock.
+
+Open-core binds the original ct-spent / ct-keep buttons to the
+configured owner, bot, chat, message, physical action file and row
+fingerprints. The question goes to the same topic. The shared owner
+transport persists the binding before exposing the keyboard. Keep
+retires only that question. Cleanup rechecks the local rail and the
+unchanged enabled historical rows before a single atomic action
+write. Failed writes retain the question. A successful write makes
+the same fingerprints harmless on retry when the rows are gone.
+Closing the exact message is a receipt, independent of a newer menu
+or callback render. The journal, timer and provider routes stay
+separate.
+
+Native removal remains a separate contract. The old z_ at
+45943–45965 did not store a Gateway identity and could use the first
+new ID from a cron-list diff. An old map alone cannot authorize a
+native removal on this installation. Do not offer a local cleanup
+for mapped or migrated tasks. Re-read the map before publishing
+the atomic local write and leave the question retryable if a binding
+appears. A concurrent future native map writer needs a shared lock
+and an ownership proof, since the local prepublish check does not
+serialize out-of-band file changes.

@@ -2,16 +2,17 @@
  * Per-bot actions.json for saved literal and model actions. Keep tasks.json and legacy timer
  * files separate. [Marker](../telegram/reminder-markers.mjs), [sender](./reminder-dispatch.mjs),
  * [menu](../telegram/routes/autonomy.mjs), [individual state](./saved-action-control.mjs),
- * [read-only inventory](./saved-task-inspection.mjs),
+ * [inventory](./saved-task-inspection.mjs), [confirmed cleanup](./spent-task-cleanup.mjs),
  * [contract](../../tests/reference/parity-autonomy-contract.txt).
  */
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { withFileLock } from '../../shared/file-lock.mjs';
 import { actionRoot } from '../paths.mjs';
 import { physicalRecordPath, readOptionalJson, readRecordArray, writeRecordArray } from './record-file.mjs';
 import { recordReminderBreaker } from './reminder-breaker.mjs';
-import { reminderSpacing, spentReminder, validReminderTrigger } from './reminder-schedule.mjs';
+import { reminderSpacing, savedTaskSpent, spentReminder, validReminderTrigger } from './reminder-schedule.mjs';
 import { planSavedActionControl, savedActionWithEnabled, selectSavedAction,
   unavailableSavedActionControl } from './saved-action-control.mjs';
 
@@ -26,25 +27,29 @@ export async function readNativeJobMap(env) {
   return jobs;
 }
 
+function localActionScope(action, jobs) {
+  return !action.migratedToOc && [undefined, 'auto', 'cc'].includes(action.runner) && !Object.hasOwn(jobs, action.id);
+}
+
 export function isLocalSavedAction(action, jobs) {
   if (typeof action?.id !== 'string' || typeof action.name !== 'string' || !validReminderTrigger(action.trigger) ||
-      action.pendingConfirm || action.migratedToOc || ![undefined, 'auto', 'cc'].includes(action.runner) ||
-      Object.hasOwn(jobs, action.id)) return false;
+      action.pendingConfirm || !localActionScope(action, jobs)) return false;
   const task = action.task;
   if (task?.kind === 'reminder') return typeof task.text === 'string' && Boolean(task.text.trim()) && !task.followUp;
   return task?.kind === 'prompt' && typeof task.prompt === 'string' && Boolean(task.prompt.trim());
 }
 
-async function withActions(env, update, { signal, create } = {}) {
+async function withActions(env, update, { signal, create, expectedFile } = {}) {
   signal?.throwIfAborted();
   const file = await actionFile(env);
+  if (expectedFile && file !== expectedFile) return null;
   return withFileLock(file, async () => {
     signal?.throwIfAborted();
     if (await actionFile(env) !== file) throw new Error('Action file changed');
     const records = await readRecordArray(file);
-    return update(records, async () => {
+    return update(records, async beforePublish => {
       if (await actionFile(env) !== file) throw new Error('Action file changed');
-      await writeRecordArray(file, records, { signal, create });
+      await writeRecordArray(file, records, { signal, create, beforePublish });
     });
   });
 }
@@ -188,4 +193,42 @@ export async function changeSavedAction(id, remove, env = process.env) {
     else records[index] = savedActionWithEnabled(action, !action.enabled);
     await save();
   });
+}
+
+const taskFingerprint = action => createHash('sha256').update(JSON.stringify(action)).digest('hex');
+
+export function spentTaskCandidates(spent, jobs) {
+  if (!jobs) return [];
+  return spent.filter(action => localActionScope(action, jobs))
+    .map(action => ({ id: action.id, fingerprint: taskFingerprint(action) }));
+}
+
+export function removeConfirmedSpentTasks(file, candidates, { env = process.env, commit = publish => publish() } = {}) {
+  return withActions(env, (records, save) => commit(async () => {
+    const jobs = await readNativeJobMap(env);
+    const removed = [], failed = [];
+    let changed = false;
+    for (const candidate of candidates) {
+      const index = records.findIndex(action => action?.id === candidate.id && taskFingerprint(action) === candidate.fingerprint);
+      const action = records[index];
+      if (!action?.enabled || !savedTaskSpent(action)) {
+        changed = true;
+        continue;
+      }
+      if (!localActionScope(action, jobs)) {
+        failed.push(action.name);
+        continue;
+      }
+      removed.push(action);
+      records.splice(index, 1);
+    }
+    if (removed.length) await save(async () => {
+      if (await actionFile(env) !== file) throw new Error('Action file changed');
+      const latestJobs = await readNativeJobMap(env);
+      if (removed.some(action => !localActionScope(action, latestJobs))) {
+        throw new Error('A confirmed local action gained a native binding');
+      }
+    });
+    return { removed: removed.map(action => action.name), failed, changed };
+  }), { expectedFile: file });
 }

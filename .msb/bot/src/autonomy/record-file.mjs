@@ -46,7 +46,7 @@ export function writeRecordArray(file, records, options) {
   return writeRecordJson(file, records, options);
 }
 
-export async function writeRecordJson(file, value, { signal, create = false } = {}) {
+export async function writeRecordJson(file, value, { signal, create = false, beforePublish } = {}) {
   signal?.throwIfAborted();
   const mode = await fs.stat(file).then(stat => stat.mode & 0o777, error => {
     if (create && error?.code === 'ENOENT') return 0o600;
@@ -57,6 +57,7 @@ export async function writeRecordJson(file, value, { signal, create = false } = 
     const temporary = path.join(directory, 'records.json');
     await fs.writeFile(temporary, JSON.stringify(value, null, 2), { flag: 'wx', mode: 0o600 });
     await fs.chmod(temporary, mode);
+    if (beforePublish) await beforePublish();
     signal?.throwIfAborted();
     await fs.rename(temporary, file);
   } finally {

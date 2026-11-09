@@ -77,7 +77,12 @@ export function validReminderTrigger(trigger) {
 }
 
 export function spentReminder(action) {
-  return action.trigger.kind === 'once' && Boolean(action.lastRunAt);
+  return action?.trigger?.kind === 'once' && Boolean(action.lastRunAt);
+}
+
+// Historical G4 also excludes records with a pending owner confirmation.
+export function savedTaskSpent(action) {
+  return spentReminder(action) && !action.pendingConfirm;
 }
 
 function localMinute(instant, clock) {
