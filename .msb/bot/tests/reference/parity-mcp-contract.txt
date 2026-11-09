@@ -287,3 +287,26 @@ one key must never overwrite shared or sibling MCP settings.
 Old ordinary OpenClaw used acpx (29210–29226, 32195–32268,
 32902–32938), distinct from the registry CLI. List/registration
 alone is not evidence of an MCP tool call in that route.
+
+OpenClaw form restoration. fd7c21e pinned six missing-form failures.
+The existing form arms on both service buttons and keeps its one-shot
+validation, key-message removal, and original success reply. The key
+is saved before native registration. Provider records reserve separate
+per-bot env keys for this engine and the existing Claude/Codex templates.
+A saved key without native registration stays out of the native list.
+
+The registration path verifies two bot-owned physical paths, requires
+the local Gateway, compares config.get's physical target with the form's
+captured file, and writes only the template leaf. A private batch file
+keeps headers out of argv. A second read verifies the registered URL and
+transport. A stale form, an existing definition or a different Gateway
+leaves native config untouched. The failed-registration reply confirms
+the key only, because direct service use is unproved in that branch.
+
+OpenClaw 2026.9.5 in the native fixture accepts both the historical
+mcp add --no-probe and config set --batch-file with its Gateway active.
+The new route uses the latter with a scoped configuration. The real
+Gateway hot-reloads the registry and supplies the tool to the same
+named acpx 0.13.0 conversation. The paired JSON is the Docker evidence.
+OpenClaw gateway/install provisioning and live Telegram acceptance
+remain separate. JAR1's accepted running source is 736e6bc.

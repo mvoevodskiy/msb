@@ -6,10 +6,11 @@
  */
 import {mcpTemplate} from '../../../shared/mcp-templates.mjs';
 import {mcpCatalog,selectedMcpProvider} from '../../mcp/catalog.mjs';
-import {includeManagedMcp,managedMcpRows,removeManagedMcp,supportsManagedMcp} from '../../mcp/managed.mjs';
+import {includeManagedMcp,managedMcpRows,removeManagedMcp,supportsMcpTemplate} from '../../mcp/managed.mjs';
 import {removeInheritedMcp,visibleNativeMcp} from '../../mcp/native-removal.mjs';
 import {loadState} from '../../state.mjs';
 import {statePath} from '../../paths.mjs';
+import {ownedOpenClawProfile} from '../../agent/openclaw-profile.mjs';
 import {isNativeMcpDeleteReference,mcpDeleteReference,resolveMcpReference,resolveNativeMcpDeleteReference} from '../../mcp/reference.mjs';
 import {mcpAddScreen,mcpTemplatePrompt} from '../screens/mcp-setup.mjs';
 import {mcpCardScreen,mcpReadErrorScreen,mcpMissingScreen,mcpScreen,mcpWorkspaceScreen,openClawMcpScreen} from '../screens/workspace.mjs';
@@ -30,11 +31,12 @@ export async function handleWorkspaceRoute({data,state,bot,show,signal,pending,c
   const readProvider=bot[Symbol.for('msb.mcpProvider')];
   if(data.startsWith(SETUP)){
     const name=data.slice(SETUP.length);
-    if(!mcpTemplate(name) || !supportsManagedMcp(provider)){
+    if(!mcpTemplate(name) || !supportsMcpTemplate(provider)){
       return show(placeholder('MCP',ADD,'Настройка MCP недоступна для выбранного движка.'));
     }
+    const profile=provider==='oc'?await ownedOpenClawProfile():undefined;
     pending.set(chatId,'mcp-setup');
-    pending.advance(chatId,'mcp-setup',{name,provider,root:statePath(),readProvider});
+    pending.advance(chatId,'mcp-setup',{name,provider,root:statePath(),readProvider,profile});
     return show(mcpTemplatePrompt(name));
   }
 
@@ -58,7 +60,10 @@ export async function handleWorkspaceRoute({data,state,bot,show,signal,pending,c
   // A switch in another owner chat does not abort this chat's render scope.
   let {state:current}=await loadState();
   if(selectedMcpProvider(current)!==provider)return;
-  if(!native)return show(mcpReadErrorScreen(data===TOP?'menu:back':TOP));
+  if(!native){
+    if(provider==='oc' && data===ADD)return show(mcpAddScreen({provider,entries:[]}));
+    return show(mcpReadErrorScreen(data===TOP?'menu:back':TOP));
+  }
   if(inherited){
     const row=resolveNativeMcpDeleteReference(reference,visibleNativeMcp(native,current));
     if(!row)return show(mcpMissingScreen(FOLDER));

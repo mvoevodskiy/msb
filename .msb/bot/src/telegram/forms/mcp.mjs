@@ -9,6 +9,7 @@ import {mcpTemplate} from '../../../shared/mcp-templates.mjs';
 import {codexManagedMcpName} from '../../../shared/codex-mcp-name.mjs';
 import {mcpCatalog,selectedMcpProvider} from '../../mcp/catalog.mjs';
 import {enrollMcpTemplate} from '../../mcp/managed.mjs';
+import {setupOpenClawTemplate} from '../../mcp/openclaw-setup.mjs';
 import {visibleNativeMcp} from '../../mcp/native-removal.mjs';
 
 const changed='Движок изменился. Открой /start → 🔌 MCP и попробуй ещё раз.';
@@ -33,6 +34,15 @@ export async function handleMcpInput({ctx,text,pending,chatId}) {
   const {state}=await loadState();
   if(draft.root!==statePath() || selectedMcpProvider(state)!==draft.provider){
     await ctx.reply(changed);
+    return;
+  }
+
+  if(draft.provider==='oc'){
+    const result=await setupOpenClawTemplate({template,value,profile:draft.profile});
+    if(result.providerChanged)await ctx.reply(changed);
+    else if(result.ok)await ctx.reply('✔ <b>'+template.name+'</b> подключён. Ключ сохранён — можно отправлять задачу.',html);
+    else if(result.keySaved)await ctx.reply('✔ Ключ <b>'+template.name+'</b> сохранён.\n\n⚠️ Быстрые инструменты подключить не удалось. Можно повторить позже через /start → 🔌 MCP.',html);
+    else await ctx.reply('❌ Ошибка подключения. Проверь настройки бота и попробуй ещё раз.');
     return;
   }
 

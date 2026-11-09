@@ -17,7 +17,7 @@ const supadata='sd_openclaw_synthetic';
 const apify='apify_api_openclaw_synthetic';
 const buttons=f=>f.editOptions.at(-1)?.reply_markup?.inline_keyboard.flat() || [];
 
-async function prepare(t,{owned=true,fail=false}={}){
+async function prepare(t,{owned=true,fail=false,foreign=false}={}){
   const f=await mcpFixture(t,'oc');
   const stateDir=owned?path.join(botRoot(),'openclaw'):path.join(f.home,'.openclaw');
   const config=path.join(stateDir,'openclaw.json');
@@ -25,7 +25,9 @@ async function prepare(t,{owned=true,fail=false}={}){
   await fs.writeFile(config,JSON.stringify(original),{mode:0o600});
   process.env.OPENCLAW_CONFIG_PATH=config;
   process.env.OPENCLAW_STATE_DIR=stateDir;
-  const fixture=JSON.stringify({config,log:path.join(f.home,'mcp-protocol.jsonl'),fail});
+  const other=path.join(f.home,'different-gateway.json');
+  if(foreign)await fs.writeFile(other,JSON.stringify(original),{mode:0o600});
+  const fixture=JSON.stringify({config,log:path.join(f.home,'mcp-protocol.jsonl'),fail,other:foreign?other:null});
   const source=[
     "import fs from 'node:fs';",
     'const fixture='+fixture+';',
@@ -34,6 +36,8 @@ async function prepare(t,{owned=true,fail=false}={}){
     "const file=process.env.OPENCLAW_CONFIG_PATH;",
     "const state=JSON.parse(fs.readFileSync(file,'utf8'));",
     "if(argv.join(' ')==='mcp list --json'){console.log(JSON.stringify(state.mcp.servers));process.exit(0);}",
+    "if(argv.join(' ')==='config get gateway.mode --json'){console.log(JSON.stringify(state.gateway.mode));process.exit(0);}",
+    "if(argv.join(' ')==='gateway call config.get --json'){console.log(JSON.stringify({path:fs.realpathSync(fixture.other || file),config:state}));process.exit(0);}",
     "if(argv.join(' ')==='mcp reload')process.exit(0);",
     "if(fixture.fail){console.error('untrusted service setup diagnostic');process.exit(1);}",
     "let name,entry;",
@@ -117,4 +121,43 @@ test('OpenClaw form: a Claude enrollment keeps the base key when the OC form add
   assert.equal(keys.get('SUPADATA_API_KEY'),'sd_claude_synthetic');
   assert.equal(keys.get('SUPADATA_API_KEY_OC'),supadata);
   assert.equal(JSON.parse(await fs.readFile(f.ocConfig,'utf8')).mcp.servers.supadata.headers['x-api-key'],supadata);
+});
+
+test('OpenClaw form: an active Gateway reporting another physical config cannot be written',async t=>{
+  const f=await prepare(t,{foreign:true});
+  await setup(f);
+  await f.message(supadata);
+  assert.equal((await readEnvMap()).map.get('SUPADATA_API_KEY'),supadata);
+  assert.deepEqual(JSON.parse(await fs.readFile(f.ocConfig,'utf8')),original);
+  assert.ok((await f.calls()).some(call=>call.argv?.join(' ')==='gateway call config.get --json'));
+  assert.ok(!(await f.calls()).some(call=>call.argv?.includes('--batch-file')));
+  assert.match(f.messages.at(-1),/Быстрые инструменты подключить не удалось/);
+});
+
+test('OpenClaw form: retargeting the native path while the form is open keeps both profiles intact',async t=>{
+  const f=await prepare(t);
+  await setup(f);
+  const other=path.join(botRoot(),'different-openclaw');
+  await fs.mkdir(other,{mode:0o700});
+  process.env.OPENCLAW_STATE_DIR=other;
+  process.env.OPENCLAW_CONFIG_PATH=path.join(other,'openclaw.json');
+  await fs.writeFile(process.env.OPENCLAW_CONFIG_PATH,JSON.stringify(original),{mode:0o600});
+  await f.message(supadata);
+  assert.equal((await readEnvMap()).map.get('SUPADATA_API_KEY'),supadata);
+  assert.deepEqual(JSON.parse(await fs.readFile(f.ocConfig,'utf8')),original);
+  assert.deepEqual(JSON.parse(await fs.readFile(process.env.OPENCLAW_CONFIG_PATH,'utf8')),original);
+  assert.ok(!(await f.calls()).some(call=>call.argv?.includes('--batch-file')));
+  assert.match(f.messages.at(-1),/Быстрые инструменты подключить не удалось/);
+});
+
+test('OpenClaw form: a second stale prompt cannot replace the registered native entry',async t=>{
+  const f=await prepare(t);
+  await setup(f);
+  await f.message(supadata);
+  await f.callback('mcp:setup:supadata');
+  await f.message('sd_openclaw_second_synthetic');
+  const entry=JSON.parse(await fs.readFile(f.ocConfig,'utf8')).mcp.servers.supadata;
+  assert.equal(entry.headers['x-api-key'],supadata);
+  assert.equal((await f.calls()).filter(call=>call.argv?.includes('--batch-file')).length,1);
+  assert.match(f.messages.at(-1),/Быстрые инструменты подключить не удалось/);
 });

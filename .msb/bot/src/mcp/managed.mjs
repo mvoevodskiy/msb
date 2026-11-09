@@ -17,15 +17,18 @@ import {selectedMcpProvider} from './catalog.mjs';
 import {recordNativeMcpRemoval} from './native-removal.mjs';
 
 export const supportsManagedMcp=provider=>provider==='claude' || provider==='codex';
+export const supportsMcpTemplate=provider=>provider==='oc' || supportsManagedMcp(provider);
+const templateProviders=['claude','codex','oc'];
 
 const scopedEnvKey=(template,provider)=>template.key+'_'+provider.toUpperCase();
 
 function managedRecords(state,provider) {
   const scoped=state.managedMcp?.[provider];
-  return supportsManagedMcp(provider) && isConfigObject(scoped)?Object.entries(scoped):[];
+  return supportsMcpTemplate(provider) && isConfigObject(scoped)?Object.entries(scoped):[];
 }
 
 function customRecords(state,provider) {
+  if(!supportsManagedMcp(provider))return [];
   return managedRecords(state,provider).filter(([name,record])=>isCustomMcpName(name) && isCustomMcpRecord(record));
 }
 
@@ -46,6 +49,8 @@ export function configuredMcpTemplates(state,provider) {
 }
 
 export function managedMcpRows(state,provider,env=process.env) {
+  // An OpenClaw key reference does not establish a native registration.
+  if(!supportsManagedMcp(provider))return [];
   const root=statePath(env);
   const templates=configuredMcpTemplates(state,provider).map(({name})=>({name,transport:'http'}));
   const custom=customRecords(state,provider).map(([name,{transport}])=>({name,transport,replacesNative:true}));
@@ -117,15 +122,15 @@ export async function enrollCustomMcp({name,config},target,{signal,replaceScope}
 
 export async function enrollMcpTemplate({provider,name,value,env=process.env}) {
   const template=mcpTemplate(name);
-  if(!supportsManagedMcp(provider) || !template)return {ok:false};
+  if(!supportsMcpTemplate(provider) || !template)return {ok:false};
   let keySaved=false,previous;
   try {
     await updateState(async state=>{
       if(selectedMcpProvider(state)!==provider)return NO_STATE_WRITE;
       previous=state.managedMcp?.[provider]?.[name];
       const own=configuredMcpTemplates(state,provider).find(item=>item.name===name);
-      const other=provider==='claude'?'codex':'claude';
-      const baseInUse=configuredMcpTemplates(state,other).some(item=>item.key===template.key);
+      const baseInUse=templateProviders.some(other=>other!==provider
+        && configuredMcpTemplates(state,other).some(item=>item.key===template.key));
       const key=baseInUse?scopedEnvKey(template,provider):own?.key ?? template.key;
       const next=setRecord(state,provider,name,{template:name,key});
       await setEnvKey(key,value,env);
