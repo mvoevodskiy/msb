@@ -1,7 +1,7 @@
 /**
  * Ordinary one-shot reminder admission through the real local scheduler.
  * Old blob 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11: 11060–11148,
- * 11548–11961, 16616–16716, 24743–24827 and 24928–24948.
+ * 11548–11961, 13249–13429, 16616–16716, 24743–24893 and 24928–24948.
  * All journal rows, routes and Telegram events belong to disposable fixtures.
  */
 import test from 'node:test';
@@ -10,7 +10,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { setOwnerPause } from '../src/autonomy/owner-pause.mjs';
 import { startScheduler } from '../src/autonomy/scheduler.mjs';
-import { botRoot, msbRoot } from '../src/paths.mjs';
+import { actionRoot, msbRoot } from '../src/paths.mjs';
 import { loadState, saveState, updateState } from '../src/state.mjs';
 import { fixture } from './helpers/menu-fixture.mjs';
 
@@ -33,18 +33,26 @@ async function append(file, rows) {
   await fs.appendFile(file, rows.map(row => (typeof row === 'string' ? row : JSON.stringify(row)) + '\n').join(''));
 }
 
-async function profile(t, { state = {}, caps = {}, actions = [reminder] } = {}) {
+async function profile(t, { state = {}, caps = {}, actions = [reminder], sessionOverride = false } = {}) {
   const f = await fixture(t, async () => assert.fail('A literal reminder must not invoke an owner model'), {
     overlay: false, runtimeProfile: 'jar1', now: () => now,
   });
   for (const key of ['MSB_SESSION_DIR', 'IIA_SESSION_DIR', 'AUTONOMY_DIR', 'AUTONOMY_DAILY_CAP_USD',
     'AUTONOMY_DAILY_CAP_RUNS', 'AUTONOMY_DAILY_CAP_TOKENS', 'AUTONOMY_RESERVE_FRACTION']) delete process.env[key];
   process.env.AUTONOMY_ENABLED = '1';
+  if (sessionOverride) process.env.IIA_SESSION_DIR = path.join(f.home, 'old-profile', 'sessions');
   Object.assign(process.env, caps);
   await saveState({ ...(await loadState()).state, engine: 'cc', chatId: ownerChat, userId: 42, timezone: 'Europe/Moscow', ...state });
-  const root = botRoot();
+  const root = actionRoot();
+  await fs.mkdir(root, { recursive: true });
   const file = path.join(root, 'actions.json');
   const journal = path.join(root, 'autonomy', 'runs.jsonl');
+  const breakerFile = path.join(root, 'autonomy', 'breakers.json');
+  const seedBreakers = async rows => {
+    await fs.mkdir(path.dirname(breakerFile), { recursive: true });
+    await fs.writeFile(breakerFile, JSON.stringify(rows));
+  };
+  const readBreakers = async () => JSON.parse(await fs.readFile(breakerFile, 'utf8'));
   const rootJournal = path.join(msbRoot(), 'autonomy', 'runs.jsonl');
   const sibling = path.join(msbRoot(), 'bots', 'other', 'autonomy', 'runs.jsonl');
   const setActions = rows => fs.writeFile(file, JSON.stringify(rows));
@@ -54,14 +62,17 @@ async function profile(t, { state = {}, caps = {}, actions = [reminder] } = {}) 
     messages.push({ chat, text, options: options[0] });
     return transport(chat, text, ...options);
   };
+  let clock = now;
+  const logs = [];
   const scheduler = startScheduler({ api: f.bot.api, adminId: 42, timezone: 'Europe/Moscow',
-    scheduledTurns: f.bot[Symbol.for('msb.scheduledTurns')], now: () => now, log() {},
+    scheduledTurns: f.bot[Symbol.for('msb.scheduledTurns')], now: () => clock, log: line => logs.push(line),
     runTurn: async () => assert.fail('The reminder must not use the interval runner'),
   });
   t.after(() => scheduler.stop());
   const readActions = async () => JSON.parse(await fs.readFile(file, 'utf8'));
   const runs = async () => (await fs.readFile(journal, 'utf8')).trim().split('\n').map(JSON.parse);
-  return { ...f, root, journal, rootJournal, sibling, messages, scheduler, setActions, readActions, runs };
+  return { ...f, root, file, journal, rootJournal, sibling, messages, scheduler, setActions, readActions, runs,
+    breakerFile, seedBreakers, readBreakers, logs, setTime(value) { clock = value; } };
 }
 
 async function assertBlocked(f, reason, id = reminder.id) {
@@ -140,19 +151,26 @@ test('saved owner cost pause blocks a reminder with unavailable billing data', a
 test('an open legacy breaker spends its once quietly and an expired breaker allows delivery', async t => {
   const second = { ...reminder, id: 'expired', name: 'Срок защиты истёк', task: { ...reminder.task, text: 'Срок защиты истёк' } };
   const f = await profile(t, { actions: [reminder, second] });
-  const file = path.join(f.root, 'autonomy', 'breakers.json');
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  await fs.writeFile(file, JSON.stringify({
-    [reminder.id]: { open: true, consecutiveFailures: 3, backoffUntil: new Date(now + 60_000).toISOString() },
-    [second.id]: { open: true, consecutiveFailures: 3, backoffUntil: at },
-  }));
+  const firstBreaker = { open: true, consecutiveFailures: 3, backoffUntil: new Date(now + 60_000).toISOString() };
+  const openedAt = new Date(now - 600_000).toISOString();
+  await f.seedBreakers({
+    [reminder.id]: firstBreaker,
+    [second.id]: { open: true, consecutiveFailures: 3, backoffUntil: at, openedAt, notifiedOpenAt: openedAt,
+      crashWindow: [openedAt], lastFailureAt: openedAt, lastReason: 'предыдущий сбой', retained: 'старое поле' },
+  });
   await f.scheduler.tickNow();
   const [skipped, sent] = await f.readActions();
   assert.equal(skipped.lastStatus, 'skipped');
   assert.equal(skipped.lastOutcome, 'blocked');
   assert.equal(skipped.disabledReason, 'spent_once');
   assert.equal(sent.lastStatus, 'ok');
-  assert.deepEqual(f.messages.map(row => row.text), ['⏰ Срок защиты истёк']);
+  assert.deepEqual(f.messages.map(row => row.text), ['⏰ Срок защиты истёк',
+    '✔ Автономное действие «Срок защиты истёк» снова работает. Пауза была 10 минут.']);
+  const breakers = await f.readBreakers();
+  assert.deepEqual(breakers[reminder.id], firstBreaker);
+  assert.deepEqual(breakers[second.id], { open: false, consecutiveFailures: 0, crashWindow: [], lastSuccessAt: at,
+    lastFailureAt: openedAt, lastReason: 'предыдущий сбой', retained: 'старое поле' });
+  assert.ok(f.messages.every(row => row.chat === ownerChat));
   assert.deepEqual((await f.runs()).map(row => row.status), ['skipped', 'ok']);
   assert.match((await f.runs())[0].detail, /breaker открыт до/);
 });
@@ -288,4 +306,151 @@ test('interval preflight refusals do not spend the completed-run allowance', asy
   })));
   await f.scheduler.tickNow();
   assert.deepEqual(f.messages.map(row => row.text), ['⏰ ' + title]);
+});
+
+test('one real send failure advances the breaker once and never rearms a spent reminder', async t => {
+  const f = await profile(t);
+  const other = { open: true, consecutiveFailures: 7, otherField: ['preserve'] };
+  await f.seedBreakers({ 'other-action': other });
+  let attempts = 0;
+  f.bot.api.sendMessage = async (chat, text) => {
+    assert.equal(chat, ownerChat);
+    assert.equal(text, '⏰ ' + title);
+    attempts++;
+    f.setTime(now + 90_000);
+    throw Error('private transport fixture');
+  };
+  await f.scheduler.tickNow();
+  await f.scheduler.tickNow();
+  assert.equal(attempts, 1);
+  assert.equal((await f.readActions())[0].disabledReason, 'spent_once');
+  const runs = await f.runs();
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].status, 'error');
+  assert.equal(runs[0].ts, at);
+  assert.doesNotMatch(JSON.stringify(runs), /private transport fixture/);
+  assert.deepEqual(await f.readBreakers(), { 'other-action': other, [reminder.id]: {
+    open: false, consecutiveFailures: 1, crashWindow: [], lastFailureAt: at, lastReason: 'не удалось отправить напоминание',
+  } });
+});
+
+test('an old threshold crossing announces one pause and later failures extend backoff without duplicate notice', async t => {
+  const retry = { ...reminder, id: 'retry', name: 'Повтор после паузы', task: { ...reminder.task, text: 'Повтор' } };
+  const cap = { ...reminder, id: 'cap', name: 'Верхний предел', task: { ...reminder.task, text: 'Предел' } };
+  const f = await profile(t, { actions: [reminder, retry, cap] });
+  const justBefore = new Date(now - 30_000).toISOString();
+  await f.seedBreakers({
+    [reminder.id]: { open: false, consecutiveFailures: 2, crashWindow: [prior, justBefore], retained: 17 },
+    [retry.id]: { open: true, consecutiveFailures: 3, openedAt: prior, notifiedOpenAt: prior, backoffUntil: at },
+    [cap.id]: { open: true, consecutiveFailures: 9, openedAt: prior, notifiedOpenAt: prior, backoffUntil: at },
+  });
+  const send = f.bot.api.sendMessage;
+  f.bot.api.sendMessage = async (chat, text, ...options) => {
+    if (text.startsWith('⏰')) throw Error('fixture failure');
+    const current = (await f.readBreakers())[reminder.id];
+    assert.equal(current.open, true, 'write the breaker before sending its notice');
+    assert.equal((await f.runs()).find(row => row.actionId === reminder.id)?.status, 'error');
+    return send(chat, text, ...options);
+  };
+  await f.scheduler.tickNow();
+  await f.scheduler.tickNow();
+  const rows = await f.readBreakers();
+  assert.deepEqual(rows[reminder.id], { open: true, consecutiveFailures: 3, crashWindow: [justBefore], retained: 17,
+    lastFailureAt: at, lastReason: 'не удалось отправить напоминание', openedAt: at, notifiedOpenAt: at,
+    backoffUntil: new Date(now + 300_000).toISOString(),
+  });
+  assert.equal(rows[retry.id].backoffUntil, new Date(now + 600_000).toISOString());
+  assert.equal(rows[retry.id].openedAt, prior);
+  assert.equal(rows[cap.id].backoffUntil, new Date(now + 3_600_000).toISOString());
+  assert.equal(rows[cap.id].notifiedOpenAt, prior);
+  assert.deepEqual(f.messages, [{ chat: ownerChat, options: undefined,
+    text: '📡 Автономное действие «' + title + '» не выполнилось несколько раз подряд.\n' +
+      'Причина: не удалось отправить напоминание.\nПоставил на паузу до 00:35 (Москва).',
+  }]);
+});
+
+test('an owner pause and a budget refusal leave the old breaker bytes alone', async t => {
+  const f = await profile(t, { state: { costPaused: true } });
+  await f.seedBreakers({ [reminder.id]: { open: true, consecutiveFailures: 4, backoffUntil: at } });
+  const bytes = await fs.readFile(f.breakerFile);
+  const route = { now, check() {}, checkEngine() {} };
+  await setOwnerPause(true, route);
+  await f.scheduler.tickNow();
+  await assert.rejects(fs.stat(f.journal), { code: 'ENOENT' });
+  assert.deepEqual(await fs.readFile(f.breakerFile), bytes);
+  await setOwnerPause(false, route);
+  await f.scheduler.tickNow();
+  await assertBlocked(f, /costPaused/);
+  assert.deepEqual(await fs.readFile(f.breakerFile), bytes);
+});
+
+test('a breaker opened while reading usage is checked again before the local attempt is claimed', async t => {
+  const f = await profile(t);
+  await f.seedBreakers({ [reminder.id]: { open: false, consecutiveFailures: 2 } });
+  await append(f.journal, [historical()]);
+  const reading = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const physicalJournal = await fs.realpath(f.journal);
+  const readFile = fs.readFile.bind(fs);
+  t.mock.method(fs, 'readFile', async (file, ...options) => {
+    if (file === physicalJournal) {
+      reading.resolve();
+      await release.promise;
+    }
+    return readFile(file, ...options);
+  });
+  const tick = f.scheduler.tickNow();
+  try {
+    await Promise.race([reading.promise, tick.then(() => assert.fail('Expected a usage read'))]);
+    await f.seedBreakers({ [reminder.id]: { open: true, consecutiveFailures: 3,
+      backoffUntil: new Date(now + 300_000).toISOString() } });
+  } finally {
+    release.resolve();
+  }
+  await tick;
+  assert.equal(f.messages.length, 0);
+  assert.equal((await f.runs()).at(-1).status, 'skipped');
+  assert.equal((await f.readBreakers())[reminder.id].consecutiveFailures, 3);
+});
+
+test('a replaced action cannot acquire the old admitted attempt’s breaker state', async t => {
+  const f = await profile(t);
+  const next = { ...reminder, name: 'Новая запись', task: { ...reminder.task, text: 'Другой текст' } };
+  f.bot.api.sendMessage = async () => {
+    await f.setActions([next]);
+    throw Error('failed prior transport');
+  };
+  await f.scheduler.tickNow();
+  assert.deepEqual(await f.readActions(), [next]);
+  assert.equal((await f.runs()).at(-1).status, 'error');
+  await assert.rejects(fs.stat(f.breakerFile), { code: 'ENOENT' });
+});
+
+test('old session mapping preserves a linked breaker and refuses to overwrite damaged saved data', async t => {
+  const f = await profile(t, { sessionOverride: true });
+  const actual = path.join(f.home, 'breaker-target.json');
+  const sibling = path.join(msbRoot(), 'bots', 'other', 'autonomy', 'breakers.json');
+  const previous = { 'another-id': { open: false, custom: 23 } };
+  await fs.mkdir(path.dirname(f.breakerFile), { recursive: true });
+  await fs.mkdir(path.dirname(sibling), { recursive: true });
+  await fs.writeFile(sibling, '{"sibling":"unchanged"}');
+  await fs.writeFile(actual, JSON.stringify(previous), { mode: 0o640 });
+  await fs.symlink(actual, f.breakerFile);
+  await f.scheduler.tickNow();
+  assert.equal(await fs.readlink(f.breakerFile), actual);
+  assert.equal((await fs.stat(actual)).mode & 0o777, 0o640);
+  const written = JSON.parse(await fs.readFile(actual, 'utf8'));
+  assert.deepEqual(written['another-id'], previous['another-id']);
+  assert.equal(written[reminder.id].lastSuccessAt, at);
+  assert.equal(await fs.readFile(sibling, 'utf8'), '{"sibling":"unchanged"}');
+  const corrupt = '{existing incomplete bytes';
+  await fs.writeFile(actual, corrupt);
+  const next = { ...reminder, id: 'next' };
+  await f.setActions([next]);
+  await f.scheduler.tickNow();
+  assert.equal((await f.readActions())[0].lastStatus, 'ok');
+  assert.equal((await f.runs()).at(-1).status, 'ok');
+  assert.equal(await fs.readFile(actual, 'utf8'), corrupt);
+  assert.ok(f.logs.some(line => line.includes('Could not save reminder breaker')));
+  assert.ok(!f.logs.some(line => line.includes(corrupt)));
 });
