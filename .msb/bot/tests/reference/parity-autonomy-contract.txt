@@ -847,3 +847,40 @@ checks. The transaction does not rewrite the owner state.
 The saved action does not bind to a provider session. It uses the
 selected supported provider at its due time, within the existing
 isolated tool plan and unchanged budget and breaker gates.
+
+
+Pause or resume one saved action from the conversation.
+
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Read the preserved bundle with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+24602–24614 distinguishes one named task from STOP_ALL. The
+detector at 27021–27039 resolves the final PAUSE_TASK/RESUME_TASK.
+z9/Hz at 23673–23691 and 22968–22973 try a case-sensitive
+exact ID first, then a case-insensitive substring of name,
+prompt or literal text. No match or multiple matches are
+reported without picking a row. An exact name has no extra
+priority. The ambiguity list follows the stored order.
+
+lg 24219–24257 makes an enabled row disabled with reason owner.
+An already disabled row is a successful no-op. cg 24258–24314
+enables a row on owner pause or with no disabled reason. A
+system-disabled row is refused, including spent_once. The
+old action, schedule and last-run fields are preserved by
+the patch and persisted via jz 23692–23703. The old card toggle
+at 115127–115149 is a separate explicit toggle, using the same
+enabled/disabledReason fields. The conversational operation is
+idempotent. lwA/nwA eligibility at 36099–36122 and 36228–36268
+still checks frequency and global STOP independently. A pause
+does not abort an already launched turn. An old spent one-off
+with a last-run stamp cannot fire again.
+
+The old paths can also call native pause/resume at 27115–27148
+and expose its failure via bg 23704–23709. The local checkpoint
+must recognize such targets and report the unavailable route,
+without editing their job map or choosing an overlapping local
+record. Migration copy comes from fg 23750–23755. Legacy timer
+controls are separate from actions.json (24608). Local confirmation
+reports an active STOP or frequency hold rather than promising
+that the task is firing. Keep the per-profile queue and file
+boundaries and the existing flags for adjacent tasks.
