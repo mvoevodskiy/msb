@@ -261,3 +261,19 @@ test('OpenClaw can clean requested historical local rows while retaining its nat
   assert.equal(await fs.readFile(mapFile,'utf8'),map);
   assert.deepEqual((await f.calls()).map(row=>row.kind),['sessions','prompt']);
 });
+
+test('OpenClaw can cancel an explicitly local spent task by name without a native command',async t=>{
+  const f=await prepare(t,{runTurn:runAgentTurn,reply:'[CANCEL_TASK: Старая]'});
+  process.env.AUTONOMY_ENABLED='1';
+  const ts='2026-11-07T09:00:00.000Z';
+  const action={id:'local',name:'Старая разовая',enabled:false,runner:'cc',trigger:{kind:'once',at:ts},
+    task:{kind:'reminder',text:'local fixture'},lastRunAt:ts};
+  const file=path.join(actionRoot(),'actions.json');
+  await fs.writeFile(file,JSON.stringify([action]));
+  await f.message('Отмени старую фоновую задачу');
+  await until(()=>f.edits.some(text=>text.includes('⏱')),'OpenClaw fixture did not finish',10_000);
+  assert.match(seen('prompt',await f.calls()).prompt,/\[CANCEL_TASK:/);
+  assert.match(f.edits.at(-1),/Отменил: «Старая разовая»/);
+  assert.deepEqual(JSON.parse(await fs.readFile(file,'utf8')),[]);
+  assert.deepEqual((await f.calls()).map(row=>row.kind),['sessions','prompt']);
+});

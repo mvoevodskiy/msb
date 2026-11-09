@@ -1085,3 +1085,28 @@ to identify a newly created job. Direct OC cleanup therefore needs
 an explicit cc runner and no native mapping. Rows whose ownership
 is ambiguous stay in the result's failed group. This does not
 unregister a native job or alter timers, journals or provider data.
+
+Named task cancellation
+-----------------------
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js, readable with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+CANCEL_TASK (prompt 24600, matcher 27218, dispatch 27006–27020)
+uses vg (23589–23672). Prefer a case-sensitive exact ID before
+case-insensitive name or body. Empty and missing queries are
+distinct. Mixed matches show names and schedules for clarification.
+One G4 row is cancelled directly. Several matches all satisfying G4
+are removed as a group, including disabled rows. G4 (23243–23245)
+means once with lastRunAt and no pendingConfirm. Unlike bulk
+CANCEL_SPENT, named selection does not require enabled.
+
+A single non-G4 match sends the old irreversible confirmation in
+the same Telegram topic. Labels are «Снести ✖» and «Оставить».
+xr/cqA (23098–23113) build/decode ct:<id>. The old handler
+(113311–113373) selected the first exact or prefix match at click
+time. Its unbound and character-truncated callback could delete a
+replacement or a different ID. Bind the adapted button to owner,
+profile, chat/message, file and task definition. Runtime progress
+is not a new task definition. Keep is single-use and non-mutating.
+Mapped native removal required confirmed X9 before deleting the
+row (45980–46015/46243–46257), an independent ownership contract.
