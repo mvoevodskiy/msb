@@ -16,9 +16,10 @@ export async function nativeFixtures(f) {
   const collision=path.join(f.home,'collision');
   const hold=path.join(f.home,'hold-config-read');
   const readError=path.join(f.home,'error-config-read');
+  const response=path.join(f.home,'model-response.json');
   const nativeClaude=path.join(f.home,'native-claude.mjs');
   const bin=path.join(f.home,'.local/bin');
-  const configuration={log,collision,hold,readError,apifyA,apifyB,supadata,modelThread};
+  const configuration={log,collision,hold,readError,response,apifyA,apifyB,supadata,modelThread};
   const claudeSource=`import fs from 'node:fs';
 const data=${JSON.stringify(configuration)};
 const argv=process.argv.slice(2);
@@ -31,9 +32,10 @@ fs.appendFileSync(data.log,JSON.stringify({kind:'claude',argv,file,projection,
   correct:process.env.MSB_MCP_SUPADATA_TOKEN===data.supadata,
   hasDedicated:Boolean(process.env.MSB_MCP_SUPADATA_TOKEN),
   correctApify:process.env.MSB_MCP_APIFY_TOKEN===data.apifyB})+'\\n');
+const reply=fs.existsSync(data.response)?JSON.parse(fs.readFileSync(data.response,'utf8')):{text:'fixture complete'};
 const session_id='fixture-claude-session';
 console.log(JSON.stringify({type:'system',subtype:'init',session_id,model:'claude-opus-4-8'}));
-console.log(JSON.stringify({type:'result',subtype:'success',session_id,is_error:false,result:'fixture complete',usage:{input_tokens:1,output_tokens:1}}));`;
+console.log(JSON.stringify({type:'result',subtype:'success',session_id,is_error:Boolean(reply.error),result:reply.text,usage:{input_tokens:1,output_tokens:1}}));`;
   const codexSource=`import fs from 'node:fs';
 import path from 'node:path';
 import {createInterface} from 'node:readline';
@@ -71,13 +73,14 @@ if(argv.at(-1)==='app-server'){
   console.log(JSON.stringify({id:request.id,result:{config,layers:[user]}}));
  });
 }else if(argv[0]==='exec'){
- fs.readFileSync(0,'utf8');
+ const prompt=fs.readFileSync(0,'utf8');
+ const reply=fs.existsSync(data.response)?JSON.parse(fs.readFileSync(data.response,'utf8')):{text:'fixture complete'};
  const apify=process.env.MSB_BOT_ID==='other'?data.apifyB:data.apifyA;
- record({kind:'codex-exec',argv,bot:process.env.MSB_BOT_ID,...presence(),
+ record({kind:'codex-exec',argv,prompt,bot:process.env.MSB_BOT_ID,...presence(),
   correctApify:process.env.MSB_MCP_APIFY_TOKEN===apify,correctSupadata:process.env.MSB_MCP_SUPADATA_TOKEN===data.supadata});
  console.log(JSON.stringify({type:'thread.started',thread_id:data.modelThread}));
- console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:'fixture complete'}}));
- console.log(JSON.stringify({type:'turn.completed',usage:{input_tokens:1,output_tokens:1}}));
+ console.log(JSON.stringify({type:'item.completed',item:{type:'agent_message',text:reply.text}}));
+ console.log(JSON.stringify({type:reply.error?'turn.failed':'turn.completed',error:reply.error?{message:'fixture returned error'}:undefined,usage:{input_tokens:1,output_tokens:1}}));
 }else process.exit(4);`;
   await fs.writeFile(log,'',{mode:0o600});
   await fs.writeFile(nativeClaude,claudeSource,{mode:0o600});
@@ -89,6 +92,7 @@ if(argv.at(-1)==='app-server'){
   delete process.env.CODEX_ACCESS_TOKEN;
   return {
     collision,hold,readError,
+    async respond(text,{error=false}={}){await fs.writeFile(response,JSON.stringify({text,error}),{mode:0o600});},
     async trace(){return (await fs.readFile(log,'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse);},
   };
 }

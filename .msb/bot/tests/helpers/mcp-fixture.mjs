@@ -5,8 +5,8 @@ import {fixture} from './menu-fixture.mjs';
 import {loadState,saveState} from '../../src/state.mjs';
 import {sessionDir} from '../../src/paths.mjs';
 
-export async function mcpFixture(t, provider='claude', {mode='ok', clawServers}={}) {
-  const f=await fixture(t,undefined,{overlay:provider==='codex'});
+export async function mcpFixture(t, provider='claude', {mode='ok', clawServers, runTurn}={}) {
+  const f=await fixture(t,runTurn,{overlay:provider==='codex'});
   const state=(await loadState()).state;
   await saveState({...state,engine:provider==='oc'?'oc':'cc',extAuthBypass:provider==='codex'?'codex':undefined});
   const bin=path.join(f.home,'.local/bin');

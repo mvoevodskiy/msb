@@ -83,11 +83,29 @@ Custom marker. 19349–56/19474–19515 demonstrate the actual Claude prompt
 producer. 106578–591/106731–755 process it before plan. 57210–57331 parse
 first complete ADD_MCP (HTTPS or stdio, string headers/args), remove later
 complete blocks, preserve ordinary reply and replace marker with the old
-result. INSTALL_SKILL and ADD_MCP share the old enable flag. Abort and
-infrastructure exceptions do not execute a marker. The old OC prompt did
-not advertise ADD_MCP and its generic handler wrote Claude config, not
-OC. Don't carry this cross-provider write into open-core. Custom setup
-and templates must share the configuration writer for their own provider.
+result. INSTALL_SKILL and ADD_MCP share the old enable flag. The old
+finish passes the accumulated response and its eligible fallback through
+this stage. In open-core, aborted turns and thrown infrastructure errors
+remain outside the execution stage. Old OC prompt 29650–29653 did not
+advertise ADD_MCP. Its generic finalizer invoked the Claude writer, so
+there is no old marker-to-OC writer to port. Custom and template entries
+use the current bot and the provider of the originating action.
+
+ADD_MCP is a direct installation with no button, token form, confirmation
+or external availability check. UkA 57152–57155 binds its writer to PY.
+PY 17989–17997 upserts mcpServers[name] in the Claude user file. The Add
+menu and Apify/Supadata forms at 120970–121073 are independent paths.
+The marker recognises exact uppercase tags and names trimmed/lowercased
+to 2–49 characters matching [a-z0-9][a-z0-9_-]{1,48}. HTTP requires an
+https:// non-whitespace string and keeps only string-valued headers.
+stdio requires a nonempty trimmed command, with only string args kept.
+The first marker is replaced with the original success, invalid-input or
+write-failure text. All later complete ADD_MCP markers are discarded.
+
+At d6f1f8f, ten production-ingress cases reproduce the missing marker
+on both CLI prompt and Telegram delivery. The baseline test command is
+node --test .msb/bot/tests/mcp-marker.test.mjs .msb/bot/tests/mcp-launch.test.mjs.
+The eight earlier launch cases pass. This is a local RED checkpoint.
 
 Stage completion requires the actual read/add/remove/marker routes, old
 prompts and forms, scoped writes, test-defined external conditions and
