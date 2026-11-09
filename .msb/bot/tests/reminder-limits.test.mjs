@@ -33,7 +33,7 @@ async function append(file, rows) {
   await fs.appendFile(file, rows.map(row => (typeof row === 'string' ? row : JSON.stringify(row)) + '\n').join(''));
 }
 
-async function profile(t, { state = {}, caps = {}, actions = [reminder], sessionOverride = false } = {}) {
+async function profile(t, { state = {}, caps = {}, actions = [reminder], sessionOverride = false, readCodexQuota } = {}) {
   const f = await fixture(t, async () => assert.fail('A literal reminder must not invoke an owner model'), {
     overlay: false, runtimeProfile: 'jar1', now: () => now,
   });
@@ -64,7 +64,7 @@ async function profile(t, { state = {}, caps = {}, actions = [reminder], session
   };
   let clock = now;
   const logs = [];
-  const scheduler = startScheduler({ api: f.bot.api, adminId: 42, timezone: 'Europe/Moscow',
+  const scheduler = startScheduler({ api: f.bot.api, readCodexQuota, adminId: 42, timezone: 'Europe/Moscow',
     scheduledTurns: f.bot[Symbol.for('msb.scheduledTurns')], now: () => clock, log: line => logs.push(line),
     runTurn: async () => assert.fail('The reminder must not use the interval runner'),
   });
@@ -487,3 +487,73 @@ test('a breaker link to its own action file leaves the reminder and scheduler fu
   assert.equal(await fs.readlink(f.breakerFile), f.file);
   assert.ok(f.logs.some(line => line.includes('Could not save reminder breaker')));
 });
+
+
+const codexState = { extAuthBypass: 'codex' };
+const codexWindow = (minutes, usedPercent, resetAtMs = now + 3_600_000) => ({ minutes, usedPercent, resetAtMs });
+const codexQuota = (windows, extra = {}) => ({
+  isCurrent: async () => true, quota: { measuredAt: now, windows, ...extra },
+});
+
+for (const [label, window, reason] of [
+  ['five-hour reserve', codexWindow(300, 70), /подписка Codex.*70%/],
+  ['weekly reserve', codexWindow(10080, 98), /подписка Codex.*недельный.*98%/],
+  ['provider denial without a window', undefined, /подписка Codex.*провайдер/],
+]) {
+  test('Codex admission blocks a once action at the ' + label, async t => {
+    const f = await profile(t, { state: codexState, readCodexQuota: async () =>
+      window ? codexQuota([window]) : codexQuota([], { ordinaryDenied: true }) });
+    await f.scheduler.tickNow();
+    await assertBlocked(f, reason);
+  });
+}
+
+test('Codex admission ignores stale, expired and below-threshold windows', async t => {
+  const rows = [
+    reminder,
+    { ...reminder, id: 'expired-codex-window', name: 'Истёкшее окно' },
+    { ...reminder, id: 'below-codex-threshold', name: 'Ниже границы' },
+  ];
+  const reports = [
+    codexQuota([codexWindow(300, 100)], { measuredAt: now - 300_001 }),
+    codexQuota([codexWindow(300, 100, now)]),
+    codexQuota([codexWindow(10080, 97.9), codexWindow(300, 69.9)]),
+  ];
+  const f = await profile(t, { state: codexState, actions: rows, readCodexQuota: async () => reports.shift() });
+  await f.scheduler.tickNow();
+  assert.equal(reports.length, 0);
+  assert.equal(f.messages.filter(row => row.text.startsWith('⏰')).length, 3);
+  assert.ok((await f.runs()).every(row => row.status === 'ok'));
+});
+
+for (const change of ['provider', 'account', 'owner pause']) {
+  test('Codex admission leaves a pending once action intact when ' + change + ' changes during the read', async t => {
+    let release, entered, didAbort = false, accountCurrent = true;
+    const ready = new Promise(resolve => { entered = resolve; });
+    const wait = new Promise(resolve => { release = resolve; });
+    const f = await profile(t, { state: codexState, readCodexQuota: async ({ signal }) => {
+      signal.addEventListener('abort', () => { didAbort = true; release(); }, { once: true });
+      entered();
+      await wait;
+      return { ...codexQuota([codexWindow(300, 90)]), isCurrent: async () => accountCurrent };
+    } });
+    const tick = f.scheduler.tickNow();
+    try {
+      assert.equal(await Promise.race([ready.then(() => true), tick.then(() => false)]), true);
+      if (change === 'provider') {
+        await updateState(state => { state.extAuthBypass = 'claude'; });
+      } else if (change === 'account') {
+        accountCurrent = false;
+      } else {
+        const result = await setOwnerPause(true, { now, check() {}, checkEngine() {} });
+        assert.equal(result.aborted, 0);
+        assert.equal(didAbort, true);
+      }
+    } finally {
+      release();
+      await tick;
+    }
+    assert.deepEqual(await f.readActions(), [reminder]);
+    assert.deepEqual(f.messages, []);
+  });
+}
