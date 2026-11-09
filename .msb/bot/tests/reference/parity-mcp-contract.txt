@@ -1,0 +1,75 @@
+MCP old-to-new contract and evidence
+
+Baseline. Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf, readable
+.msb/bot/vendor/deobfuscated.js blob 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11.
+Read git show BLOB | sed -n 'FIRST,LASTp'. Audit base and last accepted JAR1
+source 736e6bc05b7e678b96178b41a11e23c904aa5f98. Its workspace renderer has
+no catalog, card or configuration writes. The work is split into read views,
+configuration/setup and model marker stages with independent evidence.
+
+Reachable read views. 111781 and 121787–90 open menu:mcp. 111798–906 yGA and
+SGA read the configured names from Claude's user config. Hi at 17843–49
+resolves CLAUDE_CONFIG_DIR/.claude.json or HOME/.claude.json. Count in
+workspace (N), rows in stored order, transport http when type=http or url
+exists, otherwise stdio. Empty workspace is Нет серверов. Card at
+121073–88 shows Tools: mcp__NAME__* and the old delete/back actions.
+102947–80, 103114–29, 55413–15 and 55687–90 establish optional status from
+mcp-status.json in dirname(sessionDir). `needs-auth` and `failed` have the
+old visible text. No observed sidecar producer is claimed. A configured
+row or absence of failure status does not prove a connected service.
+
+OpenClaw branch at 111805–27 uses native mcp list --json, without file
+fallback. 30069–30132 accept arrays and objects at mcp.servers, servers or
+root. 30213–38 retries once with delay. Old defaults at 32800–02 are 15s
+and 2s, with a separate first cold timeout. 30574–30604 sorts names, shows
+transport and target and bounds the output. It shows Add and Back only.
+Stale cards must not read a different provider. New callbacks bind the
+provider and config root to a bounded reference. The old literals may
+open known Claude rows for reading. Backend error remains distinct from
+an actual empty configuration. UI projection exposes names and types.
+OpenClaw targets omit URL credentials, query and fragment, with command
+args, headers and env values excluded from all menu metadata.
+
+Codex addition uses the installed 0.166 app-server initialize, initialized,
+config/read(cwd, includeLayers=true) in an owned HOME and CODEX_HOME. The
+actual pinned probe is recorded in mcp-native-0.166-protocol.json. User
+layer is distinguished from trusted repo and effective config. The returned
+layer includes raw header and env values. Convert it to names/types before
+exposing any data to core. User-layer inventory does not require an auth
+check or connect to configured HTTP or stdio servers. Native CLI mcp list
+may perform HTTP auth discovery and emit raw env/headers. Protocol source
+rust-v0.166.0 codex-rs/app-server-protocol/src/protocol/v2/config.rs at
+73–82, 319–336 and 388–409. CLI source codex-rs/cli/src/mcp_cmd.rs at
+645–709. UI uses the same owned read scope and delivery as other menus.
+
+Write obligations for later stages. 120970–121073 Add lists only absent
+Supadata/Apify names, starts the exact token forms, and lets the user ask
+for a custom server. 119219–85 clears the pending form before validating
+sd_/apify_api_, rejects spaces, deletes the accepted key message best
+effort, then stores the key and configures the captured provider. Old
+119245–53 Supadata uses https://api.supadata.ai/mcp with x-api-key and Apify
+uses https://mcp.apify.com with Authorization Bearer. Validate current
+service contracts before restoring time-sensitive defaults. The owner's
+settled per-bot secret scope overrides the old global s1 writer. The same
+named key can have different values for two bots. Setup must avoid writing
+another bot's key or exposing it in native argv, logs or catalog. Verify
+effective provider configuration and per-bot credentials separately.
+Old Claude PY/Ii at 17989–18005 update only mcpServers. OC setup/unset at
+30437–49/30486–30545/30547–72 use the native CLI. Normal OC list renders
+no row delete action. The old OC write may fail after saving the key. A
+stored key or config entry alone does not establish external availability.
+
+Custom marker. 19349–56/19474–19515 demonstrate the actual Claude prompt
+producer. 106578–591/106731–755 process it before plan. 57210–57331 parse
+first complete ADD_MCP (HTTPS or stdio, string headers/args), remove later
+complete blocks, preserve ordinary reply and replace marker with the old
+result. INSTALL_SKILL and ADD_MCP share the old enable flag. Abort and
+infrastructure exceptions do not execute a marker. The old OC prompt did
+not advertise ADD_MCP and its generic handler wrote Claude config, not
+OC. Don't carry this cross-provider write into open-core. Custom setup
+and templates must share the configuration writer for their own provider.
+
+Stage completion requires the actual read/add/remove/marker routes, old
+prompts and forms, scoped writes, test-defined external conditions and
+same-commit acceptance. The read checkpoint remains local while setup,
+removal and markers are incomplete. Preserve unrelated state and auth.
