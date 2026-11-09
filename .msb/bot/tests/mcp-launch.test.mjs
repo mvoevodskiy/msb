@@ -116,6 +116,9 @@ test('native Claude launch reads the current bot key into a temporary reference-
   assert.equal(call.kind,'claude');
   assert.equal(call.correct,true);
   assert.equal(call.mode,0o600);
+  const allowed=call.argv[call.argv.indexOf('--allowedTools')+1].split(',');
+  assert.ok(allowed.includes('mcp__zulu'),'Allow the native Claude workspace server like the old runner');
+  assert.ok(allowed.includes('mcp__supadata'),'Allow the bot-managed Claude server through the same CLI option');
   assert.ok(!call.argv.some(arg=>arg.includes(supadata)));
   assert.ok(!call.projection.includes(supadata));
   assert.deepEqual(JSON.parse(call.projection),{mcpServers:{supadata:{
@@ -129,6 +132,9 @@ test('native Claude launch reads the current bot key into a temporary reference-
   const missing=(await native.trace()).at(-1);
   assert.equal(missing.file,null);
   assert.equal(missing.hasDedicated,false);
+  const stillAllowed=missing.argv[missing.argv.indexOf('--allowedTools')+1].split(',');
+  assert.ok(stillAllowed.includes('mcp__zulu'));
+  assert.ok(!stillAllowed.includes('mcp__supadata'));
 });
 
 test('Codex launch uses each enrolled bot key and stops projecting a removed entry',async t=>{
