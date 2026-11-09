@@ -60,7 +60,9 @@ report для того же manifest, точную Node version и совпад�
 и недоступными для записи пользователю бота. Создать две dependency-ссылки
 `checks/source/.msb/bot/node_modules` и `checks/source/overlay/bot/node_modules`
 на `/home/client/.iia/bot/node_modules`. Только `checks/results` и `checks/test-home`
-создать writable для client. Проверку запускать под client:
+создать writable для client. На JAR1 с одним доступным CPU полный core suite
+может выйти за три минуты. Для него предел пять минут. Остальные suites
+сохраняют трёхминутный предел. Проверку запускать под client:
 
 ```sh
 python3 STAGE/ops/verify.py --stage STAGE --dependencies /home/client/.iia/bot/node_modules

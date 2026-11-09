@@ -50,7 +50,8 @@ def verify(stage, dependencies, node='node'):
     results = stage / 'checks/results'
     results.mkdir(exist_ok=True)
     def run(name, argv, cwd, env):
-        value = subprocess.run(argv, cwd=cwd, env=env, text=True, capture_output=True, timeout=180)
+        timeout = 300 if name == 'core' else 180
+        value = subprocess.run(argv, cwd=cwd, env=env, text=True, capture_output=True, timeout=timeout)
         output = value.stdout + value.stderr
         (results / (name + '.log')).write_text(output)
         checks.append({'suite': name, 'exit_code': value.returncode, 'summary': output.splitlines()[-10:]})
