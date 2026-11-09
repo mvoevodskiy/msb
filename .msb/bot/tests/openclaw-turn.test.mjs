@@ -14,18 +14,19 @@ import {runAgentTurn} from '../src/agent/turn.mjs';
 import {loadState,saveState} from '../src/state.mjs';
 import {resetCliConversation} from '../src/sessions/selection.mjs';
 import {botRoot} from '../src/paths.mjs';
+import {reminderRunPath} from '../src/autonomy/reminder-runs.mjs';
 
 const ccSessionId='untouched-claude-session';
 const seen=(kind,rows)=>rows.find(row=>row.kind===kind);
 const fixtureSessionId='fixture-acp-session';
 
-async function prepare(t,{state={},behavior='ok',runTurn}={}){
+async function prepare(t,{state={},behavior='ok',reply='OpenClaw fixture reply',runTurn}={}){
   const f=await mcpFixture(t,'oc',{runTurn});
   await saveState({engine:'oc',ccSessionId,...state});
   for(const key of ['CLAUDE_CODE_OAUTH_TOKEN','ANTHROPIC_API_KEY','IIA_ANTHROPIC_API_KEY','MSB_ANTHROPIC_API_KEY'])delete process.env[key];
   process.env.BOT_TOKEN='fixture-telegram-secret';
   const script=path.join(f.home,'.local/bin/acpx'),log=path.join(f.home,'acpx.jsonl'),release=path.join(f.home,'release-acpx');
-  const config=JSON.stringify({behavior,log,release,fixtureSessionId});
+  const config=JSON.stringify({behavior,reply,log,release,fixtureSessionId});
   const lines=[
     "import fs from 'node:fs';",
     'const c='+config+';',
@@ -45,7 +46,7 @@ async function prepare(t,{state={},behavior='ok',runTurn}={}){
     'if(c.behavior==="hold")while(!fs.existsSync(c.release))await new Promise(resolve=>setTimeout(resolve,15));',
     'emitUpdate({sessionUpdate:"agent_thought_chunk",content:{type:"text",text:"hidden reasoning"}});',
     'emitUpdate({sessionUpdate:"tool_call",kind:"mcp__supadata__probe",toolCallId:"fixture-tool"});',
-    'emitUpdate({sessionUpdate:"agent_message_chunk",content:{type:"text",text:"OpenClaw fixture reply"}});',
+    'emitUpdate({sessionUpdate:"agent_message_chunk",content:{type:"text",text:c.reply}});',
     'emitUpdate({sessionUpdate:"usage_update",used:150,size:200});',
     'if(c.behavior==="partial"){emit({id:2,error:{message:"private diagnostic",data:{acpxCode:"RUNTIME"}}});process.exit(1);}',
     'emit({id:2,result:{stopReason:"end_turn"}});',
@@ -216,4 +217,22 @@ test('Telegram retains the local text setup gate for unauthenticated Claude',asy
   await f.message('Проверь обычный ход');
   assert.match(f.messages.at(-1),/Сначала подключи AI/);
   assert.deepEqual(await f.calls(),[]);
+});
+
+test('OpenClaw owner Telegram turn exposes the old journal read without local scheduling authority',async t=>{
+  const f=await prepare(t,{runTurn:runAgentTurn,reply:'[TASK_RUNS]\n[SET_LIMIT max_actions 7]'});
+  process.env.AUTONOMY_ENABLED='1';
+  delete process.env.AUTONOMY_MAX_ACTIONS;
+  const journal=reminderRunPath();
+  await fs.mkdir(path.dirname(journal),{recursive:true});
+  const line=JSON.stringify({ts:new Date(Date.now()-60_000).toISOString(),actionId:'oc-journal',name:'Прогон этого бота',status:'ok'})+'\n';
+  await fs.writeFile(journal,line);
+  await f.message('Покажи историю прогонов');
+  await until(()=>f.edits.some(text=>text.includes('⏱')),'OpenClaw fixture did not finish',10_000);
+  const prompt=seen('prompt',await f.calls()).prompt;
+  assert.match(prompt,/\[TASK_RUNS\].*\[TASK_RUNS:/s);
+  assert.doesNotMatch(prompt,/\[SCHEDULE_TASK\]|\[SET_LIMIT/);
+  assert.ok(f.edits.some(text=>text.includes('Прогон этого бота — 1 прогон')));
+  assert.equal(process.env.AUTONOMY_MAX_ACTIONS,undefined);
+  assert.equal(await fs.readFile(journal,'utf8'),line);
 });

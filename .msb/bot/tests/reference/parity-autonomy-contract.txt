@@ -1002,3 +1002,30 @@ the atomic local write and leave the question retryable if a binding
 appears. A concurrent future native map writer needs a shared lock
 and an ownership proof, since the local prepublish check does not
 serialize out-of-band file changes.
+
+Conversational saved run history
+--------------------------------
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Read stable lines with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+TASK_RUNS appears in the owner prompt at 24599/24619, the pattern at
+27230 and the final dispatch at 26842–26855. The collector gate at
+106668–106696 accepts CC or OC. GMA injects J0 at 27156–27164. Writer
+iQ at 10824–10836 appends the per-bot autonomy/runs.jsonl (11039);
+J0 at 10837–10856 takes the latest 1000 parsed file rows before
+sorting or selecting a task. Neither the interval file nor native
+transcripts nor sibling-bot history are part of this view.
+
+Gw at 26511–26582 uses Og/Hz at 22957–22973 to prefer the exact
+case-sensitive ID and otherwise match case-insensitive saved name
+or body. Disabled actions are searchable. Ambiguity and missing
+queries have distinct replies. ma at 26400–26510 sorts by time,
+counts seven days and 24 hours with inclusive lower limits, ranks
+up to eight task groups, and shows the latest selected run even if
+outside the window. Deleted actions retain their journal name or
+ID in the all-task view. k7 (26289–26322) uses the owner clock.
+Ww/Vw (26344–26399, quiet phrases 26588) separate silence, incomplete
+runs and other outcomes. The summary keeps paid cost and metered
+estimates distinct and reports only known token counts. A saturated
+tail gets the 1000-row notice. An unreadable file must reach the
+existing Gw read-failure reply, rather than look like a new journal.
