@@ -112,3 +112,19 @@ for(const [label,description,expected]of [
 ])test('skill install: native-compatible YAML keeps '+label+' description after writing the old accepted payload',async t=>{
  const f=await installFixture(t,{text:block({...payload,description})});await f.run();const file=skillPath(f.home);assert.equal(await f.exists(file),true);assert.ok((await fs.readFile(file,'utf8')).includes(expected+'\n'));assert.ok(f.final().includes(installed()));
 });
+
+
+for (const provider of ['codex', 'claude']) {
+  test('skill install: '+provider+' handles an NEL-only description using its native contract', async t => {
+    const f = await installFixture(t, {provider, text: block({...payload, description: '\u0085'})});
+    await f.run();
+    const file = skillPath(f.home, provider);
+    if (provider === 'codex') {
+      assert.equal(await f.exists(file), false, 'Codex cannot load a description that becomes empty');
+      assert.ok(f.final().includes(invalid));
+    } else {
+      assert.ok((await fs.readFile(file, 'utf8')).includes(String.raw`description: "\u0085"`));
+      assert.ok(f.final().includes(installed()));
+    }
+  });
+}

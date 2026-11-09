@@ -117,3 +117,9 @@ plain/quoted descriptions byte-exact, validation limits/body/name не меня�
 absolute binary и SOURCE_SHA, создаёт свой HOME/CODEX_HOME, пишет только synthetic
 skills и запрашивает initialize/skills/list. Login/model не вызывает; сетевую
 изоляцию задаёт caller. Это не owner skill installation или model application.
+
+Проверка native 0.166 отдельно сравнивает описание в файле и метаданные каталога.
+Загрузчик сводит Unicode White_Space к одному пробелу после чтения YAML. Вход,
+который при этом становится пустым, получает прежний ответ о неверном описании
+до записи навыка Codex. Для Claude и OpenClaw остаётся проверка старого маркера.
+[Наблюдение и исходник загрузчика](../../tests/reference/skills-native-install-0.166-normalization.json).

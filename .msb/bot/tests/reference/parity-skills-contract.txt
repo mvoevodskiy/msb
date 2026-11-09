@@ -371,3 +371,21 @@ name/body/roots/markerorder не меняются.4productioncases:45total42PASS
 commit; localCodex0.167alpha не является проверкойцелевой0.166. Trackedmanualfixture
 skills-native-install.mjs оставляетownerHOME/auth встороне, owncases/discoveryonly;
 не считать metadata proof доказательством примененияреальноймоделью.
+
+
+Раздельная проверка файла и native catalog на cf1f146
+cf1f146 прошёл 958 Docker cases, и реальный 0.166 обнаружил все 10 owned навыков
+без ошибок YAML. Исходная проверка описаний ошибочно ожидала неизменный U+0085
+в каталоге. Результат 9/10 вызван нормализацией в native parser, а не потерей
+данных при записи. Pinned rust-v0.166.0 codex-rs/skills/src/parser.rs, blob
+ aef295cd03cc37ca712f1c62c1dbda07127a8277, lines 70–85, 94–96. Загрузчик применяет
+Rust split_whitespace и отклоняет пустой description. Точный результат и ссылка
+сохранены в skills-native-install-0.166-normalization.json.
+
+Manual fixture теперь отдельно проверяет decoded YAML value и точное native
+описание после нормализации, scope=user и enabled=true. Raw negative control
+с NEL-only description проверяет отказ установленного CLI с missing description.
+Telegram RED на cf1f146 доказывает ложную успешную запись такого файла Codex.
+Fix проверяет непустое native описание до записи только для Codex, используя
+старое сообщение INVALID_SKILL. Claude control сохраняет старое поведение.
+Два случая дали 1 PASS / 1 RED, затем все 68 installer cases прошли.

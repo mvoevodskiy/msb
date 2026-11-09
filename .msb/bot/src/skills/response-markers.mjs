@@ -11,8 +11,13 @@ export async function processSkillMarkers(text,target,{env=process.env,signal,wr
   signal?.throwIfAborted();
   const first=SKILL_BLOCK.exec(text);if(!first)return text.trim();
   if(env.SKILL_INSTALL_ENABLED==='0')return text.replace(SKILL_BLOCKS,'').trim();
-  const skill=parseSkillPayload(first[1].trim());let message=INVALID_SKILL;
-  if(skill) {
+  const skill = parseSkillPayload(first[1].trim());
+  let message = INVALID_SKILL;
+  // Codex 0.166 validates description after Rust split_whitespace (including NEL).
+  const hasNativeDescription = skill && (
+    target?.providerId !== 'codex' || /\P{White_Space}/u.test(skill.description)
+  );
+  if (hasNativeDescription) {
     try {
       const result=await write(skill,target,{signal});signal?.throwIfAborted();
       message=`${result.replaced?'Обновил навык':'Поставил навык'} «${skill.name}»${result.written.length>1?' на обоих движках':''}. Заработает со следующего сообщения.`;

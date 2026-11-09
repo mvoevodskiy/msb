@@ -1,0 +1,162 @@
+{
+  "native_result": {
+    "version": "codex-cli 0.166.0",
+    "source_commit": "cf1f1462dde0bcffd49524e59b6abeb8db7f7ec4",
+    "uid": 1001,
+    "methods": [
+      "initialize",
+      "initialized",
+      "skills/list"
+    ],
+    "model_turns": 0,
+    "owner_auth_or_config_used": false,
+    "owner_skill_files_read_or_written": false,
+    "cases": [
+      {
+        "name": "normal-skill",
+        "found": true,
+        "description_matches": true,
+        "metadata": [
+          {
+            "name": "normal-skill",
+            "description": "When reviewing code",
+            "scope": "user",
+            "enabled": true
+          }
+        ]
+      },
+      {
+        "name": "quoted-skill",
+        "found": true,
+        "description_matches": true,
+        "metadata": [
+          {
+            "name": "quoted-skill",
+            "description": "Use \"quoted\" words",
+            "scope": "user",
+            "enabled": true
+          }
+        ]
+      },
+      {
+        "name": "path-skill",
+        "found": true,
+        "description_matches": true,
+        "metadata": [
+          {
+            "name": "path-skill",
+            "description": "Use C:\\Users\\Documents when checking paths",
+            "scope": "user",
+            "enabled": true
+          }
+        ]
+      },
+      {
+        "name": "42",
+        "found": true,
+        "description_matches": true,
+        "metadata": [
+          {
+            "name": "42",
+            "description": "Numeric name",
+            "scope": "user",
+            "enabled": true
+          }
+        ]
+      },
+      {
+        "name": "true",
+        "found": true,
+        "description_matches": true,
+        "metadata": [
+          {
+            "name": "true",
+            "description": "Boolean-looking name",
+            "scope": "user",
+            "enabled": true
+          }
+        ]
+      },
+      {
+        "name": "multiline-skill",
+        "found": true,
+        "description_matches": true,
+        "metadata": [
+          {
+            "name": "multiline-skill",
+            "description": "Use multiple spaces",
+            "scope": "user",
+            "enabled": true
+          }
+        ]
+      },
+      {
+        "name": "nul-skill",
+        "found": true,
+        "description_matches": true,
+        "metadata": [
+          {
+            "name": "nul-skill",
+            "description": "Use\u0000 data",
+            "scope": "user",
+            "enabled": true
+          }
+        ]
+      },
+      {
+        "name": "c1-skill",
+        "found": true,
+        "description_matches": false,
+        "metadata": [
+          {
+            "name": "c1-skill",
+            "description": "Use\u007f \u009f data",
+            "scope": "user",
+            "enabled": true
+          }
+        ]
+      },
+      {
+        "name": "unpaired-skill",
+        "found": true,
+        "description_matches": true,
+        "metadata": [
+          {
+            "name": "unpaired-skill",
+            "description": "Use\ufffd data",
+            "scope": "user",
+            "enabled": true
+          }
+        ]
+      },
+      {
+        "name": "noncharacter-skill",
+        "found": true,
+        "description_matches": true,
+        "metadata": [
+          {
+            "name": "noncharacter-skill",
+            "description": "Use\ufffe\uffff data",
+            "scope": "user",
+            "enabled": true
+          }
+        ]
+      }
+    ],
+    "errors": [],
+    "temporary_home_removed": true,
+    "passed": false,
+    "installed_source_observed": "830e3f6c9b1347ad6be3bae6ea9b3e94f5f8dd7d",
+    "network_namespace_isolated": true,
+    "probe_archive_sha256": "3e5b0d24a40af7e06a92abe66a169f839f8f67c3504e6119a31181395ed87870"
+  },
+  "pinned_loader": {
+    "tag": "rust-v0.166.0",
+    "path": "codex-rs/skills/src/parser.rs",
+    "blob_sha": "aef295cd03cc37ca712f1c62c1dbda07127a8277",
+    "description_lines": "70-85",
+    "normalization_lines": "94-96",
+    "url": "https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/skills/src/parser.rs#L64-L96"
+  },
+  "fixture_expectation_error": "The previous gate used the on-disk JavaScript whitespace contract for the decoded catalog. The native loader uses Unicode White_Space; U+0085 becomes one ASCII space."
+}
