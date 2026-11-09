@@ -17,7 +17,7 @@ export function savedPromptPlan(action, state, env = process.env, codexAvailable
   const provider = state.extAuthBypass || 'claude';
   if (task?.kind !== 'prompt' || !isLocalReminderEngine(state.engine)) return;
   if (provider === 'codex') {
-    if (!codexAvailable || !subscription || env.JARVIS_CC_ONLY === '1' || task.helpers === true ||
+    if (!codexAvailable || !subscription || env.JARVIS_CC_ONLY === '1' ||
         (task.provider && task.provider !== 'codex')) return;
   } else if (provider !== 'claude' || (!subscription && !oauth) ||
       (task.provider && !['anthropic', 'claude'].includes(task.provider))) return;

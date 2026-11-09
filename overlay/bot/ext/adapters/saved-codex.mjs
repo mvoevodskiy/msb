@@ -21,10 +21,11 @@ const provider = 'msb_saved_prompt';
 // Producers: shared/codex-mcp-profile and core mcp/launch, mcp/openclaw-setup,
 // agent/openclaw-turn and media/stt. Temporary user work keeps its old scope.
 const privateScratch = ['msb-mcp-', 'msb-oc-mcp-', 'msb-oc-turn-', 'msb-stt-', 'msb-saved-codex-'];
-const disabled = ['shell_tool', 'shell_snapshot', 'hooks', 'plugin_hooks', 'multi_agent', 'multi_agent_v2',
+const disabled = ['shell_tool', 'shell_snapshot', 'hooks', 'plugin_hooks',
   'skill_mcp_dependency_install', 'plugins', 'remote_plugin', 'apps', 'memories', 'view_image', 'image_generation', 'goals'];
 
 function argv({ model, effort, scope, scratch }, baseUrl) {
+  const helpers = scope.tools.includes('Agent') && scope.tools.includes('Task');
   const options = {
     model_provider: provider,
     ['model_providers.' + provider + '.name']: 'MSB saved prompt',
@@ -38,6 +39,9 @@ function argv({ model, effort, scope, scratch }, baseUrl) {
     sqlite_home: path.join(scratch, 'sqlite'),
     log_dir: path.join(scratch, 'log'),
     'features.skip_host_skill_discovery': true,
+    // On the pinned CLI, V2 replaces the legacy attachment-capable helper tools.
+    'features.multi_agent': helpers,
+    'features.multi_agent_v2': helpers,
     'mcp_servers.saved_workspace.command': process.execPath,
     'mcp_servers.saved_workspace.args': [bridge, JSON.stringify(scope)],
     'mcp_servers.saved_workspace.required': true,

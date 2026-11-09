@@ -39,11 +39,14 @@ async function protectedPaths(env, provider) {
   return [...new Set([...paths.map(value => path.resolve(value)), ...physical])];
 }
 
-function taskInstructions(action, quiet) {
+function taskInstructions(action, { quiet, provider, tools }) {
   const fields = ['canWithoutApproval', 'needsApproval', 'escalateWhen', 'whatNotToDo'];
   const saved = action.authority ?? {};
   const lines = ['Твои полномочия на этом ходу (владелец записал их заранее, спросить его сейчас нельзя).',
     'Работай в рамках доступных инструментов. Результат получит владелец задачи в Telegram.'];
+  if (provider === 'codex' && tools.includes('Agent')) {
+    lines.push('В этом задании можно привлекать помощников. Передавай им часть задания в рамках тех же полномочий.');
+  }
   const labels = ['Разрешено без согласования', 'Требует согласования', 'Когда сообщить владельцу', 'Запрещено'];
   for (const [index, field] of fields.entries()) {
     const entries = Array.isArray(saved[field]) ? saved[field].filter(value => typeof value === 'string') : [];
@@ -84,7 +87,7 @@ export async function runSavedPrompt(action, plan, { signal, isCurrent, runCodex
 
   const timeout = AbortSignal.timeout(plan.timeoutMs);
   const turnSignal = AbortSignal.any([signal, timeout]);
-  const prompt = taskInstructions(action, plan.quiet);
+  const prompt = taskInstructions(action, plan);
   let result;
   try {
     if (plan.provider === 'codex') {

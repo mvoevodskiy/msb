@@ -568,3 +568,43 @@ synthetic open_page result with the URL in the reply. The provider
 behavior is simulated in the closed test. Live page retrieval and
 account acceptance remain separate. This path has no server-side
 URL downloader or shell.
+
+
+Saved Codex native helpers for basic stateless prompts.
+
+I8 at 3929–3934 enables prompt helpers by default with an explicit
+false opt-out. zJ/WR at 17159–17184 give helpers the parent's tool
+posture. JO at 36829–36851 passes the tools and optional teams into
+the scoped launch. Named team definitions at 14462–14483 map a
+role description and prompt to the old CLI; this stage covers the
+ordinary built-in helper, not named teams.
+
+The saved Codex adapter maps the old Agent/Task grants to the V2
+collaboration tools on the pinned CLI. This tool receives a plain
+text task. It inherits the temporary run and the same owned file
+bridge. Explicit helpers:false suppresses both native delegation
+modes. The saved prompt communicates the grant only when present.
+Use codex-saved-helper-loopback.mjs in the same network-none Docker
+command above to check the real CLI's child scopes, attachment
+rejection, a custom role's scope and parent cancellation. The
+foreground provider, other grants and Telegram interface stay on
+their existing paths. The fixture uses a synthetic account.
+
+The old event parser adds each helper's usage.tokens at 19751 and
+exports helperTokens at 20322. JO adds that total to the saved run's
+tokensIn at 36950. Codex 0.166.0 exec JSON reports the parent turn
+only. In the probe, three parent responses contributed 21 input
+tokens and three helper responses another 87 input tokens. The
+reported input was 21. The observed ephemeral state database had
+no thread rows to use as a fallback. The full account and daily
+token limits still need verified coverage before rollout.
+
+A separate loopback trial on the same pinned CLI enabled the native
+OTLP JSON exporter only inside network-none Docker. Completed SSE
+events carried input and output counts under distinct conversation
+IDs for both parent and helper. The root had three events with
+7 input / 2 output each. The helper had three with 29 input /
+2 output each. Metadata-only events for the same completion also
+arrived. The launcher has no exporter or receiver in this stage.
+The usage writer needs completed-event correlation and deduplication
+before the old daily token guard can use the sum.
