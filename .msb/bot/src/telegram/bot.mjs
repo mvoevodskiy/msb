@@ -3,7 +3,7 @@ import {resetCliConversation} from '../sessions/selection.mjs';
 /**
  * createBot собирает входящие Telegram события и lifecycle хода; UI не хранит
  * provider session отдельно. Вход: [main](../main.mjs), owner → [auth](./auth.mjs).
- * Текст/voice → [inbox](./inbox.mjs) → executeTurn → [agent](../agent/turn.mjs).
+ * Текст/voice и [таймер](../autonomy/legacy-dispatch.mjs) → [inbox](./inbox.mjs) → executeTurn → [agent](../agent/turn.mjs).
  * UI read/delivery lifecycle → [shared callbacks](../../shared/callback-renders.mjs).
  * Кнопки → [router](./router.mjs) → routes/; вид → [screens](./screens.mjs).
  * Формы → [dispatcher](./forms.mjs); pending в этом процессе; записи → [state](../state.mjs) / [env](../env/store.mjs).
@@ -39,7 +39,7 @@ import { compactSession } from '../agent/compact.mjs';
 import { trySessionOperation } from '../agent/session-operation.mjs';
 import { hasClaudeAuth, loadState, updateState } from '../state.mjs';
 import { addTask, tryParseScheduleMessage } from '../autonomy/store.mjs';
-import { adminGuard, isSetupMode } from './auth.mjs';
+import { adminGuard, isAdmin, isSetupMode } from './auth.mjs';
 import { HELP_CC, HELP_OC, commandsForEngine } from './commands.mjs';
 import { handleCallback } from './router.mjs';
 import { hubScreen, monitorScreen, setupScreen, settingsScreen } from './screens.mjs';
@@ -91,6 +91,21 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   }
 
   let stopping = false;
+  let stopEpoch = 0;
+  bot[Symbol.for('msb.scheduledTurns')] = {
+    reserve({ chatId, userId, text }) {
+      const destination = Number(chatId);
+      if (stopping || !Number.isSafeInteger(destination) || !destination ||
+          !isAdmin({ from: { id: userId } }, cfg.adminId)) return null;
+      const ctx = {
+        chat: { id: destination }, api: bot.api,
+        reply: (...args) => bot.api.sendMessage(destination, ...args),
+      };
+      return inbox.reserveScheduled({ ctx, text });
+    },
+    get pending() { return inbox.hasScheduled; },
+    get stopEpoch() { return stopEpoch; },
+  };
   const plan = createPlanActions({ enqueue: (ctx, text) => {
     if (!stopping) inbox.push({ ctx, text, voice: false });
   } });
@@ -203,6 +218,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   }
 
   bot.command('stop', async (ctx) => {
+    stopEpoch++;
     const queued = inbox.clear();
     if (interruptActiveTurns() || queued) {
       await ctx.reply('Моя остановочка ✋🏽⛔️');
@@ -487,7 +503,10 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     try {
       if (!voice && !entry.items) history = await beginTurnHistory({ input: text });
       const thread = (ctx.message || ctx.callbackQuery?.message)?.message_thread_id;
-      await entry.presentation?.catch(() => {});
+      try { await entry.presentation; }
+      catch {
+        if (entry.isAutoTurn && !entry.status) { outcome = 'delivery_error'; return; }
+      }
       status = entry.status;
       if (signal.aborted) { await stopped(); return; }
       if (voice) {
@@ -496,7 +515,16 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       }
       const initialText = entry.items ? batchStatus(entry) : 'Думаю ⏳';
       if (status) await ctx.api.editMessageText(chatId, status.message_id, initialText, {}, presentationSignal(AbortSignal.any([signal, AbortSignal.timeout(15_000)])));
-      else status = await ctx.reply(initialText, thread && thread !== 1 ? { message_thread_id: thread } : {});
+      else {
+        const request = entry.scheduled ? presentationSignal(AbortSignal.any([signal, AbortSignal.timeout(15_000)])) : undefined;
+        try {
+          status = await ctx.reply(initialText, thread && thread !== 1 ? { message_thread_id: thread } : {}, request);
+        } catch (error) {
+          if (!entry.isAutoTurn) throw error;
+          outcome = 'delivery_error';
+          return;
+        }
+      }
       if (signal.aborted) { await stopped(); return; }
       progress = startTurnProgress(ctx, status.message_id, { signal, preparing: voice || Boolean(entry.items) });
       if (voice) {
@@ -518,7 +546,8 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         progress.beginThinking();
       }
       signal.throwIfAborted();
-      const out = await runTurn({ prompt: entry.prompt ?? text, signal, onStatus: ev => {
+      const out = await runTurn({ prompt: entry.prompt ?? text, signal,
+        ...(entry.isAutoTurn ? { isAutoTurn: true } : {}), onStatus: ev => {
         if (ev.kind === 'provider') history?.provider(ev.providerId);
         progress.onStatus(ev);
       } });

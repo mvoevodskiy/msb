@@ -5,21 +5,25 @@ import { autonomyDir, ensureDir } from '../paths.mjs';
 import { runAgentTurn } from '../agent/turn.mjs';
 import { listTasks, saveTaskResult } from './store.mjs';
 import { trySessionOperation } from '../agent/session-operation.mjs';
+import { dispatchLegacyTimers } from './legacy-dispatch.mjs';
 
 const START_DELAY_MS = 30_000;
 const TICK_MS = 60_000;
 
 /**
  * Упрощённый планировщик фоновых задач (аналог [msb/scheduler]).
- * Вход: [main](../main.mjs); [общий ход](../agent/turn.mjs) получает только prompt.
+ * Вход: [main](../main.mjs). [Сохранённые таймеры](./legacy-dispatch.mjs) идут
+ * в [очередь Telegram](../telegram/inbox.mjs), интервальные задачи используют [runner](../agent/turn.mjs).
  * [Store](./store.mjs) условно сохраняет одну неизменённую задачу после каждого хода,
  * не весь старый список; active run не держит lock файла.
  * Проверки: [persistence](../../tests/autonomy-store-concurrency.test.mjs),
  * [compact guard](../../tests/autonomy-compact-guard.test.mjs). [Контракт](./README.md).
  */
-export function startScheduler({ api, adminId, log = console.error, runTurn = runAgentTurn } = {}) {
+export function startScheduler({ api, adminId, scheduledTurns, timezone, now = Date.now,
+  log = console.error, runTurn = runAgentTurn } = {}) {
   let stopped = false;
   let busy = false;
+  let legacyTick;
 
   log('[msb/scheduler] Starting (delay 30s)...');
   const boot = setTimeout(tick, START_DELAY_MS);
@@ -30,18 +34,27 @@ export function startScheduler({ api, adminId, log = console.error, runTurn = ru
   async function tick() {
     if (stopped || busy) return;
     busy = true;
+    const stopEpoch = scheduledTurns?.stopEpoch;
+    const isInterrupted = () => stopped || scheduledTurns?.stopEpoch !== stopEpoch;
     try {
+      if (scheduledTurns) {
+        legacyTick = dispatchLegacyTimers({ scheduledTurns, timezone, now, isInterrupted })
+          .catch(err => log(`[msb/scheduler] legacy timer error: ${err.message}`));
+        try { await legacyTick; } finally { legacyTick = undefined; }
+      }
+      if (isInterrupted() || scheduledTurns?.pending) return;
       const tasks = await listTasks();
-      const now = Date.now();
+      const tickAt = now();
       for (const snapshot of tasks) {
+        if (stopped) break;
         // Another task can run for minutes; do not execute a since-edited/deleted task.
         const current = (await listTasks()).find(task => task.id === snapshot.id);
         if (!current || !isDeepStrictEqual(current, snapshot)) continue;
         const before = { ...current }, task = { ...current };
         if (task.enabled === false) continue;
-        if ((task.nextAt || 0) > now) continue;
+        if ((task.nextAt || 0) > tickAt) continue;
         if (!await runTask(task, api, adminId, log, runTurn)) continue;
-        task.nextAt = now + Math.max(1, task.everyHours || 24) * 3600 * 1000;
+        task.nextAt = tickAt + Math.max(1, task.everyHours || 24) * 3600 * 1000;
         await saveTaskResult(before, task);
       }
     } catch (err) {
@@ -56,6 +69,7 @@ export function startScheduler({ api, adminId, log = console.error, runTurn = ru
       stopped = true;
       clearTimeout(boot);
       clearInterval(timer);
+      return legacyTick;
     },
     tickNow: tick,
   };

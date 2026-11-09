@@ -65,3 +65,21 @@ export function modelCallbackChoice(data, version) {
   if (!model || (prefix !== prefixes[0] && model.family !== 'fable')) return null;
   return { model, locked: modelLocked(model, version) };
 }
+
+// The old timer turn used the Sonnet equivalent without changing the selection.
+const autoTurnModels = new Map([
+  ['opus[1m]', 'sonnet[1m]'],
+  ['claude-opus-5', 'claude-sonnet-5'],
+  ['claude-opus-4-8', 'claude-sonnet-4-6'],
+  ['claude-opus-4-7', 'claude-sonnet-4-6'],
+  ['claude-opus-4-6', 'claude-sonnet-4-6'],
+]);
+
+export function claudeAutoTurnModel(selected, configured = selected, env = process.env) {
+  if (env.CC_AUTO_TURN_SONNET === '0') return selected;
+  const requested = String(configured).trim().toLowerCase();
+  const familyId = cleanClaudeModelId(requested);
+  const isOpus = getClaudeModel(familyId)?.family === 'opus' ||
+    /^claude-opus-/.test(familyId) || ['opus', 'opusplan'].includes(familyId);
+  return isOpus ? autoTurnModels.get(requested) || 'sonnet' : selected;
+}

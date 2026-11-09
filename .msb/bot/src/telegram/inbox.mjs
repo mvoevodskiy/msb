@@ -1,7 +1,8 @@
 /**
  * One FIFO worker for supported Telegram text/voice; forwarded collector reserves
  * its place immediately. Text context → [reply formatter](./reply-context.mjs).
- * No provider/session state here. See README.md#очередь.
+ * [Scheduled turns](../autonomy/legacy-dispatch.mjs) enter as reserved text.
+ * Publish them after the timer file is committed. No provider/session state here.
  */
 import { buildReplyContext } from './reply-context.mjs';
 
@@ -44,18 +45,22 @@ export function createInbox({ run, status, cancel, canRun = () => true, onError 
     // The old worker merges adjacent, already waiting text, never voices/batches.
     if (!entry.items && !entry.voice) {
       const texts = [entry.text], prompts = [textPrompt(entry)]; let chars = prompts[0].length;
+      let isAutoTurn = Boolean(entry.scheduled);
       while (texts.length < 20) {
         const next = queue[0];
         if (!next?.ready || next.items || next.voice || keyOf(next) !== keyOf(entry)) break;
         const prompt = textPrompt(next);
         if (chars + prompt.length > 1_000_000) break;
         queue.shift(); chars += prompt.length; texts.push(next.text); prompts.push(prompt);
+        isAutoTurn &&= Boolean(next.scheduled);
+        if (next.scheduled) entry.scheduled = true;
         // Mark the consumed queue status, keeping one thinking/final status.
         next.cancelled = true;
         effect(() => cancel(next, true));
       }
       entry.text = mergeTexts(texts);
       entry.prompt = mergeTexts(prompts);
+      if (entry.scheduled) entry.isAutoTurn = isAutoTurn;
     }
     active = entry;
     effect(async () => {
@@ -86,6 +91,24 @@ export function createInbox({ run, status, cancel, canRun = () => true, onError 
       queue.push(item); kick();
     }
   }
+  function reserveScheduled(item) {
+    if (closed) return null;
+    item.ready = false;
+    item.scheduled = true;
+    queue.push(item);
+    return committed => {
+      const index = queue.indexOf(item);
+      if (index < 0 || item.ready) return;
+      if (committed) {
+        item.ready = true;
+        if (active || queue[0] !== item || !canRun()) show(item, '⏳ в очереди');
+      } else {
+        item.cancelled = true;
+        queue.splice(index, 1);
+      }
+      kick();
+    };
+  }
   function clear() {
     const hadPending = queue.length > 0 || Boolean(active && !active.started);
     if (active && !active.started) { active.cancelled = true; effect(() => cancel(active)); }
@@ -96,10 +119,11 @@ export function createInbox({ run, status, cancel, canRun = () => true, onError 
     collectors.clear(); return hadPending;
   }
   return {
-    push, kick, clear,
+    push, reserveScheduled, kick, clear,
     isCollecting: ctx => collectors.has(keyOf({ ctx })),
     open() { closed = false; kick(); },
     get size() { return queue.length + Number(Boolean(active)); },
+    get hasScheduled() { return Boolean(active?.scheduled || queue.some(item => item.scheduled)); },
     async shutdown() { closed = true; clear(); while (effects.size) await Promise.allSettled([...effects]); },
   };
 }

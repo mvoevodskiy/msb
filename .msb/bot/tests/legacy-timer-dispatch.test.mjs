@@ -13,6 +13,7 @@ import { addTask, listTasks } from '../src/autonomy/store.mjs';
 import { botRoot, msbRoot } from '../src/paths.mjs';
 import { loadState, saveState } from '../src/state.mjs';
 import { fixture } from './helpers/menu-fixture.mjs';
+import { withFileLock } from '../shared/file-lock.mjs';
 
 const tick = Date.parse('2026-10-25T03:30:00.000Z');
 const stamp = new Date(tick).toISOString();
@@ -25,11 +26,17 @@ const timer = {
   at: '2026-10-25T03:20:00.000Z',
 };
 const timerPrompt = '⏰ Таймер "Почта":\nПроверить почту';
-const normalResult = { ok: true, text: 'Напоминание готово', result: { context: { usedTokens: 5, contextWindow: 10 } } };
+const normalResult = { ok: true, text: 'Напоминание готово', result: { context: { contextTokens: 5, contextWindow: 10 } } };
 const groupChat = -10000234;
 
+function gate() {
+  let resolve;
+  const promise = new Promise(done => { resolve = done; });
+  return { promise, resolve };
+}
+
 async function until(check, label) {
-  const deadline = Date.now() + 700;
+  const deadline = Date.now() + 4000;
   while (!check()) {
     if (Date.now() >= deadline) assert.fail(label);
     await new Promise(resolve => setTimeout(resolve, 5));
@@ -73,7 +80,8 @@ test('legacy once: emits the old prompt to the saved owner chat and consumes it 
   assert.notEqual(f.calls[0].autonomy, true);
   assert.ok(f.typingSignals.length > 0);
   assert.deepEqual(f.recipients, [groupChat]);
-  assert.ok(f.edits.some(text => /Напоминание готово.*⏱/s.test(text)));
+  assert.deepEqual(await listTasks(), []);
+  assert.ok(f.edits.some(text => /Напоминание готово.*⏱.*50%/s.test(text)));
 
   await f.callback('auto:timer-toggle:one');
   assert.equal((await f.records())[0].lastRunAt, stamp);
@@ -153,4 +161,228 @@ test('legacy timers do not overlap the existing interval runner in the same prof
   await f.bot.stop();
   await f.scheduler.tickNow();
   assert.equal(f.intervalRuns.length, 1);
+});
+
+test('legacy dispatch requires both a saved destination and the configured owner', async t => {
+  const f = await dispatchFixture(t, { owner: 999 });
+  await f.scheduler.tickNow();
+  assert.deepEqual(await f.records(), [timer]);
+  assert.equal(f.calls.length, 0);
+  const { state } = await loadState();
+  await saveState({ ...state, userId: 42, chatId: undefined });
+  await f.scheduler.tickNow();
+  assert.deepEqual(await f.records(), [timer]);
+  assert.deepEqual(f.recipients, []);
+});
+
+test('legacy once keeps future, disabled, missing-date and already-run records untouched', async t => {
+  const timers = [
+    { ...timer, id: 'future', at: '2026-10-25T03:31:00.000Z' },
+    { ...timer, id: 'disabled', enabled: false },
+    { ...timer, id: 'missing', at: undefined },
+    { ...timer, id: 'done', lastRunAt: '2026-10-25T03:20:00.000Z' },
+  ];
+  const f = await dispatchFixture(t, { timers });
+  const before = await f.records();
+  await f.scheduler.tickNow();
+  assert.deepEqual(await f.records(), before);
+  assert.deepEqual(f.recipients, []);
+});
+
+test('legacy auto-only turn consumes the once if Telegram cannot send its initial status', async t => {
+  const f = await dispatchFixture(t);
+  const attempts = [];
+  f.bot.api.sendMessage = async (chat, text) => {
+    attempts.push({ chat, text });
+    throw new Error('fixture Telegram unavailable');
+  };
+  await f.scheduler.tickNow();
+  await until(() => !f.bot[Symbol.for('msb.scheduledTurns')].pending, 'failed timer status did not settle');
+  assert.deepEqual(await f.records(), [{ ...timer, enabled: false, lastRunAt: stamp }]);
+  assert.deepEqual(attempts, [{ chat: groupChat, text: 'Думаю ⏳' }]);
+  assert.equal(f.calls.length, 0);
+});
+
+test('failed timer file publication drops the reservation before the model, and permits the next tick', async t => {
+  const f = await dispatchFixture(t);
+  const file = await fs.realpath(f.file);
+  const rename = fs.rename;
+  let attempts = 0;
+  fs.rename = async (from, to) => {
+    if (to === file) {
+      attempts++;
+      throw Object.assign(new Error('fixture storage failure'), { code: 'EIO' });
+    }
+    return rename(from, to);
+  };
+  try {
+    await f.scheduler.tickNow();
+  } finally {
+    fs.rename = rename;
+  }
+  assert.equal(attempts, 1);
+  assert.deepEqual(await f.records(), [timer]);
+  assert.equal(f.calls.length, 0);
+  assert.deepEqual(f.recipients, []);
+  assert.equal(f.bot[Symbol.for('msb.scheduledTurns')].pending, false);
+
+  await f.scheduler.tickNow();
+  await until(() => f.calls.length === 1, 'retry did not run after a successful commit');
+  assert.deepEqual(await f.records(), [{ ...timer, enabled: false, lastRunAt: stamp }]);
+});
+
+test('timer dispatch rechecks the record after a concurrent delete and preserves the other row', async t => {
+  const future = { ...timer, id: 'future', at: '2026-10-25T03:31:00.000Z' };
+  const f = await dispatchFixture(t, { timers: [timer, future] });
+  const file = await fs.realpath(f.file);
+  const locked = gate(), release = gate();
+  const change = withFileLock(file, async () => {
+    locked.resolve();
+    await release.promise;
+    await fs.writeFile(file, JSON.stringify([future]));
+  });
+  await locked.promise;
+  const read = fs.readFile;
+  let scanned = false;
+  fs.readFile = async (target, ...options) => {
+    const value = await read(target, ...options);
+    if (target === file) scanned = true;
+    return value;
+  };
+  let dispatch;
+  try {
+    dispatch = f.scheduler.tickNow();
+    await until(() => scanned, 'scheduler did not read the initial timer snapshot');
+  } finally {
+    fs.readFile = read;
+    release.resolve();
+    await Promise.all([change, dispatch]);
+  }
+  assert.deepEqual(await f.records(), [future]);
+  assert.deepEqual(f.recipients, []);
+});
+
+test('timer text merges with already queued owner text and uses ordinary model policy', async t => {
+  const first = gate();
+  const f = await dispatchFixture(t, { chatId: 42, run: async ({ prompt, signal }) => {
+    if (prompt === 'Открыть очередь') {
+      await Promise.race([first.promise, new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }))]);
+    }
+    return normalResult;
+  } });
+  await f.message('Открыть очередь');
+  await until(() => f.calls.length === 1, 'manual turn did not start');
+  await f.scheduler.tickNow();
+  await f.message('Следующий текст владельца');
+  first.resolve();
+  await until(() => f.calls.length === 2, 'queued messages did not run');
+
+  assert.ok(f.calls[1].prompt.includes(timerPrompt));
+  assert.match(f.calls[1].prompt, /Следующий текст владельца/);
+  assert.notEqual(f.calls[1].isAutoTurn, true);
+  assert.equal((await f.records())[0].lastRunAt, stamp);
+});
+
+test('legacy recurring local-day stamp suppresses a repeat across the UTC date boundary', async t => {
+  const daily = { ...timer, id: 'daily', type: 'daily', hour: 1 };
+  const f = await dispatchFixture(t, { timers: [daily] });
+  const instant = '2026-10-24T19:30:00.000Z'; // Sunday 01:00 at the saved owner.
+  f.setTime(Date.parse(instant));
+  await f.scheduler.tickNow();
+  await until(() => f.calls.length === 1, 'owner-local early-morning timer did not start');
+  await f.scheduler.tickNow();
+
+  assert.deepEqual(await f.records(), [{ ...daily, lastRunAt: instant }]);
+  assert.equal(f.calls.length, 1);
+});
+
+test('shutdown drains a reserved timer stamp and never starts its cancelled turn', async t => {
+  const f = await dispatchFixture(t);
+  const file = await fs.realpath(f.file);
+  const rename = fs.rename;
+  const release = gate();
+  let writing = false;
+  fs.rename = async (from, to) => {
+    if (to === file) {
+      writing = true;
+      await release.promise;
+    }
+    return rename(from, to);
+  };
+  const dispatch = f.scheduler.tickNow();
+  let drain;
+  try {
+    await until(() => writing, 'scheduled write did not reach publication');
+    drain = f.scheduler.stop();
+    assert.equal(typeof drain?.then, 'function');
+    await f.bot.stop();
+    assert.equal(f.calls.length, 0);
+    assert.deepEqual(f.recipients, []);
+  } finally {
+    fs.rename = rename;
+    release.resolve();
+    await Promise.all([dispatch, drain]);
+  }
+  assert.deepEqual(await f.records(), [{ ...timer, enabled: false, lastRunAt: stamp }]);
+  assert.equal(f.calls.length, 0);
+});
+
+test('/stop closes the current admission pass while retaining a later due record for the next tick', async t => {
+  const second = { ...timer, id: 'two', name: 'Второй' };
+  const f = await dispatchFixture(t, { timers: [timer, second] });
+  const file = await fs.realpath(f.file);
+  const rename = fs.rename;
+  const release = gate();
+  let writing = false;
+  fs.rename = async (from, to) => {
+    if (to === file) {
+      writing = true;
+      await release.promise;
+    }
+    return rename(from, to);
+  };
+  const dispatch = f.scheduler.tickNow();
+  try {
+    await until(() => writing, 'first scheduled write did not reach publication');
+    await f.message('/stop');
+    assert.ok(f.messages.includes('Моя остановочка ✋🏽⛔️'));
+  } finally {
+    fs.rename = rename;
+    release.resolve();
+    await dispatch;
+  }
+  assert.deepEqual(await f.records(), [{ ...timer, enabled: false, lastRunAt: stamp }, second]);
+  assert.equal(f.calls.length, 0);
+
+  f.setTime(tick + 60_000);
+  await f.scheduler.tickNow();
+  await until(() => f.calls.length === 1, 'second timer did not survive to the next tick');
+  assert.match(f.calls[0].prompt, /⏰ Таймер "Второй":/);
+});
+
+test('/stop aborts the initial status request for a scheduled timer', async t => {
+  const f = await dispatchFixture(t);
+  const release = gate();
+  const send = f.bot.api.sendMessage;
+  let request;
+  f.bot.api.sendMessage = async (chat, text, options, signal) => {
+    if (text === 'Думаю ⏳') {
+      request = { signal };
+      const aborted = new Promise(resolve => signal?.addEventListener('abort', resolve, { once: true }));
+      await Promise.race([release.promise, aborted]);
+      signal?.throwIfAborted();
+    }
+    return send(chat, text, options, signal);
+  };
+  try {
+    await f.scheduler.tickNow();
+    await until(() => request, 'timer did not send its initial status');
+    await f.message('/stop');
+    assert.ok(request.signal?.aborted, 'stop must abort the timer presentation request');
+    await until(() => !f.bot[Symbol.for('msb.scheduledTurns')].pending, 'aborted status did not settle');
+  } finally {
+    release.resolve();
+  }
+  assert.equal(f.calls.length, 0);
+  assert.deepEqual(await f.records(), [{ ...timer, enabled: false, lastRunAt: stamp }]);
 });

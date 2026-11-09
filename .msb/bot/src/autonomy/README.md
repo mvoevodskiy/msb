@@ -22,6 +22,7 @@ scheduler-процессами. При изменении задачи во вр
 | Разобрать сообщение «каждые N часов …» | [store.mjs](store.mjs): `tryParseScheduleMessage` |
 | Прочитать/сохранить задачи | [store.mjs](store.mjs): `listTasks`, `addTask`, `saveTaskResult` (полная замена — только явный `saveAllTasks`) |
 | Выполнить наступившую задачу и сохранить `runs.jsonl` | [scheduler.mjs](scheduler.mjs): `startScheduler`, внутренний `runTask` |
+| Запустить сохранённый таймер | [legacy-dispatch.mjs](legacy-dispatch.mjs) → [очередь Telegram](../telegram/inbox.mjs) |
 | Не начинать фоновый ход одновременно с `/compact` | [session-operation.mjs](../agent/session-operation.mjs): `trySessionOperation` |
 | Прочитать журнал и подготовить страницы истории | [history.mjs](history.mjs): `readRecentRuns`, `historyPages` |
 | Список, карточки и настройки UI | [screens/autonomy](../telegram/screens/autonomy.mjs), [routes/autonomy](../telegram/routes/autonomy.mjs) |
@@ -33,8 +34,16 @@ scheduler-процессами. При изменении задачи во вр
 как в старом ядре. [Экран](../telegram/screens/legacy-timers.mjs) показывает
 записи once, daily и weekly. [Проверки](../../tests/autonomy-timers.test.mjs)
 идут через [Telegram callback](../telegram/routes/autonomy.mjs).
-Исполнение сохранённых таймеров ещё предстоит подключить. В старом ядре
-просьба о новом напоминании создавала разовую задачу в отдельном хранилище.
+[Планировщик](./scheduler.mjs) проверяет расписания в часовом поясе владельца
+и передаёт наступивший таймер в [очередь](../telegram/inbox.mjs) для сохранённого
+чата. Очередь резервирует место до записи lastRunAt. Запись разового
+таймера сразу выключается. Статусы, typing, итог и отмена используют обычный
+ход Telegram. Ошибка записи снимает резерв и допускает следующий тик.
+Пауза бота учитывается по прежнему engine/sleep.<botId>.
+[Проверки запуска](../../tests/legacy-timer-dispatch.test.mjs).
+
+В старом ядре просьба о новом напоминании создавала разовую задачу
+в отдельном хранилище. Этот разговорный маршрут проверяется отдельно.
 
 Часть действий карточек задач пока не подключена. Сохранённые autonomy rights
 ещё не задают отдельные права исполнения.

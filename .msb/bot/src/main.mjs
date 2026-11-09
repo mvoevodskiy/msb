@@ -4,7 +4,7 @@
  * Вход: [index.js](../index.js) после [overlay/run](../../../overlay/bot/run.mjs).
  * По задаче: сообщения/команды/кнопки → [createBot](./telegram/bot.mjs);
  * выполнение модели/сессия → [runAgentTurn](./agent/turn.mjs);
- * интервальные задачи → [autonomy scheduler](./autonomy/scheduler.mjs);
+ * интервальные задачи и сохранённые таймеры → [autonomy scheduler](./autonomy/scheduler.mjs);
  * источники/дайджест → [monitor scheduler](./monitor/scheduler.mjs);
  * профиль/папки → [paths](./paths.mjs), состояние → [state](./state.mjs);
  * восстановление выбранного проекта перед polling → [projects](./projects/restore.mjs).
@@ -36,6 +36,8 @@ export async function main() {
   const scheduler = startScheduler({
     api: bot.api,
     adminId: cfg.adminId,
+    timezone: cfg.timezone,
+    scheduledTurns: bot[Symbol.for('msb.scheduledTurns')],
   });
   const monitor = startMonitorScheduler({
     api: bot.api,
@@ -46,7 +48,7 @@ export async function main() {
   const shutdown = async (sig) => {
     if (shuttingDown) return;
     shuttingDown = true;
-    scheduler.stop();
+    const timerAdmission = scheduler.stop();
     monitor.stop();
     console.error(`[msb/open] ${sig} — shutting down`);
     try {
@@ -54,6 +56,7 @@ export async function main() {
     } catch {
       /* ignore */
     }
+    await timerAdmission;
     heartbeat.stop();
     process.exit(0);
   };

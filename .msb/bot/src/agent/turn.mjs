@@ -7,6 +7,7 @@ import {
   updateState,
 } from '../state.mjs';
 import { readClaudeVersion } from './claude-version.mjs';
+import { claudeAutoTurnModel } from './models.mjs';
 import { runClaudeTurn } from './claude.mjs';
 import { runOpenClawTurn } from './openclaw-turn.mjs';
 import { conversationalModePrompt } from './mode-prompt.mjs';
@@ -44,6 +45,7 @@ export async function runAgentTurn({
   signal,
   onStatus,
   autonomy = false,
+  isAutoTurn = false,
   env = process.env,
 } = {}) {
   const aborted = () => ({ ok: false, error: 'aborted', text: 'Остановлено.' });
@@ -87,14 +89,17 @@ export async function runAgentTurn({
 
   const cwd = await resolveProjectCwd(state, env, baseWorkspace);
   if (signal?.aborted) return aborted();
-  const cliVersion = (state.extAuthBypass || 'claude') === 'claude' ? await readClaudeVersion(env) : undefined;
-  const model = resolveModel(state);
-  const effort = resolveEffort(state, cliVersion);
+  const providerId = state.extAuthBypass || 'claude';
+  const cliVersion = providerId === 'claude' ? await readClaudeVersion(env) : undefined;
+  const selectedModel = resolveModel(state);
+  const model = isAutoTurn && providerId === 'claude'
+    ? claudeAutoTurnModel(selectedModel, state.ccModel || state.model, env)
+    : selectedModel;
+  const effort = resolveEffort(model === selectedModel ? state : { ...state, ccModel: model }, cliVersion);
   const permissionMode = resolvePermMode(state, cliVersion);
   const systemPrompt = await buildSystemPrompt({ env, workspace:baseWorkspace, cwd, timezone:state.timezone || 'UTC', now:contextNow, extra: [conversationalModePrompt(state),skillInstallPrompt(skillInstall),mcpInstallPrompt(mcpInstall)].filter(Boolean).join('\n\n') });
 
   if (signal?.aborted) return aborted();
-  const providerId=state.extAuthBypass || 'claude';
   mcp=await prepareMcpLaunch(state,providerId,env,cwd);
   const installScope=mcpInstall?await nativeMcpScope(mcpInstall.provider,cwd,env):undefined;
   if (signal?.aborted) return aborted();

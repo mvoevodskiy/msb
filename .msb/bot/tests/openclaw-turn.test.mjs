@@ -190,3 +190,12 @@ test('OpenClaw retains the explicit conventional native profile under its own HO
   assert.equal(result.ok,true,result.text);
   assert.ok(seen('prompt',await f.calls()).argv.includes('openclaw'));
 });
+
+test('legacy automatic turn still uses the named native OpenClaw session', async t => {
+  const f = await prepare(t);
+  const result = await runAgentTurn({ prompt: 'Owned scheduled OC input', isAutoTurn: true });
+  assert.equal(result.ok, true, result.text);
+  const prompt = seen('prompt', await f.calls());
+  assert.ok(prompt.prompt.includes('Owned scheduled OC input'));
+  assert.equal((await loadState()).state.ocSessionId, fixtureSessionId);
+});

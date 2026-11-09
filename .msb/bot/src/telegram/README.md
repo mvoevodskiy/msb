@@ -37,6 +37,12 @@ collector присоединяется к пачке; `/stop` очищает col
 [Handler + STT lifecycle tests](../../tests/inbox-lifecycle.test.mjs) ·
 [Timer/cap/FIFO tests](../../tests/inbox.test.mjs).
 
+Сохранённые [таймеры](../autonomy/legacy-dispatch.mjs) резервируют обычный
+FIFO-элемент через createBot. Модель запускается после подтверждения записи.
+Вход проходит мимо форм и сборщика пересылок. Для нескольких ожидающих
+текстов сохранено объединение в рамках одного чата и темы.
+[Проверки запуска и отмены](../../tests/legacy-timer-dispatch.test.mjs).
+
 ## Настройки и кнопки
 
 Маршрут **Настройки → Движки → Codex**:

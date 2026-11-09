@@ -47,9 +47,53 @@ the link. An exclusive temporary file in an owned directory cannot
 overwrite another file through a pre-existing predictable temp link.
 Two cases reproduced both write defects before this correction.
 
-Dispatch is a separate step. 18259–18271 and 108800–108830 show the old
-once guard, triggerMessage and lastRunAt/disable after delivery. The
-conversation prompt at 24608/24644 and parser at 26729–26748 distinguish
-new SCHEDULE_TASK one-shot actions from legacy timer management. A
-new reminder must use the action path. An active legacy store or its
-global migration must not be inferred from these synthetic menu tests.
+Legacy timer dispatch checkpoint.
+
+Old boot 122276–122280 supplies gU to the scheduler. 108800–108834
+checks the sleep marker and saved owner chat/user. gU at
+111460–111475 sends the initial status and submits the timer prompt
+with isAutoTurn. kh/NB at 110140–110167 queues a normal text turn and
+shows the queued state when busy. The caller stamps lastRunAt after
+submission, before any model result. A failed initial status returns
+without admitting a model turn, and the old scheduler consumes the
+attempt. Old 110249–110297 merges ready text by chat, and 110649–110657
+requires every merged input to be automatic for the automatic model rule.
+55938–55954 preserves native OpenClaw. For automatic Claude Opus turns
+286–309, 643–652 and 55990–55995 choose Sonnet unless opted out.
+
+18259–18283 uses enabled, at and lastRunAt for once. Recurring timers
+match the exact minute and weekly weekday with a single run for the day.
+Old 108263–108265 uses the saved zone for hour/day/weekday while
+108811 reads the host minute. The UTC ISO prefix check at 18272 is
+inconsistent for local dates before UTC midnight. The restored code
+uses the same saved zone for every civil field and the dedup date.
+Persisted lastRunAt is still an ISO timestamp. The half-hour and date
+boundary fixtures document the observable correction. A missed recurring
+minute stays missed, while an eligible overdue once can run later.
+
+560401b reproduced five missing paths. main connects legacy-dispatch
+to the existing scheduler and createBot inbox. The owner adapter uses
+the saved chat only when its saved user matches the configured owner.
+It reserves a FIFO place without a fabricated Telegram message or
+sending text through the user forms. A locked compare against the
+captured file and record protects menu changes. The worker starts
+after atomic publication of the stamp. A failed write removes the
+reservation. Stop and shutdown cancel the queued/active worker
+through its ordinary lifecycle. Shutdown drains a pending stamp.
+Review reproduced a same-tick admission after /stop and an initial
+status request surviving stop. The current pass now checks the stop
+generation and the scheduled status is abortable. An unreserved
+timer remains eligible on a future pass.
+Pending legacy work and this scheduler's interval runner stay
+separate in time. Already queued auto-only work uses the old Claude
+policy, including the [1m] variant and opt-out. Mixed text, Codex
+and OpenClaw use their normal model policies. Tests use fake APIs,
+owned executable fixtures and disposable profile data.
+
+The scheduler stamps the admission attempt. Once the stamp is
+published, a process crash before the in-memory queue runs can lose
+the delivery, as in the old scheduler after enqueue. A model error
+or manual stop does not schedule a second run. The user profile's
+global legacy schedule adoption is outside this local checkpoint.
+24608/24644 and 26729–26748 route new SCHEDULE_TASK reminders to the
+separate action store. That conversation route is the next stage.
