@@ -608,3 +608,31 @@ IDs for both parent and helper. The root had three events with
 arrived. The launcher has no exporter or receiver in this stage.
 The usage writer needs completed-event correlation and deduplication
 before the old daily token guard can use the sum.
+
+
+Saved Codex helper usage in the daily input budget.
+
+The invocation now opens an authenticated OTLP JSON receiver on
+IPv4 loopback for the owned CLI. It discards message bodies and
+keeps scoped thread links and numeric counters in memory until the
+process exits. The launch supplies only this log endpoint and turns
+off prompt/answer logging and the metrics/trace exporters. Raw
+telemetry has no writer in the bot.
+
+The pinned 0.166.0 CLI emits codex.agent_communication spawn and
+result links. Its completed SSE events carry a metadata record and
+a numeric record. The observed OTLP timestamp distinguishes records
+with equal usage, and an exact retry retains that identity. The
+adapter compares successful /responses attempts, completion pairs,
+child results and the root exec usage. Only descendants of the
+owned root can contribute. It sums the helper input and output once,
+with cached input already included, and adds the helper total to
+tokensIn as old 36950 did. Root tokensOut stays separate.
+
+Tests cover equal-sized responses, duplicate receipts, conflicts,
+partial and unrelated events, request authentication and the exact
+daily budget boundary. Unknown usage remains absent or a lower bound
+with usageIncomplete. No refusal is synthesized solely from missing
+telemetry. XM at 11608–11627 excludes stopped/skipped attempts from
+daily tokens, and the existing journal reader preserves that rule.
+The native helper fixture checks actual CLI totals on loopback.

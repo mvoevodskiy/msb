@@ -18,6 +18,7 @@ export async function appendSavedActionRun(action, ts, result) {
     status: result.status, costUsd: 0, costVisible: action.task.kind === 'reminder', format: 'tg-message',
     detail: result.detail || result.error || 'напоминание доставлено',
     tokensIn: result.tokensIn, tokensOut: result.tokensOut, meteredUsd: result.meteredUsd,
+    usageIncomplete: result.usageIncomplete || undefined,
   };
   await fs.appendFile(file, JSON.stringify(row) + '\n', { mode: 0o600 });
 }

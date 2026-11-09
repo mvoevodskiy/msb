@@ -1,7 +1,8 @@
 /**
  * Scheduler-only Codex invocation. [Core policy](../../../../.msb/bot/src/autonomy/prompt-policy.mjs)
  * supplies allowed tools. [Owned process](./owned-cli.mjs) and [workspace MCP](./saved-workspace-mcp.mjs)
- * keep the native account and foreground session separate.
+ * keep the native account and foreground session separate. [Local usage](./saved-codex-otlp.mjs)
+ * includes scoped helper spend in the saved action journal.
  */
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -15,6 +16,8 @@ import { loadStore } from '../store.mjs';
 import { CODEX_CLI_VERSION, isValidCodexThreadId, parseCodexTomlScalars, resolveCodexEffort, resolveCodexModel } from '../codex-native.mjs';
 import { CODEX_CHATGPT_BASE } from '../codex-transport.mjs';
 import { savedWorkspaceToolNames } from './saved-workspace-tools.mjs';
+import { openSavedCodexOtlp } from './saved-codex-otlp.mjs';
+import { parseSavedCodexUsage } from './saved-codex-usage.mjs';
 
 const bridge = fileURLToPath(new URL('./saved-workspace-mcp.mjs', import.meta.url));
 const provider = 'msb_saved_prompt';
@@ -24,8 +27,7 @@ const privateScratch = ['msb-mcp-', 'msb-oc-mcp-', 'msb-oc-turn-', 'msb-stt-', '
 const disabled = ['shell_tool', 'shell_snapshot', 'hooks', 'plugin_hooks',
   'skill_mcp_dependency_install', 'plugins', 'remote_plugin', 'apps', 'memories', 'view_image', 'image_generation', 'goals'];
 
-function argv({ model, effort, scope, scratch }, baseUrl) {
-  const helpers = scope.tools.includes('Agent') && scope.tools.includes('Task');
+function argv({ model, effort, scope, scratch, helpers, usageArgs }, baseUrl) {
   const options = {
     model_provider: provider,
     ['model_providers.' + provider + '.name']: 'MSB saved prompt',
@@ -54,7 +56,7 @@ function argv({ model, effort, scope, scratch }, baseUrl) {
   }
   return ['-a', 'never', 'exec', '--json', '--skip-git-repo-check', '--ignore-user-config',
     '--ignore-rules', '--ephemeral', '--sandbox', 'read-only',
-    ...Object.entries(options).flatMap(([key, value]) => ['-c', key + '=' + JSON.stringify(value)]), '-'];
+    ...Object.entries(options).flatMap(([key, value]) => ['-c', key + '=' + JSON.stringify(value)]), ...usageArgs, '-'];
 }
 
 async function subscriptionAuth(native) {
@@ -105,6 +107,7 @@ export async function runSavedCodexPrompt({ cwd, prompt, model, tools, directori
     signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]) });
   if (version.code !== 0 || version.stdout.trim() !== 'codex-cli ' + CODEX_CLI_VERSION || signal.aborted) return;
   const scratch = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'msb-saved-codex-')));
+  let receiver;
   try {
     if (signal.aborted || !await canLaunch()) return;
     const localRuntime = [path.dirname(bridge), bin, process.execPath];
@@ -115,9 +118,11 @@ export async function runSavedCodexPrompt({ cwd, prompt, model, tools, directori
     const privatePaths = [...scratchRoots].flatMap(root => privateScratch.map(prefix => path.join(root, prefix + '*', '**')));
     const scope = { cwd, directories, denied: [...denied, ...account.protectedFiles, ...localRuntime, ...physicalRuntime, ...privatePaths],
       tools, fileCommitMarker };
+    const helpers = tools.includes('Agent') && tools.includes('Task');
+    if (helpers) receiver = await openSavedCodexOtlp().catch(() => undefined);
     const args = argv({ model: resolveCodexModel(undefined, config, model || account.models.codex),
-      effort: account.efforts.codex || resolveCodexEffort(config), scope, scratch }, baseUrl);
-    if (await subscriptionAuth(account.native) !== account.authFile || signal.aborted) return;
+      effort: account.efforts.codex || resolveCodexEffort(config), scope, scratch, helpers, usageArgs: receiver?.args ?? [] }, baseUrl);
+    if (signal.aborted || !await canLaunch() || await subscriptionAuth(account.native) !== account.authFile || signal.aborted) return;
     const result = await runOwnedCli(bin, args, { cwd, env: childEnv, input: prompt, signal }).catch(error => {
       if (!signal.aborted) throw error;
       return { aborted: true, stdout: '' };
@@ -126,19 +131,20 @@ export async function runSavedCodexPrompt({ cwd, prompt, model, tools, directori
       if (error.code === 'ENOENT') return false;
       throw error;
     });
+    await receiver?.close();
     const parsed = parseCodexStdout(result.stdout);
-    const count = key => {
-      const value = parsed.usage?.[key];
-      return Number.isSafeInteger(value) && value > 0 ? value : 0;
-    };
-    const total = count('input_tokens');
-    const cached = Math.min(total, count('cached_input_tokens'));
-    return { providerId: 'codex', text: parsed.text, assistantTextObserved: Boolean(parsed.text), fileCommitStarted,
-      isError: result.code !== 0 || result.aborted || result.tooLarge || !parsed.turnCompleted || Boolean(parsed.turnFailed) ||
-        !isValidCodexThreadId(parsed.threadId),
-      usage: { inputTokens: total - cached, cacheReadTokens: cached, cacheCreationTokens: 0,
-        outputTokens: count('output_tokens') } };
+    const isError = result.code !== 0 || Boolean(result.aborted || result.tooLarge) ||
+      !parsed.turnCompleted || Boolean(parsed.turnFailed) || !isValidCodexThreadId(parsed.threadId);
+    const nativeUsage = parseSavedCodexUsage(parsed.usage);
+    const measured = receiver?.summarize(parsed.threadId, nativeUsage, !isError && !signal.aborted);
+    const parent = measured?.parent ?? nativeUsage;
+    const usage = parent && { inputTokens: parent.input - parent.cached, cacheReadTokens: parent.cached,
+      cacheCreationTokens: 0, outputTokens: parent.output };
+    return { providerId: 'codex', text: parsed.text, assistantTextObserved: Boolean(parsed.text), fileCommitStarted, isError,
+      usage, helperTokens: measured?.helperTokens,
+      usageIncomplete: (!parent || (helpers && (!measured || measured.incomplete))) || undefined };
   } finally {
+    await receiver?.close();
     await fs.rm(scratch, { recursive: true, force: true });
   }
 }

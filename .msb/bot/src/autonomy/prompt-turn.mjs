@@ -108,8 +108,12 @@ export async function runSavedPrompt(action, plan, { signal, isCurrent, runCodex
   if (timeout.aborted && !result) return { status: 'error', error: 'ход прерван по сроку', timeout: true };
   if (!result) return deferred;
   const usage = result.usage;
-  const metrics = { meteredUsd: result.meteredCostUsd, fileCommitStarted: result.fileCommitStarted, tokensIn: usage.inputTokens + usage.cacheReadTokens + usage.cacheCreationTokens,
-    tokensOut: usage.outputTokens };
+  const parentInput = usage ? usage.inputTokens + usage.cacheReadTokens + usage.cacheCreationTokens : undefined;
+  // Old JO charged the whole observed helper total to the daily input budget.
+  const knownInputs = [parentInput, result.helperTokens].filter(Number.isFinite);
+  const metrics = { meteredUsd: result.meteredCostUsd, fileCommitStarted: result.fileCommitStarted,
+    tokensIn: knownInputs.length ? knownInputs.reduce((total, part) => total + part, 0) : undefined,
+    tokensOut: usage?.outputTokens, usageIncomplete: result.usageIncomplete };
   if (timeout.aborted) return { ...metrics, status: 'error', error: 'ход прерван по сроку', timeout: true, text: result.text };
   if (result.isError || (result.providerId && result.providerId !== plan.provider)) {
     return { ...metrics, status: 'error', error: 'ход движка не удался', text: result.assistantTextObserved ? result.text : '' };
