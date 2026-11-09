@@ -5,7 +5,7 @@
  */
 import { LimitRouteRefusal, requireLocalLimitRoute, setAutonomyLimit } from '../autonomy/limit-control.mjs';
 import { limitDefinition, parseLimitMarker } from '../autonomy/limit-protocol.mjs';
-import { limitMarker, outsideExamples, replaceAutonomyMarkers, scheduleMarker, taskControlMarker } from './autonomy-marker-text.mjs';
+import { limitMarker, outsideExamples, replaceAutonomyMarkers, scheduleMarker, taskControlMarker, taskInspectionMarker } from './autonomy-marker-text.mjs';
 import { askToRemoveLimit } from './limit-confirmation.mjs';
 
 const couldNotAsk = 'Снятие предела подтверждается кнопкой, а спросить сейчас не получилось. Назови ненулевое значение или попробуй ещё раз.';
@@ -36,7 +36,7 @@ async function applyLimit(payload, context, ctx) {
 
 export async function processLimitMarkers(text, context, ctx) {
   if (typeof text !== 'string' || !text.includes('[SET_LIMIT')) return text;
-  const blocks = outsideExamples(text, limitMarker, [...text.matchAll(scheduleMarker), ...text.matchAll(taskControlMarker)]);
+  const blocks = outsideExamples(text, limitMarker, [...text.matchAll(scheduleMarker), ...text.matchAll(taskControlMarker), ...text.matchAll(taskInspectionMarker)]);
   return replaceAutonomyMarkers(text, blocks, async block => {
     context.signal?.throwIfAborted();
     if (!context.ownerId || !context.ok) return { text: '(предел не изменён)' };

@@ -24,17 +24,24 @@ export async function appendSavedActionRun(action, ts, result,
   await fs.appendFile(file, JSON.stringify(row) + '\n', { mode: 0o600 });
 }
 
-// The legacy frequency brake suppresses repeated notices using the last 60 parsed rows.
-export async function latestSavedActionRun(actionId, limit, env = process.env) {
-  const lines = (await fs.readFile(reminderRunPath(env), 'utf8').catch(() => '')).split('\n');
-  let read = 0;
-  for (let index = lines.length - 1; index >= 0 && read < limit; index--) {
-    let row;
-    try { row = JSON.parse(lines[index]); }
-    catch { continue; }
-    read++;
-    if (row?.actionId === actionId) return row;
+// [Inspection](./saved-task-inspection.mjs) and the legacy frequency brake use the same tail.
+export async function readSavedActionRunTail(limit, env = process.env) {
+  const raw = await fs.readFile(reminderRunPath(env), 'utf8').catch(error => {
+    if (error.code === 'ENOENT') return '';
+    throw error;
+  });
+  const lines = raw.split('\n');
+  const rows = [];
+  for (let index = lines.length - 1; index >= 0 && rows.length < limit; index--) {
+    try { rows.push(JSON.parse(lines[index])); }
+    catch { /* An incomplete line does not consume a slot. */ }
   }
+  return rows;
+}
+
+export async function latestSavedActionRun(actionId, limit, env = process.env) {
+  const rows = await readSavedActionRunTail(limit, env).catch(() => []);
+  return rows.find(row => row?.actionId === actionId);
 }
 
 export function parseSavedActionRun(row) {

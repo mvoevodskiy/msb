@@ -1,13 +1,15 @@
 /**
  * Text-only autonomy marker boundaries and final replacement. Shared by the
  * [reminder](./reminder-markers.mjs), [pause](./pause-markers.mjs) and
- * [limit](./limit-markers.mjs) and [task control](./task-control-markers.mjs) handlers.
+ * [limit](./limit-markers.mjs), [inspection](./task-inspection-markers.mjs) and
+ * [task control](./task-control-markers.mjs) handlers.
  */
 import { escapeHtml } from './edit.mjs';
 
 export const scheduleMarker = /\[SCHEDULE_TASK\]([\s\S]*?)\[\/SCHEDULE_TASK\]/g;
 export const limitMarker = /\[SET_LIMIT\s+([^\]]+)\]/g;
 export const taskControlMarker = /\[(PAUSE_TASK|RESUME_TASK):([^\]\r\n]*)\]/g;
+export const taskInspectionMarker = /\[(LIST_TASKS)\]|\[(SHOW_TASK):([^\]\r\n]*)\]/g;
 const example = /\x60{3}[\s\S]*?(?:\x60{3}|(?![\s\S]))|\x60[^\x60\r\n]+\x60|«[^»]*»|^[ \t]*>.*$|<(pre|code|blockquote)\b[^>]*>[\s\S]*?<\/\1>/gim;
 
 export function outsideExamples(text, pattern, protectedRanges = []) {
@@ -51,7 +53,14 @@ export async function replaceAutonomyMarkers(text, blocks, apply, {
     offset = block.index + block[0].length;
     previousStatus = status;
     if (result.error) errors.push('• ' + safeText(result.error));
-    parts.push(safeText(result.text ?? result.error ?? ''));
+    if (result.fragments) {
+      parts.push(...result.fragments.map(({ text, verbatim }) => {
+        const safe = safeText(text);
+        return verbatim ? '<pre>' + safe + '</pre>' : safe;
+      }));
+    } else {
+      parts.push(safeText(result.text ?? result.error ?? ''));
+    }
   }
   const after = text.slice(offset);
   parts.push(previousStatus ? correctClaim(after, previousStatus, claim, quoteGuard) : after);

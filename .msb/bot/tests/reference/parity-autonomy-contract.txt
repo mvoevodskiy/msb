@@ -941,3 +941,19 @@ are a distinct confirmation workflow. This checkpoint restores
 the read output and does not publish an inert cleanup button.
 Test through the normal Claude/Codex foreground path with
 disposable records and synthetic transports.
+
+Open-core implementation: Telegram final dispatch runs read markers
+after global pause and before one-task mutations. The saved-action
+store supplies raw per-bot rows to the same selector used by control.
+The list also reads the local journal tail, frequency decisions, saved
+timers and cron job map. It never turns a displayed native job into
+a local task. A local STOP is described separately when any mapped
+native job may still run, including a disabled or missing local row.
+The details render verbatim text as escaped Telegram preformatted
+content, inert for further autonomy, installation and plan processing.
+Unsupported event metadata remains readable. No event executor is
+claimed; a stored command is described as a configuration. For a
+still-unclaimed due one-off, the time is reported as due because the
+local scheduler can still pick it up. A claim stamp without a result
+is not reported as a success. The existing menu and native routes
+continue to own their current actions.

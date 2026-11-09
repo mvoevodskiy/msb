@@ -29,9 +29,9 @@ const zoneNames = {
 };
 const dayMs = 86_400_000;
 
-function localTime(timeZone) {
+function localTime(timeZone, shortDate = false) {
   const format = new Intl.DateTimeFormat('ru-RU', {
-    timeZone, year: 'numeric', month: 'long', day: 'numeric',
+    timeZone, year: 'numeric', month: shortDate ? '2-digit' : 'long', day: shortDate ? '2-digit' : 'numeric',
     hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZoneName: 'shortOffset',
   });
   return time => Object.fromEntries(format.formatToParts(time).map(({ type, value }) => [type, value]));
@@ -41,21 +41,27 @@ function sameDate(a, b) {
   return a.year === b.year && a.month === b.month && a.day === b.day;
 }
 
-function localDateLabel(target, now, timezone) {
+export function reminderDateClock(target, now, timezone, { shortDate = false } = {}) {
   let zone = timezone || 'Europe/Moscow';
   let parts;
   try {
-    parts = localTime(zone);
+    parts = localTime(zone, shortDate);
   } catch (error) {
     if (!(error instanceof RangeError)) throw error;
     zone = 'Europe/Moscow';
-    parts = localTime(zone);
+    parts = localTime(zone, shortDate);
   }
   const time = parts(target);
-  const day = sameDate(time, parts(now)) ? 'сегодня' :
-    sameDate(time, parts(now + dayMs)) ? 'завтра' : time.day + ' ' + time.month;
-  const label = Object.hasOwn(zoneNames, zone) ? zoneNames[zone] : time.timeZoneName.replace('GMT', 'UTC');
-  return day + ' в ' + time.hour + ':' + time.minute + ' (' + label + ')';
+  return {
+    today: sameDate(time, parts(now)), tomorrow: sameDate(time, parts(now + dayMs)),
+    date: time.day + (shortDate ? '.' : ' ') + time.month, clock: time.hour + ':' + time.minute,
+    zone: Object.hasOwn(zoneNames, zone) ? zoneNames[zone] : time.timeZoneName.replace('GMT', 'UTC'),
+  };
+}
+
+function localDateLabel(target, now, timezone) {
+  const { today, tomorrow, date, clock, zone } = reminderDateClock(target, now, timezone);
+  return (today ? 'сегодня' : tomorrow ? 'завтра' : date) + ' в ' + clock + ' (' + zone + ')';
 }
 
 export function describeReminderTime(at, now, timezone) {

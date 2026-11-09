@@ -35,13 +35,17 @@ function twinAdvice(action, existing) {
   }
 }
 
-function legacyAdvice(action, timers) {
-  const text = actionText(action);
+export function legacyTimerOverlap(timer, action) {
   const name = normalized(action.name);
+  if (name && normalized(timer.name) === name) return 'одинаковое название: «' + timer.name + '»';
+  return sameText(normalized(timer.prompt), actionText(action), 'дословно одинаковое задание',
+    'одно задание целиком входит в другое');
+}
+
+function legacyAdvice(action, timers) {
   for (const timer of timers) {
     if (timer.enabled === false) continue;
-    const reason = name && normalized(timer.name) === name ? 'одинаковое название: «' + timer.name + '»' :
-      sameText(normalized(timer.prompt), text, 'дословно одинаковое задание', 'одно задание целиком входит в другое');
+    const reason = legacyTimerOverlap(timer, action);
     if (reason) return '⏳ Похоже, старый таймер «' + timer.name + '» делает то же самое (' + reason +
       '). Чтобы не было дубля, скажи «выключи таймер ' + timer.name + '».';
   }

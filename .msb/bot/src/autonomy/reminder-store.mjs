@@ -2,6 +2,7 @@
  * Per-bot actions.json for saved literal and model actions. Keep tasks.json and legacy timer
  * files separate. [Marker](../telegram/reminder-markers.mjs), [sender](./reminder-dispatch.mjs),
  * [menu](../telegram/routes/autonomy.mjs), [individual state](./saved-action-control.mjs),
+ * [read-only inventory](./saved-task-inspection.mjs),
  * [contract](../../tests/reference/parity-autonomy-contract.txt).
  */
 import path from 'node:path';
@@ -25,7 +26,7 @@ export async function readNativeJobMap(env) {
   return jobs;
 }
 
-function isLocalSavedAction(action, jobs) {
+export function isLocalSavedAction(action, jobs) {
   if (typeof action?.id !== 'string' || typeof action.name !== 'string' || !validReminderTrigger(action.trigger) ||
       action.pendingConfirm || action.migratedToOc || ![undefined, 'auto', 'cc'].includes(action.runner) ||
       Object.hasOwn(jobs, action.id)) return false;
@@ -48,9 +49,13 @@ async function withActions(env, update, { signal, create } = {}) {
   });
 }
 
-export async function savedActionSnapshot(env = process.env) {
+export async function readSavedActionRecords(env = process.env) {
   const file = await actionFile(env);
-  const records = await readRecordArray(file);
+  return { file, records: await readRecordArray(file) };
+}
+
+export async function savedActionSnapshot(env = process.env) {
+  const { file, records } = await readSavedActionRecords(env);
   const jobs = await readNativeJobMap(env);
   return { file, actions: records.filter(action => isLocalSavedAction(action, jobs)) };
 }
