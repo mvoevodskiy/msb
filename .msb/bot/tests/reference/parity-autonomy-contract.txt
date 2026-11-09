@@ -1127,3 +1127,36 @@ from a task body. A literal unmatched opening bracket still works
 as ordinary text. Quotation delimiters inside rendered verbatim
 data cannot extend a quote over a later real command. Both cases
 are exercised through the final Telegram worker.
+
+Confirmed removal of all saved tasks
+------------------------------------
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js, readable with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+The old prompt at 24612/24649 separates deletion from STOP.
+Dispatch 26822–26831 calls dg at 24438–24464 after direct spent
+cleanup and before the list. lr at 24429–24437 includes names for
+up to ten records. All saved rows count, including disabled,
+pending and spent. Empty at the prompt returns the old empty
+reply. Otherwise the same topic receives «Снести все ✖» (ct-all)
+and «Оставить» (ct-keep), with no write before a tap.
+
+ct-all 113180–113218 calls ULA/cr at 24465–24529, which re-read the
+current list and used the ordinary pause when it was already
+empty. DjA at 11733–11739 first engages YM at 11284–11381, then
+cl at 11680–11707 archives and unregisters before clearing the
+action file. GjA at 11709–11732 copies the full action array into
+actions.removed-<ISO>.json beside actions.json. Legacy timers and
+the run journal are separate. Native STOP attempted to cancel
+active runs and fence mapped jobs.
+
+The old static callback could include tasks not shown on the
+card. Archive failure did not prevent deletion, and even failed
+native unregisters were cleared locally. These are data-loss
+hazards. Preserve the old successful order with a bound question
+and a required private archive. Retain unproved native rows and
+report any native jobs that can still run. The only
+actions.removed- reference is the writer. _7 at 24373–24420
+resumes current tasks and separately paused timers. It does not
+load the archive, so the old reply's recovery promise is not a
+working restore route.

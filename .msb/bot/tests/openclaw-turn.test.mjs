@@ -277,3 +277,24 @@ test('OpenClaw can cancel an explicitly local spent task by name without a nativ
   assert.deepEqual(JSON.parse(await fs.readFile(file,'utf8')),[]);
   assert.deepEqual((await f.calls()).map(row=>row.kind),['sessions','prompt']);
 });
+
+test('OpenClaw bulk cancellation confirms locally owned rows and preserves uncertain native rows',async t=>{
+  const f=await prepare(t,{runTurn:runAgentTurn,reply:'[CANCEL_ALL]'});
+  process.env.AUTONOMY_ENABLED='1';
+  const local={id:'local',name:'Локальная',enabled:true,runner:'cc',
+    trigger:{kind:'interval',intervalMinutes:60},task:{kind:'reminder',text:'fixture local'}};
+  const native={...local,id:'native',name:'Старая автоматическая',runner:'auto'};
+  const file=path.join(actionRoot(),'actions.json');
+  const before=JSON.stringify([local,native]);
+  await fs.writeFile(file,before);
+  await f.message('Удали все фоновые задачи');
+  await until(()=>f.edits.some(text=>text.includes('⏱')),'OpenClaw fixture did not finish',10_000);
+  assert.match(seen('prompt',await f.calls()).prompt,/\[CANCEL_ALL\]/);
+  const messageId=f.messages.findIndex(text=>text.startsWith('Снести все фоновые задачи'))+1;
+  assert.ok(messageId);
+  assert.equal(await fs.readFile(file,'utf8'),before);
+  await f.callback('ct-all',42,{messageId});
+  assert.equal(f.callbackAnswers.at(-1)[0].text,'Снёс не всё');
+  assert.deepEqual(JSON.parse(await fs.readFile(file,'utf8')),[native]);
+  assert.deepEqual((await f.calls()).map(row=>row.kind),['sessions','prompt']);
+});
