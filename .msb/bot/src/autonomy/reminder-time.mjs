@@ -61,3 +61,15 @@ export function describeReminderTime(at, now, timezone) {
   const word = { one: 'минуту', few: 'минуты', many: 'минут' }[unit];
   return when + ', через ' + minutes + ' ' + word;
 }
+
+/** Short old local clock for a subscription window reset. */
+export function formatReminderClock(millis, timezone) {
+  if (timezone) {
+    try {
+      const clock = localTime(timezone)(millis);
+      const label = Object.hasOwn(zoneNames, timezone) ? zoneNames[timezone] : clock.timeZoneName.replace('GMT', 'UTC');
+      return 'в ' + clock.hour + ':' + clock.minute + ' (' + label + ')';
+    } catch { /* Old reset copy falls back to UTC for a missing or invalid zone. */ }
+  }
+  return new Date(millis).toISOString().slice(11, 16) + ' UTC';
+}

@@ -212,3 +212,57 @@ Remaining scope: old periodic stop notices (27310–27435), old caps,
 native cron and outbox, and shared schedules migration require
 their own verification. All scenarios here use disposable profiles
 and simulated Telegram and CLI; this is a local release checkpoint.
+
+Ordinary reminder admission checkpoint.
+
+Rz 24743–24827 estimates $0.10 for an ordinary reminder. The local
+route evaluates saved stop/kill first, breaker at 13327–13341,
+fleet USD and then run/input-token caps, existing Claude quota,
+and owner/action spending. This checkpoint restores the read-side
+legacy breaker decision. Source/result bookkeeping for breaker
+transitions and the old periodic frequency brake remain separate.
+
+VM/GM (11548–11669, 11740–11775, 11924–11961) use the UTC date and
+the last 500 parsed rows per own/root/bot journal (10837–10855,
+11044–11148). Defaults are $5, 200 runs and 10,000,000 input
+tokens. Zero disables the corresponding box gate. Money includes
+all finite recorded cost. Run/token totals exclude only skipped
+and stopped, so blocked counts as a run. Existing open-core
+interval rows prove a completed run except the known setup and
+engine_oc preflight refusals. Their schema lacks cost and input
+tokens. The adapter counts completed runs without deriving
+telemetry from the text. Linked paths to the same journal count
+once. The box remains a view of completed records, with the old
+race between independent in-flight runs, not a reservation system.
+
+mD/TNA (16616–16716 and 55653–55659) compares the estimate to the
+action's per-run/day ceilings before costPaused and the owner-day
+reserve. Rz passes no accumulated action-day cost. Explicit zero
+action ceilings therefore block the estimate while equality passes.
+10664–10691 defaults reserve to 30%, accepts an env override
+and clamps it to 0–90%. The owner's historical cost fields are
+consumed, with no invented new billing entries. Current ordinary
+turn costHistory accumulation still requires separate verification.
+
+WM/il (11798–11907) uses the saved Claude rateLimitInfo while its
+window remains open. Rejected/overage block before utilization.
+For five hours, the owner's reserve applies. Other windows block
+at 98%. Only the current Claude rail can use this snapshot. Codex,
+Cursor, Qwen and native OC never take Claude subscription data.
+The existing Codex collector in Pult has its own account reader
+and cache. This scheduler adds no Pult credential or account poll.
+
+A blocked or skipped ordinary once is spent (24797–24820,
+24928–24948 and 21086–21093). Its action uses lastStatus=skipped,
+lastOutcome=blocked; journal retains the actual status and reason
+with zero cost. Blocked sends one plain notice to the saved owner;
+breaker skip sends none. The new route commits before the notice
+so a failed Telegram request cannot make the action runnable
+again. History renders the old neutral skip/block state and
+details (10901–10923,10989–11015). Limit messages omit the old
+offer to change caps from conversation until SET_LIMIT is connected.
+
+The checkpoint is local and verified through the real scheduler
+with disposable paths and synthetic Telegram. Native cron/outbox,
+other action types, broader spend capture and live provider
+acceptance remain distinct work.

@@ -78,11 +78,20 @@ function dateLabel(value) {
   return `${date.getUTCDate()} ${MONTHS[date.getUTCMonth()]} ${hour}:${minute}`;
 }
 
+function isSkippedRun(entry) {
+  return !entry.ok && (entry.status === 'blocked' || entry.status === 'skipped');
+}
+
 function runText(entry) {
   const label = typeof entry.name === 'string' && entry.name ? entry.name : 'задача ' + entry.taskId;
-  const lines = [`${entry.ok ? '🟢' : '🔴'} ${dateLabel(entry.at)} · ${label}`];
+  const skipped = isSkippedRun(entry);
+  const mark = entry.ok ? '🟢' : skipped ? '⚪' : '🔴';
+  const lines = [`${mark} ${dateLabel(entry.at)} · ${label}`];
   if (entry.ok) lines.push('   ✅ готово');
-  else lines.push(`   ошибка${typeof entry.error === 'string' && entry.error ? `: ${entry.error}` : ''}`);
+  else if (skipped) {
+    const reason = entry.status === 'blocked' ? 'приостановлено (бюджет)' : 'пропущено';
+    lines.push('   ' + reason + ': ' + (entry.detail || '—'));
+  } else lines.push(`   ошибка${typeof entry.error === 'string' && entry.error ? `: ${entry.error}` : ''}`);
   if (typeof entry.preview === 'string' && entry.preview) lines.push(`   ${entry.preview}`);
   return lines.join('\n');
 }
@@ -116,10 +125,12 @@ export async function historyPages({ limit = 10, env = process.env, menu = false
   if (!runs.length && !malformed) return [menu ? MENU_EMPTY : '📊 Автономка ещё не запускалась.'];
   if (!runs.length) return htmlPages('⚠️ В журнале нет читаемых записей.', menu ? MENU_HEADER : '');
 
-  const ok = runs.filter((entry) => entry.ok).length;
+  const ok = runs.filter(entry => entry.ok).length;
+  const skipped = runs.filter(isSkippedRun).length;
+  const skippedLabel = skipped ? ' · ⚪ пропуск/блок ' + skipped : '';
   const lines = [
     `📊 Автономка — последние ${runs.length} прогонов`,
-    `🟢 ok ${ok} · 🔴 ошибка ${runs.length - ok}`,
+    `🟢 ok ${ok}${skippedLabel} · 🔴 ошибка ${runs.length - ok - skipped}`,
     ...runs.map((entry) => runText(entry)),
   ];
   if (malformed) lines.push(`⚠️ Пропущено повреждённых или неподдерживаемых записей: ${malformed}.`);

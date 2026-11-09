@@ -41,5 +41,8 @@ export async function readReminderPolicy(state, env = process.env) {
   const enabled = env.AUTONOMY_ENABLED === undefined
     ? (config?.enabled === undefined ? autoFlag : config.enabled) === true
     : ['1', 'true'].includes(env.AUTONOMY_ENABLED.toLowerCase());
-  return { enabled, local, stopped, fleetStopped, asleep };
+  const rawReserve = env.AUTONOMY_RESERVE_FRACTION === undefined
+    ? config?.reserveFraction : Number(env.AUTONOMY_RESERVE_FRACTION);
+  const reserveFraction = Number.isFinite(rawReserve) ? Math.min(0.9, Math.max(0, rawReserve)) : 0.3;
+  return { enabled, local, stopped, fleetStopped, asleep, reserveFraction };
 }

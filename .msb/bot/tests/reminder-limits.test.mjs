@@ -8,9 +8,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { setOwnerPause } from '../src/autonomy/owner-pause.mjs';
 import { startScheduler } from '../src/autonomy/scheduler.mjs';
 import { botRoot, msbRoot } from '../src/paths.mjs';
-import { loadState, saveState } from '../src/state.mjs';
+import { loadState, saveState, updateState } from '../src/state.mjs';
 import { fixture } from './helpers/menu-fixture.mjs';
 
 const now = Date.parse('2026-11-08T21:30:00.000Z');
@@ -92,7 +93,7 @@ test('box USD adds current UTC-day root and sibling spending before the old $0.1
   await f.scheduler.tickNow();
   await assertBlocked(f, /дневной предел расходов автономки: \$5\.05 против \$5\.00 \(весь сервер, ботов: 2\)/);
   await f.callback('auto:history');
-  assert.match(f.edits.at(-1), /заблокировано: ход выйдет за дневной предел/);
+  assert.match(f.edits.at(-1), /приостановлено \(бюджет\): ход выйдет за дневной предел/);
   assert.match(f.edits.at(-1), /Проверить отчёт &lt;папка&gt;/);
 });
 
@@ -167,4 +168,124 @@ test('fresh Claude quota rejects only Claude and cannot block Codex after the sw
   await f.scheduler.tickNow();
   assert.equal(f.messages.at(-1).text, '⏰ Текст Codex');
   assert.deepEqual((await loadState()).state.rateLimitInfo, account);
+});
+
+test('zero box caps disable each limit and per-action equality uses the legacy estimate', async t => {
+  const f = await profile(t, { caps: {
+    AUTONOMY_DAILY_CAP_USD: '0', AUTONOMY_DAILY_CAP_RUNS: '0', AUTONOMY_DAILY_CAP_TOKENS: '0',
+  }, actions: [{ ...reminder, budget: { maxUsdPerRun: 0.10, maxUsdPerDay: 0.10 } }] });
+  await append(f.journal, [historical({ actionId: reminder.id, costUsd: 50, tokensIn: 30_000_000 })]);
+  await f.scheduler.tickNow();
+  assert.equal(f.messages[0].text, '⏰ ' + title);
+  assert.equal((await f.runs()).at(-1).costUsd, 0);
+  assert.equal((await f.readActions())[0].lastOutcome, 'ok');
+});
+
+test('the explicit reserve overrides per-bot configuration and expired Claude quota is ignored', async t => {
+  const f = await profile(t, { caps: { AUTONOMY_RESERVE_FRACTION: '0' },
+    state: { extAuthBypass: undefined, rateLimitInfo: { ...account, resetsAt: now / 1000 },
+      dailySpendLimit: 1, costHistory: { '2026-11-09': 0.8 } },
+  });
+  const config = path.join(f.root, 'autonomy', 'config.json');
+  await fs.mkdir(path.dirname(config), { recursive: true });
+  await fs.writeFile(config, '{"enabled":true,"reserveFraction":0.9}');
+  await f.scheduler.tickNow();
+  assert.deepEqual(f.messages.map(row => row.text), ['⏰ ' + title]);
+});
+
+test('linked journals count once and the next due action sees the completed first run', async t => {
+  const next = { ...reminder, id: 'next', name: 'Следующее', task: { ...reminder.task, text: 'Следующее' } };
+  const f = await profile(t, { caps: { AUTONOMY_DAILY_CAP_RUNS: '2' }, actions: [reminder, next] });
+  await append(f.journal, [historical()]);
+  await fs.mkdir(path.dirname(f.rootJournal), { recursive: true });
+  await fs.symlink(f.journal, f.rootJournal);
+  await f.scheduler.tickNow();
+  assert.equal(f.messages[0].text, '⏰ ' + title);
+  await assertBlocked(f, /сегодня автономка сделала 2 хода/, next.id);
+});
+
+test('old tail is 500 parsed rows per journal, not 500 source lines', async t => {
+  const f = await profile(t, { caps: { AUTONOMY_DAILY_CAP_RUNS: '1' } });
+  await append(f.sibling, [historical({ costUsd: 20 }),
+    ...Array.from({ length: 499 }, () => historical({ ts: yesterday })), '{broken tail',
+    historical({ ts: yesterday })]);
+  await f.scheduler.tickNow();
+  assert.deepEqual(f.messages.map(row => row.text), ['⏰ ' + title]);
+});
+
+test('an existing completed interval row counts as a run with its price and input tokens unknown', async t => {
+  const f = await profile(t, { caps: { AUTONOMY_DAILY_CAP_RUNS: '1', AUTONOMY_DAILY_CAP_TOKENS: '1000' } });
+  process.env.AUTONOMY_DIR = path.join(f.home, 'custom-intervals');
+  await append(path.join(process.env.AUTONOMY_DIR, 'runs.jsonl'), [
+    { at: prior, taskId: 'interval', ok: false, error: 'fixture result', preview: 'Synthetic output only' },
+  ]);
+  await f.scheduler.tickNow();
+  await assertBlocked(f, /сегодня автономка сделала 1 ход/);
+});
+
+test('a failed limit notice does not undo or repeat the spent action', async t => {
+  const f = await profile(t, { state: { costPaused: true } });
+  let attempts = 0;
+  f.bot.api.sendMessage = async (_chat, text) => {
+    assert.match(text, /📡 Автономное действие/);
+    assert.equal((await f.readActions())[0].lastOutcome, 'blocked');
+    assert.equal((await f.runs())[0].status, 'blocked');
+    attempts++;
+    throw Error('fixture transport failure');
+  };
+  await f.scheduler.tickNow();
+  await f.scheduler.tickNow();
+  assert.equal(attempts, 1);
+  assert.equal((await f.runs()).length, 1);
+});
+
+async function whileJournalReads(t, f, change) {
+  await append(f.rootJournal, [historical()]);
+  const journal = await fs.realpath(f.rootJournal);
+  const entered = Promise.withResolvers();
+  const resume = Promise.withResolvers();
+  const read = fs.readFile.bind(fs);
+  t.mock.method(fs, 'readFile', async (...args) => {
+    if (args[0] === journal) {
+      entered.resolve();
+      await resume.promise;
+    }
+    return read(...args);
+  });
+  const pending = f.scheduler.tickNow();
+  try {
+    await Promise.race([entered.promise, new Promise((_, reject) => {
+      setTimeout(() => reject(Error('fixture did not reach the shared journal')), 1500).unref();
+    })]);
+    await change();
+  } finally {
+    resume.resolve();
+    await pending;
+  }
+}
+
+test('provider switch during journal I/O uses the new rail at the claim', { timeout: 5000 }, async t => {
+  const f = await profile(t, { state: { extAuthBypass: undefined, rateLimitInfo: account } });
+  await whileJournalReads(t, f, () => updateState(state => ({ ...state, extAuthBypass: 'codex' })));
+  assert.deepEqual(f.messages.map(row => row.text), ['⏰ ' + title]);
+});
+
+test('a pause can commit while journal I/O is pending and prevents the claim', { timeout: 5000 }, async t => {
+  const f = await profile(t);
+  const initial = await f.readActions();
+  await whileJournalReads(t, f, () => setOwnerPause(true, {
+    now, check: () => undefined, checkEngine: () => undefined,
+  }));
+  assert.deepEqual(f.messages, []);
+  assert.deepEqual(await f.readActions(), initial);
+  await assert.rejects(fs.stat(f.journal), { code: 'ENOENT' });
+});
+
+test('interval preflight refusals do not spend the completed-run allowance', async t => {
+  const f = await profile(t, { caps: { AUTONOMY_DAILY_CAP_RUNS: '1' } });
+  await append(f.rootJournal, ['setup', 'engine_oc'].map(error => ({
+    at: prior, taskId: 'no-cli', ok: false, error, preview: 'Fixture refused before launching',
+  })));
+  await f.scheduler.tickNow();
+  assert.deepEqual(f.messages.map(row => row.text), ['⏰ ' + title]);
 });

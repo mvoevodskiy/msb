@@ -85,7 +85,7 @@ export async function addReminder(action, { env = process.env, signal, check } =
   }, { signal, create: true });
 }
 
-export async function claimReminder(file, snapshot, at, { env = process.env, canRun } = {}) {
+export async function claimReminder(file, snapshot, at, { env = process.env, admit } = {}) {
   if (await actionFile(env) !== file) return null;
   return withActions(env, async (records, save) => {
     if (await actionFile(env) !== file) return null;
@@ -94,11 +94,17 @@ export async function claimReminder(file, snapshot, at, { env = process.env, can
     if (!isDeepStrictEqual(action, snapshot) || !isLocalReminder(action, await readNativeJobMap(env))) return null;
     if (!action.enabled || action.lastRunAt || action.budget?.killSwitch ||
         action.disabledReason === 'frequency' || Date.parse(action.trigger.at) > Date.parse(at)) return null;
-    if (!await canRun()) return null;
-    const claimed = { ...action, enabled: false, disabledReason: 'spent_once', lastRunAt: at };
-    records[index] = claimed;
-    await save();
-    return claimed;
+    return admit(action, async refusal => {
+      const claimed = { ...action, enabled: false, disabledReason: 'spent_once', lastRunAt: at };
+      if (refusal) {
+        claimed.lastStatus = 'skipped';
+        claimed.lastOutcome = 'blocked';
+        delete claimed.lastError;
+      }
+      records[index] = claimed;
+      await save();
+      return claimed;
+    });
   });
 }
 
@@ -108,7 +114,8 @@ export async function finishReminder(file, claimed, result, env = process.env) {
     if (await actionFile(env) !== file) return;
     const index = records.findIndex(action => action?.id === claimed.id);
     if (!isDeepStrictEqual(records[index], claimed)) return;
-    records[index] = { ...claimed, lastStatus: result.status, lastError: result.error };
+    records[index] = { ...claimed, lastStatus: result.status,
+      lastOutcome: result.status === 'ok' ? 'ok' : 'engine_error', lastError: result.error };
     await save();
   });
 }
