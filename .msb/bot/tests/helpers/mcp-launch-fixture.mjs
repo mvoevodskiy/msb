@@ -24,10 +24,11 @@ export async function nativeFixtures(f) {
 const data=${JSON.stringify(configuration)};
 const argv=process.argv.slice(2);
 if(argv.includes('--version')){console.log('2.1.154 (Claude Code)');process.exit(0);}
-fs.readFileSync(0,'utf8');
-const index=argv.indexOf('--mcp-config'),file=index>=0?argv[index+1]:null;
-const projection=file?fs.readFileSync(file,'utf8'):null;
-fs.appendFileSync(data.log,JSON.stringify({kind:'claude',argv,file,projection,
+const prompt=fs.readFileSync(0,'utf8');
+const index=argv.indexOf('--mcp-config'),config=index>=0?argv[index+1]:null;
+const file=config&&!config.startsWith('{')?config:null;
+const projection=file?fs.readFileSync(file,'utf8'):config;
+fs.appendFileSync(data.log,JSON.stringify({kind:'claude',argv,prompt,cwd:process.cwd(),file,projection,
   mode:file?fs.statSync(file).mode&0o777:null,
   correct:process.env.MSB_MCP_SUPADATA_TOKEN===data.supadata,
   hasDedicated:Boolean(process.env.MSB_MCP_SUPADATA_TOKEN),
@@ -46,6 +47,7 @@ function record(row){fs.appendFileSync(data.log,JSON.stringify(row)+'\\n');}
 function presence(){
  return {apify:Boolean(process.env.MSB_MCP_APIFY_TOKEN),supadata:Boolean(process.env.MSB_MCP_SUPADATA_TOKEN)};
 }
+if(argv[0]==='--version'){console.log('codex-cli 0.166.0');process.exit(0);}
 if(argv.at(-1)==='app-server'){
  createInterface({input:process.stdin}).on('line',line=>{
   const request=JSON.parse(line);
@@ -73,14 +75,14 @@ if(argv.at(-1)==='app-server'){
   if(fs.existsSync(data.readError)){console.log(JSON.stringify({id:request.id,error:{code:-32603,message:'fixture unreadable'}}));return;}
   console.log(JSON.stringify({id:request.id,result:{config,layers:[user]}}));
  });
-}else if(argv[0]==='exec'){
+}else if(argv[0]==='exec'||argv.slice(0,3).join(' ')==='-a never exec'){
  const prompt=fs.readFileSync(0,'utf8');
  const reply=fs.existsSync(data.response)?JSON.parse(fs.readFileSync(data.response,'utf8')):{text:'fixture complete'};
  const apify=process.env.MSB_BOT_ID==='other'?data.apifyB:data.apifyA;
  const index=argv.indexOf('--profile');
  const profileFile=index<0?null:path.join(process.env.CODEX_HOME,argv[index+1]+'.config.toml');
  const profile=profileFile?fs.readFileSync(profileFile,'utf8'):null;
- record({kind:'codex-exec',argv,prompt,profileFile,profile,profileMode:profileFile?fs.statSync(profileFile).mode&0o777:null,
+ record({kind:'codex-exec',argv,prompt,cwd:process.cwd(),profileFile,profile,profileMode:profileFile?fs.statSync(profileFile).mode&0o777:null,
   privateHandoffPresent:Boolean(process.env.MSB_TURN_MCP_CUSTOM),bot:process.env.MSB_BOT_ID,...presence(),
   correctApify:process.env.MSB_MCP_APIFY_TOKEN===apify,correctSupadata:process.env.MSB_MCP_SUPADATA_TOKEN===data.supadata});
  console.log(JSON.stringify({type:'thread.started',thread_id:data.modelThread}));

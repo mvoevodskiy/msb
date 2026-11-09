@@ -787,3 +787,48 @@ existing action cap, owner route, one-off behavior and independent
 legacy timer file are covered by the same fixture.
 Named follow-ups, prompt actions and native OpenClaw registration
 are separate.
+
+
+Register an ordinary scheduled prompt from the conversation.
+
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Read the preserved bundle with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+24626–24648 separates the instruction from its time and describes
+ordinary SCHEDULE_TASK prompts, explicit quiet and helpers. The
+final marker path is 106646–106707 / 26729–26748. yg 23255–23319
+normalizes the instruction, checks capacity and saves before
+the old confirmation, authority note, advisories and STOP notice
+at 23321–23386.
+
+Fg/Ug at 21531–21566 strip a scheduling prefix in at most three
+passes. A remaining body shorter than 12 falls back to the
+original. A nested marker or a request to schedule another
+task is refused. Old yg only ran this guard on a direct prompt
+string. Pr 22853–22889 reads prompt, text or topic in nullish
+order, trims, and keeps a nested boolean helpers flag. Empty
+explicit prompt does not fall through to an alias. The old
+marker does not carry per-action model/provider selection.
+
+Or/gg 22934–22956 supply a trimmed 40-character default title.
+_r 23002–23064, Q9 3994–4006 and 3907–3915 / 3952–3989 derive
+capability read, standard authority and the explicit ban on
+automatic publication. Quiet sets emptyIsValidOutcome. Rg
+22466–22471 normalizes a positive maxMinutes to 1–60 minutes.
+n1 15916–15922, Te/ke 36743–36750, 14618 and 37106 prove the
+actual local runtime's 30-minute ceiling and 15-second margin,
+including the 30-minute undeclared CC deadline. Preserve the
+existing runner's real behavior instead of inferring a 10-minute
+CC deadline from the generic default. kr 23425–23427 prefixes
+the per-bot record conv-prompt. rqA 23428–23436, q7 20595–20599
+(2.1.172 at 20957) and WR 17182–17196 describe permissions.
+Helpers are enabled by default unless explicitly false (I8,
+3929–3935). The old helper-cost note is for an explicit true.
+
+The reference boundary is the ordinary stateless prompt already
+supported by the isolated local Claude/Codex scheduler. Preserve
+the literal reminder path and owner/cap/pause checks. Advanced
+modes or an unavailable selected runner cannot be published as
+an ordinary successful collection. A prompt never launches in
+the owner conversation or in the other provider. Test normal
+Telegram ingress and the real saved runner with synthetic CLIs.
