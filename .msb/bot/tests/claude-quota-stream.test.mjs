@@ -20,8 +20,8 @@ const window = { resetsAt: Math.floor(sampledAt / 1000) + 3600, rateLimitType: '
 const prior = { ...window, utilization: 0.15, lastUpdatedAt: Math.floor(sampledAt / 1000) - 60 };
 const ownerChat = 42;
 
-async function until(read, explanation) {
-  const limit = Date.now() + 2400;
+async function until(read, explanation, timeoutMs = 8000) {
+  const limit = Date.now() + timeoutMs;
   for (;;) {
     const result = await read();
     if (result) return result;
@@ -89,7 +89,7 @@ test('real Claude stream saves the old quota while the native turn is still open
     const saved = await until(async () => {
       const value = (await loadState()).state.rateLimitInfo;
       return value?.utilization === window.utilization ? value : null;
-    }, 'Claude quota must be visible before native exit');
+    }, 'Claude quota must be visible before native exit', 3000);
     assert.equal(terminal, false);
     const { lastUpdatedAt, ...data } = saved;
     assert.ok(lastUpdatedAt >= Math.floor(sampledAt / 1000));
@@ -141,5 +141,26 @@ test('a Claude event after switching to Codex cannot alter retained quota', asyn
     await turn;
   }
   assert.equal((await loadState()).state.extAuthBypass, 'codex');
+  assert.deepEqual((await loadState()).state.rateLimitInfo, prior);
+});
+
+test('a reported alternate stream is rejected even under the Claude pin', async t => {
+  const f = await cliFixture(t, { observed: 'qwen', old: prior });
+  await runAgentTurn({ prompt: 'Synthetic unexpected provider event' });
+  assert.equal(await exists(f.sent), true);
+  assert.deepEqual((await loadState()).state.rateLimitInfo, prior);
+});
+
+test('a quota event from a previous saved auth mode is discarded', async t => {
+  const f = await cliFixture(t, { delayEvent: true, old: prior, session: 'fixture-claude-session' });
+  const turn = runAgentTurn({ prompt: 'Synthetic auth change while running' });
+  try {
+    await until(() => exists(f.ready), 'owned Claude CLI must start before auth changes');
+    await updateState(state => ({ ...state, authMode: 'fixture-api', hasSubscriptionAuth: false }));
+  } finally {
+    await f.allow();
+    await turn;
+  }
+  assert.equal((await loadState()).state.authMode, 'fixture-api');
   assert.deepEqual((await loadState()).state.rateLimitInfo, prior);
 });

@@ -9,6 +9,7 @@ import {
 import { readClaudeVersion } from './claude-version.mjs';
 import { claudeAutoTurnModel } from './models.mjs';
 import { runClaudeTurn } from './claude.mjs';
+import { readClaudeQuotaEvent, saveClaudeQuota } from './claude-quota.mjs';
 import { runOpenClawTurn } from './openclaw-turn.mjs';
 import { conversationalModePrompt } from './mode-prompt.mjs';
 import { projectLocations, resolveProjectCwd } from '../projects/paths.mjs';
@@ -33,6 +34,7 @@ import {nativeMcpScope} from '../../shared/mcp-native-scope.mjs';
  * native dispatch → [provider runner](../../../../overlay/bot/ext/shim/run-turn.mjs).
  * Captured project cwd → [projects](../projects/paths.mjs); base context stays global.
  * Контекст → [system prompt](./system-prompt.mjs), [metadata](./context.mjs).
+ * Native Claude quota event → [account snapshot](./claude-quota.mjs), independent of the session result.
  * Ordinary owner turn → [reminder protocol](../autonomy/reminder-protocol.mjs) when enabled.
  * Skill install [target](../skills/install-target.mjs)/[protocol](../skills/install-protocol.mjs) captured with provider snapshot, final execution belongs to Telegram.
  * Managed MCP credentials/config → [launch](../mcp/launch.mjs); captured ADD_MCP
@@ -113,6 +115,7 @@ export async function runAgentTurn({
   if (signal?.aborted) return aborted();
 
   let lastTool = '';
+  let streamProvider = providerId, quotaWrite;
   const result = await runClaudeTurn({
     prompt,
     sessionId: state.ccSessionId || undefined,
@@ -128,8 +131,13 @@ export async function runAgentTurn({
     signal,
     autonomy,
     onEvent(ev) {
+      if (ev.type === 'system' && typeof ev.provider_id === 'string') streamProvider = ev.provider_id;
       if (ev.type === 'system' && ev.subtype === 'provider') {
         onStatus?.({ kind: 'provider', providerId: ev.provider_id });
+      } else if (ev.type === 'rate_limit_event' && providerId === 'claude' && streamProvider === 'claude') {
+        const quota = readClaudeQuotaEvent(ev);
+        if (quota) quotaWrite = saveClaudeQuota(quota, state, env, signal)
+          .catch(() => console.error('[msb/agent-cc] Could not save the Claude quota snapshot'));
       } else if (ev.type === 'assistant') {
         for (const part of ev.message?.content || []) {
           if (part.type === 'tool_use' && part.name) {
@@ -147,6 +155,7 @@ export async function runAgentTurn({
     },
   });
 
+  if (quotaWrite) await quotaWrite;
   result.context = await readSessionContext(result.sessionId, env);
   if (result.sessionId) {
     await updateState(s=>applySessionResult(s,{snapshot:state,reservation:firstSession,result,prompt,signal}),env);

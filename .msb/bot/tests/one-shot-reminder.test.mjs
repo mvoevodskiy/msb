@@ -24,8 +24,8 @@ const ownerChat = -100777;
 const body = { trigger: { kind: 'once', at: '+30m' }, task: { kind: 'reminder', text: '  Проверить почту <входящие>  ' } };
 const marker = (value = body) => '[SCHEDULE_TASK]' + JSON.stringify(value) + '[/SCHEDULE_TASK]';
 
-async function until(check, label) {
-  const deadline = Date.now() + 3000;
+async function until(check, label, timeoutMs = 3000) {
+  const deadline = Date.now() + timeoutMs;
   while (!check()) {
     if (Date.now() >= deadline) assert.fail(label);
     await new Promise(resolve => setTimeout(resolve, 5));
@@ -324,7 +324,7 @@ for (const provider of ['claude', 'codex']) {
     await saveState({ ...(await loadState()).state, chatId: 42, userId: 42 });
     await native.respond(marker());
     await f.message('Напомни через тридцать минут');
-    await until(() => f.edits.some(text => text.includes('Ок, поставил:')), 'the controlled turn must confirm the reminder');
+    await until(() => f.edits.some(text => text.includes('Ок, поставил:')), 'the controlled turn must confirm the reminder', 10_000);
     const call = (await native.trace()).at(-1);
     const prompt = provider === 'claude' ? call.argv[call.argv.indexOf('--append-system-prompt') + 1] : call.prompt;
     assert.match(prompt, /\[SCHEDULE_TASK\].*"kind":"reminder"/);

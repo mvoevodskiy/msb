@@ -42,6 +42,12 @@ Telegram UI, progress и отправка ответа остаются в со�
 Проверки: [codex-context](../../tests/codex-context.test.mjs),
 [turn-context](../../tests/turn-context.test.mjs), [provider-state-concurrency](../../tests/provider-state-concurrency.test.mjs).
 
+[Событие квоты Claude](claude-quota.mjs) обновляет старый rateLimitInfo в
+профиле бота, даже если CLI вернул отказ и ещё нет ID сессии. Снимок пишется
+из потока выбранного Claude. Смена движка, провайдера или режима авторизации
+до сохранения не допускает позднюю запись. Снимок читают автономка и
+существующий сборщик Пульта. [Проверка потока](../../tests/claude-quota-stream.test.mjs).
+
 Формат результата — `{ ok, text, result }` либо ошибка допуска/отмены.
 Доставка результата: [Telegram → Жизненный цикл хода](../telegram/README.md#жизненный-цикл-хода).
 

@@ -266,3 +266,22 @@ The checkpoint is local and verified through the real scheduler
 with disposable paths and synthetic Telegram. Native cron/outbox,
 other action types, broader spend capture and live provider
 acceptance remain distinct work.
+
+Claude quota snapshot input.
+
+Old parser at 20020–20031 dispatched rate_limit_event.rate_limit_info
+with a numeric resetsAt. 55998–56011 wrote the ordinary Claude
+snapshot while the turn ran. QPA at 36705–36734 did the same on
+the background Claude route. WM at 11888–11907 reads that field.
+
+426b322 read old snapshots but could not obtain a new one from the
+runner. f5933b1 reproduced an active stream with a missing update
+and a rejected native turn without a session ID. runAgentTurn now
+consumes the real stream frame only from its pinned Claude route.
+The bot state queue checks the active engine, provider and saved
+auth mode before applying the legacy fields. A session reset and
+a quota update have separate ownership. Refused turns can provide
+valid quota, and missing/invalid telemetry never overwrites it.
+The scheduler and the existing Claude side of Pult use the same
+saved field. The Codex collector has its own account source.
+All tests here use owned executable fixtures and temporary profiles.
