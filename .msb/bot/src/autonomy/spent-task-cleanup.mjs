@@ -2,7 +2,8 @@
  * Own the delivered, single-use spent-task question for this bot. The
  * [Telegram card](../telegram/spent-task-confirmation.mjs) stores only row
  * identities; [action store](./reminder-store.mjs) rechecks them under its lock.
- * [Ingress and restart tests](../../tests/spent-task-cleanup.test.mjs).
+ * [Direct marker](../telegram/spent-task-markers.mjs) uses the same writer with current rows.
+ * [Question tests](../../tests/spent-task-cleanup.test.mjs), [direct tests](../../tests/direct-spent-task-cleanup.test.mjs).
  */
 import path from 'node:path';
 import { withFileLock } from '../../shared/file-lock.mjs';
@@ -10,26 +11,32 @@ import { botRoot } from '../paths.mjs';
 import { loadState, NO_STATE_WRITE, updateState } from '../state.mjs';
 import { readRecordArray, writeRecordArray } from './record-file.mjs';
 import { readReminderPolicy } from './reminder-policy.mjs';
-import { removeConfirmedSpentTasks } from './reminder-store.mjs';
+import { removeSpentTasks } from './reminder-store.mjs';
 
 const questionsPath = () => path.join(botRoot(), 'autonomy', 'spent-task-questions.json');
 
 export class SpentCleanupRefusal extends Error {}
 
-async function requireCleanupRoute(state) {
+async function requireCleanupRoute(state, turn) {
   const policy = await readReminderPolicy(state);
   if (!policy.enabled) throw new SpentCleanupRefusal('Автономные задачи сейчас выключены.');
-  if (!policy.local || policy.asleep) throw new SpentCleanupRefusal('Уборка задач на этом движке пока не подключена.');
+  const engine = state.engine || 'cc';
+  const allowed = turn ? ['cc', 'oc'].includes(turn.rail) && turn.rail === engine : policy.local && !policy.asleep;
+  if (!allowed) throw new SpentCleanupRefusal('Уборка задач на этом движке пока не подключена.');
 }
 
-async function commitCleanup(publish) {
+async function commitCleanup(publish, turn) {
   let result;
   await updateState(async state => {
-    await requireCleanupRoute(state);
+    await requireCleanupRoute(state, turn);
     result = await publish();
     return NO_STATE_WRITE;
   });
   return result;
+}
+
+export function cleanupSpentTasksFromTurn({ rail, signal }) {
+  return removeSpentTasks({ rail, signal, commit: publish => commitCleanup(publish, { rail }) });
 }
 
 export function saveSpentTaskQuestion(question, signal) {
@@ -57,7 +64,7 @@ export async function resolveSpentTaskQuestion({ ownerId, chatId, messageId }, r
     }
     // Keep a failed or interrupted action write retryable. After a successful
     // write the same fingerprints can only match rows that are still present.
-    const result = await removeConfirmedSpentTasks(question.file, question.candidates, { commit: commitCleanup });
+    const result = await removeSpentTasks({ snapshot: question, commit: commitCleanup });
     await consume().catch(error => {
       console.error('[msb/autonomy] Could not retire spent-task question:', error.code || error.name);
     });

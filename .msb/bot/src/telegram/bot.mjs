@@ -33,6 +33,7 @@ import { parsePlanResponse } from './plan.mjs';
 import { deliverTurnResponse } from './response.mjs';
 import { deliverView } from './view-delivery.mjs';
 import { processPauseMarkers } from './pause-markers.mjs';
+import { processSpentTaskMarkers } from './spent-task-markers.mjs';
 import { processTaskControlMarkers } from './task-control-markers.mjs';
 import { processTaskInspectionMarkers } from './task-inspection-markers.mjs';
 import { processLimitMarkers } from './limit-markers.mjs';
@@ -563,7 +564,8 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       };
       const reminders = await processReminderMarkers(out.text, autonomy);
       const pausedTasks = await processPauseMarkers(reminders, autonomy, ctx);
-      const inspected = await processTaskInspectionMarkers(pausedTasks, autonomy, ctx);
+      const cleanedTasks = await processSpentTaskMarkers(pausedTasks, autonomy);
+      const inspected = await processTaskInspectionMarkers(cleanedTasks, autonomy, ctx);
       const controlled = await processTaskControlMarkers(inspected, autonomy);
       const actionText = await processLimitMarkers(controlled, autonomy, ctx);
       const replyText = await processInstallMarkers({ ...out, text: actionText }, { signal, readProvider: bot[Symbol.for('msb.mcpProvider')] });

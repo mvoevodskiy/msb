@@ -14,7 +14,7 @@ import { runOpenClawTurn } from './openclaw-turn.mjs';
 import { conversationalModePrompt } from './mode-prompt.mjs';
 import { projectLocations, resolveProjectCwd } from '../projects/paths.mjs';
 import { isLocalReminderEngine } from '../autonomy/reminder-policy.mjs';
-import { openClawTaskRunPrompt, reminderPrompt } from '../autonomy/reminder-protocol.mjs';
+import { openClawTaskMaintenancePrompt, reminderPrompt } from '../autonomy/reminder-protocol.mjs';
 import { buildSystemPrompt } from './system-prompt.mjs';
 import { readSessionContext } from './context.mjs';
 import { claimFirstSession, releaseFirstSession } from '../../shared/session-starts.mjs';
@@ -74,8 +74,8 @@ export async function runAgentTurn({
     const cwd=await resolveProjectCwd(state,env,baseWorkspace);
     if(signal?.aborted)return aborted();
     const reminderRail = reminderOwner && !isAutoTurn ? 'oc' : undefined;
-    const runHistory = reminderRail ? await openClawTaskRunPrompt(state, env) : '';
-    const extra = [skillInstallPrompt(skillInstall), runHistory].filter(Boolean).join('\n\n');
+    const maintenance = reminderRail ? await openClawTaskMaintenancePrompt(state, env) : '';
+    const extra = [skillInstallPrompt(skillInstall), maintenance].filter(Boolean).join('\n\n');
     const systemPrompt=await buildSystemPrompt({env,workspace:baseWorkspace,cwd,timezone:state.timezone || 'UTC',
       now:contextNow,extra});
     const result=await runOpenClawTurn({state,prompt,systemPrompt,cwd,env,signal,onStatus});

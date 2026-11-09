@@ -93,6 +93,8 @@ test('quoted, fenced and trailing-prose cleanup mentions are stripped without de
   const output = [
     'Пример «' + cancel + '».',
     'Пример "пояснение ' + cancel + '".',
+    'Пример "три строки\n' + cancel + '\nконец цитаты".',
+    "Пример 'это wasn't инструкция\n" + cancel + "\nконец цитаты'.",
     "Пример '" + cancel + "'.",
     'Код ' + ticks + cancel + ticks,
     ticks.repeat(3), cancel, ticks.repeat(3),
@@ -114,6 +116,17 @@ test('cleanup syntax nested in a report selector stays data', async t => {
   assert.match(await f.final(), /Не нашёл задачу/);
   assert.deepEqual(await f.records(), [first]);
 });
+
+for (const envelope of ['INSTALL_SKILL', 'SCHEDULE_TASK']) {
+  test('cleanup stays inert inside a truncated ' + envelope + ' payload', async t => {
+    const f = await profile(t, { output: '[' + envelope + ']\nfixture name\nfixture description\n' + cancel });
+    const before = await fs.readFile(f.actionFile);
+    await f.request('Проверь описание');
+    const final = await f.final();
+    assert.doesNotMatch(final, /Снёс \d/);
+    assert.deepEqual(await fs.readFile(f.actionFile), before);
+  });
+}
 
 test('disabled autonomy and a changed engine refuse direct cleanup with no false success', async t => {
   const f = await profile(t, {
@@ -168,3 +181,48 @@ for (const provider of ['claude', 'codex']) {
     assert.equal(f.markupEdits.length, 0);
   });
 }
+
+test('the foreground stop prevents a pending direct action write from publishing', async t => {
+  const f = await profile(t);
+  const before = await fs.readFile(f.actionFile);
+  const directory = path.dirname(await fs.realpath(f.actionFile));
+  const write = fs.writeFile;
+  const release = Promise.withResolvers();
+  let prepared = false;
+  t.mock.method(fs, 'writeFile', async (file, ...args) => {
+    await write(file, ...args);
+    if (!prepared && path.basename(file) === 'records.json' && path.dirname(path.dirname(file)) === directory) {
+      prepared = true;
+      await release.promise;
+    }
+  });
+  await f.request(request);
+  try {
+    await until(() => prepared, 'the temporary action file was not written');
+    await f.request('/stop');
+  } finally {
+    release.resolve();
+  }
+  await until(() => f.edits.some(text => text.includes('Моя остановочка')), 'cleanup did not acknowledge stop');
+  assert.deepEqual(await fs.readFile(f.actionFile), before);
+  assert.ok(!f.edits.some(text => text.includes('Снёс 1')));
+  await f.untouched();
+});
+
+test('an automatic timer turn and an unrelated sender have no direct cleanup authority', async t => {
+  const f = await profile(t);
+  const before = await fs.readFile(f.actionFile);
+  await f.request(request, 99);
+  assert.equal(f.modelCalls.length, 0);
+  const turns = f.bot[Symbol.for('msb.scheduledTurns')];
+  const commit = turns.reserve({ chatId: 42, userId: 42, text: 'Прежний таймер' });
+  assert.ok(commit);
+  commit(true);
+  const final = await f.final();
+  assert.match(final, /\(задача не обработана\)/);
+  assert.doesNotMatch(final, /CANCEL_SPENT|Снёс 1/);
+  assert.equal(f.modelCalls.length, 1);
+  assert.equal(f.modelCalls[0].isAutoTurn, true);
+  assert.deepEqual(await fs.readFile(f.actionFile), before);
+  await f.untouched();
+});

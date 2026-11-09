@@ -310,3 +310,21 @@ test('a second bot profile cannot spend the first bot’s confirmation in the sa
   assert.deepEqual(await f.records(), []);
   assert.equal(await fs.readFile(siblingActions, 'utf8'), siblingBytes);
 });
+
+test('a malformed confirmation cannot fall back to cleaning the current historical group', async t => {
+  const f = await profile(t, [first]);
+  assert.ok(await f.ask());
+  const file = path.join(f.directory, 'autonomy', 'spent-task-questions.json');
+  const questions = JSON.parse(await fs.readFile(file, 'utf8'));
+  delete questions[0].candidates;
+  await fs.writeFile(file, JSON.stringify(questions));
+  const later = finished('later', 'Завершилась после вопроса');
+  await f.put([first, later]);
+  const before = await fs.readFile(f.actionFile);
+  await f.click(confirm);
+  assert.equal(f.toast(), 'Не смог убрать, попробуй ещё раз');
+  assert.deepEqual(await fs.readFile(f.actionFile), before);
+  await f.click(keep);
+  assert.equal(f.toast(), 'Оставил');
+  assert.deepEqual(await fs.readFile(f.actionFile), before);
+});

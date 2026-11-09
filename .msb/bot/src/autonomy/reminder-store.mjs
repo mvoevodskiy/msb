@@ -2,7 +2,7 @@
  * Per-bot actions.json for saved literal and model actions. Keep tasks.json and legacy timer
  * files separate. [Marker](../telegram/reminder-markers.mjs), [sender](./reminder-dispatch.mjs),
  * [menu](../telegram/routes/autonomy.mjs), [individual state](./saved-action-control.mjs),
- * [inventory](./saved-task-inspection.mjs), [confirmed cleanup](./spent-task-cleanup.mjs),
+ * [inventory](./saved-task-inspection.mjs), [spent cleanup](./spent-task-cleanup.mjs),
  * [contract](../../tests/reference/parity-autonomy-contract.txt).
  */
 import path from 'node:path';
@@ -50,7 +50,7 @@ async function withActions(env, update, { signal, create, expectedFile } = {}) {
     return update(records, async beforePublish => {
       if (await actionFile(env) !== file) throw new Error('Action file changed');
       await writeRecordArray(file, records, { signal, create, beforePublish });
-    });
+    }, file);
   });
 }
 
@@ -196,26 +196,38 @@ export async function changeSavedAction(id, remove, env = process.env) {
 }
 
 const taskFingerprint = action => createHash('sha256').update(JSON.stringify(action)).digest('hex');
+const spentTaskCandidate = action => ({ id: action.id, fingerprint: taskFingerprint(action) });
+const enabledSpentTask = action => typeof action?.id === 'string' && typeof action.name === 'string' &&
+  action.enabled && savedTaskSpent(action);
 
 export function spentTaskCandidates(spent, jobs) {
   if (!jobs) return [];
   return spent.filter(action => localActionScope(action, jobs))
-    .map(action => ({ id: action.id, fingerprint: taskFingerprint(action) }));
+    .map(spentTaskCandidate);
 }
 
-export function removeConfirmedSpentTasks(file, candidates, { env = process.env, commit = publish => publish() } = {}) {
-  return withActions(env, (records, save) => commit(async () => {
+export function removeSpentTasks({ snapshot, rail, env = process.env, signal, commit = publish => publish() } = {}) {
+  if (snapshot && (typeof snapshot.file !== 'string' || !snapshot.file || !Array.isArray(snapshot.candidates))) {
+    throw new Error('Invalid spent-task confirmation snapshot');
+  }
+  // An old automatic row without a job mapping is ambiguous on OpenClaw.
+  const owned = (action, jobs) => localActionScope(action, jobs) && (rail !== 'oc' || action.runner === 'cc');
+  return withActions(env, (records, save, file) => commit(async () => {
+    // A delivered question authorizes its snapshot. The direct request selects
+    // the current historical group under the same action file lock.
+    const selected = snapshot ? snapshot.candidates : records.filter(enabledSpentTask).map(spentTaskCandidate);
+    if (!selected.length) return { removed: [], failed: [], changed: false };
     const jobs = await readNativeJobMap(env);
     const removed = [], failed = [];
     let changed = false;
-    for (const candidate of candidates) {
+    for (const candidate of selected) {
       const index = records.findIndex(action => action?.id === candidate.id && taskFingerprint(action) === candidate.fingerprint);
       const action = records[index];
-      if (!action?.enabled || !savedTaskSpent(action)) {
+      if (!enabledSpentTask(action)) {
         changed = true;
         continue;
       }
-      if (!localActionScope(action, jobs)) {
+      if (!owned(action, jobs)) {
         failed.push(action.name);
         continue;
       }
@@ -225,10 +237,10 @@ export function removeConfirmedSpentTasks(file, candidates, { env = process.env,
     if (removed.length) await save(async () => {
       if (await actionFile(env) !== file) throw new Error('Action file changed');
       const latestJobs = await readNativeJobMap(env);
-      if (removed.some(action => !localActionScope(action, latestJobs))) {
-        throw new Error('A confirmed local action gained a native binding');
+      if (removed.some(action => !owned(action, latestJobs))) {
+        throw new Error('A local cleanup candidate gained a native binding');
       }
     });
     return { removed: removed.map(action => action.name), failed, changed };
-  }), { expectedFile: file });
+  }), { expectedFile: snapshot?.file, signal });
 }

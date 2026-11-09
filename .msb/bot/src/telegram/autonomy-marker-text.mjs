@@ -2,7 +2,7 @@
  * Text-only autonomy marker boundaries and final replacement. Shared by the
  * [reminder](./reminder-markers.mjs), [pause](./pause-markers.mjs) and
  * [limit](./limit-markers.mjs), [inspection](./task-inspection-markers.mjs) and
- * [task control](./task-control-markers.mjs) handlers.
+ * [task control](./task-control-markers.mjs) and [cleanup](./spent-task-markers.mjs) handlers.
  */
 import { escapeHtml } from './edit.mjs';
 
@@ -12,10 +12,13 @@ export const taskControlMarker = /\[(PAUSE_TASK|RESUME_TASK):([^\]\r\n]*)\]/g;
 export const taskInspectionMarker = /\[(LIST_TASKS|TASK_RUNS)\]|\[(SHOW_TASK|TASK_RUNS):([^\]\r\n]*)\]/g;
 const example = /\x60{3}[\s\S]*?(?:\x60{3}|(?![\s\S]))|\x60[^\x60\r\n]+\x60|«[^»]*»|^[ \t]*>.*$|<(pre|code|blockquote)\b[^>]*>[\s\S]*?<\/\1>/gim;
 
-export function outsideExamples(text, pattern, protectedRanges = []) {
-  const examples = [...text.matchAll(example), ...protectedRanges];
-  return [...text.matchAll(pattern)].filter(block => !examples.some(range =>
+export function outsideRanges(text, pattern, ranges) {
+  return [...text.matchAll(pattern)].filter(block => !ranges.some(range =>
     block.index >= range.index && block.index < range.index + range[0].length));
+}
+
+export function outsideExamples(text, pattern, protectedRanges = []) {
+  return outsideRanges(text, pattern, [...text.matchAll(example), ...protectedRanges]);
 }
 
 const safeText = value => escapeHtml(value)

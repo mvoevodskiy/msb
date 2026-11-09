@@ -1067,3 +1067,21 @@ pending confirmation (G4 at 23243–23245). Live, disabled and pending
 records are outside that group. It returns the original empty,
 removed or partial result. The prior ownership limitation for
 native unregistration (45943–45965 / 45980–46015) still applies.
+
+The open-core direct path runs only on a successful owner turn and
+rechecks the captured CC or OC rail when publishing. The foreground
+stop can abort the atomic write before its rename. Scheduler pause
+and the sleep marker do not revoke an explicit cleanup request.
+Keep the old position before list/detail. Closed and truncated
+structured payloads and multiline examples cannot become cleanup.
+The confirmed route still uses its own validated file and row
+snapshot. Missing snapshot fields cannot select the direct branch.
+
+Both entry points share the local writer, physical-path check,
+native-map recheck and result text. Old VY at 4008–4017 and y7
+at 46174–46218 route auto or unset to native on OC. An absent
+mapping is not proof of a local row because 45943–45965 can fail
+to identify a newly created job. Direct OC cleanup therefore needs
+an explicit cc runner and no native mapping. Rows whose ownership
+is ambiguous stay in the result's failed group. This does not
+unregister a native job or alter timers, journals or provider data.

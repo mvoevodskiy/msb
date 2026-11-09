@@ -242,21 +242,22 @@ test('OpenClaw can clean requested historical local rows while retaining its nat
   process.env.AUTONOMY_ENABLED='1';
   const ts='2026-11-07T09:00:00.000Z';
   const local={id:'local',name:'Старый локальный',enabled:true,trigger:{kind:'once',at:ts},
-    task:{kind:'reminder',text:'local fixture'},lastRunAt:ts};
-  const native={...local,id:'mapped',name:'Нативный OpenClaw'};
+    task:{kind:'reminder',text:'local fixture'},lastRunAt:ts,runner:'cc'};
+  const native={...local,id:'mapped',name:'Нативный OpenClaw',runner:'oc'};
+  const auto={...local,id:'auto',name:'Неизвестный старый маршрут',runner:'auto'};
   const file=path.join(actionRoot(),'actions.json');
   const mapFile=path.join(actionRoot(),'autonomy','cron-jobs.json');
   const map='{"mapped":{"jobId":"not-owned-proof","enabled":true}}';
   await fs.mkdir(path.dirname(mapFile),{recursive:true});
-  await fs.writeFile(file,JSON.stringify([local,native]));
+  await fs.writeFile(file,JSON.stringify([local,native,auto]));
   await fs.writeFile(mapFile,map);
   await f.message('Убери завершённые разовые задачи');
   await until(()=>f.edits.some(text=>text.includes('⏱')),'OpenClaw fixture did not finish',10_000);
   const prompt=seen('prompt',await f.calls()).prompt;
   assert.match(prompt,/\[CANCEL_SPENT\] отдельной строкой/);
   assert.doesNotMatch(prompt,/\[SCHEDULE_TASK\]|\[SET_LIMIT/);
-  assert.match(f.edits.at(-1),/Снёс 1[\s\S]*Не удалось снять: Нативный OpenClaw/);
-  assert.deepEqual(JSON.parse(await fs.readFile(file,'utf8')),[native]);
+  assert.match(f.edits.at(-1),/Снёс 1[\s\S]*Не удалось снять: Нативный OpenClaw, Неизвестный старый маршрут/);
+  assert.deepEqual(JSON.parse(await fs.readFile(file,'utf8')),[native,auto]);
   assert.equal(await fs.readFile(mapFile,'utf8'),map);
   assert.deepEqual((await f.calls()).map(row=>row.kind),['sessions','prompt']);
 });

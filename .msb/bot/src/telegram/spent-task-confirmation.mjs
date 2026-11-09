@@ -2,6 +2,7 @@
  * The original buttons for the historical once group in [LIST_TASKS](./task-inspection-markers.mjs).
  * [Owner confirmation](./owner-confirmation.mjs) arms the delivered question; [router](./router.mjs)
  * resolves it through the [profile store](../autonomy/spent-task-cleanup.mjs).
+ * The [direct marker](./spent-task-markers.mjs) shares the result text.
  */
 import { InlineKeyboard } from 'grammy';
 import { resolveSpentTaskQuestion, saveSpentTaskQuestion, SpentCleanupRefusal } from '../autonomy/spent-task-cleanup.mjs';
@@ -30,7 +31,7 @@ export function askToClearSpentTasks(ctx, file, candidates, { ownerId, threadId,
   });
 }
 
-function cleanupResponse(result) {
+export function describeSpentTaskCleanup(result) {
   const { removed, failed, changed } = result;
   const lines = [];
   if (removed.length) lines.push('Снёс ' + removed.length + ', они уже не могли сработать:\n' +
@@ -74,7 +75,7 @@ export async function handleSpentTaskConfirmation({ cfg, ctx, data, chatId, msgI
   if (result?.keepFailed) await answer({ text: 'Не смог закрыть вопрос, попробуй ещё раз', show_alert: true });
   else if (!result) await answer({ text: 'Подтверждение устарело' });
   else {
-    const { toast, text } = result.kept ? { toast: 'Оставил', text: '✔ Оставил на месте' } : cleanupResponse(result);
+    const { toast, text } = result.kept ? { toast: 'Оставил', text: '✔ Оставил на месте' } : describeSpentTaskCleanup(result);
     await answer({ text: toast });
     await closeQuestion(ctx, chatId, msgId, text);
   }
