@@ -266,3 +266,24 @@ The Telegram tests cover the prompt/marker/store/launch UI using
 synthetic CLI binaries. 24 marker, 74 related and 1,026 full local
 checks passed. JAR1 production and the OpenClaw turn/write routes
 are outside this local checkpoint.
+
+OpenClaw form RED. The old OpenClaw workspace at 111805–111827
+generated Add and Back only. 120970–121073 filtered templates against
+the native list and displayed the Supadata/Apify key prompts.
+119219–119285 consumes a one-shot input, validates prefix/whitespace,
+attempts deletion of the Telegram key message, persists the key,
+then registers streamable HTTP without probing the service.
+Ts 30437–30449 builds mcp add with --no-probe. VH 30486–30545
+checks the exit and tries a best-effort mcp reload (30453–30484).
+The failure branch keeps the saved key. The accepted per-bot key
+boundary replaces the old shared s1 writer at 119246.
+
+At cb065b3 the OpenClaw list renders the template buttons, but
+mcp:setup rejects the selected provider before arming the form.
+Six owned-profile ingress cases reproduce that failure. Existing
+Claude/Codex form and owner checks still pass. A registration can
+be accepted only on a native profile attributable to this bot;
+one key must never overwrite shared or sibling MCP settings.
+Old ordinary OpenClaw used acpx (29210–29226, 32195–32268,
+32902–32938), distinct from the registry CLI. List/registration
+alone is not evidence of an MCP tool call in that route.
