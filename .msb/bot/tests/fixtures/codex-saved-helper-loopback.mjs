@@ -180,11 +180,13 @@ try {
     if (kind === 'reader') {
       const parentRequests = state.requests.get(state.parent);
       const helperRequests = [...state.requests.values()].reduce((total, count) => total + count, 0) - parentRequests;
-      const reported = result.usage.inputTokens + result.usage.cacheReadTokens;
-      const expected = parentRequests * 7 + helperRequests * 29;
-      assert.ok(reported >= parentRequests * 7);
+      const helperTotal = helperRequests * (29 + 2);
+      const reported = result.usage.inputTokens + result.usage.cacheReadTokens + (result.helperTokens ?? 0);
+      assert.equal(reported, parentRequests * 7 + helperTotal, 'Saved usage must include the entire helper cost');
+      assert.equal(result.usage.outputTokens, parentRequests * 2);
+      assert.equal(result.usageIncomplete, undefined);
       accounting = { parent_input_tokens: parentRequests * 7, helper_input_tokens: helperRequests * 29,
-        reported_input_tokens: reported, helper_tokens_included: reported === expected };
+        helper_total_tokens: helperTotal, reported_input_tokens: reported, helper_tokens_included: true };
     }
     if (kind === 'cancel') {
       assert.equal(state.activeChild, true);

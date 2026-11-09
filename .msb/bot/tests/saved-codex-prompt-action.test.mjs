@@ -26,7 +26,8 @@ const original = {
   capability: 'read', authority: { profile: 'standard' }, output: { format: 'tg-message' },
 };
 
-async function profile(t, { action = original, hold = false, apiAuth = false, rotateAuth = false, writeEffect = false } = {}) {
+async function profile(t, { action = original, actions, runSavedCodex, hold = false, apiAuth = false,
+  rotateAuth = false, writeEffect = false } = {}) {
   const f = await fixture(t, async () => assert.fail('A saved action must not call the owner turn'),
     { overlay: true, runtimeProfile: 'jar1' });
   process.env.AUTONOMY_ENABLED = '1';
@@ -89,9 +90,9 @@ async function profile(t, { action = original, hold = false, apiAuth = false, ro
   const root = actionRoot(), autonomy = path.join(root, 'autonomy');
   const file = path.join(root, 'actions.json');
   await fs.mkdir(autonomy, { recursive: true });
-  await fs.writeFile(file, JSON.stringify([action]));
+  await fs.writeFile(file, JSON.stringify(actions ?? [action]));
   const scheduler = startScheduler({ api: f.bot.api, adminId: owner, timezone: 'Europe/Moscow',
-    now: () => now, runCodexPrompt: f.bot[Symbol.for('msb.savedCodexPrompt')],
+    now: () => now, runCodexPrompt: runSavedCodex ?? f.bot[Symbol.for('msb.savedCodexPrompt')],
     runTurn: async () => assert.fail('A saved action must not use the interval compatibility turn'), log() {} });
   t.after(() => scheduler.stop());
   return { ...f, native, scheduler, autonomy, stopped, files: [statePath(), f.storeFile, auth, config],
@@ -217,4 +218,33 @@ test('a saved Codex turn cannot read or edit a concurrently staged foreground MC
   const note = path.join(ordinary, 'note.txt');
   await fs.writeFile(note, 'ordinary temporary work');
   assert.equal(await bridge.call('read_file', { path: note }), 'ordinary temporary work');
+});
+
+test('observed helper tokens consume the same daily budget as the parent', async t => {
+  const next = { ...original, id: 'second-action', name: 'После лимита' };
+  let calls = 0;
+  const f = await profile(t, { actions: [original, next], runSavedCodex: async () => {
+    calls++;
+    return { providerId: 'codex', text: 'Тестовый результат', helperTokens: 93,
+      usage: { inputTokens: 20, cacheReadTokens: 7, cacheCreationTokens: 0, outputTokens: 6 } };
+  } });
+  process.env.AUTONOMY_DAILY_CAP_TOKENS = '120';
+  await f.scheduler.tickNow();
+  assert.equal(calls, 1);
+  const [first, second] = await f.runs();
+  assert.deepEqual([first.status, first.tokensIn, first.tokensOut], ['ok', 120, 6]);
+  assert.equal(second.status, 'blocked');
+  assert.match(second.detail, /дневной запас/);
+});
+
+test('partial helper usage keeps known counts and leaves an incomplete marker', async t => {
+  const f = await profile(t, { runSavedCodex: async () => ({
+    providerId: 'codex', text: 'Тестовый результат', helperTokens: 31, usageIncomplete: true,
+  }) });
+  await f.scheduler.tickNow();
+  const [run] = await f.runs();
+  assert.equal(run.status, 'ok');
+  assert.equal(run.tokensIn, 31);
+  assert.equal(run.tokensOut, undefined);
+  assert.equal(run.usageIncomplete, true);
 });
