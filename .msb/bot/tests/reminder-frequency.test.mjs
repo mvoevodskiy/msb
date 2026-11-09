@@ -73,7 +73,8 @@ test('a legacy pending Keep stays scoped to its owner and message and survives r
     title: 'Фоновая задача «Сохранено legacy» срабатывает слишком часто',
     body: 'Сейчас она идёт каждые 15 мин.', producedBy: producer,
     options: ['hourly', 'keep_as_is', 'turn_off'].map((value, index) => ({ value, label: labels[index] })) };
-  const original = { pending: { [shortId]: legacy, '00000000': { subject: 'another-card' } },
+  const duplicate = { ...legacy, shortId: '11a1b2c3', msgId: 57 };
+  const original = { pending: { [shortId]: legacy, [duplicate.shortId]: duplicate, '00000000': { subject: 'another-card' } },
     decisions: { another: { value: 'unchanged' } }, retained: 1 };
   await fs.writeFile(f.decisionFile, JSON.stringify(original));
   await f.scheduler.tickNow();
@@ -97,10 +98,12 @@ test('a legacy pending Keep stays scoped to its owner and message and survives r
     subject: subject(entry.id), value: 'keep_as_is', label: labels[1], decidedAt: at(initial),
     producedBy: producer, cardShortId: shortId,
   });
-  assert.deepEqual(decided.pending, { '00000000': original.pending['00000000'] });
+  assert.deepEqual(decided.pending, { [duplicate.shortId]: duplicate, '00000000': original.pending['00000000'] });
   assert.deepEqual(decided.decisions.another, original.decisions.another);
   assert.equal(decided.retained, 1);
   await f.callback('dc:' + shortId + ':hourly', 42, options);
+  assert.equal(lastAck(f), 'Уже решено: Оставить как есть');
+  await f.callback('dc:' + duplicate.shortId + ':turn_off', 42, { chatId: owner, messageId: duplicate.msgId });
   assert.equal(lastAck(f), 'Уже решено: Оставить как есть');
   assert.deepEqual(await f.decisionBook(), decided);
   await f.scheduler.stop();
@@ -156,9 +159,10 @@ test('turn off records the first durable choice and leaves the task in its exist
   });
   const entered = Promise.withResolvers();
   const release = Promise.withResolvers();
+  const decisionTarget = await fs.realpath(f.decisionFile);
   const rename = fs.rename;
   t.mock.method(fs, 'rename', async (from, to) => {
-    if (to === f.decisionFile) {
+    if (to === decisionTarget) {
       entered.resolve();
       await release.promise;
     }
@@ -210,9 +214,10 @@ test('a saved hourly decision retries a failed file transition and reports its f
   const f = await profile(t, [entry]);
   await f.decisions({ [subject(entry.id)]: { value: 'hourly' } });
   let fail = true;
+  const actionTarget = await fs.realpath(f.file);
   const rename = fs.rename;
   t.mock.method(fs, 'rename', async (from, to) => {
-    if (fail && to === f.file) throw Object.assign(Error('fixture write failure'), { code: 'EACCES' });
+    if (fail && to === actionTarget) throw Object.assign(Error('fixture write failure'), { code: 'EACCES' });
     return rename(from, to);
   });
   await f.scheduler.tickNow();
@@ -226,4 +231,47 @@ test('a saved hourly decision retries a failed file transition and reports its f
   assert.deepEqual((await f.rows())[0].trigger, cron('0 * * * *'));
   assert.equal(questions(f).length, 0);
   assert.deepEqual((await f.runs()).map(row => row.status), ['blocked', 'blocked', 'skipped']);
+});
+
+test('if a posted question cannot be saved, it has no live buttons and the next offer can be answered', async t => {
+  const entry = record('retry-pending', every(10));
+  const f = await profile(t, [entry]);
+  const decisionTarget = path.join(await fs.realpath(path.dirname(f.decisionFile)), path.basename(f.decisionFile));
+  let fail = true;
+  const rename = fs.rename;
+  t.mock.method(fs, 'rename', async (from, to) => {
+    if (fail && to === decisionTarget) throw Object.assign(Error('fixture pending write failure'), { code: 'EACCES' });
+    return rename(from, to);
+  });
+  await f.scheduler.tickNow();
+  const first = questions(f)[0];
+  assert.deepEqual(f.markupEdits, [{ chatId: owner, messageId: first.messageId, options: { reply_markup: { inline_keyboard: [] } } }]);
+  await assert.rejects(fs.stat(f.decisionFile), { code: 'ENOENT' });
+  assert.equal((await f.rows())[0].disabledReason, 'frequency');
+  fail = false;
+  await f.advance(initial + min);
+  const second = questions(f)[1];
+  await choose(f, first, 0);
+  assert.equal(lastAck(f), 'Карточка устарела');
+  await choose(f, second, 2);
+  assert.equal(lastAck(f), 'Решено: Выключить задачу');
+  assert.equal((await f.decisionBook()).decisions[subject(entry.id)].value, 'turn_off');
+});
+
+test('only prompts supported by the selected route get a local frequency decision', async t => {
+  const own = record('claude', every(15), { lastRunAt: at(initial),
+    task: { kind: 'prompt', prompt: 'fixture Claude action', provider: 'claude' } });
+  const unsupported = [
+    record('codex', every(15), { task: { kind: 'prompt', prompt: 'fixture Codex action', provider: 'codex' } }),
+    record('shell', every(15), { task: { kind: 'prompt', prompt: 'fixture shell action', shell: true } }),
+  ];
+  const f = await profile(t, [own, ...unsupported], {
+    state: { extAuthBypass: 'claude', authMode: 'subscription', hasSubscriptionAuth: true },
+  });
+  await f.decisions({ [subject('codex')]: { value: 'hourly' }, [subject('shell')]: { value: 'turn_off' } });
+  await f.scheduler.tickNow();
+  assert.deepEqual(await f.rows(), [{ ...own, disabledReason: 'frequency' }, ...unsupported]);
+  assert.equal(questions(f).length, 1);
+  assert.match(questions(f)[0].text, /Сохранено claude/);
+  assert.deepEqual((await f.runs()).map(row => [row.actionId, row.status]), [['claude', 'skipped']]);
 });

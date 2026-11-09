@@ -43,9 +43,9 @@ function localMinute(instant, clock) {
 }
 
 export function reminderIsDue(action, now, timezone) {
-  if (!action.enabled || action.budget?.killSwitch || spentReminder(action)) return false;
+  if (!action.enabled || action.budget?.killSwitch || spentReminder(action) || action.disabledReason === 'frequency') return false;
   const { trigger } = action;
-  if (trigger.kind === 'once') return action.disabledReason !== 'frequency' && Date.parse(trigger.at) <= now;
+  if (trigger.kind === 'once') return Date.parse(trigger.at) <= now;
   const last = action.lastRunAt ? Date.parse(action.lastRunAt) : 0;
   if (action.lastRunAt && (!Number.isFinite(last) || last > now)) return false;
   if (trigger.kind === 'interval') return now - last >= trigger.intervalMinutes * minuteMs;

@@ -381,9 +381,9 @@ The list/card and toggle use the existing auto:task routes at
 7fc3ef6 reproduces six omissions on 973ed94. The direct dispatcher
 now preserves the old due snapshot and actual attempt time, and
 uses the existing claim, budget, breaker, and journal. Pending
-frequency rows wait, with saved Keep recognized per profile. The
-existing decision file stays read-only. Full frequency-card
-creation and applying saved hourly/turn_off are future work.
+frequency rows initially waited with saved Keep recognized per
+profile. The separate frequency decision checkpoint below restores
+card creation and applies all three choices.
 The card distinguishes a spent once from a previously run recurring
 reminder. A pause during send preserves the new enabled state and
 still records that attempt. Replacement, removal and foreign native
@@ -712,3 +712,23 @@ callback router. New writes must preserve other decisions and
 avoid replacing a concurrent choice or action. A tap uses the
 original card message ID and saved owner chat. This does not
 extend the pass to OpenClaw native jobs or alternate workflows.
+
+The open-core brake saves the hold before offering the card.
+The decision lock spans a bounded send and binding so immediate
+taps wait for persistence and concurrent offers converge. The
+choice is stored before editing and remains after a failed edit.
+The first recorded subject decision is authoritative across
+older duplicate pending cards. The binding includes the actual
+chat for new cards and uses the saved owner chat for legacy
+pending entries without it. Other decision types stay untouched.
+A returned message whose binding cannot be saved has its buttons
+removed on a best-effort basis. A crash or unknown send outcome
+still has the usual Telegram/file boundary. This is not an
+exactly-once guarantee.
+
+A held action is excluded from due selection until the brake
+removes its hold. The action update shares the existing current
+row and local-route guards with admission. A saved prompt must
+have a supported plan for the selected route before it can be
+changed or offered. Unsupported and foreign records stay put.
+Usage, spend and breaker checks remain downstream for a due run.

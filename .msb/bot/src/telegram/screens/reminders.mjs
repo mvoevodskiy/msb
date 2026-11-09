@@ -10,7 +10,8 @@ import { isLocalReminderEngine, readReminderPolicy } from '../../autonomy/remind
 import { savedActionSnapshot } from '../../autonomy/reminder-store.mjs';
 import { savedPromptPlan } from '../../autonomy/prompt-policy.mjs';
 import { describeReminderSchedule } from '../../autonomy/reminder-time.mjs';
-import { readReminderFrequencyDecisions, reminderIsActive } from '../../autonomy/reminder-frequency.mjs';
+import { reminderIsActive } from '../../autonomy/reminder-frequency.mjs';
+import { readReminderFrequencyDecisions } from '../../autonomy/frequency-decisions.mjs';
 import { spentReminder } from '../../autonomy/reminder-schedule.mjs';
 import { escapeHtml } from '../edit.mjs';
 import { BLANK } from './shared.mjs';

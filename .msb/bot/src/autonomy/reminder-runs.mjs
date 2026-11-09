@@ -10,17 +10,31 @@ export function reminderRunPath(env = process.env) {
   return path.join(actionRoot(env), 'autonomy', 'runs.jsonl');
 }
 
-export async function appendSavedActionRun(action, ts, result) {
+export async function appendSavedActionRun(action, ts, result,
+  { costVisible, format } = { costVisible: action.task.kind === 'reminder', format: 'tg-message' }) {
   const file = reminderRunPath();
   await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
   const row = {
     ts, actionId: action.id, kind: action.task.kind, name: action.name,
-    status: result.status, costUsd: 0, costVisible: action.task.kind === 'reminder', format: 'tg-message',
+    status: result.status, costUsd: 0, costVisible, format,
     detail: result.detail || result.error || 'напоминание доставлено',
     tokensIn: result.tokensIn, tokensOut: result.tokensOut, meteredUsd: result.meteredUsd,
     usageIncomplete: result.usageIncomplete || undefined,
   };
   await fs.appendFile(file, JSON.stringify(row) + '\n', { mode: 0o600 });
+}
+
+// The legacy frequency brake suppresses repeated notices using the last 60 parsed rows.
+export async function latestSavedActionRun(actionId, limit, env = process.env) {
+  const lines = (await fs.readFile(reminderRunPath(env), 'utf8').catch(() => '')).split('\n');
+  let read = 0;
+  for (let index = lines.length - 1; index >= 0 && read < limit; index--) {
+    let row;
+    try { row = JSON.parse(lines[index]); }
+    catch { continue; }
+    read++;
+    if (row?.actionId === actionId) return row;
+  }
 }
 
 export function parseSavedActionRun(row) {

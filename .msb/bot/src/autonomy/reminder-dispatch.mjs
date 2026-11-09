@@ -1,6 +1,7 @@
 /**
  * Saved local action → [gate](./reminder-admission.mjs) → committed attempt
  * → literal Telegram send or [isolated provider](./prompt-turn.mjs) → [run log](./reminder-runs.mjs).
+ * [Frequency decisions](./reminder-frequency-brake.mjs) settle before due selection.
  * [Scheduler](./scheduler.mjs) drains this pass on shutdown.
  * [Store](./reminder-store.mjs) records delivery and [breaker](./reminder-breaker.mjs)
  * transitions. [Pause lock](./owner-pause.mjs), [checks](../../tests/reminder-limits.test.mjs).
@@ -14,7 +15,9 @@ import { codexQuotaRefusal } from './subscription-gate.mjs';
 import { readReminderBreakerRefusal } from './reminder-breaker.mjs';
 import { reminderBreakerNotice } from './reminder-breaker-notice.mjs';
 import { reminderIsDue } from './reminder-schedule.mjs';
-import { readReminderFrequencyDecisions, reminderFrequencyAllows } from './reminder-frequency.mjs';
+import { reminderFrequencyAllows } from './reminder-frequency.mjs';
+import { readReminderFrequencyDecisions } from './frequency-decisions.mjs';
+import { applyReminderFrequencyBrake } from './reminder-frequency-brake.mjs';
 import { appendSavedActionRun } from './reminder-runs.mjs';
 import { claimSavedAction, finishSavedAction, savedActionClaimIsCurrent, savedActionSnapshot } from './reminder-store.mjs';
 import { savedPromptPlan } from './prompt-policy.mjs';
@@ -24,6 +27,7 @@ import { deliverSavedPrompt } from './prompt-delivery.mjs';
 export function createReminderDispatcher({ api, adminId, timezone, now, log, signal, runCodexPrompt, readCodexQuota }) {
   let boundChat;
   const planFor = (action, state) => savedPromptPlan(action, state, process.env, Boolean(runCodexPrompt));
+  const supports = (action, state) => action.task.kind === 'reminder' || Boolean(planFor(action, state));
   async function destination(isStopped) {
     if (isStopped() || !api || !adminId) return;
     const { state } = await loadState();
@@ -52,33 +56,38 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
     return { report, active, release: probe.release };
   }
 
+  async function withLocalState(isStopped, update) {
+    let result;
+    // Serialize short commits with the in-process engine/provider updates.
+    await updateState(async state => {
+      if (!isStopped() && isLocalReminderEngine(state.engine) && reminderOwnerChat(state, adminId)) result = await update(state);
+      return NO_STATE_WRITE;
+    });
+    return result;
+  }
+
   async function admit(action, slotAt, ts, boxRefusal, quotaRead, publish, isStopped) {
     const target = await destination(isStopped);
     if (!target) return;
-    let admitted;
     // The provider and owner's saved spend are sampled after journal I/O.
-    // Serialize the short commit with the in-process engine/provider updates.
-    await updateState(async state => {
-      if (isStopped() || !isLocalReminderEngine(state.engine) || !reminderOwnerChat(state, adminId)) return NO_STATE_WRITE;
-      if (!reminderIsDue(action, slotAt, state.timezone || timezone)) return NO_STATE_WRITE;
+    return withLocalState(isStopped, async state => {
+      if (!reminderIsDue(action, slotAt, state.timezone || timezone)) return;
       const plan = action.task.kind === 'prompt' ? planFor(action, state) : undefined;
-      if (action.task.kind === 'prompt' && !plan) return NO_STATE_WRITE;
+      if (action.task.kind === 'prompt' && !plan) return;
       const decisions = action.trigger.kind === 'once' ? undefined : await readReminderFrequencyDecisions();
-      if (!reminderFrequencyAllows(action, decisions)) return NO_STATE_WRITE;
+      if (!reminderFrequencyAllows(action, decisions)) return;
       const breaker = await readReminderBreakerRefusal(action.id, ts);
       const codex = state.extAuthBypass === 'codex';
       const quotaCurrent = quotaRead?.report?.isCurrent;
-      if (quotaRead && (!codex || quotaRead.active.aborted || (quotaCurrent && !await quotaCurrent()))) return NO_STATE_WRITE;
-      if (isStopped() || quotaRead?.active.aborted) return NO_STATE_WRITE;
+      if (quotaRead && (!codex || quotaRead.active.aborted || (quotaCurrent && !await quotaCurrent()))) return;
+      if (isStopped() || quotaRead?.active.aborted) return;
       const earlier = breaker ?? boxRefusal;
-      if (!earlier && codex && readCodexQuota && !quotaRead) return NO_STATE_WRITE;
+      if (!earlier && codex && readCodexQuota && !quotaRead) return;
       const quotaDetail = codex ? codexQuotaRefusal(quotaRead?.report?.quota, state, now(), target.reserveFraction) : undefined;
       const refusal = earlier ?? currentReminderRefusal(action, state, ts, target.reserveFraction, quotaDetail);
       const claimed = await publish(refusal);
-      admitted = { action: claimed, chat: target.chat, refusal, plan, quotaCurrent };
-      return NO_STATE_WRITE;
+      return { action: claimed, chat: target.chat, refusal, plan, quotaCurrent };
     });
-    return admitted;
   }
 
   async function promptOutcome(file, action, chat, plan, turn, quotaCurrent) {
@@ -102,14 +111,19 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
   return async function dispatchReminders(isStopped) {
     const target = await destination(isStopped);
     if (!target) return;
-    const { file, actions } = await savedActionSnapshot();
+    let snapshot = await savedActionSnapshot();
+    const visited = await applyReminderFrequencyBrake(snapshot, {
+      api, now, log, signal, supports, destination: () => destination(isStopped),
+      withLocalState: update => withLocalState(isStopped, update), notify: sendText.bind(null, api),
+    });
+    if (visited) snapshot = await savedActionSnapshot();
+    const { file, actions } = snapshot;
     // Old nwA selected every due row at one instant. Rz separately stamped
     // each attempt as it started, even if an earlier send crossed the minute.
     const slotAt = now();
     for (const snapshot of actions) {
       if (isStopped()) break;
-      if (!reminderIsDue(snapshot, slotAt, target.timezone) ||
-          (snapshot.task.kind === 'prompt' && !planFor(snapshot, target.state))) continue;
+      if (!reminderIsDue(snapshot, slotAt, target.timezone) || !supports(snapshot, target.state)) continue;
       const ts = new Date(now()).toISOString();
       try {
         // Old shared journals can be slow. Read them before locking the local

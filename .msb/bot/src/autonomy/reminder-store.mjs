@@ -73,31 +73,36 @@ export async function addReminder(action, { env = process.env, signal, check } =
   }, { signal, create: true });
 }
 
-export async function claimSavedAction(file, snapshot, at, { env = process.env, admit } = {}) {
+// A stale row or newly native schedule cannot be claimed or revised by the local brake.
+export async function withCurrentSavedAction(file, snapshot, update, env = process.env) {
   if (await actionFile(env) !== file) return null;
   return withActions(env, async (records, save) => {
     if (await actionFile(env) !== file) return null;
     const index = records.findIndex(action => action?.id === snapshot.id);
     const action = records[index];
     if (!isDeepStrictEqual(action, snapshot) || !isLocalSavedAction(action, await readNativeJobMap(env))) return null;
-    return admit(action, async refusal => {
-      const claimed = { ...action, lastRunAt: at };
-      if (action.trigger.kind === 'once') {
-        claimed.enabled = false;
-        claimed.disabledReason = 'spent_once';
-      } else if (claimed.disabledReason === 'frequency') {
-        delete claimed.disabledReason;
-      }
-      if (refusal) {
-        claimed.lastStatus = 'skipped';
-        claimed.lastOutcome = 'blocked';
-        delete claimed.lastError;
-      }
-      records[index] = claimed;
+    return update(action, async next => {
+      records[index] = next;
       await save();
-      return claimed;
+      return next;
     });
   });
+}
+
+export function claimSavedAction(file, snapshot, at, { env = process.env, admit } = {}) {
+  return withCurrentSavedAction(file, snapshot, (action, save) => admit(action, refusal => {
+    const claimed = { ...action, lastRunAt: at };
+    if (action.trigger.kind === 'once') {
+      claimed.enabled = false;
+      claimed.disabledReason = 'spent_once';
+    }
+    if (refusal) {
+      claimed.lastStatus = 'skipped';
+      claimed.lastOutcome = 'blocked';
+      delete claimed.lastError;
+    }
+    return save(claimed);
+  }), env);
 }
 
 function sameReminderClaim(current, claimed) {

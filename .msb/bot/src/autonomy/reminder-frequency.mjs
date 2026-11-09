@@ -1,26 +1,33 @@
 /**
- * Read the legacy per-profile frequency decision for [saved reminders](./reminder-schedule.mjs).
- * [Dispatcher](./reminder-dispatch.mjs) and [task views](../telegram/screens/reminders.mjs)
- * use the same admission. Owner decisions are read from their existing file.
+ * Frequency policy for [saved schedules](./reminder-schedule.mjs).
+ * [Brake](./reminder-frequency-brake.mjs) applies the decision before due
+ * selection. [Dispatcher](./reminder-dispatch.mjs) and task views share the gate.
+ * [Checks](../../tests/reminder-frequency.test.mjs).
  */
-import path from 'node:path';
-import { actionRoot } from '../paths.mjs';
-import { readOptionalJson } from './record-file.mjs';
 import { reminderSpacing, spentReminder } from './reminder-schedule.mjs';
 
-const floorMinutes = 60;
+export const reminderFrequencyFloor = 60;
+export const reminderFrequencyChoices = [
+  { value: 'hourly', label: 'Раз в час' },
+  { value: 'keep_as_is', label: 'Оставить как есть' },
+  { value: 'turn_off', label: 'Выключить задачу' },
+];
 
-export async function readReminderFrequencyDecisions(env = process.env) {
-  const saved = await readOptionalJson(path.join(actionRoot(env), 'owner-decisions.json')).catch(() => null);
-  return saved?.decisions && typeof saved.decisions === 'object' ? saved.decisions : {};
+export const reminderFrequencySubject = id => 'autonomy-cron:' + id + ':frequency';
+
+export function fastReminderSpacing(action) {
+  const minutes = reminderSpacing(action.trigger);
+  if (minutes !== null && minutes < reminderFrequencyFloor) return minutes;
+}
+
+export function reminderFrequencyChoice(action, decisions) {
+  const key = reminderFrequencySubject(action.id);
+  if (Object.hasOwn(decisions, key)) return decisions[key]?.value;
 }
 
 export function reminderFrequencyAllows(action, decisions = {}) {
-  if (action.trigger.kind === 'once') return action.disabledReason !== 'frequency';
-  const spacing = reminderSpacing(action.trigger);
-  if (spacing === null || spacing >= floorMinutes) return true;
-  const key = `autonomy-cron:${action.id}:frequency`;
-  return Object.hasOwn(decisions, key) && decisions[key]?.value === 'keep_as_is';
+  return action.disabledReason !== 'frequency' &&
+    (fastReminderSpacing(action) === undefined || reminderFrequencyChoice(action, decisions) === 'keep_as_is');
 }
 
 export function reminderIsActive(action, decisions) {
