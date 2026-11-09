@@ -9,11 +9,11 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { withFileLock } from '../../shared/file-lock.mjs';
-import { sessionDir } from '../paths.mjs';
+import { actionRoot } from '../paths.mjs';
 import { readRecordArray, writeRecordArray } from './record-file.mjs';
 
 function timersPath(env) {
-  return path.resolve(path.dirname(sessionDir(env)), 'schedules.json');
+  return path.join(actionRoot(env), 'schedules.json');
 }
 
 function displayable(records) {
@@ -51,9 +51,37 @@ export async function changeLegacyTimer(id, { remove = false, env = process.env 
     if (!records.some(row => row?.id === id)) return displayable(records);
     const updated = remove
       ? records.filter(row => row?.id !== id)
-      : records.map(row => row?.id === id ? { ...row, enabled: !row.enabled } : row);
+      : records.map(row => {
+        if (row?.id !== id) return row;
+        const timer = { ...row, enabled: !row.enabled };
+        if (timer.disabledBy === 'stop') delete timer.disabledBy;
+        return timer;
+      });
     await writeRecordArray(file, updated);
     return displayable(updated);
+  });
+}
+
+/** Owner confirmation/resume affects only legacy rows carrying the stop provenance. */
+export async function changeStoppedLegacyTimers(stop, env = process.env) {
+  const file = await physicalTimersPath(env);
+  if (!file) return 0;
+  return withFileLock(file, async () => {
+    if (await physicalTimersPath(env) !== file) return 0;
+    const records = await readRecordArray(file);
+    let changed = 0;
+    for (const timer of displayable(records)) {
+      if (stop && timer.enabled !== false) {
+        timer.enabled = false;
+        timer.disabledBy = 'stop';
+      } else if (!stop && timer.enabled === false && timer.disabledBy === 'stop') {
+        timer.enabled = true;
+        delete timer.disabledBy;
+      } else continue;
+      changed++;
+    }
+    if (changed) await writeRecordArray(file, records);
+    return changed;
   });
 }
 

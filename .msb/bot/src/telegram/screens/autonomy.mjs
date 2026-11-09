@@ -63,8 +63,8 @@ export async function autonomyTasksScreen(state) {
     return mark + ' <b>' + (index + 1) + '.</b> ' + escapeHtml(task.title || task.prompt?.slice(0, 60) || task.id);
   });
   const rows = reminderRows(reminders, kb);
-  if (rows.length && reminders.stopped) {
-    lines.push('⏸ Разовые напоминания на паузе.', '');
+  if ((tasks.length || rows.length) && reminders.stopped) {
+    lines.unshift('⏸ Всё на паузе: ни одна из них сейчас не сработает.', '');
   }
   lines.push(...rows);
   if (reminders.error) lines.push(reminders.error);

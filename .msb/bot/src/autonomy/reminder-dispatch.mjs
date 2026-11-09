@@ -7,6 +7,7 @@
 import { loadState } from '../state.mjs';
 import { singleRequestSignal } from '../telegram/presentation-api.mjs';
 import { readReminderPolicy, reminderOwnerChat } from './reminder-policy.mjs';
+import { withAutonomyPauseLock } from './owner-pause.mjs';
 import { appendReminderRun } from './reminder-runs.mjs';
 import { claimReminder, finishReminder, reminderSnapshot } from './reminder-store.mjs';
 
@@ -35,7 +36,8 @@ export function createReminderDispatcher({ api, adminId, now, log }) {
           snapshot.disabledReason === 'frequency' || Date.parse(snapshot.trigger.at) > millis) continue;
       const ts = new Date(millis).toISOString();
       try {
-        const action = await claimReminder(file, snapshot, ts, { canRun: () => destination(isStopped) });
+        const action = await withAutonomyPauseLock(() =>
+          claimReminder(file, snapshot, ts, { canRun: () => destination(isStopped) }));
         if (!action) continue;
         const result = await sendReminder(api, chat, action.task.text);
         await finishReminder(file, action, result).catch(error => {

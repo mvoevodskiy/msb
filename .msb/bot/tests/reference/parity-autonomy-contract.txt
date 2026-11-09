@@ -155,3 +155,60 @@ outbox (45672–45681, 45865–45970, 46199–46235, 28236–28315), other
 action kinds, follow-ups and global migration require separate work.
 Only disposable profiles, synthetic CLI and fake Telegram were used.
 This checkpoint is not a JAR1 rollout or full autonomy acceptance.
+
+Conversational pause checkpoint.
+
+L7 24610–24617 distinguishes per-bot STOP_ALL and RESUME_ALL from
+deletion, per-task pause and quoted examples. WMA 26785–26811 uses
+Ga/uz at 25821–25867 and 26625–26651 to apply control to eligible
+marker text. Da at 25868–25884 chooses the first order and 26020–26021
+provides the two conflict responses. Da also counted quoted raw
+occurrences even though Ga skipped execution. The new finalizer
+chooses the first executable control, including when a preceding
+example contains the opposite marker. It removes duplicate commands
+from the result and applies the winner once.
+
+YM 11284–11307 writes the first reason/time to per-bot autonomy/STOP
+and cancels registered background controllers. q0/gZ 11221–11227 and
+11267–11276 use the local STOP, separate fleet flag (10708–10712),
+and per-action kill. XjA 11401–11406 removes the local stop and its
+notice. Native job fencing/resume at 11308–11381 and 11411–11444
+belongs to the native runner. A local pause only reports mapped armed
+native jobs. It does not list or cancel tasks on the gateway, touch
+its map, or perform a scan of neighboring bot profiles.
+
+qz/_7 24316–24426 give the stop/resume result and inspect timers.
+Ji 17128–17136 and Eg/Xg/Wg 21698–21702,21841–21843 show that old
+schedules keep running until the extra owner question is confirmed.
+113415–113446, 21826–21839 and 18094–18124 write disabledBy=stop on
+confirmation and resume only those rows. 113219–113225 keeps them.
+The question is associated with the current STOP file identity and
+the originating chat/message. This keeps the original callbacks
+while an earlier question cannot override Keep during a later
+pause. A failed timer write can be retried. Manual timer toggle
+clears stop provenance, so a later resume cannot re-enable a
+subsequently owner-disabled timer. The original menu otherwise
+keeps its actions and callbacks. The earlier old copy proposing a
+conversational resume after a paused reminder is restored for the
+owner's pause. The distinct fleet pause has an honest explanation.
+
+55e5839 displayed control markers verbatim, did not write STOP
+from Telegram and did not gate or cancel local interval work.
+ab75ce9 reproduces five failures in production ingress and scheduler.
+The worker checks owner, successful final response, captured CC
+rail and the current enable/engine flags. A fresh engine check
+inside the ordinary state queue follows policy I/O and serializes
+the STOP transition with in-process engine updates without writing
+state.json. The pause transaction serializes STOP and timer
+confirmation/resume with local
+reminder admission. A direct reminder already admitted can finish.
+The active in-process interval gets an abort signal and cancelled
+output is discarded before normal task/result publication. Its
+scheduled row stays pending. Stop and resume retain both action
+stores. The owner resume never edits the remote fleet flag and
+does not claim work resumed while it applies.
+
+Remaining scope: old periodic stop notices (27310–27435), old caps,
+native cron and outbox, and shared schedules migration require
+their own verification. All scenarios here use disposable profiles
+and simulated Telegram and CLI; this is a local release checkpoint.

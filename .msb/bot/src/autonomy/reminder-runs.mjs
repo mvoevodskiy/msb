@@ -4,7 +4,7 @@
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { actionRoot } from './reminder-policy.mjs';
+import { actionRoot } from '../paths.mjs';
 
 export function reminderRunPath(env = process.env) {
   return path.join(actionRoot(env), 'autonomy', 'runs.jsonl');

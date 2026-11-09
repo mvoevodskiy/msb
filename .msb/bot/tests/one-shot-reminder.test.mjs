@@ -328,6 +328,7 @@ for (const provider of ['claude', 'codex']) {
     const call = (await native.trace()).at(-1);
     const prompt = provider === 'claude' ? call.argv[call.argv.indexOf('--append-system-prompt') + 1] : call.prompt;
     assert.match(prompt, /\[SCHEDULE_TASK\].*"kind":"reminder"/);
+    assert.match(prompt, /\[STOP_ALL\].*\[RESUME_ALL\]/s);
     const file = path.join(path.dirname(sessionDir()), 'actions.json');
     const saved = await fs.readFile(file, 'utf8');
     assert.equal(JSON.parse(saved).length, 1);
@@ -340,7 +341,7 @@ for (const provider of ['claude', 'codex']) {
     const disabled = (await native.trace()).at(-1);
     const disabledPrompt = provider === 'claude'
       ? disabled.argv[disabled.argv.indexOf('--append-system-prompt') + 1] : disabled.prompt;
-    assert.doesNotMatch(disabledPrompt, /SCHEDULE_TASK/);
+    assert.doesNotMatch(disabledPrompt, /SCHEDULE_TASK|STOP_ALL|RESUME_ALL/);
     assert.equal(await fs.readFile(file, 'utf8'), saved);
   });
 }

@@ -7,7 +7,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { withFileLock } from '../../shared/file-lock.mjs';
-import { actionRoot } from './reminder-policy.mjs';
+import { actionRoot } from '../paths.mjs';
 import { readOptionalJson, readRecordArray, writeRecordArray } from './record-file.mjs';
 
 async function actionFile(env) {
@@ -26,7 +26,7 @@ async function actionFile(env) {
   }
 }
 
-async function nativeJobs(env) {
+export async function readNativeJobMap(env) {
   const jobs = await readOptionalJson(path.join(actionRoot(env), 'autonomy', 'cron-jobs.json'));
   if (jobs === undefined) return {};
   if (jobs === null || typeof jobs !== 'object' || Array.isArray(jobs)) throw new Error('Expected native job mapping');
@@ -60,7 +60,7 @@ async function withActions(env, update, { signal, create } = {}) {
 export async function reminderSnapshot(env = process.env) {
   const file = await actionFile(env);
   const records = await readRecordArray(file);
-  const jobs = await nativeJobs(env);
+  const jobs = await readNativeJobMap(env);
   return { file, actions: records.filter(action => isLocalReminder(action, jobs)) };
 }
 
@@ -91,7 +91,7 @@ export async function claimReminder(file, snapshot, at, { env = process.env, can
     if (await actionFile(env) !== file) return null;
     const index = records.findIndex(action => action?.id === snapshot.id);
     const action = records[index];
-    if (!isDeepStrictEqual(action, snapshot) || !isLocalReminder(action, await nativeJobs(env))) return null;
+    if (!isDeepStrictEqual(action, snapshot) || !isLocalReminder(action, await readNativeJobMap(env))) return null;
     if (!action.enabled || action.lastRunAt || action.budget?.killSwitch ||
         action.disabledReason === 'frequency' || Date.parse(action.trigger.at) > Date.parse(at)) return null;
     if (!await canRun()) return null;
@@ -117,7 +117,7 @@ export async function changeReminder(id, remove, env = process.env) {
   await withActions(env, async (records, save) => {
     const index = records.findIndex(action => action?.id === id);
     const action = records[index];
-    if (!isLocalReminder(action, await nativeJobs(env)) || (!remove && action.lastRunAt)) return;
+    if (!isLocalReminder(action, await readNativeJobMap(env)) || (!remove && action.lastRunAt)) return;
     if (remove) records.splice(index, 1);
     else records[index] = { ...action, enabled: !action.enabled, disabledReason: action.enabled ? 'owner' : undefined };
     await save();

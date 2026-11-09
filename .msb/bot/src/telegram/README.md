@@ -47,7 +47,9 @@ FIFO-элемент через createBot. Модель запускается п
 [обработчик итогового ответа](./reminder-markers.mjs) в
 [хранилище действий](../autonomy/reminder-store.mjs). Список и карточка в
 [меню «Задачи»](./screens/reminders.mjs), отправка в
-[планировщике](../autonomy/reminder-dispatch.mjs).
+[планировщике](../autonomy/reminder-dispatch.mjs). Общая [пауза](./pause-markers.mjs)
+разбирается в итоговом ответе владельцу. [Подтверждение для старых таймеров](./pause-confirmation.mjs)
+использует прежние кнопки и передаёт запись в модуль автономки.
 
 ## Настройки и кнопки
 

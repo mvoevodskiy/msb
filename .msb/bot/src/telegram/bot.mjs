@@ -10,7 +10,7 @@ import {resetCliConversation} from '../sessions/selection.mjs';
  * Индикация → [progress](./progress.mjs), итог → [response](./response.mjs),
  * План/комментарий → [plan actions](./plan-actions.mjs) → тот же inbox; final marker → [plan](./plan.mjs).
  * журнал Пульта → [history](./history.mjs), STT → [voice](./voice.mjs).
- * Final [one-shot reminder](./reminder-markers.mjs) → old per-bot action, then installation markers.
+ * Final [reminder](./reminder-markers.mjs) and [owner pause](./pause-markers.mjs), then installation markers.
  * Model skill markers → [processor](../skills/response-markers.mjs) before plan/delivery/history, never UI metadata.
  * Prepared skills views/chunks → [view delivery](./view-delivery.mjs), context reply retained.
  * Skills command read options/OC loading → [read presentation](./skills-read.mjs), native OC reader is injectable.
@@ -30,6 +30,7 @@ import { createPlanActions } from './plan-actions.mjs';
 import { parsePlanResponse } from './plan.mjs';
 import { deliverTurnResponse } from './response.mjs';
 import { deliverView } from './view-delivery.mjs';
+import { processPauseMarkers } from './pause-markers.mjs';
 import { processReminderMarkers } from './reminder-markers.mjs';
 import { processInstallMarkers } from './install-markers.mjs';
 import { registerProjectCommands } from './project-commands.mjs';
@@ -550,11 +551,13 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       outcome = out.ok ? 'ok' : 'error';
       await progress.stop();
       if (signal.aborted || out.error === 'aborted') { await stopped(); return; }
-      const reminderText = await processReminderMarkers(out.text, {
+      const autonomy = {
         ownerId: reminderOwner, rail: out.reminderRail, ok: out.ok, chatId, threadId: thread,
         timezone: cfg.timezone, now: now(), signal,
-      });
-      const replyText = await processInstallMarkers({ ...out, text: reminderText }, { signal, readProvider: bot[Symbol.for('msb.mcpProvider')] });
+      };
+      const reminders = await processReminderMarkers(out.text, autonomy);
+      const actionText = await processPauseMarkers(reminders, autonomy, ctx);
+      const replyText = await processInstallMarkers({ ...out, text: actionText }, { signal, readProvider: bot[Symbol.for('msb.mcpProvider')] });
       signal.throwIfAborted();
       turn.completed = true;
       responseReady = true;

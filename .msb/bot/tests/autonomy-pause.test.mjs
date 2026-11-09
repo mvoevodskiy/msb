@@ -12,7 +12,7 @@ import { setTimeout as delay } from 'node:timers/promises';
 import { startScheduler } from '../src/autonomy/scheduler.mjs';
 import { addTask, listTasks } from '../src/autonomy/store.mjs';
 import { botRoot } from '../src/paths.mjs';
-import { loadState, saveState } from '../src/state.mjs';
+import { loadState, saveState, updateState } from '../src/state.mjs';
 import { fixture } from './helpers/menu-fixture.mjs';
 
 const instant = Date.parse('2026-11-08T12:00:00.000Z');
@@ -73,8 +73,9 @@ async function profile(t, { enabled = '1', engine = 'cc' } = {}) {
   const readTimers = async () => JSON.parse(await fs.readFile(timerFile, 'utf8'));
   const writeRemote = data => fs.writeFile(remoteFile, JSON.stringify(data));
   const delivered = () => f.messages.filter(text => text === '⏰ Встретить поезд');
+  const questionId = () => f.messages.findLastIndex(text => text.startsWith('Таймеры с прошлой настройки продолжают работать')) + 1;
   return { ...f, root, stopFile, actionFile, timerFile, remoteFile, ask, scheduler, modelCalls,
-    writeActions, writeTimers, readTimers, writeRemote, delivered };
+    writeActions, writeTimers, readTimers, writeRemote, delivered, questionId };
 }
 
 test('owner pause is persistent and per bot, preserves due actions and resumes direct delivery', async t => {
@@ -130,12 +131,15 @@ test('legacy timers stay enabled until owner confirmation and only stop-disabled
     { text: '⏹ Остановить и таймеры тоже', callback_data: 'tmr-stop' },
     { text: 'Оставить', callback_data: 'ct-keep' },
   ]);
-  await f.callback('tmr-stop', 99);
+  const original = { messageId: f.questionId() };
+  await f.callback('tmr-stop', 99, original);
   assert.deepEqual(await f.readTimers(), savedTimers);
-  await f.callback('ct-keep');
+  await f.callback('ct-keep', 42, original);
   assert.match(f.edits.at(-1), /✔ Оставил на месте/);
+  await f.callback('tmr-stop', 42, original);
   assert.deepEqual(await f.readTimers(), savedTimers);
-  await f.callback('tmr-stop');
+  await f.ask('[STOP_ALL]');
+  await f.callback('tmr-stop', 42, { messageId: f.questionId() });
   const [paused, ...unchanged] = await f.readTimers();
   assert.deepEqual(paused, { ...savedTimers[0], enabled: false, disabledBy: 'stop' });
   assert.deepEqual(unchanged, savedTimers.slice(1));
@@ -143,16 +147,16 @@ test('legacy timers stay enabled until owner confirmation and only stop-disabled
   const resume = await f.ask('[RESUME_ALL]', 'Верни всё в работу');
   assert.match(resume, /Таймеры, остановленные вместе со всеми, снова работают \(1\)/);
   assert.deepEqual(await f.readTimers(), savedTimers);
-  await f.callback('tmr-stop');
+  await f.callback('tmr-stop', 42, { messageId: f.questionId() });
   assert.deepEqual(await f.readTimers(), savedTimers, 'old confirmation must not pause a newly resumed timer');
 });
 
 test('first executable control wins and quoted markers have no effect', async t => {
   const f = await profile(t);
-  const before = await f.ask('Пример «[STOP_ALL]»', 'Покажи пример');
+  const before = await f.ask('Пример «\n[STOP_ALL]\n»', 'Покажи пример');
   assert.doesNotMatch(before, /Автономка остановлена/);
   await assert.rejects(fs.stat(f.stopFile), { code: 'ENOENT' });
-  const stopped = await f.ask('Пример «[RESUME_ALL]»\n[STOP_ALL]\n[RESUME_ALL]', 'Останови задачи');
+  const stopped = await f.ask('Пример «[RESUME_ALL]»\n[STOP_ALL] [RESUME_ALL]', 'Останови задачи');
   assert.match(stopped, /выполнил только «останови»/i);
   assert.equal(await fs.readFile(f.stopFile, 'utf8'), 'владелец сказал остановить\n' + due + '\n');
   const resumed = await f.ask('[RESUME_ALL]\n[STOP_ALL]', 'Продолжай');
@@ -200,4 +204,128 @@ test('owner pause aborts an active interval without advancing it or treating can
   }
   assert.deepEqual(await listTasks(), [task]);
   assert.doesNotMatch(f.messages.join('\n'), /Устаревший результат/);
+});
+
+test('an opted-out model response cannot create a pause or its lock', async t => {
+  const f = await profile(t, { enabled: '0' });
+  const reply = await f.ask('Остановил.\n[STOP_ALL]');
+  assert.match(reply, /Автономные задачи сейчас выключены/);
+  assert.doesNotMatch(reply, /Остановил\./);
+  await assert.rejects(fs.stat(path.dirname(f.stopFile)), { code: 'ENOENT' });
+});
+
+test('a native response cannot change the local pause after switching engines', async t => {
+  const f = await profile(t, { engine: 'oc' });
+  const reply = await f.ask(async () => {
+    await saveState({ ...(await loadState()).state, engine: 'cc' });
+    return '[STOP_ALL]';
+  });
+  assert.match(reply, /на этом движке пока не подключено/);
+  await assert.rejects(fs.stat(path.dirname(f.stopFile)), { code: 'ENOENT' });
+});
+
+test('a local stop reports armed native jobs without changing their map or actions', async t => {
+  const f = await profile(t);
+  const native = { ...pending, id: 'native', runner: 'oc' };
+  await f.writeActions([pending, native]);
+  const map = path.join(f.root, 'autonomy', 'cron-jobs.json');
+  await fs.mkdir(path.dirname(map), { recursive: true });
+  const mapBytes = JSON.stringify({ native: { jobId: 'owned-fixture-job' } });
+  await fs.writeFile(map, mapBytes);
+  const reply = await f.ask('[STOP_ALL]');
+  assert.match(reply, /Остановка неполная: в профиле остались активные записи OpenClaw \(1\)/);
+  assert.doesNotMatch(reply, /Новые прогоны не начнутся/);
+  assert.equal(await fs.readFile(map, 'utf8'), mapBytes);
+  assert.deepEqual(JSON.parse(await fs.readFile(f.actionFile, 'utf8')), [pending, native]);
+});
+
+test('an unconfirmed legacy timer still runs while the owner pause is active', async t => {
+  const f = await profile(t);
+  await f.writeTimers([{ ...savedTimers[0], at: due }]);
+  await f.ask('[STOP_ALL]');
+  await f.scheduler().tickNow();
+  await until(() => f.modelCalls.some(args => args.isAutoTurn && args.prompt.includes('Текст таймера')),
+    'legacy scheduler must admit the original timer while background actions are paused');
+  assert.match(await fs.readFile(f.stopFile, 'utf8'), /владелец сказал остановить/);
+  const [timer] = await f.readTimers();
+  assert.equal(timer.lastRunAt, due);
+  assert.equal(timer.enabled, false);
+});
+
+test('a manually toggled timer loses the global stop provenance', async t => {
+  const f = await profile(t);
+  await f.writeTimers(savedTimers);
+  await f.ask('[STOP_ALL]');
+  await f.callback('tmr-stop', 42, { messageId: f.questionId() });
+  await f.callback('auto:timer-toggle:legacy-on');
+  await f.callback('auto:timer-toggle:legacy-on');
+  await f.ask('[RESUME_ALL]');
+  assert.deepEqual(await f.readTimers(), [{ ...savedTimers[0], enabled: false }, ...savedTimers.slice(1)]);
+});
+
+test('resume reports an unlink failure without changing the stop or the timers', async t => {
+  const f = await profile(t);
+  await fs.mkdir(f.stopFile, { recursive: true });
+  const paused = { ...savedTimers[0], enabled: false, disabledBy: 'stop' };
+  await f.writeTimers([paused]);
+  const reply = await f.ask('[RESUME_ALL]');
+  assert.match(reply, /Не удалось снять стоп/);
+  assert.doesNotMatch(reply, /Снял паузу|Снял стоп|снова работают/);
+  assert.equal((await fs.stat(f.stopFile)).isDirectory(), true);
+  assert.deepEqual(await f.readTimers(), [paused]);
+});
+
+test('a second pause never accepts the previous timer question after the owner chooses Keep', async t => {
+  const f = await profile(t);
+  await f.writeTimers(savedTimers);
+  await f.ask('[STOP_ALL]');
+  const old = { messageId: f.questionId() };
+  assert.ok(old.messageId > 0);
+  await f.ask('[RESUME_ALL]');
+  await f.ask('[STOP_ALL]');
+  const current = { messageId: f.questionId() };
+  assert.notEqual(current.messageId, old.messageId);
+  await f.callback('ct-keep', 42, current);
+  await f.callback('tmr-stop', 42, old);
+  assert.match(f.edits.at(-1), /Этот вопрос уже закрыт/);
+  assert.deepEqual(await f.readTimers(), savedTimers);
+});
+
+test('a switch during the last policy read cannot commit a pause in the previous engine', async t => {
+  const f = await profile(t);
+  const config = path.join(f.root, 'autonomy', 'config.json');
+  await fs.mkdir(path.dirname(config), { recursive: true });
+  await fs.writeFile(config, '{"enabled":true}');
+  let reads = 0, unblock;
+  const read = fs.readFile.bind(fs);
+  t.mock.method(fs, 'readFile', async (...args) => {
+    if (args[0] === config && ++reads === 2) {
+      await new Promise(resolve => { unblock = resolve; });
+    }
+    return read(...args);
+  });
+  const reply = f.ask('[STOP_ALL]');
+  try {
+    await until(() => unblock, 'the last config read must be waiting');
+    await updateState(state => ({ ...state, engine: 'oc' }));
+  } finally {
+    unblock?.();
+  }
+  assert.match(await reply, /на этом движке пока не подключено/);
+  await assert.rejects(fs.stat(f.stopFile), { code: 'ENOENT' });
+  assert.equal((await loadState()).state.engine, 'oc');
+});
+
+test('a failed timer write retains its owner confirmation for a retry', async t => {
+  const f = await profile(t);
+  await f.writeTimers(savedTimers);
+  await f.ask('[STOP_ALL]');
+  const question = { messageId: f.questionId() };
+  await fs.writeFile(f.timerFile, '{invalid fixture');
+  await f.callback('tmr-stop', 42, question);
+  assert.equal(f.callbackAnswers.at(-1)[0].text, 'Не смог остановить, попробуй ещё раз');
+  assert.equal(await fs.readFile(f.timerFile, 'utf8'), '{invalid fixture');
+  await f.writeTimers(savedTimers);
+  await f.callback('tmr-stop', 42, question);
+  assert.equal((await f.readTimers())[0].disabledBy, 'stop');
 });

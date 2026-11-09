@@ -27,6 +27,11 @@ export function sessionDir(env = process.env) {
   return profile.envValue(env, 'MSB_SESSION_DIR') || path.join(botRoot(env), 'sessions');
 }
 
+// The legacy actions, schedules, and STOP live beside the session directory.
+export function actionRoot(env = process.env) {
+  return path.resolve(path.dirname(sessionDir(env)));
+}
+
 export function workspaceDir(env = process.env) {
   const workspace = profile.envValue(env, 'MSB_WORKSPACE_DIR');
   if (workspace) return workspace;

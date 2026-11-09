@@ -4,12 +4,9 @@
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { botId, msbRoot, sessionDir } from '../paths.mjs';
+import { actionRoot, botId, msbRoot } from '../paths.mjs';
+import { readAutonomyPause } from './owner-pause.mjs';
 import { readOptionalJson } from './record-file.mjs';
-
-export function actionRoot(env = process.env) {
-  return path.resolve(path.dirname(sessionDir(env)));
-}
 
 export function isLocalReminderEngine(engine) {
   return engine === undefined || engine === 'cc';
@@ -33,16 +30,16 @@ async function exists(file) {
 
 export async function readReminderPolicy(state, env = process.env) {
   const root = actionRoot(env);
-  const [config, remote, stop, asleep] = await Promise.all([
+  const [config, pause, asleep] = await Promise.all([
     readOptionalJson(path.join(root, 'autonomy', 'config.json')),
-    readOptionalJson(path.join(root, 'remote-config.json')),
-    exists(path.join(root, 'autonomy', 'STOP')),
+    readAutonomyPause(env),
     exists(path.join(msbRoot(env), 'engine', 'sleep.' + botId(env))),
   ]);
+  const { remote, stopped, fleetStopped } = pause;
   const local = isLocalReminderEngine(state.engine);
   const autoFlag = state.engine === 'oc' ? remote?.autonomyAutoOnOc : remote?.autonomyAutoOnCc;
   const enabled = env.AUTONOMY_ENABLED === undefined
     ? (config?.enabled === undefined ? autoFlag : config.enabled) === true
     : ['1', 'true'].includes(env.AUTONOMY_ENABLED.toLowerCase());
-  return { enabled, local, stopped: stop || remote?.autonomyGlobalStop === true, asleep };
+  return { enabled, local, stopped, fleetStopped, asleep };
 }
