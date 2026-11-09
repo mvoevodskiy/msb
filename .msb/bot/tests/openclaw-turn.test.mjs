@@ -13,7 +13,7 @@ import {until} from './helpers/reminder-registration-fixture.mjs';
 import {runAgentTurn} from '../src/agent/turn.mjs';
 import {loadState,saveState} from '../src/state.mjs';
 import {resetCliConversation} from '../src/sessions/selection.mjs';
-import {botRoot} from '../src/paths.mjs';
+import {actionRoot,botRoot} from '../src/paths.mjs';
 import {reminderRunPath} from '../src/autonomy/reminder-runs.mjs';
 
 const ccSessionId='untouched-claude-session';
@@ -235,4 +235,28 @@ test('OpenClaw owner Telegram turn exposes the old journal read without local sc
   assert.ok(f.edits.some(text=>text.includes('Прогон этого бота — 1 прогон')));
   assert.equal(process.env.AUTONOMY_MAX_ACTIONS,undefined);
   assert.equal(await fs.readFile(journal,'utf8'),line);
+});
+
+test('OpenClaw can clean requested historical local rows while retaining its native jobs',async t=>{
+  const f=await prepare(t,{runTurn:runAgentTurn,reply:'[CANCEL_SPENT]'});
+  process.env.AUTONOMY_ENABLED='1';
+  const ts='2026-11-07T09:00:00.000Z';
+  const local={id:'local',name:'Старый локальный',enabled:true,trigger:{kind:'once',at:ts},
+    task:{kind:'reminder',text:'local fixture'},lastRunAt:ts};
+  const native={...local,id:'mapped',name:'Нативный OpenClaw'};
+  const file=path.join(actionRoot(),'actions.json');
+  const mapFile=path.join(actionRoot(),'autonomy','cron-jobs.json');
+  const map='{"mapped":{"jobId":"not-owned-proof","enabled":true}}';
+  await fs.mkdir(path.dirname(mapFile),{recursive:true});
+  await fs.writeFile(file,JSON.stringify([local,native]));
+  await fs.writeFile(mapFile,map);
+  await f.message('Убери завершённые разовые задачи');
+  await until(()=>f.edits.some(text=>text.includes('⏱')),'OpenClaw fixture did not finish',10_000);
+  const prompt=seen('prompt',await f.calls()).prompt;
+  assert.match(prompt,/\[CANCEL_SPENT\] отдельной строкой/);
+  assert.doesNotMatch(prompt,/\[SCHEDULE_TASK\]|\[SET_LIMIT/);
+  assert.match(f.edits.at(-1),/Снёс 1[\s\S]*Не удалось снять: Нативный OpenClaw/);
+  assert.deepEqual(JSON.parse(await fs.readFile(file,'utf8')),[native]);
+  assert.equal(await fs.readFile(mapFile,'utf8'),map);
+  assert.deepEqual((await f.calls()).map(row=>row.kind),['sessions','prompt']);
 });

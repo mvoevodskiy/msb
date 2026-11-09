@@ -1045,3 +1045,25 @@ is shown without rounding it up. Missing numeric usage is stated
 as unknown. Paid cost and the separate metered estimate retain
 their old labels. Unusable numeric fields are excluded without
 discarding readable journal rows.
+
+Direct conversational cleanup
+-----------------------------
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js, readable with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+The owner prompt at 24596/24601 asks for CANCEL_SPENT on its own
+line for the historical group. PLA/Ga at 25821–25867 check the
+rest of the line and ignore examples. uz at 26625–26651 strips
+non-executing mentions, accepts leading prose with an empty suffix,
+and executes repeated valid markers in order. The dispatcher at
+26785–26857 handles STOP/RESUME first, then direct cleanup, then
+LIST_TASKS and SHOW_TASK regardless of their textual positions.
+
+CANCEL_SPENT at 26812–26821 calls kg without an additional question
+when the owner explicitly requests cleanup. The collector gate
+(106668–106696) permits CC and OC and is independent of STOP.
+kg at 23565–23587 re-reads enabled once rows with a run stamp and no
+pending confirmation (G4 at 23243–23245). Live, disabled and pending
+records are outside that group. It returns the original empty,
+removed or partial result. The prior ownership limitation for
+native unregistration (45943–45965 / 45980–46015) still applies.
