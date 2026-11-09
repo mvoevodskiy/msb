@@ -2,8 +2,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import {mcpFixture} from './helpers/mcp-fixture.mjs';
 import {loadState,saveState} from '../src/state.mjs';
+import {readOpenClawMcp} from '../src/mcp/openclaw.mjs';
 const text=f=>f.edits.at(-1)||'';
 const buttons=f=>f.editOptions.at(-1)?.reply_markup?.inline_keyboard.flat()||[];
 const labels=f=>buttons(f).map(b=>b.text);
@@ -65,17 +67,37 @@ test('MCP catalog does not launch native code for an unauthorized callback',asyn
   assert.deepEqual(await f.calls(),[]);assert.equal(f.edits.length,0);
 });
 
+async function waitForConfigRead(f) {
+  const until=Date.now()+1800;
+  while(!(await f.calls()).some(row=>row.method==='config/read')) {
+    assert.ok(Date.now()<until,'The native config read must start');
+    await new Promise(resolve=>setTimeout(resolve,5));
+  }
+}
+
 test('MCP late config result cannot replace newer navigation',async t=>{
   const f=await mcpFixture(t,'codex',{mode:'hold'});
   try {
     await f.callback('menu:mcp',42,{wait:false});
-    const until=Date.now()+1800;
-    while(!(await f.calls()).some(row=>row.method==='config/read')) {
-      assert.ok(Date.now()<until,'The native config read must start');await new Promise(r=>setTimeout(r,5));
-    }
+    await waitForConfigRead(f);
     await f.callback('menu:back');const latest=text(f),edits=f.edits.length;
     await f.release();await Promise.allSettled([...(f.bot[Symbol.for('msb.callbackTasks')]||[])]);
     assert.equal(text(f),latest);assert.equal(f.edits.length,edits);
+  }finally{await f.release();}
+});
+
+test('MCP late catalog cannot render after an owner switches provider in another chat',async t=>{
+  const f=await mcpFixture(t,'codex',{mode:'hold'});
+  process.env.CLAUDE_CODE_OAUTH_TOKEN='fixture-claude-token';
+  try {
+    await f.callback('menu:mcp',42,{wait:false});
+    await waitForConfigRead(f);
+    await f.callback('ext:conn:set:claude',42,{chatId:190});
+    assert.ok(!(await loadState()).state.extAuthBypass,'The owner has switched to Claude');
+    const edits=f.edits.length;
+    await f.release();
+    await Promise.allSettled([...(f.bot[Symbol.for('msb.callbackTasks')]||[])]);
+    assert.equal(f.edits.length,edits,'The former provider must not edit its catalog');
   }finally{await f.release();}
 });
 
@@ -85,6 +107,47 @@ test('MCP card references stay with the original provider and config root',async
   await fs.writeFile(f.config,JSON.stringify({mcpServers:{'native-only':{command:'node'}}}));
   await f.callback(ref);assert.match(text(f),/MCP-сервер не найден/);
   assert.ok(!text(f).includes('Tools:'));
+});
+
+test('MCP card reference becomes stale after switching the Claude config directory',async t=>{
+  const f=await mcpFixture(t);
+  await f.callback('mcp:folder:workspace');
+  const ref=button(f,'zulu');
+  const directory=path.join(f.home,'second-claude');
+  await fs.mkdir(directory);
+  await fs.writeFile(path.join(directory,'.claude.json'),JSON.stringify({mcpServers:{zulu:{command:'node'}}}));
+  process.env.CLAUDE_CONFIG_DIR=directory;
+  await f.callback(ref);
+  assert.match(text(f),/MCP-сервер не найден/);
+});
+
+test('OpenClaw MCP retries one native failure with the old cold and warm timeouts',async()=>{
+  const attempts=[];
+  const result=await readOpenClawMcp({retryMs:0,read:async(argv,{timeoutMs})=>{
+    attempts.push({argv,timeoutMs});
+    if(attempts.length===1)return null;
+    return JSON.stringify({servers:[{name:'native',cmd:'node',args:['fixture-private-args']}]});
+  }});
+  assert.deepEqual(attempts,[
+    {argv:['mcp','list','--json'],timeoutMs:45_000},
+    {argv:['mcp','list','--json'],timeoutMs:15_000},
+  ]);
+  assert.deepEqual(result,[{name:'native',transport:'stdio',target:'node'}]);
+});
+
+test('OpenClaw MCP stops before retrying if navigation cancels the read',async()=>{
+  const controller=new AbortController();
+  let calls=0,firstRead;
+  const started=new Promise(resolve=>{firstRead=resolve;});
+  const result=readOpenClawMcp({signal:controller.signal,retryMs:1000,read:async()=>{
+    calls++;
+    firstRead();
+    return null;
+  }});
+  await started;
+  controller.abort();
+  assert.equal(await result,null);
+  assert.equal(calls,1);
 });
 
 test('OpenClaw MCP uses its own sorted old list with no card buttons and no URL credentials',async t=>{

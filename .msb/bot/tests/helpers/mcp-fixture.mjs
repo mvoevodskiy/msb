@@ -50,9 +50,9 @@ console.log(JSON.stringify(data.servers));`;
   await fs.writeFile(path.join(bin,'openclaw'),'#!'+process.execPath+'\n'+ocScript,{mode:0o700});
   async function calls(){try{return(await fs.readFile(log,'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse);}
     catch(e){if(e.code==='ENOENT')return[];throw e;}}
-  async function callback(data,uid=42,{wait=true}={}) {
+  async function callback(data,uid=42,{wait=true,...renderOptions}={}) {
     const tasks=Symbol.for('msb.callbackTasks'),old=new Set(f.bot[tasks]||[]);
-    await f.callback(data,uid,{waitForRender:false});
+    await f.callback(data,uid,{...renderOptions,waitForRender:false});
     if(wait)await Promise.allSettled([...(f.bot[tasks]||[])].filter(task=>!old.has(task)));
   }
   return {...f,config,native,sidecar,calls,callback,release:()=>fs.writeFile(released,'released')};

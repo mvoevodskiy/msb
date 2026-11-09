@@ -20,8 +20,8 @@ row or absence of failure status does not prove a connected service.
 
 OpenClaw branch at 111805–27 uses native mcp list --json, without file
 fallback. 30069–30132 accept arrays and objects at mcp.servers, servers or
-root. 30213–38 retries once with delay. Old defaults at 32800–02 are 15s
-and 2s, with a separate first cold timeout. 30574–30604 sorts names, shows
+root. 30213–38 retries once with delay. Old defaults at 32800–04 are 15s
+and 2s, with a 45s first cold timeout. 30574–30604 sorts names, shows
 transport and target and bounds the output. It shows Add and Back only.
 Stale cards must not read a different provider. New callbacks bind the
 provider and config root to a bounded reference. The old literals may
@@ -41,6 +41,13 @@ may perform HTTP auth discovery and emit raw env/headers. Protocol source
 rust-v0.166.0 codex-rs/app-server-protocol/src/protocol/v2/config.rs at
 73–82, 319–336 and 388–409. CLI source codex-rs/cli/src/mcp_cmd.rs at
 645–709. UI uses the same owned read scope and delivery as other menus.
+The runtime adapter was also called against the installed 0.166 binary in
+an isolated network namespace. A trusted repo added a repo-only server,
+a decoy default HOME added a wrong-home server and the custom CODEX_HOME
+contained two user entries with fixture headers and env values. The
+adapter returned only the two projected user rows. An empty symlinked
+CODEX_HOME returned no rows and did not create config.toml. Both checks
+used an owned scratch profile, no credentials and no model or MCP turn.
 
 Write obligations for later stages. 120970–121073 Add lists only absent
 Supadata/Apify names, starts the exact token forms, and lets the user ask

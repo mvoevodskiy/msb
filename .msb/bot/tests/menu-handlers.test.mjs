@@ -321,11 +321,12 @@ test('all baseline menu button routes remain reachable', async (t) => {
   const callbacks = (v) => v.keyboard.inline_keyboard.flat().map((b) => b.callback_data).filter(Boolean);
   const state = { ...(await loadState()).state, permissionMode: 'auto', autonomyRights: false };
   await saveState(state);
+  const screenInput = { mcpScreen: 0, mcpWorkspaceScreen: { entries: [] } };
   for (const [name, expected] of Object.entries(contract.screens)) {
     // The pinned open-core snapshot exposed NODE_ENV deletion. Old bY55151
     // protects it; this one unsafe action is restored by the env contract.
     const restored = name === 'envScreen' ? expected.filter(data => data !== 'settings:env:delete:NODE_ENV') : expected;
-    assert.deepEqual(callbacks(await screens[name](state)), restored, name);
+    assert.deepEqual(callbacks(await screens[name](screenInput[name] ?? state)), restored, name);
   }
   for (const [name, expected] of Object.entries(contract.overlay)) assert.deepEqual(callbacks(await overlay[name](process.env, f.home)), expected, name);
 });

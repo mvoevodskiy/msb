@@ -3,7 +3,7 @@
  * plan:* → [actions](../plan-actions.mjs) → существующий inbox; [handoff checks](../../../tests/plan-handoff.test.mjs).
  * Навигация: [Telegram](../README.md).
  */
-import { agentScreen, autonomyHomeScreen, hubScreen, mcpScreen, settingsScreen } from '../screens.mjs';
+import { agentScreen, autonomyHomeScreen, hubScreen, settingsScreen } from '../screens.mjs';
 import { UNHANDLED } from './shared.mjs';
 
 export async function handleNavigationRoute({ data, state, show, pending, chatId, bot }) {
@@ -14,7 +14,6 @@ export async function handleNavigationRoute({ data, state, show, pending, chatId
   if (data === 'menu:settings' || data === 'settings:back') return show(settingsScreen(state));
   if (data === 'menu:agent') return show(await agentScreen(state));
   if (data === 'menu:autonomy' || data === 'auto:home') return show(await autonomyHomeScreen());
-  if (data === 'menu:mcp') return show(mcpScreen());
 
   return UNHANDLED;
 }

@@ -2,12 +2,14 @@
  * Owner boundary, отмена форм и передача события core.
  * Admission failure/cross-chat checks: [input boundary](../tests/input-boundary.test.mjs).
  * Native skills metadata → [Codex reader](../codex-skills.mjs), core read routes remain shared.
+ * Native MCP metadata → [Codex user catalog](../codex-mcp.mjs).
  * Навигация: [Обвязка](../README.md).
  */
 import { beginCallbackRender, runCallbackScope } from '../../shared/callback-renders.mjs';
 import { registerEngineProviderView } from '../engine-menu.mjs';
 import { registerCompactProvider } from '../compact-codex.mjs';
 import {registerSkillsProvider} from '../codex-skills.mjs';
+import {registerMcpProvider} from '../codex-mcp.mjs';
 import { clearPendingAuth } from '../auth.mjs';
 import { clearPendingLocalIp } from '../local-ssh.mjs';
 import { handleCallback } from './callbacks.mjs';
@@ -18,6 +20,7 @@ export function installUpdateHook(BotClass, env = process.env) {
   registerEngineProviderView(BotClass, env);
   registerCompactProvider(BotClass, env);
   registerSkillsProvider(BotClass, env);
+  registerMcpProvider(BotClass, env);
   const ownerId = Number(env.ADMIN_ID || env.OWNER_USER_ID || '0');
   const closedCore = env.MSB_USE_CLOSED_CORE === '1';
   const origHandleUpdate = BotClass.prototype.handleUpdate;

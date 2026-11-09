@@ -88,7 +88,7 @@ Owner boundary остаётся перед core router: middleware бота и h
 | [engines](routes/engines.mjs) | `handleEnginesRoute`: обычный экран и опциональный OS dispatcher |
 | [autonomy](routes/autonomy.mjs) | `handleAutonomyRoute`: задачи, история, таймеры и сохранённые права |
 | [monitor](routes/monitor.mjs) | `handleMonitorRoute`: источники, дайджест, сбор и настройки |
-| [workspace](routes/workspace.mjs) | `handleWorkspaceRoute`: MCP callbacks |
+| [workspace](routes/workspace.mjs) | `handleWorkspaceRoute`: MCP callbacks → [MCP](../mcp/README.md) |
 
 Диспетчер сохраняет исходный порядок; поздние setup/misc обработчики вызываются
 после workspace. Только [`UNHANDLED`](routes/shared.mjs) означает «не мой маршрут».

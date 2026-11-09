@@ -1,1 +1,49 @@
-{"version":"codex-cli 0.166.0","methods":["initialize","initialized","config/read"],"config_cwd_resolved":true,"isolated_custom_codex_home":true,"user_layer_names":["fixture_http","fixture_stdio"],"repo_only_in_effective":true,"contains_raw_header_and_env_values":true,"env_reference_names_preserved":true,"stdio_started":false,"config_exact":true,"owner_auth_used":false,"model_turns":0,"owned_profile_removed":true}
+{
+  "version": "codex-cli 0.166.0",
+  "methods": [
+    "initialize",
+    "initialized",
+    "config/read"
+  ],
+  "config_cwd_resolved": true,
+  "isolated_custom_codex_home": true,
+  "user_layer_names": [
+    "fixture_http",
+    "fixture_stdio"
+  ],
+  "repo_only_in_effective": true,
+  "contains_raw_header_and_env_values": true,
+  "env_reference_names_preserved": true,
+  "stdio_started": false,
+  "config_exact": true,
+  "owner_auth_used": false,
+  "model_turns": 0,
+  "owned_profile_removed": true,
+  "runtime_adapter": {
+    "version": "codex-cli 0.166.0",
+    "production_adapter": true,
+    "network_namespace_isolated": true,
+    "projected_fields": [
+      "name",
+      "transport"
+    ],
+    "projection": [
+      {
+        "name": "fixture_http",
+        "transport": "http"
+      },
+      {
+        "name": "fixture_stdio",
+        "transport": "stdio"
+      }
+    ],
+    "native_config_byte_exact": true,
+    "user_layer_excluded_repo_and_decoy": true,
+    "empty_symlinked_home": true,
+    "empty_config_created": false,
+    "configured_stdio_started": false,
+    "owner_auth_used": false,
+    "model_turns": 0,
+    "owned_profile_removed": true
+  }
+}

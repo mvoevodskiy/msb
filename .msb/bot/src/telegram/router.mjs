@@ -27,7 +27,7 @@ import { handleSettingsRoute } from './routes/settings.mjs';
 import { handleEnginesRoute } from './routes/engines.mjs';
 import { handleAutonomyRoute } from './routes/autonomy.mjs';
 import { handleMonitorRoute } from './routes/monitor.mjs';
-import { handleWorkspaceRoute } from './routes/workspace.mjs';
+import {handleWorkspaceRoute,isMcpReadCallback} from './routes/workspace.mjs';
 import { handleProjectRoute } from './routes/projects.mjs';
 import {handleSessionRoute} from './routes/sessions.mjs';
 import {handleSkillRoute,isSkillReadCallback} from './routes/skills.mjs';
@@ -64,7 +64,7 @@ export async function handleCallback({ bot, cfg, pending, ctx, plan }) {
   const scope = beginCallbackRender(bot, ctx.callbackQuery);
   // Read-only status/catalog views are detached. Authorized mutations retain their
   // existing execution order; navigation invalidates their rendering, not writes.
-  const deferred = ['eng:status','settings:pult:refresh','menu:agent','settings:model','settings:model:ver','settings:effort'].includes(data) || isSkillReadCallback(data);
+  const deferred = ['eng:status','settings:pult:refresh','menu:agent','settings:model','settings:model:ver','settings:effort'].includes(data) || isSkillReadCallback(data) || isMcpReadCallback(data);
   if (data === 'settings:pult:refresh') cancelPultInput(pending, chatId);
   let answered = false;
   const answer = async options => {
