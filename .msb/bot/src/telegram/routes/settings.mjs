@@ -5,7 +5,7 @@
  * [Old form contract](../../../tests/reference/parity-forms-contract.txt),
  * [handler tests](../../../tests/menu-handlers.test.mjs).
  */
-import { SPEND_LIMIT_CHOICES } from '../../billing/owner-spend.mjs';
+import { savedSpendLimit } from '../../billing/owner-spend.mjs';
 import { updateState } from '../../state.mjs';
 import { envScreen, envDeleteScreen, limitScreen, settingsScreen, notificationsScreen, serverStatusScreen, sttScreen, tzScreen } from '../screens.mjs';
 import { skipEnvComment } from '../forms/env.mjs';
@@ -59,9 +59,9 @@ export async function handleSettingsRoute({ data, state, show, pending, chatId, 
   }
   if (data === 'settings:limit') return show(limitScreen(state, now()));
   if (data === 'settings:cost:resume' || data.startsWith('settings:limit:set:')) {
-    const raw = data.slice('settings:limit:set:'.length);
-    const limit = SPEND_LIMIT_CHOICES.find(choice => String(choice) === raw);
-    if (data !== 'settings:cost:resume' && limit === undefined) return;
+    const resume = data === 'settings:cost:resume';
+    const limit = resume ? undefined : savedSpendLimit(data.slice('settings:limit:set:'.length));
+    if (!resume && limit === undefined) return;
     const saved = await updateState(current => {
       if (limit !== undefined) current.dailySpendLimit = limit;
       current.costPaused = false;

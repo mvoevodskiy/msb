@@ -39,10 +39,11 @@ selected value. 52942–52953 clears a pause on any selection or
 the old explicit resume callback. Both return to settings
 (53845–53854) without changing costHistory or lastCostAlert.
 The old readable bundle has a resume handler but no emitting
-keyboard for it. No new button is added. A stale or invalid
-preset cannot change the saved state. Existing positive presets,
-the owner's manually saved zero, and the current no-default-read
-contract are preserved.
+keyboard for it. No new button is added. Finite numeric callback
+values remain accepted even if they are not visible presets.
+An invalid amount cannot change saved state. Existing positive
+presets, the owner's manually saved zero, and the current
+no-default-read contract are preserved.
 
 Worker 110354–110362 returns the old paused message before
 dispatch even after the date changes. The open-core worker checks
