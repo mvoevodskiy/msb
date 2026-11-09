@@ -341,3 +341,17 @@ test('OpenClaw task text changes only an explicitly local row',async t=>{
   assert.deepEqual(retained,native);
   assert.deepEqual((await f.calls()).map(row=>row.kind),['sessions','prompt']);
 });
+
+test('OpenClaw legacy timer conversation changes the shared local schedule without a Gateway write',async t=>{
+  const f=await prepare(t,{runTurn:runAgentTurn,reply:'[TIMER_OFF: fixture]'});
+  process.env.AUTONOMY_ENABLED='1';
+  const timer={id:'fixture',name:'Утренний',enabled:true,type:'daily',hour:9,prompt:'Текст таймера'};
+  const file=path.join(actionRoot(),'schedules.json');
+  await fs.writeFile(file,JSON.stringify([timer]));
+  await f.message('Выключи прежний таймер');
+  await until(()=>f.edits.some(text=>text.includes('⏱')),'OpenClaw fixture did not finish',10_000);
+  assert.match(seen('prompt',await f.calls()).prompt,/\[TIMER_OFF:/);
+  assert.match(f.edits.at(-1),/Готово: таймер «Утренний» выключил/);
+  assert.deepEqual(JSON.parse(await fs.readFile(file,'utf8')),[{...timer,enabled:false,disabledBy:'owner'}]);
+  assert.deepEqual((await f.calls()).map(row=>row.kind),['sessions','prompt']);
+});
