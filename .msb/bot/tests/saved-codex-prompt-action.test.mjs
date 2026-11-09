@@ -1,0 +1,138 @@
+/**
+ * Saved Codex actions through the same [scheduler](../src/autonomy/scheduler.mjs)
+ * and overlay registration as the bot. Old permissions and session boundary
+ * are recorded in [the contract](./reference/parity-autonomy-contract.txt).
+ */
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
+import { startScheduler } from '../src/autonomy/scheduler.mjs';
+import { setOwnerPause } from '../src/autonomy/owner-pause.mjs';
+import { actionRoot, statePath } from '../src/paths.mjs';
+import { loadState, saveState } from '../src/state.mjs';
+import { fixture } from './helpers/menu-fixture.mjs';
+
+const now = Date.parse('2026-11-09T12:00:00.000Z');
+const owner = 42;
+const original = {
+  id: 'codex-task', name: 'Сохранённый сбор', enabled: true, runner: 'auto',
+  trigger: { kind: 'interval', intervalMinutes: 60 },
+  task: { kind: 'prompt', prompt: 'Выполни сохранённую задачу' },
+  capability: 'read', authority: { profile: 'standard' }, output: { format: 'tg-message' },
+};
+
+async function profile(t, { action = original, hold = false, apiAuth = false } = {}) {
+  const f = await fixture(t, async () => assert.fail('A saved action must not call the owner turn'),
+    { overlay: true, runtimeProfile: 'jar1' });
+  process.env.AUTONOMY_ENABLED = '1';
+  for (const key of ['AUTONOMY_DIR', 'MSB_SESSION_DIR', 'IIA_SESSION_DIR', 'AUTONOMY_DAILY_CAP_USD',
+    'AUTONOMY_DAILY_CAP_RUNS', 'AUTONOMY_DAILY_CAP_TOKENS', 'AUTONOMY_RESERVE_FRACTION']) delete process.env[key];
+  process.env.OPENAI_API_KEY = 'inherited-fixture-key';
+  process.env.CODEX_ACCESS_TOKEN = 'inherited-fixture-token';
+  process.env.OPENAI_BASE_URL = 'http://127.0.0.1:9/wrong';
+  const native = path.join(f.home, 'chosen-codex-home');
+  const wrong = path.join(f.home, '.codex');
+  process.env.CODEX_HOME = native;
+  await Promise.all([native, wrong].map(dir => fs.mkdir(dir)));
+  const auth = path.join(native, 'auth.json'), config = path.join(native, 'config.toml');
+  await fs.writeFile(auth, JSON.stringify(apiAuth
+    ? { auth_mode: 'api_key', OPENAI_API_KEY: 'fixture-file-key' }
+    : { auth_mode: 'chatgpt', tokens: { access_token: 'fixture-native-access' } }));
+  await fs.writeFile(path.join(wrong, 'auth.json'), JSON.stringify(apiAuth
+    ? { auth_mode: 'chatgpt', tokens: { access_token: 'fixture-wrong-profile' } }
+    : { auth_mode: 'api_key', OPENAI_API_KEY: 'fixture-wrong-profile' }));
+  await fs.writeFile(config, 'model = "gpt-6.1-sol"\n');
+  const log = path.join(f.home, 'codex-call.json');
+  const stopped = path.join(f.home, 'codex-stopped');
+  const bin = path.join(f.home, 'codex-bin');
+  await fs.mkdir(bin);
+  const cli = path.join(bin, 'codex');
+  await fs.writeFile(cli, '#!' + process.execPath + '\n' + [
+    'const fs = require("node:fs");',
+    'const argv = process.argv.slice(2);',
+    'if (argv[0] === "--version") { console.log("codex-cli 0.166.0"); process.exit(0); }',
+    'const input = fs.readFileSync(0, "utf8");',
+    'const active = () => fs.writeFileSync(' + JSON.stringify(log) + ', JSON.stringify({ argv, input, cwd: process.cwd(),',
+    ' home: process.env.CODEX_HOME, api: !!process.env.OPENAI_API_KEY, access: !!process.env.CODEX_ACCESS_TOKEN,',
+    ' base: !!process.env.OPENAI_BASE_URL }));',
+    'const emit = event => console.log(JSON.stringify(event));',
+    'const reply = () => {',
+    ' emit({type:"thread.started",thread_id:"0199a213-81c0-7800-8aa1-bbab2a035a54"});',
+    ' emit({type:"item.completed",item:{type:"agent_message",text:"Фоновый ответ Codex"}});',
+    ' emit({type:"turn.completed",usage:{input_tokens:30,cached_input_tokens:8,output_tokens:5}});',
+    '};',
+    ...(hold ? [
+      'process.on("SIGINT", () => { fs.writeFileSync(' + JSON.stringify(stopped) + ', "stopped"); reply(); process.exit(0); });',
+      'active(); setInterval(() => {}, 1000);',
+    ] : ['active(); reply();']),
+  ].join('\n'), { mode: 0o700 });
+  process.env.PATH = [bin, process.env.PATH].join(path.delimiter);
+  await saveState({ ...(await loadState()).state, engine: 'cc', authMode: 'subscription', hasSubscriptionAuth: true,
+    extAuthBypass: 'codex', chatId: owner, userId: owner, timezone: 'Europe/Moscow',
+    ccSessionId: 'ext:codex:0199a213-81c0-7800-8aa1-bbab2a035a53', projectId: 'owner-current',
+    lastCcUsage: { inputTokens: 900 } });
+  const root = actionRoot(), autonomy = path.join(root, 'autonomy');
+  const file = path.join(root, 'actions.json');
+  await fs.mkdir(autonomy, { recursive: true });
+  await fs.writeFile(file, JSON.stringify([action]));
+  const scheduler = startScheduler({ api: f.bot.api, adminId: owner, timezone: 'Europe/Moscow',
+    now: () => now, runCodexPrompt: f.bot[Symbol.for('msb.savedCodexPrompt')],
+    runTurn: async () => assert.fail('A saved action must not use the interval compatibility turn'), log() {} });
+  t.after(() => scheduler.stop());
+  return { ...f, native, scheduler, autonomy, stopped, files: [statePath(), f.storeFile, auth, config],
+    actions: async () => JSON.parse(await fs.readFile(file, 'utf8')),
+    runs: async () => (await fs.readFile(path.join(autonomy, 'runs.jsonl'), 'utf8'))
+      .trim().split('\n').map(JSON.parse),
+    call: async () => JSON.parse(await fs.readFile(log, 'utf8').catch(error => {
+      if (error.code === 'ENOENT') return 'null';
+      throw error;
+    })) };
+}
+
+test('the saved action launches Codex independently of the normal conversation', async t => {
+  const f = await profile(t);
+  const snapshot = () => Promise.all(f.files.map(file => fs.readFile(file)));
+  const before = await snapshot();
+  await f.scheduler.tickNow();
+  const call = await f.call();
+  assert.ok(call, 'Codex must run the due saved action');
+  assert.equal(call.home, f.native);
+  assert.deepEqual([call.api, call.access, call.base], [false, false, false]);
+  assert.equal(call.cwd, await fs.realpath(path.join(f.autonomy, 'cc-workspace')));
+  for (const flag of ['--ephemeral', '--ignore-user-config', '--ignore-rules', 'read-only', 'features.shell_tool=false']) {
+    assert.ok(call.argv.includes(flag), flag);
+  }
+  assert.ok(!call.argv.includes('resume'));
+  assert.match(call.input, /Выполни сохранённую задачу/);
+  assert.deepEqual(await snapshot(), before);
+  assert.equal((await f.actions())[0].lastStatus, 'ok');
+  const [run] = await f.runs();
+  assert.deepEqual([run.status, run.costUsd, run.tokensIn, run.tokensOut], ['ok', 0, 30, 5]);
+  assert.deepEqual(f.messages, ['Фоновый ответ Codex']);
+});
+
+test('owner pause interrupts saved Codex and discards a late model reply', async t => {
+  const f = await profile(t, { hold: true });
+  const tick = f.scheduler.tickNow();
+  for (let attempt = 0; attempt < 500 && !(await f.call()); attempt++) {
+    const ended = await Promise.race([tick.then(() => true), delay(10).then(() => false)]);
+    if (ended) break;
+  }
+  assert.ok(await f.call(), 'The saved Codex process must start before pause');
+  await setOwnerPause(true, { now, check() {}, checkEngine() {} });
+  await tick;
+  assert.equal(await fs.readFile(f.stopped, 'utf8'), 'stopped');
+  assert.deepEqual(await f.actions(), [original]);
+  assert.equal((await f.runs())[0].status, 'stopped');
+  assert.deepEqual(f.messages, []);
+});
+
+test('API-only Codex auth in the effective native home cannot run a saved subscription action', async t => {
+  const f = await profile(t, { apiAuth: true });
+  await f.scheduler.tickNow();
+  assert.equal(await f.call(), null);
+  assert.deepEqual(await f.actions(), [original]);
+  assert.deepEqual(f.messages, []);
+});
