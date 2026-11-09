@@ -1,7 +1,9 @@
 MCP old-to-new contract and evidence
 
-Baseline. Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf, readable
-.msb/bot/vendor/deobfuscated.js blob 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11.
+Baseline. Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf keeps the
+bundled entry at .iia/bot/index.js. The readable reference is
+cfa19389d535d48c161b4bbda7c54aa7649c90f6:.msb/bot/vendor/deobfuscated.js,
+blob 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11.
 Read git show BLOB | sed -n 'FIRST,LASTp'. Audit base and last accepted JAR1
 source 736e6bc05b7e678b96178b41a11e23c904aa5f98. Its workspace renderer has
 no catalog, card or configuration writes. The work is split into read views,
