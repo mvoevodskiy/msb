@@ -732,3 +732,46 @@ row and local-route guards with admission. A saved prompt must
 have a supported plan for the selected route before it can be
 changed or offered. Unsupported and foreign records stay put.
 Usage, spend and breaker checks remain downstream for a due run.
+
+
+Register a recurring literal reminder from the conversation.
+
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Read the preserved bundle using
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+The owner prompt at 24616–24648 describes recurring cron and
+literal reminder text. applyTaskMarkers at 106646–106707 and
+detectTaskMarkers at 26729–26748 dispatch final SCHEDULE_TASK JSON.
+Dz/zz at 22546–22587 and 22499–22545 trim a five-field cron and
+reject a recognized spacing below 60 minutes. They store
+kind=cron with the explicit timezone or the owner's default.
+An interval is a stored trigger type, not the recurring marker
+shape. Pr/Or at 22822–22852 and 22934–22956 trim literal text and
+supply the name. _r at 23002–23064, Q9 at 3994–4006 and
+kr at 23425–23427 construct the local action and conv-reminder ID.
+
+yg at 23255–23386 checks active capacity (ZM at 11529–11547),
+registers and then confirms. y7 at 46174–46190 writes the local
+action before returning success. STOP still permits registration
+and adds the existing paused copy after persistence. iqA/U0 at
+23162–23241 show the schedule and next firing. D9 at 21242–21274
+searches from the following minute for up to 45 days (21361).
+Its forecast reads the trigger timezone. Old local lwA/nwA at
+36119–36140 and 36228–36268 actually use the owner's timezone.
+The current local due path uses that clock. A confirmation must
+show the effective clock; the recorded explicit zone is retained.
+
+Old yg adds three independent advisories after registration:
+same-time twins (xqA/Er 22032–22096), legacy timer overlap
+(ER 17055–17105) and load of five or more runs per day
+(Gr/vqA 22189–22273, sample 28 days at 22296, threshold 24538).
+Rr/gr at 22812–22821 and yg at 23321–23383 provide the copy.
+These advisories do not reject the task or modify the existing rows.
+
+New registration must reject cron fields that the direct matcher
+cannot parse or that use out-of-range values. The old field count
+alone could save a schedule with no executable slot. Likewise an
+invalid explicit zone could fail D9 after the action was saved.
+These checks apply to registration; existing saved records and
+the old local due clock stay compatible. Named follow-ups,
+prompt actions and native OpenClaw registration are separate.
