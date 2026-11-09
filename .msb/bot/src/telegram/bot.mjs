@@ -399,7 +399,8 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       return;
     }
 
-    if (!hasClaudeAuth(process.env, state)) {
+    // The named OpenClaw runner validates its own native profile.
+    if (state.engine !== 'oc' && !hasClaudeAuth(process.env, state)) {
       const view = setupScreen();
       await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
       return;

@@ -83,3 +83,12 @@ The container owns all runtime writes. Host data and credentials are outside
 its mounts. The standalone script uses the local model/MCP stub instead of
 external accounts. The Gateway sessions and both temporary profiles disappear
 with the container.
+
+Ordinary Telegram text also has to reach the runner. The old text
+handler queues the status and content at 119855–119869, the worker
+calls X1A at 110655, and X1A dispatches explicit OC at 55938–55955
+before Claude auth. The open-core text ingress had retained an
+unconditional Claude check after setup mode had already accepted OC.
+The native route uses its own credentials. The production Telegram
+fixture verifies both OC without a Claude login and the still-gated
+unauthenticated local Claude text.

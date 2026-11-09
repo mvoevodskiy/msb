@@ -9,6 +9,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {mcpFixture} from './helpers/mcp-fixture.mjs';
+import {until} from './helpers/reminder-registration-fixture.mjs';
 import {runAgentTurn} from '../src/agent/turn.mjs';
 import {loadState,saveState} from '../src/state.mjs';
 import {resetCliConversation} from '../src/sessions/selection.mjs';
@@ -18,8 +19,8 @@ const ccSessionId='untouched-claude-session';
 const seen=(kind,rows)=>rows.find(row=>row.kind===kind);
 const fixtureSessionId='fixture-acp-session';
 
-async function prepare(t,{state={},behavior='ok'}={}){
-  const f=await mcpFixture(t,'oc');
+async function prepare(t,{state={},behavior='ok',runTurn}={}){
+  const f=await mcpFixture(t,'oc',{runTurn});
   await saveState({engine:'oc',ccSessionId,...state});
   for(const key of ['CLAUDE_CODE_OAUTH_TOKEN','ANTHROPIC_API_KEY','IIA_ANTHROPIC_API_KEY','MSB_ANTHROPIC_API_KEY'])delete process.env[key];
   process.env.BOT_TOKEN='fixture-telegram-secret';
@@ -198,4 +199,21 @@ test('legacy automatic turn still uses the named native OpenClaw session', async
   const prompt = seen('prompt', await f.calls());
   assert.ok(prompt.prompt.includes('Owned scheduled OC input'));
   assert.equal((await loadState()).state.ocSessionId, fixtureSessionId);
+});
+
+test('Telegram queues ordinary OpenClaw text without a Claude login',async t=>{
+  const f=await prepare(t,{runTurn:runAgentTurn});
+  await f.message('Проверь обычный ход');
+  assert.doesNotMatch(f.messages.join('\n'),/Сначала подключи AI/);
+  assert.match((await f.waitForPrompt()).prompt,/Проверь обычный ход/);
+  await until(()=>f.edits.some(text=>text.includes('OpenClaw fixture reply') && text.includes('⏱')),
+    'OpenClaw reply did not reach Telegram');
+  assert.equal((await loadState()).state.ccSessionId,ccSessionId);
+});
+
+test('Telegram retains the local text setup gate for unauthenticated Claude',async t=>{
+  const f=await prepare(t,{runTurn:runAgentTurn,state:{engine:'cc',authMode:'subscription'}});
+  await f.message('Проверь обычный ход');
+  assert.match(f.messages.at(-1),/Сначала подключи AI/);
+  assert.deepEqual(await f.calls(),[]);
 });
