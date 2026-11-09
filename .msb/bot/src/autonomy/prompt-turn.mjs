@@ -1,6 +1,6 @@
 /**
- * Execute a stateless saved prompt via [native Claude](../agent/claude.mjs) in
- * the old autonomy workspace. [Policy](./prompt-policy.mjs) supplies its tools.
+ * Execute a stateless saved prompt in the old autonomy workspace. [Policy](./prompt-policy.mjs)
+ * supplies the tools for [Claude](../agent/claude.mjs) or the registered Codex adapter.
  * [Dispatcher](./reminder-dispatch.mjs) owns cancellation, delivery and history.
  */
 import fs from 'node:fs/promises';
@@ -17,7 +17,7 @@ const quietMarker = '[NOTHING_TO_REPORT]';
 const stopped = { status: 'stopped', detail: 'ход прерван остановкой фоновых задач' };
 const deferred = { status: 'deferred', detail: 'изолированный запуск сейчас недоступен' };
 
-async function backgroundDenials(env) {
+async function protectedPaths(env, provider) {
   const home = homeDir(env);
   const runtime = msbRoot(env);
   const bot = botRoot(env);
@@ -29,12 +29,14 @@ async function backgroundDenials(env) {
     path.join(runtime, 'bots', '**', 'ext-providers.json'), path.join(runtime, 'bots', '**', 'sessions', '**'),
     path.join(bot, '.env'), path.join(bot, 'state.json'), path.join(bot, 'ext-providers.json'),
     path.join(sessionDir(env), '**'), path.join(action, 'actions.json'), path.join(action, 'autonomy', '*.json*')];
+  if (provider === 'codex') {
+    paths.push(path.join(runtime, 'bots', '**', 'actions.json'),
+      path.join(action, '.records-*', '**'), path.join(action, 'autonomy', '.records-*', '**'));
+  }
   if (env.CLAUDE_CONFIG_DIR) paths.push(path.join(env.CLAUDE_CONFIG_DIR, '**'));
   if (env.CODEX_HOME) paths.push(path.join(env.CODEX_HOME, '**'));
   const physical = await Promise.all(paths.map(value => physicalRecordPath(path.resolve(value)).catch(() => path.resolve(value))));
-  return ['mcp__*', 'Bash', 'Monitor', 'Skill', 'Workflow',
-    ...[...new Set([...paths.map(value => path.resolve(value)), ...physical])].flatMap(value =>
-      ['Read', 'Edit'].map(tool => `${tool}(/${value})`))];
+  return [...new Set([...paths.map(value => path.resolve(value)), ...physical])];
 }
 
 function taskInstructions(action, quiet) {
@@ -63,7 +65,7 @@ function quietResult(value) {
   return quietText(lines.pop()) === quietMarker && lines.filter(line => /^\s*```/.test(line)).length % 2 === 0;
 }
 
-export async function runSavedClaudePrompt(action, plan, { signal, isCurrent }, env = process.env) {
+export async function runSavedPrompt(action, plan, { signal, isCurrent, runCodexPrompt }, env = process.env) {
   if (signal.aborted) return stopped;
   const root = actionRoot(env);
   const expected = path.join(await fs.realpath(root), 'autonomy', 'cc-workspace');
@@ -72,29 +74,41 @@ export async function runSavedClaudePrompt(action, plan, { signal, isCurrent }, 
   await fs.mkdir(logical, { recursive: true, mode: 0o700 });
   const cwd = await fs.realpath(logical);
   if (cwd !== expected) return deferred;
-  const disallowedTools = await backgroundDenials(env);
-  if (await fs.realpath(logical) !== cwd || !await isCurrent()) return deferred;
-  const { state } = await loadState(env);
-  if (signal.aborted) return stopped;
-  if (!isDeepStrictEqual(savedPromptPlan(action, state, env), plan)) return deferred;
+  const denied = await protectedPaths(env, plan.provider);
+  const directories = [homeDir(env), os.tmpdir()];
+  const canLaunch = async () => {
+    if (signal.aborted || await fs.realpath(logical) !== cwd || !await isCurrent()) return false;
+    const { state } = await loadState(env);
+    return !signal.aborted && isDeepStrictEqual(savedPromptPlan(action, state, env, Boolean(runCodexPrompt)), plan);
+  };
 
   const timeout = AbortSignal.timeout(plan.timeoutMs);
+  const turnSignal = AbortSignal.any([signal, timeout]);
+  const prompt = taskInstructions(action, plan.quiet);
   let result;
   try {
-    result = await runClaudeTurn({ prompt: taskInstructions(action, plan.quiet), cwd, providerId: 'claude',
-      permissionMode: 'acceptEdits', model: plan.model, autonomy: true, allowedTools: plan.tools,
-      disallowedTools, isolated: { tools: plan.tools, directories: [homeDir(env), os.tmpdir()] },
-      signal: AbortSignal.any([signal, timeout]) });
+    if (plan.provider === 'codex') {
+      result = await runCodexPrompt?.({ prompt, cwd, model: plan.model, tools: plan.tools,
+        directories, denied, signal: turnSignal, canLaunch }, env);
+    } else if (await canLaunch()) {
+      const disallowedTools = ['mcp__*', 'Bash', 'Monitor', 'Skill', 'Workflow',
+        ...denied.flatMap(value => ['Read', 'Edit'].map(tool => tool + '(/' + value + ')'))];
+      result = await runClaudeTurn({ prompt, cwd, providerId: 'claude',
+        permissionMode: 'acceptEdits', model: plan.model, autonomy: true, allowedTools: plan.tools,
+        disallowedTools, isolated: { tools: plan.tools, directories }, signal: turnSignal });
+    }
   } catch {
     if (signal.aborted) return stopped;
-    return { status: 'error', error: 'не удалось запустить Claude для фоновой задачи' };
+    return { status: 'error', error: 'не удалось запустить ' + (plan.provider === 'codex' ? 'Codex' : 'Claude') + ' для фоновой задачи' };
   }
-  if (signal.aborted) return stopped;
+  if (signal.aborted) return result?.fileCommitStarted ? { ...stopped, fileCommitStarted: true } : stopped;
+  if (timeout.aborted && !result) return { status: 'error', error: 'ход прерван по сроку', timeout: true };
+  if (!result) return deferred;
   const usage = result.usage;
-  const metrics = { meteredUsd: result.meteredCostUsd, tokensIn: usage.inputTokens + usage.cacheReadTokens + usage.cacheCreationTokens,
+  const metrics = { meteredUsd: result.meteredCostUsd, fileCommitStarted: result.fileCommitStarted, tokensIn: usage.inputTokens + usage.cacheReadTokens + usage.cacheCreationTokens,
     tokensOut: usage.outputTokens };
   if (timeout.aborted) return { ...metrics, status: 'error', error: 'ход прерван по сроку', timeout: true, text: result.text };
-  if (result.isError || (result.providerId && result.providerId !== 'claude')) {
+  if (result.isError || (result.providerId && result.providerId !== plan.provider)) {
     return { ...metrics, status: 'error', error: 'ход движка не удался', text: result.assistantTextObserved ? result.text : '' };
   }
   if (plan.quiet && quietResult(result.text)) {

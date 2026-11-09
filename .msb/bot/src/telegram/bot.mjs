@@ -318,7 +318,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
 
   bot.command('autoactions', async (ctx) => {
     const { autonomyTasksScreen } = await import('./screens.mjs');
-    const view = await autonomyTasksScreen();
+    const view = await autonomyTasksScreen(undefined, Boolean(bot[Symbol.for('msb.savedCodexPrompt')]));
     await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
   });
 
@@ -554,6 +554,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       const autonomy = {
         ownerId: reminderOwner, rail: out.reminderRail, ok: out.ok, chatId, threadId: thread,
         timezone: cfg.timezone, now: now(), signal,
+        codexAvailable: Boolean(bot[Symbol.for('msb.savedCodexPrompt')]),
       };
       const reminders = await processReminderMarkers(out.text, autonomy);
       const pausedTasks = await processPauseMarkers(reminders, autonomy, ctx);

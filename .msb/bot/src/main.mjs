@@ -38,6 +38,7 @@ export async function main() {
     adminId: cfg.adminId,
     timezone: cfg.timezone,
     scheduledTurns: bot[Symbol.for('msb.scheduledTurns')],
+    runCodexPrompt: bot[Symbol.for('msb.savedCodexPrompt')],
   });
   const monitor = startMonitorScheduler({
     api: bot.api,

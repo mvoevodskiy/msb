@@ -8,7 +8,7 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { savedPromptPlan } from '../../src/autonomy/prompt-policy.mjs';
-import { runSavedClaudePrompt } from '../../src/autonomy/prompt-turn.mjs';
+import { runSavedPrompt } from '../../src/autonomy/prompt-turn.mjs';
 import { saveState } from '../../src/state.mjs';
 
 const nativeBin = process.argv[2];
@@ -106,7 +106,7 @@ const plan = savedPromptPlan(action, state);
 const cancel = AbortSignal.timeout(10_000);
 let outcome;
 try {
-  outcome = await runSavedClaudePrompt(action, plan, { signal: cancel, isCurrent: async () => true });
+  outcome = await runSavedPrompt(action, plan, { signal: cancel, isCurrent: async () => true });
 } finally {
   server.close();
 }

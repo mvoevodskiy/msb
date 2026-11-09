@@ -31,7 +31,7 @@ async function checkPolicy(context) {
   }
 }
 
-async function localActiveTasks(now) {
+async function localActiveTasks(now, codexAvailable) {
   const [intervals, saved, decisions, { state }] = await Promise.all([
     listTasks().catch(() => []),
     savedActionSnapshot().catch(() => ({ actions: [] })),
@@ -39,7 +39,7 @@ async function localActiveTasks(now) {
   ]);
   return [
     ...saved.actions.filter(action => reminderIsActive(action, decisions) &&
-      (action.task.kind === 'reminder' || savedPromptPlan(action, state)))
+      (action.task.kind === 'reminder' || savedPromptPlan(action, state, process.env, codexAvailable)))
       .map(action => ({ name: action.name, trigger: action.trigger })),
     ...intervals.filter(task => task && task.enabled !== false).map(task => {
       const next = new Date(task.nextAt ?? now);
@@ -104,7 +104,7 @@ async function changePause(command, context, ctx) {
     return { error: stop ? 'Не удалось остановить фоновые задачи.' : 'Не удалось снять стоп.' };
   }
   if (result.error) return result;
-  const tasks = await localActiveTasks(context.now);
+  const tasks = await localActiveTasks(context.now, context.codexAvailable);
   const text = stop ? await describeStop(result, tasks, ctx, context) : await describeResume(result, tasks, context);
   return { text };
 }

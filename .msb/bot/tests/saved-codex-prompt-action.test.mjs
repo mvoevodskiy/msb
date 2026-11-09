@@ -23,7 +23,7 @@ const original = {
   capability: 'read', authority: { profile: 'standard' }, output: { format: 'tg-message' },
 };
 
-async function profile(t, { action = original, hold = false, apiAuth = false } = {}) {
+async function profile(t, { action = original, hold = false, apiAuth = false, rotateAuth = false, writeEffect = false } = {}) {
   const f = await fixture(t, async () => assert.fail('A saved action must not call the owner turn'),
     { overlay: true, runtimeProfile: 'jar1' });
   process.env.AUTONOMY_ENABLED = '1';
@@ -52,8 +52,18 @@ async function profile(t, { action = original, hold = false, apiAuth = false } =
   await fs.writeFile(cli, '#!' + process.execPath + '\n' + [
     'const fs = require("node:fs");',
     'const argv = process.argv.slice(2);',
-    'if (argv[0] === "--version") { console.log("codex-cli 0.166.0"); process.exit(0); }',
+    'if (argv[0] === "--version") {',
+    ...(rotateAuth ? ['fs.writeFileSync(' + JSON.stringify(auth) + ', JSON.stringify({auth_mode:"api_key",OPENAI_API_KEY:"fixture"}));'] : []),
+    'console.log("codex-cli 0.166.0"); process.exit(0); }',
     'const input = fs.readFileSync(0, "utf8");',
+    ...(writeEffect ? [
+      'const key = "mcp_servers.saved_workspace.args=";',
+      'const args = JSON.parse(argv.find(arg => arg.startsWith(key)).slice(key.length));',
+      'const before = fs.existsSync("effect.txt") ? fs.readFileSync("effect.txt", "utf8") : "";',
+      'const request = {id:1,method:"tools/call",params:{name:"write_file",arguments:{path:"effect.txt",text:before+"effect\\n"}}};',
+      'const out = require("node:child_process").spawnSync(process.execPath, args, {input:JSON.stringify(request)+"\\n",encoding:"utf8"});',
+      'if (out.status !== 0 || JSON.parse(out.stdout).result.isError) process.exit(78);',
+    ] : []),
     'const active = () => fs.writeFileSync(' + JSON.stringify(log) + ', JSON.stringify({ argv, input, cwd: process.cwd(),',
     ' home: process.env.CODEX_HOME, api: !!process.env.OPENAI_API_KEY, access: !!process.env.CODEX_ACCESS_TOKEN,',
     ' base: !!process.env.OPENAI_BASE_URL }));',
@@ -98,7 +108,7 @@ test('the saved action launches Codex independently of the normal conversation',
   await f.scheduler.tickNow();
   const call = await f.call();
   assert.ok(call, 'Codex must run the due saved action');
-  assert.equal(call.home, f.native);
+  assert.equal(call.home, await fs.realpath(f.native));
   assert.deepEqual([call.api, call.access, call.base], [false, false, false]);
   assert.equal(call.cwd, await fs.realpath(path.join(f.autonomy, 'cc-workspace')));
   for (const flag of ['--ephemeral', '--ignore-user-config', '--ignore-rules', 'read-only', 'features.shell_tool=false']) {
@@ -110,17 +120,25 @@ test('the saved action launches Codex independently of the normal conversation',
   assert.equal((await f.actions())[0].lastStatus, 'ok');
   const [run] = await f.runs();
   assert.deepEqual([run.status, run.costUsd, run.tokensIn, run.tokensOut], ['ok', 0, 30, 5]);
-  assert.deepEqual(f.messages, ['Фоновый ответ Codex']);
+  assert.equal(f.messages.length, 2);
+  assert.match(f.messages[0], /Готово: 1 сообщение/);
+  assert.equal(f.messages[1], 'Фоновый ответ Codex');
+  await f.callback('auto:task:codex-task');
+  assert.match(f.edits.at(-1), /✔ работает/);
 });
 
-test('owner pause interrupts saved Codex and discards a late model reply', async t => {
-  const f = await profile(t, { hold: true });
-  const tick = f.scheduler.tickNow();
+async function waitForCall(f, tick) {
   for (let attempt = 0; attempt < 500 && !(await f.call()); attempt++) {
     const ended = await Promise.race([tick.then(() => true), delay(10).then(() => false)]);
     if (ended) break;
   }
   assert.ok(await f.call(), 'The saved Codex process must start before pause');
+}
+
+test('owner pause interrupts saved Codex and discards a late model reply', async t => {
+  const f = await profile(t, { hold: true });
+  const tick = f.scheduler.tickNow();
+  await waitForCall(f, tick);
   await setOwnerPause(true, { now, check() {}, checkEngine() {} });
   await tick;
   assert.equal(await fs.readFile(f.stopped, 'utf8'), 'stopped');
@@ -135,4 +153,37 @@ test('API-only Codex auth in the effective native home cannot run a saved subscr
   assert.equal(await f.call(), null);
   assert.deepEqual(await f.actions(), [original]);
   assert.deepEqual(f.messages, []);
+});
+
+test('a native profile replaced with API auth during the version check cannot launch', async t => {
+  const f = await profile(t, { rotateAuth: true });
+  await f.scheduler.tickNow();
+  assert.equal(await f.call(), null);
+  assert.deepEqual(await f.actions(), [original]);
+});
+
+test('a stopped once action with a published file change does not replay on resume', async t => {
+  const action = { ...original, trigger: { kind: 'once', at: new Date(now).toISOString() } };
+  const f = await profile(t, { action, hold: true, writeEffect: true });
+  const tick = f.scheduler.tickNow();
+  await waitForCall(f, tick);
+  const effect = path.join(f.autonomy, 'cc-workspace', 'effect.txt');
+  assert.equal(await fs.readFile(effect, 'utf8'), 'effect\n');
+  await setOwnerPause(true, { now, check() {}, checkEngine() {} });
+  await tick;
+  const [row] = await f.actions();
+  assert.equal(row.disabledReason, 'spent_once');
+  assert.equal(row.lastStatus, 'stopped');
+  assert.deepEqual(f.messages, []);
+  await setOwnerPause(false, { now, check() {}, checkEngine() {} });
+  await f.scheduler.tickNow();
+  assert.equal(await fs.readFile(effect, 'utf8'), 'effect\n');
+});
+
+test('an explicit helper requirement waits for its scoped Codex route', async t => {
+  const action = { ...original, task: { ...original.task, helpers: true } };
+  const f = await profile(t, { action });
+  await f.scheduler.tickNow();
+  assert.equal(await f.call(), null);
+  assert.deepEqual(await f.actions(), [action]);
 });

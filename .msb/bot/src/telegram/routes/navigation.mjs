@@ -13,7 +13,7 @@ export async function handleNavigationRoute({ data, state, show, pending, chatId
   if (data === 'menu:back' || data === 'menu:close') return show(hubScreen());
   if (data === 'menu:settings' || data === 'settings:back') return show(settingsScreen(state));
   if (data === 'menu:agent') return show(await agentScreen(state));
-  if (data === 'menu:autonomy' || data === 'auto:home') return show(await autonomyHomeScreen());
+  if (data === 'menu:autonomy' || data === 'auto:home') return show(await autonomyHomeScreen(Boolean(bot[Symbol.for('msb.savedCodexPrompt')])));
 
   return UNHANDLED;
 }

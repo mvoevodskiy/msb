@@ -11,7 +11,8 @@ export async function deliverSavedPrompt(api, chat, result, signal) {
     const parts = result.text ? [summary, ...splitHtml(renderResponseHtml(result.text), 3900)] : [summary];
     for (const [index, part] of parts.entries()) {
       if (signal.aborted) {
-        if (index === 0) return { status: 'stopped', detail: 'ход прерван остановкой фоновых задач' };
+        if (index === 0) return { status: 'stopped', detail: 'ход прерван остановкой фоновых задач',
+          fileCommitStarted: result.fileCommitStarted };
         return { ...result, status: result.status === 'error' ? 'error' : 'skipped', outcome: 'stopped',
           detail: 'выдача прервана после отправки части результата' };
       }

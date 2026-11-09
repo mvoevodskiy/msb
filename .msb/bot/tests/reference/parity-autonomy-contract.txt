@@ -511,3 +511,39 @@ This checkpoint covers native transport and a fixed fixture.
 The saved action dispatcher still admits Claude. The production
 file policy, broader old tool set, cancellation, native OAuth
 refresh and scheduler integration remain separate checks.
+
+Saved Codex action integration for standard and narrow stateless turns.
+
+The scheduler uses the same saved action claim, pause controller,
+deadline, delivery and journal as the restored Claude path. The
+overlay registers the isolated Codex adapter before main starts.
+Only the installed 0.166.0 CLI and native ChatGPT file auth are
+admitted. The effective CODEX_HOME and auth mode are checked before
+exec and no direct API credentials are inherited. The official
+HTTP provider is specified in argv. Owner state and foreground
+session writers have no role in this path.
+
+The per-action bridge keeps the old eligible workspace, home and
+temp. Read/Glob/Grep and Write/Edit/NotebookEdit use one file
+policy, including protected paths, their temporary writer files
+and alias targets. Text file edits are atomic. WebSearch uses the
+native tool. The scoped run also has a private checklist. External
+MCP and unrestricted shell are unavailable. Native WebFetch,
+Codex helpers and the larger old action profiles need separate
+acceptance before this work represents full saved-prompt parity.
+
+Old Rz at 24848–24870 left stopped actions unstamped. This still
+applies before a scoped file commit or report delivery. If a Codex
+write reached the publication boundary, the stopped attempt keeps
+its slot so a once action cannot repeat a possibly published write.
+The adapter records that boundary in its disposable scratch area
+before the atomic link or rename. It signals the owned CLI process
+group and the file bridge stops accepting operations on that signal.
+
+Run the production adapter fixture under the same network-none
+Docker invocation above with the script path replaced by
+/probe/.msb/bot/tests/fixtures/codex-saved-prompt-loopback.mjs.
+The fake API asks real Linux Codex to call the owned read, glob,
+grep, write and edit tools and checks protected aliases and old
+rollout bytes. Live OAuth refresh, public search results and
+production Telegram acceptance are separate checks.

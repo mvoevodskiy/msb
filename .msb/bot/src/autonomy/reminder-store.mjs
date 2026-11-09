@@ -116,9 +116,14 @@ export async function finishSavedAction(file, before, claimed, result, env = pro
     const index = records.findIndex(action => action?.id === claimed.id);
     const current = records[index];
     if (!sameReminderClaim(current, claimed) || !isLocalSavedAction(current, await readNativeJobMap(env))) return;
-    // Old Rz never stamped a stopped action. Revert only the still-owned claim.
+    // Preserve the old unstamped stop until a scoped file commit can have published.
+    // Keep that attempt consumed just as a partially delivered result cannot be replayed.
     if (result.status === 'stopped' || result.status === 'deferred') {
-      records[index] = isDeepStrictEqual(current, claimed) ? before : { ...current, lastRunAt: before.lastRunAt };
+      if (result.status === 'stopped' && result.fileCommitStarted) {
+        records[index] = { ...current, lastStatus: 'stopped', lastOutcome: 'stopped', lastError: undefined };
+      } else {
+        records[index] = isDeepStrictEqual(current, claimed) ? before : { ...current, lastRunAt: before.lastRunAt };
+      }
       await save();
       return;
     }

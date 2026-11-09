@@ -1,6 +1,6 @@
 /**
  * Saved local action → [gate](./reminder-admission.mjs) → committed attempt
- * → literal Telegram send or [isolated Claude](./prompt-turn.mjs) → [run log](./reminder-runs.mjs).
+ * → literal Telegram send or [isolated provider](./prompt-turn.mjs) → [run log](./reminder-runs.mjs).
  * [Scheduler](./scheduler.mjs) drains this pass on shutdown.
  * [Store](./reminder-store.mjs) records delivery and [breaker](./reminder-breaker.mjs)
  * transitions. [Pause lock](./owner-pause.mjs), [checks](../../tests/reminder-limits.test.mjs).
@@ -17,11 +17,12 @@ import { readReminderFrequencyDecisions, reminderFrequencyAllows } from './remin
 import { appendSavedActionRun } from './reminder-runs.mjs';
 import { claimSavedAction, finishSavedAction, savedActionClaimIsCurrent, savedActionSnapshot } from './reminder-store.mjs';
 import { savedPromptPlan } from './prompt-policy.mjs';
-import { runSavedClaudePrompt } from './prompt-turn.mjs';
+import { runSavedPrompt } from './prompt-turn.mjs';
 import { deliverSavedPrompt } from './prompt-delivery.mjs';
 
-export function createReminderDispatcher({ api, adminId, timezone, now, log, signal }) {
+export function createReminderDispatcher({ api, adminId, timezone, now, log, signal, runCodexPrompt }) {
   let boundChat;
+  const planFor = (action, state) => savedPromptPlan(action, state, process.env, Boolean(runCodexPrompt));
   async function destination(isStopped) {
     if (isStopped() || !api || !adminId) return;
     const { state } = await loadState();
@@ -43,7 +44,7 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
     await updateState(async state => {
       if (isStopped() || !isLocalReminderEngine(state.engine) || !reminderOwnerChat(state, adminId)) return NO_STATE_WRITE;
       if (!reminderIsDue(action, slotAt, state.timezone || timezone)) return NO_STATE_WRITE;
-      const plan = action.task.kind === 'prompt' ? savedPromptPlan(action, state) : undefined;
+      const plan = action.task.kind === 'prompt' ? planFor(action, state) : undefined;
       if (action.task.kind === 'prompt' && !plan) return NO_STATE_WRITE;
       const decisions = action.trigger.kind === 'once' ? undefined : await readReminderFrequencyDecisions();
       if (!reminderFrequencyAllows(action, decisions)) return NO_STATE_WRITE;
@@ -60,12 +61,14 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
   async function promptOutcome(file, action, chat, plan, turn) {
     const active = AbortSignal.any([turn.signal, signal]);
     try {
-      const result = await runSavedClaudePrompt(action, plan, {
+      const result = await runSavedPrompt(action, plan, {
+        runCodexPrompt,
         signal: active, isCurrent: () => savedActionClaimIsCurrent(file, action),
       }).catch(() => ({
         status: 'deferred', detail: 'не удалось подготовить изолированный запуск',
       }));
-      if (active.aborted) return { status: 'stopped', detail: 'ход прерван остановкой фоновых задач' };
+      if (active.aborted) return { status: 'stopped', detail: 'ход прерван остановкой фоновых задач',
+        fileCommitStarted: result.fileCommitStarted };
       return await deliverSavedPrompt(api, chat, result, active);
     } finally {
       turn.release();
@@ -82,7 +85,7 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
     for (const snapshot of actions) {
       if (isStopped()) break;
       if (!reminderIsDue(snapshot, slotAt, target.timezone) ||
-          (snapshot.task.kind === 'prompt' && !savedPromptPlan(snapshot, target.state))) continue;
+          (snapshot.task.kind === 'prompt' && !planFor(snapshot, target.state))) continue;
       const ts = new Date(now()).toISOString();
       try {
         // Old shared journals can be slow. Read them before locking the local

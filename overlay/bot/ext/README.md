@@ -68,6 +68,7 @@ shim; поздняя смена меню не направляет начаты�
 |---|---|---|
 | Claude passthrough / alternate dispatch | [`shim/run-turn.mjs`](shim/run-turn.mjs): `runAlternate` и ветка Claude | [provider-switch](tests/reference/provider-switch.test.mjs) |
 | Codex exec, resume, stream parsing | [`adapters/codex.mjs`](adapters/codex.mjs): `runCodexTurn`, `buildCodexExecArgs`, `parseCodexStdout` | [provider-switch](tests/reference/provider-switch.test.mjs); ограничения ниже |
+| Сохранённый фоновый запрос Codex | [saved-codex](adapters/saved-codex.mjs) → [файловые инструменты](adapters/saved-workspace-tools.mjs) → [проверка путей](adapters/saved-workspace-files.mjs) | [планировщик](../../../.msb/bot/tests/saved-codex-prompt-action.test.mjs), [права на файлы](tests/saved-codex-workspace.test.mjs) |
 | Native Codex config и HTTP transport | [`codex-native.mjs`](codex-native.mjs), [`codex-transport.mjs`](codex-transport.mjs): `ensureCodexStableTransport` | [codex-native](tests/codex-native.test.mjs), [codex-transport](tests/codex-transport.test.mjs) |
 | Cursor / Qwen | [`adapters/cursor.mjs`](adapters/cursor.mjs), [`adapters/qwen.mjs`](adapters/qwen.mjs); общие [`run-cli`](adapters/run-cli.mjs), [`stream`](adapters/stream.mjs), [`parse-args`](adapters/parse-args.mjs) | [cursor-adapter](tests/cursor-adapter.test.mjs), [parse-args](tests/parse-args.test.mjs); отдельного Qwen adapter test нет |
 

@@ -1,5 +1,5 @@
 /**
- * Existing autonomy task list/card for saved reminders and Claude prompt actions.
+ * Existing autonomy task list/card for saved reminders and prompt actions.
  * [List](./autonomy.mjs) and [callbacks](../routes/autonomy.mjs) use the
  * [scoped actions store](../../autonomy/reminder-store.mjs); no native jobs here.
  */
@@ -15,9 +15,9 @@ import { spentReminder } from '../../autonomy/reminder-schedule.mjs';
 import { escapeHtml } from '../edit.mjs';
 import { BLANK } from './shared.mjs';
 
-export async function savedActionViews(state) {
+export async function savedActionViews(state, codexAvailable = false) {
   state ??= (await loadState()).state;
-  const view = { actions: [], state, stopped: false, timezone: state.timezone || readConfig().timezone, now: Date.now() };
+  const view = { actions: [], state, codexAvailable, stopped: false, timezone: state.timezone || readConfig().timezone, now: Date.now() };
   if (!isLocalReminderEngine(state.engine)) return view;
   try {
     const [policy, { actions }, decisions] = await Promise.all([
@@ -30,7 +30,7 @@ export async function savedActionViews(state) {
 }
 
 const kind = action => action.task.kind === 'reminder' ? 'напоминание' : 'сбор';
-const supported = (action, view) => action.task.kind === 'reminder' || Boolean(savedPromptPlan(action, view.state));
+const supported = (action, view) => action.task.kind === 'reminder' || Boolean(savedPromptPlan(action, view.state, process.env, view.codexAvailable));
 
 export function savedActionIsActive(action, view) {
   return reminderIsActive(action, view.decisions) && supported(action, view);

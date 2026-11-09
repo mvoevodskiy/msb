@@ -13,7 +13,7 @@ import profile from '../shared/profile.cjs';
 
 export const MSB_HTTP_PROVIDER_ID = 'msb_http';
 
-const CHATGPT_BASE = 'https://chatgpt.com/backend-api/codex';
+export const CODEX_CHATGPT_BASE = 'https://chatgpt.com/backend-api/codex';
 const API_BASE = 'https://api.openai.com/v1';
 
 async function detectAuthMode(home) {
@@ -57,7 +57,7 @@ export async function ensureCodexStableTransport(home, env = process.env) {
   home ??= env.HOME || os.homedir();
   const file = codexConfigPath(home);
   const authMode = await detectAuthMode(home);
-  const baseUrl = authMode === 'api' ? API_BASE : CHATGPT_BASE;
+  const baseUrl = authMode === 'api' ? API_BASE : CODEX_CHATGPT_BASE;
 
   let text = '';
   try {
