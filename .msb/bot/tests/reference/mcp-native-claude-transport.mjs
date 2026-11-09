@@ -23,7 +23,7 @@ const server=http.createServer(async (req,res)=>{
       const name=route.slice(5);
       const keyOk=name==='managed'?req.headers.authorization==='Bearer '+profile.key:
         name==='override'?req.headers['x-new']==='fixture-new' && !req.headers['x-old']:
-        name==='native'?req.headers['x-legacy']==='fixture-native':false;
+        name==='native'?req.headers['x-legacy']==='fixture-native':name.startsWith('policy-');
       calls.push({profile:profile.id,name,method:body.method,keyOk});
       if(!keyOk){res.writeHead(401).end();return;}
       if(body.id===undefined){res.writeHead(202).end();return;}
@@ -76,8 +76,16 @@ try{
   const native={
     legacy:{type:'http',url:base+'/mcp/native',headers:{'x-legacy':'fixture-native'}},
     collision:{type:'http',url:base+'/mcp/old',headers:{'x-old':'fixture-old'}},
+    'user-policy':{type:'http',url:base+'/mcp/policy-user'},
+    'project-policy':{type:'http',url:base+'/mcp/policy-project'},
   };
-  await fs.writeFile(nativeFile,JSON.stringify({hasCompletedOnboarding:true,mcpServers:native}),{mode:0o600});
+  const userSettings=path.join(home,'settings.json'),projectSettings=path.join(cwd,'.claude','settings.json');
+  const userPolicy=JSON.stringify({deniedMcpServers:[{serverName:'user-policy'}]});
+  const projectPolicy=JSON.stringify({deniedMcpServers:[{serverName:'project-policy'}]});
+  await fs.mkdir(path.dirname(projectSettings),{recursive:true});
+  await fs.writeFile(userSettings,userPolicy,{mode:0o600});
+  await fs.writeFile(projectSettings,projectPolicy,{mode:0o600});
+  await fs.writeFile(nativeFile,JSON.stringify({hasCompletedOnboarding:true,projects:{[cwd]:{hasTrustDialogAccepted:true}},mcpServers:native}),{mode:0o600});
   await fs.writeFile(managedFile,JSON.stringify({mcpServers:{
     apify:{type:'http',url:base+'/mcp/managed',alwaysLoad:true,headers:{Authorization:'Bearer ${MSB_MCP_APIFY_TOKEN}'}},
     collision:{type:'http',url:base+'/mcp/override',headers:{'x-new':'fixture-new'}},
@@ -122,10 +130,18 @@ try{
   assert.ok(calls.some(row=>row.profile==='a'&&row.name==='native'&&row.keyOk));
   const denied=calls.every(row=>row.profile!=='b'||row.name!=='native');
   assert.deepEqual(JSON.parse(await fs.readFile(nativeFile,'utf8')).mcpServers,native);
+  const policy={user_denial_in_first:!calls.some(row=>row.profile==='a'&&row.name==='policy-user'),
+    project_denial_in_first:!calls.some(row=>row.profile==='a'&&row.name==='policy-project'),
+    user_denial_with_cli:!calls.some(row=>row.profile==='b'&&row.name==='policy-user'),
+    project_denial_with_cli:!calls.some(row=>row.profile==='b'&&row.name==='policy-project'),
+    cli_denial_applied:denied,
+    user_file_exact:await fs.readFile(userSettings,'utf8')===userPolicy,
+    project_file_exact:await fs.readFile(projectSettings,'utf8')===projectPolicy};
+  assert.ok(Object.values(policy).every(Boolean),'The invocation and existing settings must coexist');
   report={version,profiles:['a','b'],same_native_home:true,template_env_expansion:true,tool_discovery:true,tools_called:toolsCalled,
     native_user_entry_preserved:true,overlay_same_name_replaces_headers:true,
     cli_settings_denial_suppresses_native:denied,model_stub_requests:requests.length,external_model_requests:0,
-    original_mcp_definitions_preserved:true,tool_search_disabled_in_fixture:true,stub_received_tool_results:requests.some(row=>row.toolResult)};
+    original_mcp_definitions_preserved:true,policy,tool_search_disabled_in_fixture:true,stub_received_tool_results:requests.some(row=>row.toolResult)};
 }finally{
   if(server.listening){server.closeAllConnections();await new Promise(resolve=>server.close(resolve));}
   await fs.rm(root,{recursive:true,force:true});

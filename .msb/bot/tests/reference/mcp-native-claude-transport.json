@@ -20,5 +20,14 @@
   "network_namespace": "loopback-only",
   "scope": "installed native CLI tool discovery and call through a local Anthropic protocol stub",
   "workspace_permission_rule": "mcp__apify",
-  "prior_probe_correction": "The fixture returned HTTP 500 on tools/list without params. The corrected fixture accepts the request and observes a tools/call with the right key in each profile."
+  "prior_probe_correction": "The fixture returned HTTP 500 on tools/list without params. The corrected fixture accepts the request and observes a tools/call with the right key in each profile.",
+  "scoped_removal_with_settings": {
+    "user_denial_in_first": true,
+    "project_denial_in_first": true,
+    "user_denial_with_cli": true,
+    "project_denial_with_cli": true,
+    "cli_denial_applied": true,
+    "user_file_exact": true,
+    "project_file_exact": true
+  }
 }

@@ -33,5 +33,12 @@
       "bot_key_at_native_endpoint": false,
       "native_file_exact": true
     }
+  },
+  "scoped_native_removal": {
+    "removed_required_server_absent_for_a": true,
+    "no_native_connection_for_a": true,
+    "sibling_keeps_native_tool": true,
+    "both_keep_other_tool": true,
+    "shared_config_exact": true
   }
 }

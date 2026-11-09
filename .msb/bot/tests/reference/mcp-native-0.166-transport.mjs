@@ -189,6 +189,43 @@ async function lateNativeWrite() {
   }
 }
 
+async function scopedNativeRemoval() {
+  const inserted=source+[
+    '[mcp_servers.native-shared]','url = '+JSON.stringify(base+'/native'),
+    'required = true','http_headers = {"x-legacy" = "fixture-late-native-header"}',
+    '[mcp_servers.another-tool]','url = '+JSON.stringify(base+'/managed'),
+    'bearer_token_env_var = "FIXTURE_BEARER"','',
+  ].join('\n');
+  await fs.writeFile(config,inserted,{mode:0o600});
+  async function one(profile,overrides) {
+    active=profile;
+    return runApp(overrides,profile,async request=>{
+      const {thread}=await request('thread/start',{cwd,ephemeral:true});
+      const status=await request('mcpServerStatus/list',{threadId:thread.id,detail:'toolsAndAuthOnly'});
+      const names=status.data.filter(row=>row.tools?.fixture_probe).map(row=>row.name);
+      const call=server=>request('mcpServer/tool/call',{threadId:thread.id,server,tool:'fixture_probe',arguments:{}});
+      assert.equal((await call('another-tool')).content?.[0]?.text,'fixture-tool-result');
+      if(names.includes('native-shared'))assert.equal((await call('native-shared')).content?.[0]?.text,'fixture-tool-result');
+      return names.includes('native-shared');
+    });
+  }
+  try{
+    const start=headerChecks.length;
+    const aVisible=await one(a,['mcp_servers={"native-shared"={enabled=false}}']);
+    const aCalls=headerChecks.slice(start);
+    const split=headerChecks.length;
+    const bVisible=await one(b,[]);
+    const bCalls=headerChecks.slice(split);
+    const observed={removed_required_server_absent_for_a:!aVisible,
+      no_native_connection_for_a:aCalls.every(row=>row.route!=='/native'),
+      sibling_keeps_native_tool:bVisible && bCalls.some(row=>row.route==='/native'&&row.method==='tools/call'&&row.legacy),
+      both_keep_other_tool:[aCalls,bCalls].every(rows=>rows.some(row=>row.route==='/managed'&&row.method==='tools/call'&&row.bearer)),
+      shared_config_exact:await fs.readFile(config,'utf8')===inserted};
+    assert.ok(Object.values(observed).every(Boolean));
+    return observed;
+  }finally{await fs.writeFile(config,source,{mode:0o600});}
+}
+
 let proof;
 try {
   await fs.mkdir(cwd);await fs.mkdir(home);await fs.mkdir(native);
@@ -211,13 +248,14 @@ try {
   });
   assert.ok(retained,'Native same-name overrides merge lower-layer header fields');
   const race=process.argv.includes('--race')?await lateNativeWrite():null;
+  const scopedRemoval=await scopedNativeRemoval();
   assert.equal(await fs.readFile(config,'utf8'),source);
   await assert.rejects(fs.stat(path.join(native,'auth.json')),{code:'ENOENT'});
   assert.equal(modelRequests.filter(row=>row.path.includes('responses')).length,0);
   proof={version,profiles:['a','b'],same_native_home:true,
     native_methods:turnMethods,correct_headers_for_each_profile:true,other_profile_after_removal:true,
     missing_override_no_connection:true,native_config_byte_exact:true,same_name_keeps_existing_headers:retained,
-    auth_present:false,model_turns:0,model_endpoint_requests:modelRequests.length,...(race?{race}:{})};
+    auth_present:false,model_turns:0,model_endpoint_requests:modelRequests.length,scopedRemoval,...(race?{race}:{})};
 }finally{
   fixture.closeAllConnections();
   await new Promise(resolve=>fixture.close(resolve));
