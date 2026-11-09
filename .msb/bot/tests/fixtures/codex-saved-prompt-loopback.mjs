@@ -26,6 +26,9 @@ const fakeJwt = 'eyJhbGciOiJub25lIn0.' + Buffer.from(JSON.stringify({
 const oldRollout = path.join(native, 'sessions', 'old-rollout.jsonl');
 const old = 'owner conversation fixture';
 const workspaceFile = path.join(cwd, 'sample.txt');
+const requestedUrl = 'https://fixture.invalid/scheduled-source';
+const standardReply = 'saved adapter result';
+const pageReply = standardReply + ' [fixture source](' + requestedUrl + ')';
 const cases = {
   narrow: [
     { tool: 'read_file', args: { path: 'sample.txt', offset: 2 }, expected: 'second' },
@@ -59,6 +62,7 @@ const service = http.createServer(async (req, res) => {
       assert.ok(observed?.includes(previous.expected), phase + ' result ' + previous.tool + ' ' + observed?.slice(0, 500));
     }
     const next = cases[phase][step];
+    const output = [];
     let item;
     if (next) {
       const tool = tools.find(entry => entry.name?.endsWith(next.tool));
@@ -66,15 +70,22 @@ const service = http.createServer(async (req, res) => {
       item = { id: 'fc_' + step, type: 'function_call', name: tool.name, arguments: JSON.stringify(next.args),
         ...(tool.namespace ? { namespace: tool.namespace } : {}), call_id: 'call_' + step, status: 'completed' };
     } else {
+      if (phase === 'narrow') {
+        assert.ok(JSON.stringify(input.input).includes(requestedUrl));
+        assert.equal(tools.find(tool => tool.type === 'web_search')?.external_web_access, true);
+        output.push({ id: 'ws_fixture', type: 'web_search_call', status: 'completed',
+          action: { type: 'open_page', url: requestedUrl } });
+      }
       item = { id: 'msg_fixture', type: 'message', role: 'assistant', status: 'completed',
-        content: [{ type: 'output_text', text: 'saved adapter result', annotations: [] }] };
+        content: [{ type: 'output_text', text: phase === 'narrow' ? pageReply : standardReply, annotations: [] }] };
     }
+    output.push(item);
     const response = { id: 'resp_fixture_' + phase + '_' + step++, created_at: 1, model: 'gpt-5.4',
-      status: 'completed', output: [item] };
+      status: 'completed', output };
     res.writeHead(200, { 'content-type': 'text/event-stream' });
     for (const [type, fields] of [
       ['response.created', { response: { ...response, status: 'in_progress', output: [] } }],
-      ['response.output_item.done', { output_index: 0, item }],
+      ...output.map((item, output_index) => ['response.output_item.done', { output_index, item }]),
       ['response.completed', { response }],
     ]) res.write('event: ' + type + '\ndata: ' + JSON.stringify({ type, ...fields }) + '\n\n');
     res.end();
@@ -101,17 +112,18 @@ try {
   const baseUrl = 'http://127.0.0.1:' + service.address().port + '/v1';
   const env = { HOME: home, CODEX_HOME: native, PATH: bin + path.delimiter + process.env.PATH,
     OPENAI_API_KEY: 'fixture-should-be-ignored', CODEX_ACCESS_TOKEN: 'fixture-should-be-ignored' };
-  const read = ['Read', 'Glob', 'Grep', 'WebSearch', 'TodoWrite', 'ToolSearch'];
+  const read = ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'TodoWrite', 'ToolSearch'];
   for (const name of ['narrow', 'standard']) {
     phase = name;
     step = 0;
     const tools = name === 'narrow' ? read : [...read, 'Write', 'Edit', 'NotebookEdit'];
-    const result = await runSavedCodexPrompt({ cwd, prompt: 'Run the stored fixture action.', model: 'gpt-5.4', tools,
+    const prompt = name === 'narrow' ? 'Open the exact URL ' + requestedUrl : 'Run the stored fixture action.';
+    const result = await runSavedCodexPrompt({ cwd, prompt, model: 'gpt-5.4', tools,
       directories: [home, os.tmpdir()], denied: [], signal: AbortSignal.timeout(65_000),
       canLaunch: async () => true }, env, { baseUrl });
     if (failure) throw failure;
     assert.equal(result?.isError, false, JSON.stringify(result));
-    assert.equal(result.text, 'saved adapter result');
+    assert.equal(result.text, name === 'narrow' ? pageReply : standardReply);
     assert.equal(result.fileCommitStarted, name === 'standard');
     assert.equal(step, cases[name].length + 1);
   }
@@ -129,6 +141,7 @@ try {
   console.log(JSON.stringify({ production_adapter: true, version: '0.166.0', cli_platform: process.platform,
     native_profile_files_byte_exact: true, rollout_separate: true, shell_exposed: false,
     workspace_read_glob_grep_write_edit: true, protected_alias_denied: true,
+    hosted_url_open_protocol: true, real_external_page_read: false,
     inherited_mcp_started: false, tools: inventory, production_auth: false, network: 'loopback-only' }, null, 2));
 } finally {
   service.closeAllConnections();

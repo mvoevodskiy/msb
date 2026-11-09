@@ -554,3 +554,17 @@ OpenClaw, speech and other saved Codex scratch directories. The
 scheduler regression creates a real staged MCP file with synthetic
 headers during a saved turn. Read and write are rejected, and a
 normal temporary text file remains accessible.
+
+Opening a supplied web URL from a saved Codex prompt.
+
+Old lD at 17260–17285 provides WebSearch and WebFetch in both basic
+permission profiles. The current adapter passes the native hosted
+web_search tool with external_web_access true. The Responses
+contract supports an open_page action for reasoning models
+(https://developers.openai.com/api/docs/guides/tools-web-search).
+The native Linux 0.166.0 fixture sends a specified URL through the
+actual saved adapter, checks the advertised tool and completes a
+synthetic open_page result with the URL in the reply. The provider
+behavior is simulated in the closed test. Live page retrieval and
+account acceptance remain separate. This path has no server-side
+URL downloader or shell.
