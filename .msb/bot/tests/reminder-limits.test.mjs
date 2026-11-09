@@ -541,7 +541,7 @@ for (const change of ['provider', 'account', 'owner pause']) {
     try {
       assert.equal(await Promise.race([ready.then(() => true), tick.then(() => false)]), true);
       if (change === 'provider') {
-        await updateState(state => { state.extAuthBypass = 'claude'; });
+        await updateState(state => ({ ...state, extAuthBypass: 'claude' }));
       } else if (change === 'account') {
         accountCurrent = false;
       } else {
@@ -557,3 +557,52 @@ for (const change of ['provider', 'account', 'owner pause']) {
     assert.deepEqual(f.messages, []);
   });
 }
+
+
+test('Codex admission checks the shared daily budget again after quota I/O', async t => {
+  let f;
+  f = await profile(t, { state: codexState, caps: { AUTONOMY_DAILY_CAP_RUNS: '1' }, readCodexQuota: async () => {
+    await append(f.sibling, [historical()]);
+    return codexQuota([codexWindow(300, 90)]);
+  } });
+  await f.scheduler.tickNow();
+  await assertBlocked(f, /дневной запас \(1\)/);
+});
+
+test('a blocked Codex interval remains enabled and waits for its next original slot', async t => {
+  const recurring = { ...reminder, trigger: { kind: 'interval', intervalMinutes: 60 } };
+  let reads = 0;
+  const f = await profile(t, { state: codexState, actions: [recurring], readCodexQuota: async ({ now: clock }) => {
+    reads++;
+    return codexQuota([codexWindow(300, reads === 1 ? 70 : 69, clock() + 3_600_000)], { measuredAt: clock() });
+  } });
+  await f.scheduler.tickNow();
+  const [first] = await f.readActions();
+  assert.equal(first.enabled, true);
+  assert.equal(first.lastRunAt, at);
+  assert.equal(first.lastOutcome, 'blocked');
+  f.setTime(now + 3_540_000);
+  await f.scheduler.tickNow();
+  assert.equal(reads, 1);
+  f.setTime(now + 3_600_000);
+  await f.scheduler.tickNow();
+  assert.equal(reads, 2);
+  assert.deepEqual((await f.runs()).map(row => row.status), ['blocked', 'ok']);
+});
+
+test('Claude uses its own quota without reading Codex', async t => {
+  let reads = 0;
+  const f = await profile(t, { state: { extAuthBypass: 'claude', rateLimitInfo: account },
+    readCodexQuota: async () => { reads++; } });
+  await f.scheduler.tickNow();
+  assert.equal(reads, 0);
+  await assertBlocked(f, /подписка Claude.*70%/);
+});
+
+
+test('Codex respects an exact non-default reserve boundary', async t => {
+  const f = await profile(t, { state: codexState, caps: { AUTONOMY_RESERVE_FRACTION: '0.70' },
+    readCodexQuota: async () => codexQuota([codexWindow(300, 30)]) });
+  await f.scheduler.tickNow();
+  await assertBlocked(f, /подписка Codex.*30%.*отведено 30%/);
+});

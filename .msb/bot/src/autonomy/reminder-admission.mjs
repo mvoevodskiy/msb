@@ -1,7 +1,7 @@
 /**
  * Budget and subscription admission for a due once/reminder. [Dispatcher](./reminder-dispatch.mjs)
  * evaluates the current [breaker](./reminder-breaker.mjs), [box journals](./box-runs.mjs),
- * [Claude quota](./subscription-gate.mjs) and owner/action spend in order.
+ * [Provider quota](./subscription-gate.mjs) and owner/action spend in order.
  * [Old reference and fixtures](../../tests/reminder-limits.test.mjs).
  */
 import { ownerSpendDay } from '../billing/owner-spend.mjs';
@@ -76,7 +76,8 @@ export async function readBoxReminderRefusal(at, env = process.env) {
   if (detail) return { status: 'blocked', detail };
 }
 
-export function currentReminderRefusal(action, state, at, reserveFraction) {
-  const detail = claudeQuotaRefusal(state, at, reserveFraction) ?? spendRefusal(action, state, at, reserveFraction);
+export function currentReminderRefusal(action, state, at, reserveFraction, codexDetail) {
+  const subscription = state.extAuthBypass === 'codex' ? codexDetail : claudeQuotaRefusal(state, at, reserveFraction);
+  const detail = subscription ?? spendRefusal(action, state, at, reserveFraction);
   if (detail) return { status: 'blocked', detail };
 }

@@ -48,12 +48,12 @@ export async function readAutonomyPause(env = process.env) {
   return { ownerStopped, fleetStopped, remote, stopped: ownerStopped || fleetStopped };
 }
 
-export function trackAutonomyTurn(env = process.env) {
+export function trackAutonomyTurn(env = process.env, { counted = true } = {}) {
   const file = stopPath(env);
   let turns = activeTurns.get(file);
-  if (!turns) activeTurns.set(file, turns = new Set());
+  if (!turns) activeTurns.set(file, turns = new Map());
   const controller = new AbortController();
-  turns.add(controller);
+  turns.set(controller, counted);
   return {
     signal: controller.signal,
     release() {
@@ -67,8 +67,12 @@ function abortActiveTurns(file) {
   const turns = activeTurns.get(file);
   if (!turns) return 0;
   activeTurns.delete(file);
-  for (const controller of turns) controller.abort();
-  return turns.size;
+  let aborted = 0;
+  for (const [controller, counted] of turns) {
+    controller.abort();
+    if (counted) aborted++;
+  }
+  return aborted;
 }
 
 async function unlinkIfPresent(file) {

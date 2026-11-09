@@ -26,7 +26,7 @@ const original = {
   capability: 'read', authority: { profile: 'standard' }, output: { format: 'tg-message' },
 };
 
-async function profile(t, { action = original, actions, runSavedCodex, hold = false, apiAuth = false,
+async function profile(t, { action = original, actions, runSavedCodex, readCodexQuota, hold = false, apiAuth = false,
   rotateAuth = false, writeEffect = false } = {}) {
   const f = await fixture(t, async () => assert.fail('A saved action must not call the owner turn'),
     { overlay: true, runtimeProfile: 'jar1' });
@@ -92,7 +92,7 @@ async function profile(t, { action = original, actions, runSavedCodex, hold = fa
   await fs.mkdir(autonomy, { recursive: true });
   await fs.writeFile(file, JSON.stringify(actions ?? [action]));
   const scheduler = startScheduler({ api: f.bot.api, adminId: owner, timezone: 'Europe/Moscow',
-    now: () => now, runCodexPrompt: runSavedCodex ?? f.bot[Symbol.for('msb.savedCodexPrompt')],
+    now: () => now, readCodexQuota, runCodexPrompt: runSavedCodex ?? f.bot[Symbol.for('msb.savedCodexPrompt')],
     runTurn: async () => assert.fail('A saved action must not use the interval compatibility turn'), log() {} });
   t.after(() => scheduler.stop());
   return { ...f, native, scheduler, autonomy, stopped, files: [statePath(), f.storeFile, auth, config],
@@ -247,4 +247,18 @@ test('partial helper usage keeps known counts and leaves an incomplete marker', 
   assert.equal(run.tokensIn, 31);
   assert.equal(run.tokensOut, undefined);
   assert.equal(run.usageIncomplete, true);
+});
+
+
+test('a Codex account fence is checked again after claim and before the owned CLI starts', async t => {
+  let checks = 0;
+  const f = await profile(t, { readCodexQuota: async () => ({
+    isCurrent: async () => ++checks === 1,
+    quota: { measuredAt: now, windows: [{ minutes: 300, usedPercent: 40, resetAtMs: now + 3600_000 }] },
+  }) });
+  await f.scheduler.tickNow();
+  assert.equal(checks, 2);
+  assert.equal(await f.call(), null);
+  assert.deepEqual(await f.actions(), [original]);
+  assert.deepEqual(f.messages, []);
 });

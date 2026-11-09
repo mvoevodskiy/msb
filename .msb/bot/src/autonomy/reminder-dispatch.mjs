@@ -10,6 +10,7 @@ import { singleRequestSignal } from '../telegram/presentation-api.mjs';
 import { isLocalReminderEngine, readReminderPolicy, reminderOwnerChat } from './reminder-policy.mjs';
 import { trackAutonomyTurn, withAutonomyPauseLock } from './owner-pause.mjs';
 import { currentReminderRefusal, readBoxReminderRefusal } from './reminder-admission.mjs';
+import { codexQuotaRefusal } from './subscription-gate.mjs';
 import { readReminderBreakerRefusal } from './reminder-breaker.mjs';
 import { reminderBreakerNotice } from './reminder-breaker-notice.mjs';
 import { reminderIsDue } from './reminder-schedule.mjs';
@@ -20,7 +21,7 @@ import { savedPromptPlan } from './prompt-policy.mjs';
 import { runSavedPrompt } from './prompt-turn.mjs';
 import { deliverSavedPrompt } from './prompt-delivery.mjs';
 
-export function createReminderDispatcher({ api, adminId, timezone, now, log, signal, runCodexPrompt }) {
+export function createReminderDispatcher({ api, adminId, timezone, now, log, signal, runCodexPrompt, readCodexQuota }) {
   let boundChat;
   const planFor = (action, state) => savedPromptPlan(action, state, process.env, Boolean(runCodexPrompt));
   async function destination(isStopped) {
@@ -35,7 +36,23 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
     return { chat: boundChat, reserveFraction: policy.reserveFraction, timezone: state.timezone || timezone, state };
   }
 
-  async function admit(action, slotAt, ts, boxRefusal, publish, isStopped) {
+  async function prepareCodexQuota(action, ts, isStopped) {
+    if (!readCodexQuota || isStopped() || (await loadState()).state.extAuthBypass !== 'codex') return;
+    if (await readReminderBreakerRefusal(action.id, ts)) return;
+    const probe = await withAutonomyPauseLock(async () => {
+      const target = await destination(isStopped);
+      if (target?.state.extAuthBypass === 'codex') return trackAutonomyTurn(process.env, { counted: false });
+    });
+    if (!probe) return;
+    // Let STOP interrupt the read without reporting a model turn or holding a lock.
+    const active = AbortSignal.any([probe.signal, signal]);
+    let report;
+    try { report = await readCodexQuota({ signal: active, now }); }
+    catch { /* Unknown quota leaves the ordinary box and action budgets in charge. */ }
+    return { report, active, release: probe.release };
+  }
+
+  async function admit(action, slotAt, ts, boxRefusal, quotaRead, publish, isStopped) {
     const target = await destination(isStopped);
     if (!target) return;
     let admitted;
@@ -49,21 +66,28 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
       const decisions = action.trigger.kind === 'once' ? undefined : await readReminderFrequencyDecisions();
       if (!reminderFrequencyAllows(action, decisions)) return NO_STATE_WRITE;
       const breaker = await readReminderBreakerRefusal(action.id, ts);
-      if (isStopped()) return NO_STATE_WRITE;
-      const refusal = breaker ?? boxRefusal ?? currentReminderRefusal(action, state, ts, target.reserveFraction);
+      const codex = state.extAuthBypass === 'codex';
+      const quotaCurrent = quotaRead?.report?.isCurrent;
+      if (quotaRead && (!codex || quotaRead.active.aborted || (quotaCurrent && !await quotaCurrent()))) return NO_STATE_WRITE;
+      if (isStopped() || quotaRead?.active.aborted) return NO_STATE_WRITE;
+      const earlier = breaker ?? boxRefusal;
+      if (!earlier && codex && readCodexQuota && !quotaRead) return NO_STATE_WRITE;
+      const quotaDetail = codex ? codexQuotaRefusal(quotaRead?.report?.quota, state, now(), target.reserveFraction) : undefined;
+      const refusal = earlier ?? currentReminderRefusal(action, state, ts, target.reserveFraction, quotaDetail);
       const claimed = await publish(refusal);
-      admitted = { action: claimed, chat: target.chat, refusal, plan };
+      admitted = { action: claimed, chat: target.chat, refusal, plan, quotaCurrent };
       return NO_STATE_WRITE;
     });
     return admitted;
   }
 
-  async function promptOutcome(file, action, chat, plan, turn) {
+  async function promptOutcome(file, action, chat, plan, turn, quotaCurrent) {
     const active = AbortSignal.any([turn.signal, signal]);
     try {
       const result = await runSavedPrompt(action, plan, {
         runCodexPrompt,
-        signal: active, isCurrent: () => savedActionClaimIsCurrent(file, action),
+        signal: active, isCurrent: async () => await savedActionClaimIsCurrent(file, action) &&
+          (!quotaCurrent || await quotaCurrent()),
       }).catch(() => ({
         status: 'deferred', detail: 'не удалось подготовить изолированный запуск',
       }));
@@ -90,17 +114,25 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
       try {
         // Old shared journals can be slow. Read them before locking the local
         // pause, then recheck that both the action and route can still run.
-        const boxRefusal = await readBoxReminderRefusal(ts);
-        const admitted = await withAutonomyPauseLock(async () => {
-          const claim = await claimSavedAction(file, snapshot, ts, {
-            admit: (action, publish) => admit(action, slotAt, ts, boxRefusal, publish, isStopped),
+        let boxRefusal = await readBoxReminderRefusal(ts);
+        const quotaRead = boxRefusal ? undefined : await prepareCodexQuota(snapshot, ts, isStopped);
+        let admitted;
+        try {
+          // Another bot can consume the shared budget while the native read is pending.
+          if (quotaRead && !quotaRead.active.aborted) boxRefusal = await readBoxReminderRefusal(ts);
+          admitted = await withAutonomyPauseLock(async () => {
+            const claim = await claimSavedAction(file, snapshot, ts, {
+              admit: (action, publish) => admit(action, slotAt, ts, boxRefusal, quotaRead, publish, isStopped),
+            });
+            if (claim?.plan && !claim.refusal) claim.turn = trackAutonomyTurn();
+            return claim;
           });
-          if (claim?.plan && !claim.refusal) claim.turn = trackAutonomyTurn();
-          return claim;
-        });
+        } finally {
+          quotaRead?.release();
+        }
         if (!admitted) continue;
-        const { action, chat, refusal, turn, plan } = admitted;
-        const result = refusal ?? (turn ? await promptOutcome(file, action, chat, plan, turn)
+        const { action, chat, refusal, turn, plan, quotaCurrent } = admitted;
+        const result = refusal ?? (turn ? await promptOutcome(file, action, chat, plan, turn, quotaCurrent)
           : await sendReminder(api, chat, action.task.text));
         const completion = refusal ? undefined
           : await finishSavedAction(file, snapshot, action, result).catch(actionError => ({ actionError }));

@@ -11,13 +11,13 @@ import { fileURLToPath } from 'node:url';
 import { findBin } from './run-cli.mjs';
 import { runOwnedCli } from './owned-cli.mjs';
 import { parseCodexStdout } from './codex.mjs';
-import { enrichPath } from '../ensure-cli.mjs';
 import { loadStore } from '../store.mjs';
-import { CODEX_CLI_VERSION, isValidCodexThreadId, parseCodexTomlScalars, resolveCodexEffort, resolveCodexModel } from '../codex-native.mjs';
+import { CODEX_CLI_VERSION, isValidCodexThreadId, resolveCodexEffort, resolveCodexModel } from '../codex-native.mjs';
 import { CODEX_CHATGPT_BASE } from '../codex-transport.mjs';
 import { savedWorkspaceToolNames } from './saved-workspace-tools.mjs';
 import { openSavedCodexOtlp } from './saved-codex-otlp.mjs';
 import { parseSavedCodexUsage } from './saved-codex-usage.mjs';
+import { readSavedCodexAccount, sameSavedCodexAccount } from './saved-codex-account.mjs';
 
 const bridge = fileURLToPath(new URL('./saved-workspace-mcp.mjs', import.meta.url));
 const provider = 'msb_saved_prompt';
@@ -30,6 +30,7 @@ const disabled = ['shell_tool', 'shell_snapshot', 'hooks', 'plugin_hooks',
 function argv({ model, effort, scope, scratch, helpers, usageArgs }, baseUrl) {
   const options = {
     model_provider: provider,
+    cli_auth_credentials_store: 'file',
     ['model_providers.' + provider + '.name']: 'MSB saved prompt',
     ['model_providers.' + provider + '.base_url']: baseUrl,
     ['model_providers.' + provider + '.wire_api']: 'responses',
@@ -59,37 +60,13 @@ function argv({ model, effort, scope, scratch, helpers, usageArgs }, baseUrl) {
     ...Object.entries(options).flatMap(([key, value]) => ['-c', key + '=' + JSON.stringify(value)]), ...usageArgs, '-'];
 }
 
-async function subscriptionAuth(native) {
-  try {
-    const file = await fs.realpath(path.join(native, 'auth.json'));
-    const auth = JSON.parse(await fs.readFile(file, 'utf8'));
-    if (auth.auth_mode === 'chatgpt' && !auth.OPENAI_API_KEY && auth.tokens?.access_token) return file;
-  } catch {
-    return undefined;
-  }
-}
-
 async function subscriptionProfile(env) {
-  const home = env.HOME || os.homedir();
-  const logical = env.CODEX_HOME ?? path.join(home, '.codex');
-  if (!path.isAbsolute(logical)) return;
+  const account = await readSavedCodexAccount(env);
+  if (!account) return;
+  const { home, logical, native, authFile, configFile } = account;
   try {
-    const native = await fs.realpath(logical);
-    const authFile = await subscriptionAuth(native);
-    if (!authFile) return;
-    const configPath = path.join(native, 'config.toml');
-    const configFile = await fs.realpath(configPath).catch(error => {
-      if (error.code === 'ENOENT') return configPath;
-      throw error;
-    });
-    const config = parseCodexTomlScalars(await fs.readFile(configFile, 'utf8').catch(error => {
-      if (error.code === 'ENOENT') return '';
-      throw error;
-    }));
-    if (config.model_provider && !['openai', 'msb_http', 'iia_http'].includes(config.model_provider)) return;
     const { models, efforts } = await loadStore(env, home);
-    const childEnv = { HOME: home, CODEX_HOME: native, PATH: enrichPath(env, home), LANG: env.LANG || 'C.UTF-8' };
-    return { native, authFile, protectedFiles: [logical, native, authFile, configFile], config, models, efforts, childEnv };
+    return { ...account, protectedFiles: [logical, native, authFile, configFile], models, efforts };
   } catch {
     return undefined;
   }
@@ -122,7 +99,7 @@ export async function runSavedCodexPrompt({ cwd, prompt, model, tools, directori
     if (helpers) receiver = await openSavedCodexOtlp().catch(() => undefined);
     const args = argv({ model: resolveCodexModel(undefined, config, model || account.models.codex),
       effort: account.efforts.codex || resolveCodexEffort(config), scope, scratch, helpers, usageArgs: receiver?.args ?? [] }, baseUrl);
-    if (signal.aborted || !await canLaunch() || await subscriptionAuth(account.native) !== account.authFile || signal.aborted) return;
+    if (signal.aborted || !await canLaunch() || !sameSavedCodexAccount(account, await readSavedCodexAccount(env)) || signal.aborted) return;
     const result = await runOwnedCli(bin, args, { cwd, env: childEnv, input: prompt, signal }).catch(error => {
       if (!signal.aborted) throw error;
       return { aborted: true, stdout: '' };

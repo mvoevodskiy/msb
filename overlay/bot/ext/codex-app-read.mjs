@@ -1,6 +1,6 @@
 /**
  * Bounded app-server stdio: initialize, one allowlisted read, close owned process.
- * Consumers: [Skills](./codex-skills-rpc.mjs), [MCP](./codex-mcp.mjs).
+ * Consumers: [Skills](./codex-skills-rpc.mjs), [MCP](./codex-mcp.mjs), [quota](./adapters/saved-codex-quota.mjs).
  * [Transport ownership](./tests/codex-skills-rpc.test.mjs) and
  * [MCP protocol ingress](../../../.msb/bot/tests/mcp-catalog.test.mjs).
  */
@@ -8,15 +8,16 @@ import {spawn} from 'node:child_process';
 const reads=new Map([
   ['skills/list',{clientName:'msb_skills',error:'list',params:({cwd})=>({cwds:[cwd],forceReload:true})}],
   ['config/read',{clientName:'msb_mcp',error:'config',params:({cwd,includeLayers})=>({includeLayers,cwd})}],
+  ['account/rateLimits/read',{clientName:'msb_quota',error:'quota',params:()=>undefined}],
 ]);
 
-export function readCodexAppServer(method,{command,cwd,env=process.env,signal,timeoutMs=12_000,cleanupGraceMs=5_000,maxBytes=4*1024*1024,includeLayers=true,ownProcessGroup=true,spawnProcess=spawn}) {
+export function readCodexAppServer(method,{command,cwd,env=process.env,signal,timeoutMs=12_000,cleanupGraceMs=5_000,maxBytes=4*1024*1024,includeLayers=true,ownProcessGroup=true,appArgs=[],spawnProcess=spawn}) {
   if(signal?.aborted)return Promise.resolve({ok:false,aborted:true});
   const read=reads.get(method);
   if(!read)return Promise.resolve({ok:false,error:'method'});
   return new Promise(resolve=>{
     let child;
-    try{child=spawnProcess(command,['app-server'],{cwd,env,detached:ownProcessGroup,stdio:['pipe','pipe','ignore']});}
+    try{child=spawnProcess(command,['app-server',...appArgs],{cwd,env,detached:ownProcessGroup,stdio:['pipe','pipe','ignore']});}
     catch{return resolve({ok:false,error:'spawn'});}
     let phase='init',buffer='',bytes=0,result=null,closed=false,leaderExited=false,resolved=false,timeout,termTimer,killTimer,forceTimer;
     function signalGroup(name) {

@@ -636,3 +636,36 @@ with usageIncomplete. No refusal is synthesized solely from missing
 telemetry. XM at 11608–11627 excludes stopped/skipped attempts from
 daily tokens, and the existing journal reader preserves that rule.
 The native helper fixture checks actual CLI totals on loopback.
+
+
+Codex account reserve for saved actions.
+
+il/WM at 11798–11907 and Rz at 24763–24826 give the old Claude
+policy and admission order. The Codex adapter applies the owner's
+reserve to the measured 300-minute window and the old 98-percent
+threshold to the 10080-minute window. Both must be current. A
+confirmed block still writes the same notice and journal status,
+spends a once action and keeps recurring actions on their schedule.
+
+The overlay uses account/rateLimits/read from the pinned app-server
+with file auth in the effective CODEX_HOME. The scope reads only
+the common codex bucket, with the historical unlabelled bucket
+fallback. It discards another account's response, model-only
+buckets and unmeasured percentages. The provider's ordinary-use
+denial remains bound to the principal until authoritative true.
+Credits and individual display percentages do not grant access.
+A missing fresh window leaves the existing day and action budgets.
+
+The read is cancellable without counting as a model turn. Provider
+and credential checks precede the claim and the same credential is
+checked before launching Codex. Shared journal totals are sampled
+again after the read. The Claude/Pult routes are independent.
+The native app-server startup also reads account and reset-credit
+metadata. Plugins, hooks and exporters are disabled for this read.
+
+Use codex-saved-quota-loopback.mjs with the network-none Docker
+command above. The pinned CLI uses a synthetic Responses account
+backend, and the production reader checks 69/70/98 percent,
+the protected auth/config files and the absence of plugin and MCP
+effects. The scheduler and fake RPC fixtures cover unavailable,
+cross-account and explicit denial results and STOP races.

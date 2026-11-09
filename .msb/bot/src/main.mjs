@@ -39,6 +39,7 @@ export async function main() {
     timezone: cfg.timezone,
     scheduledTurns: bot[Symbol.for('msb.scheduledTurns')],
     runCodexPrompt: bot[Symbol.for('msb.savedCodexPrompt')],
+    readCodexQuota: bot[Symbol.for('msb.createSavedCodexQuotaReader')]?.(),
   });
   const monitor = startMonitorScheduler({
     api: bot.api,
