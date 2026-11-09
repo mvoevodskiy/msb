@@ -669,3 +669,46 @@ backend, and the production reader checks 69/70/98 percent,
 the protected auth/config files and the absence of plugin and MCP
 effects. The scheduler and fake RPC fixtures cover unavailable,
 cross-account and explicit denial results and STOP races.
+
+
+Old local recurring frequency decisions.
+
+Reference master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Read the preserved bundle with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+Lz/zz/ng at 24656–24674, 22499–22545 and 24977–25000 estimate
+the spacing. The 60-minute floor (24537) holds only estimates
+strictly below 60. Unknown patterns and a one-off have no floor.
+
+nwA/He at 36178–36230 and 35919–36086 scan before due selection,
+only with local autonomy enabled, without STOP, on enabled rows
+without a kill switch. They set disabledReason=frequency without
+disabling or stamping a run. They append a skipped hold and ask
+the saved owner's chat once per subject. GLA and tg at 25038–25057
+and 25103–25167 define the original text, choices and decision
+key. PF/Ye at 33959–34131 render the HTML card, store its short
+ID and resolve dc:<shortId>:<choice>. 16534–16608 define the
+per-profile pending and decisions maps in owner-decisions.json.
+113101–113142 and 37373–37390 connect owner chat, tap and sender.
+The tap persists before editing the card. A duplicate answer
+displays the remembered label and a missing or invalid card is
+stale. Failed sends can retry without creating a decided choice.
+
+The next eligible tick applies the choice. Keep lifts a frequency
+hold and resumes the original schedule. Hourly writes
+{kind:"cron",cron:"0 * * * *"} (25368–25371), clears lastRunAt,
+lastStatus, lastOutcome, nextFireAt and pendingReschedule (RJ
+23757–23771), and retains an existing frequency hold until the
+next tick lifts it. Off saves enabled=false and reason owner,
+preserving the row. He records the resumed and held transitions.
+sg at 25058–25102 logs applied choices as skipped, retryable
+write errors as blocked and limits the failure notice using the
+last 60 parsed rows (J0, 10837–10855). These are zero-cost
+administrative entries. Decisions survive file/transport retries.
+
+The local open-core test boundary uses existing actions.json,
+owner-decisions.json, the normal scheduler and the Telegram
+callback router. New writes must preserve other decisions and
+avoid replacing a concurrent choice or action. A tap uses the
+original card message ID and saved owner chat. This does not
+extend the pass to OpenClaw native jobs or alternate workflows.

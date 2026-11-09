@@ -8,54 +8,9 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { startScheduler } from '../src/autonomy/scheduler.mjs';
-import { actionRoot, statePath } from '../src/paths.mjs';
+import { statePath } from '../src/paths.mjs';
 import { loadState, saveState } from '../src/state.mjs';
-import { fixture } from './helpers/menu-fixture.mjs';
-
-const initial = Date.parse('2026-11-09T06:00:00.000Z');
-const min = 60_000;
-const owner = -100777;
-const at = time => new Date(time).toISOString();
-const every = minutes => ({ kind: 'interval', intervalMinutes: minutes });
-const cron = (expression, timezone) => ({ kind: 'cron', cron: expression, ...(timezone ? { timezone } : {}) });
-const record = (id, trigger, extra = {}) => ({ id, name: 'Сохранено ' + id, enabled: true,
-  trigger, task: { kind: 'reminder', text: 'Дословно ' + id }, runner: 'auto', retained: id, ...extra });
-
-async function profile(t, rows, { state = {}, now = initial } = {}) {
-  const f = await fixture(t, async () => assert.fail('The scheduled literal text must not start an owner turn'),
-    { overlay: false, runtimeProfile: 'jar1' });
-  for (const key of ['MSB_SESSION_DIR', 'IIA_SESSION_DIR', 'AUTONOMY_DIR', 'AUTONOMY_DAILY_CAP_USD',
-    'AUTONOMY_DAILY_CAP_RUNS', 'AUTONOMY_DAILY_CAP_TOKENS', 'AUTONOMY_RESERVE_FRACTION']) delete process.env[key];
-  process.env.AUTONOMY_ENABLED = '1';
-  await saveState({ ...(await loadState()).state, engine: 'cc', timezone: 'Europe/Moscow', chatId: owner, userId: 42, ...state });
-  const root = actionRoot();
-  const file = path.join(root, 'actions.json');
-  const autonomy = path.join(root, 'autonomy');
-  const journal = path.join(autonomy, 'runs.jsonl');
-  await fs.mkdir(autonomy, { recursive: true });
-  const saveRows = actions => fs.writeFile(file, JSON.stringify(actions));
-  await saveRows(rows);
-  const sent = [];
-  const send = f.bot.api.sendMessage;
-  f.bot.api.sendMessage = async (chat, text, ...options) => {
-    sent.push({ chat, text });
-    return send(chat, text, ...options);
-  };
-  let clock = now;
-  const makeScheduler = () => startScheduler({ api: f.bot.api, adminId: 42, timezone: 'UTC',
-    runTurn: async () => assert.fail('The interval approximation must not execute actions.json'), now: () => clock, log() {} });
-  const scheduler = makeScheduler();
-  t.after(() => scheduler.stop());
-  return { ...f, file, journal, autonomy, scheduler, makeScheduler, saveRows, sent,
-    deliveries: () => sent.filter(row => row.text.startsWith('⏰')),
-    rows: async () => JSON.parse(await fs.readFile(file, 'utf8')),
-    runs: async () => (await fs.readFile(journal, 'utf8')).trim().split('\n').map(JSON.parse),
-    advance: async value => { clock = value; await scheduler.tickNow(); },
-    setTime(value) { clock = value; },
-    decisions: rows => fs.writeFile(path.join(root, 'owner-decisions.json'), JSON.stringify({ decisions: rows })),
-  };
-}
+import { initial, min, owner, at, every, cron, record, profile } from './helpers/recurring-reminder-fixture.mjs';
 
 test('a saved interval follows its last attempt and keeps owner session and provider store bytes unchanged', async t => {
   const entry = record('interval', every(60), { lastRunAt: at(initial - 60 * min) });
@@ -99,7 +54,7 @@ test('the repeated local cron minute at the DST fallback remains one delivery', 
   assert.equal((await f.rows())[0].lastRunAt, at(first));
 });
 
-test('old frequency floor honors the per-action saved Keep and leaves unapproved fast rows alone', async t => {
+test('old frequency floor honors the per-action saved Keep and holds an unapproved fast row', async t => {
   const waiting = record('waiting', every(15));
   const keep = record('keep', cron('*/15 * * * *'), { disabledReason: 'frequency' });
   const off = record('off', every(15), { enabled: false, disabledReason: 'owner' });
@@ -109,7 +64,7 @@ test('old frequency floor honors the per-action saved Keep and leaves unapproved
   await f.scheduler.tickNow();
   assert.deepEqual(f.deliveries(), [{ chat: owner, text: '⏰ Дословно keep' }]);
   const after = await f.rows();
-  assert.deepEqual(after[0], waiting);
+  assert.deepEqual(after[0], { ...waiting, disabledReason: 'frequency' });
   assert.equal(after[1].disabledReason, undefined);
   assert.deepEqual(after[2], off);
 });
