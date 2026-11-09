@@ -1,10 +1,10 @@
 /**
- * Old CANCEL_SPENT before [inspection](./task-inspection-markers.mjs) and
+ * Old CANCEL_SPENT and CANCEL_ALL before [inspection](./task-inspection-markers.mjs) and
  * CANCEL_TASK after it, both before [individual pause](./task-control-markers.mjs).
  * [Task removal](../autonomy/task-removal.mjs) shares the writer with the
  * [confirmation](./task-removal-confirmation.mjs). [Ingress](../../tests/named-task-cancellation.test.mjs).
  */
-import { cancelNamedTaskFromTurn, cleanupSpentTasksFromTurn, TaskRemovalRefusal } from '../autonomy/task-removal.mjs';
+import { cancelNamedTaskFromTurn, cleanupSpentTasksFromTurn, planAllTasksFromTurn, TaskRemovalRefusal } from '../autonomy/task-removal.mjs';
 import { savedTaskTimezone } from '../autonomy/saved-task-inspection.mjs';
 import { loadState } from '../state.mjs';
 import { mcpMarkerRanges } from '../mcp/install-protocol.mjs';
@@ -12,9 +12,9 @@ import { SKILL_BLOCKS } from '../skills/install-protocol.mjs';
 import { autonomyExample, limitMarker, outsideExamples, outsideRanges, replaceAutonomyMarkers, scheduleMarker,
   taskCancelMarker, taskControlMarker, taskInspectionMarker } from './autonomy-marker-text.mjs';
 import { describeSavedTaskSchedule } from './screens/task-inspection.mjs';
-import { askToCancelSavedTask, describeSpentTaskCleanup } from './task-removal-confirmation.mjs';
+import { askToCancelAllTasks, askToCancelSavedTask, describeSpentTaskCleanup } from './task-removal-confirmation.mjs';
 
-const spentMarker = /\[CANCEL_SPENT\]/g;
+const groupRemovalMarker = /\[(CANCEL_SPENT|CANCEL_ALL)\]/g;
 const doubleQuoted = /"(?:\\[\s\S]|[^"\\])*"/g;
 const singleQuoted = /(?<![\p{L}\p{N}])'(?:\\[\s\S]|[^'\\]|'(?=[\p{L}\p{N}]))*'(?![\p{L}\p{N}])/gu;
 const structuredOpen = /\[(?:SCHEDULE_TASK|INSTALL_SKILL)\]/g;
@@ -43,25 +43,43 @@ function hasEmptySuffix(text, block) {
   return !suffix.replace(/<\/code>|\x60|»|"|'/g, '').trim();
 }
 
-export async function processSpentTaskMarkers(text, context) {
-  if (typeof text !== 'string' || !text.includes('[CANCEL_SPENT]')) return text;
-  const { payloads, quotes } = removalRanges(text, [...text.matchAll(taskCancelMarker)]);
-  const commands = new Set(outsideExamples(text, spentMarker, [...payloads, ...quotes])
-    .filter(block => hasEmptySuffix(text, block)).map(block => block.index));
-  // The old direct detector removes quoted or explanatory mentions. Leave
-  // structured payloads intact for their own parser.
-  return replaceAutonomyMarkers(text, outsideRanges(text, spentMarker, payloads), async block => {
-    if (!commands.has(block.index)) return { text: '' };
-    context.signal?.throwIfAborted();
-    if (!context.ownerId || !context.ok) return { text: '(задача не обработана)' };
-    try {
+async function applyGroupRemoval(type, context, ctx) {
+  context.signal?.throwIfAborted();
+  if (!context.ownerId || !context.ok) return { text: '(задача не обработана)' };
+  const spent = type === 'CANCEL_SPENT';
+  const noQuestion = 'Снос всех задач подтверждается кнопкой, а спросить сейчас не получилось. Могу снести по одной: скажи, какую убрать.';
+  try {
+    if (spent) {
       const result = await cleanupSpentTasksFromTurn(context);
       return { text: describeSpentTaskCleanup(result).text };
-    } catch (error) {
-      context.signal?.throwIfAborted();
-      return { error: error instanceof TaskRemovalRefusal ? error.message : 'Не удалось убрать просроченные.' };
     }
-  }, { claim: spentClaim, correctBeforeEach: true });
+    const result = await planAllTasksFromTurn(context);
+    if (!result.names.length) return { text: 'Сносить нечего: фоновых задач нет.' };
+    if (!await askToCancelAllTasks(ctx, result, context)) return { error: noQuestion };
+    return { text: 'Спросил подтверждение ниже, снесу все по кнопке.', awaitingConfirmation: true };
+  } catch (error) {
+    context.signal?.throwIfAborted();
+    if (error instanceof TaskRemovalRefusal) return { error: error.message };
+    return { error: spent ? 'Не удалось убрать просроченные.' : noQuestion };
+  }
+}
+
+export async function processGroupTaskRemovalMarkers(text, context, ctx) {
+  if (typeof text !== 'string' || !/\[CANCEL_(?:SPENT|ALL)\]/.test(text)) return text;
+  const { payloads, quotes } = removalRanges(text, [...text.matchAll(taskCancelMarker)]);
+  const commands = outsideExamples(text, groupRemovalMarker, [...payloads, ...quotes])
+    .filter(block => hasEmptySuffix(text, block));
+  const results = new Map();
+  // Run cleanup before taking the snapshot. Parse both commands before
+  // rendering stored task names, which may contain quote delimiters.
+  for (const type of ['CANCEL_SPENT', 'CANCEL_ALL']) {
+    for (const block of commands.filter(item => item[1] === type)) {
+      results.set(block.index, await applyGroupRemoval(type, context, ctx));
+    }
+  }
+  // Remove quoted or explanatory mentions while preserving other payloads.
+  return replaceAutonomyMarkers(text, outsideRanges(text, groupRemovalMarker, payloads),
+    block => results.get(block.index) ?? { text: '' }, { claim: spentClaim, correctBeforeEach: true });
 }
 
 function unavailable(name) {

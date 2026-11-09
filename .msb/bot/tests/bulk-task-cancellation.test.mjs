@@ -102,9 +102,30 @@ test('CANCEL_ALL shows the old bound card, stops active work, archives the curre
   assert.deepEqual(await f.records(), []);
   assert.match(f.edits.at(-1), /Отменил все задачи \(3\) и остановил автономку/);
   assert.match(f.edits.at(-1), /Снимок задач сохранён на сервере/);
+  assert.match(f.edits.at(-1), /Таймеры с прошлой настройки работают отдельно/);
   assert.doesNotMatch(f.edits.at(-1), /скажи «верни задачи»/);
   await f.untouched();
 });
+
+for (const [label, markers] of [
+  ['even if it comes later in the reply', '[CANCEL_ALL]\n[CANCEL_SPENT]'],
+  ['when a rendered name starts an unpaired quote', '[CANCEL_SPENT]\n[CANCEL_ALL]'],
+]) {
+  test('direct spent cleanup runs before the bulk question ' + label, async t => {
+    const spent = row('spent', 'Архив " утро', {
+      trigger: { kind: 'once', at: '2026-11-01T10:00:00.000Z' },
+      lastRunAt: '2026-11-01T10:00:00.000Z',
+    });
+    const f = await profile(t, { output: markers + '\nСледующая "фраза".', records: [active, spent] });
+    const question = await f.ask();
+    assert.ok(question);
+    assert.equal(f.messages[question - 1], 'Снести все фоновые задачи (1)?\n• Активная\nСнос необратим.');
+    assert.deepEqual(await f.records(), [active]);
+    assert.match(await f.final(), /Архив " утро/);
+    await absent(f.stop);
+    assert.deepEqual(await f.archives(), []);
+  });
+}
 
 test('an empty list has the old reply and does not start the cancellation transaction', async t => {
   const f = await profile(t, { records: [] });
@@ -296,3 +317,39 @@ test('a failure to engage STOP prevents the archive and deletion', async t => {
   assert.equal(f.toast(), 'Снёс');
   assert.deepEqual(await f.records(), []);
 });
+
+for (const failure of ['STOP sync', 'archive publish']) {
+  test(failure + ' failure retries cannot reuse the old pause after resume', async t => {
+    let reply = command;
+    const f = await profile(t, { output: () => ({ ok: true, text: reply }) });
+    assert.ok(await f.ask());
+    const open = fs.open, rename = fs.rename;
+    let refuse = true;
+    if (failure === 'STOP sync') {
+      t.mock.method(fs, 'open', async (file, ...args) => {
+        if (refuse && path.basename(file) === 'STOP') throw new Error('fixture STOP sync failure');
+        return open(file, ...args);
+      });
+    } else {
+      t.mock.method(fs, 'rename', async (from, to) => {
+        if (refuse && archiveName(path.basename(to))) throw new Error('fixture archive failure');
+        return rename(from, to);
+      });
+    }
+    await f.click('ct-all');
+    assert.ok((await fs.stat(f.stop)).isFile());
+    assert.deepEqual(await f.records(), [active]);
+    assert.deepEqual(await f.archives(), []);
+    refuse = false;
+    reply = '[RESUME_ALL]';
+    const edits = f.edits.length;
+    await f.request('Верни фоновые задачи в работу');
+    await until(() => f.edits.slice(edits).some(text => /Снял (стоп|паузу)/.test(text)), 'resume did not finish');
+    await absent(f.stop);
+    await f.click('ct-all');
+    assert.equal(f.toast(), 'Подтверждение устарело');
+    await absent(f.stop);
+    assert.deepEqual(await f.records(), [active]);
+    assert.deepEqual(await f.archives(), []);
+  });
+}

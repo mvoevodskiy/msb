@@ -1160,3 +1160,28 @@ actions.removed- reference is the writer. _7 at 24373–24420
 resumes current tasks and separately paused timers. It does not
 load the archive, so the old reply's recovery promise is not a
 working restore route.
+
+New open-core binds the question to owner, bot, chat, message,
+rail and physical file, with a multiset of task definitions.
+Run status and pause metadata can advance. A replacement or
+addition invalidates the question before STOP. An empty subset
+can still engage the ordinary local pause. Cleanup of spent
+tasks runs before the bulk snapshot. Both commands are read
+from the same model output before inserting task names.
+
+The transaction uses question, STOP, actions and state locks
+in that order. It durably marks the question applying before
+engaging STOP, syncs the STOP record, and writes and syncs
+a private full archive before publishing action removal. A
+known failure can rearm the question for the same generation;
+resuming invalidates it. A repeated completed or interrupted
+tap cannot stop newly resumed work. Archive or action-write
+failure retains the tasks. Mapped and ambiguous OpenClaw rows
+remain, and a receipt identifies possible independent native
+jobs and legacy timers. No archive restore command is advertised.
+
+Read the flow in src/telegram/task-removal-markers.mjs and
+task-removal-confirmation.mjs, then src/autonomy/task-removal.mjs,
+owner-pause.mjs, reminder-store.mjs and task-removal-archive.mjs.
+The bulk-task-cancellation.test.mjs fixture exercises ingress,
+the confirmation, STOP, on-disk snapshots and failure boundaries.

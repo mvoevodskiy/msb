@@ -2,6 +2,7 @@
  * Per-bot STOP and the read-only fleet flag. The owner command serializes with
  * [reminder admission](./reminder-dispatch.mjs) and [timer confirmation](../telegram/pause-confirmation.mjs).
  * [Scheduler](./scheduler.mjs) registers active local interval turns here.
+ * [Bulk removal](./task-removal.mjs) shares the locked STOP operation.
  * [Old pause ingress checks](../../tests/autonomy-pause.test.mjs).
  */
 import fs from 'node:fs/promises';
@@ -9,7 +10,7 @@ import path from 'node:path';
 import { withFileLock } from '../../shared/file-lock.mjs';
 import { actionRoot } from '../paths.mjs';
 import { NO_STATE_WRITE, updateState } from '../state.mjs';
-import { readOptionalJson, readRecordArray, writeRecordArray } from './record-file.mjs';
+import { readOptionalJson, readRecordArray, syncPublishedRecord, writeRecordArray } from './record-file.mjs';
 import { changeStoppedLegacyTimers } from './legacy-timers.mjs';
 
 const activeTurns = new Map();
@@ -22,7 +23,7 @@ export function withAutonomyPauseLock(update, env = process.env) {
   return withFileLock(stopPath(env), update);
 }
 
-async function stopIdentity(env) {
+export async function readOwnerPauseGeneration(env = process.env) {
   try {
     const stat = await fs.lstat(stopPath(env), { bigint: true });
     return [stat.dev, stat.ino, stat.birthtimeNs, stat.ctimeNs].join(':');
@@ -38,7 +39,7 @@ function timerQuestionPath(env) {
 
 export async function readAutonomyPause(env = process.env) {
   const [generation, remote] = await Promise.all([
-    stopIdentity(env),
+    readOwnerPauseGeneration(env),
     readOptionalJson(path.join(actionRoot(env), 'remote-config.json')).catch(error => {
       throw new Error('Could not read the autonomy fleet flag', { cause: error });
     }),
@@ -80,6 +81,27 @@ async function unlinkIfPresent(file) {
   catch (error) { if (error.code !== 'ENOENT') throw error; }
 }
 
+async function writeOwnerStop(file, now, reason = 'владелец сказал остановить') {
+  try {
+    await fs.writeFile(file, reason + '\n' + new Date(now).toISOString() + '\n', { flag: 'wx', mode: 0o600 });
+  } catch (failure) {
+    if (failure.code !== 'EEXIST') throw failure;
+  }
+}
+
+async function ownerStopResult(file, env) {
+  return { aborted: abortActiveTurns(file), generation: await readOwnerPauseGeneration(env) };
+}
+
+/** For callers already holding the pause lock and checking the active engine. */
+export async function engageOwnerPauseLocked({ now, reason, env = process.env }) {
+  const file = stopPath(env);
+  await writeOwnerStop(file, now, reason);
+  const result = await ownerStopResult(file, env);
+  await syncPublishedRecord(file);
+  return result;
+}
+
 export async function setOwnerPause(stop, { now, check, checkEngine, signal, env = process.env } = {}) {
   return withAutonomyPauseLock(async () => {
     signal?.throwIfAborted();
@@ -92,20 +114,12 @@ export async function setOwnerPause(stop, { now, check, checkEngine, signal, env
       error = checkEngine(state);
       if (error) return NO_STATE_WRITE;
       signal?.throwIfAborted();
-      if (stop) {
-        try {
-          await fs.writeFile(file, 'владелец сказал остановить\n' + new Date(now).toISOString() + '\n',
-            { flag: 'wx', mode: 0o600 });
-        } catch (failure) {
-          if (failure.code !== 'EEXIST') throw failure;
-        }
-      } else {
-        await unlinkIfPresent(file);
-      }
+      if (stop) await writeOwnerStop(file, now);
+      else await unlinkIfPresent(file);
       return NO_STATE_WRITE;
     }, env);
     if (error) return { error };
-    if (stop) return { aborted: abortActiveTurns(file), generation: await stopIdentity(env) };
+    if (stop) return ownerStopResult(file, env);
 
     await unlinkIfPresent(path.join(path.dirname(file), 'stop-notice.json')).catch(() => {});
     await unlinkIfPresent(timerQuestionPath(env)).catch(() => {});
@@ -119,16 +133,16 @@ export async function setOwnerPause(stop, { now, check, checkEngine, signal, env
 
 export async function saveTimerPauseQuestion(generation, message, env = process.env) {
   return withAutonomyPauseLock(async () => {
-    if (!generation || await stopIdentity(env) !== generation) return false;
+    if (!generation || await readOwnerPauseGeneration(env) !== generation) return false;
     await writeRecordArray(timerQuestionPath(env), [{ ...message, generation }], { create: true });
     return true;
   }, env);
 }
 
 export async function answerTimerPauseQuestion(message, stop, env = process.env) {
-  if (!await stopIdentity(env)) return null;
+  if (!await readOwnerPauseGeneration(env)) return null;
   return withAutonomyPauseLock(async () => {
-    const generation = await stopIdentity(env);
+    const generation = await readOwnerPauseGeneration(env);
     const file = timerQuestionPath(env);
     const [question] = await readRecordArray(file);
     if (!generation || question?.generation !== generation ||

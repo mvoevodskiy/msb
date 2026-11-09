@@ -46,7 +46,15 @@ export function writeRecordArray(file, records, options) {
   return writeRecordJson(file, records, options);
 }
 
-export async function writeRecordJson(file, value, { signal, create = false, beforePublish } = {}) {
+export async function syncPublishedRecord(file) {
+  for (const target of [file, path.dirname(file)]) {
+    const handle = await fs.open(target, 'r');
+    try { await handle.sync(); }
+    finally { await handle.close(); }
+  }
+}
+
+export async function writeRecordJson(file, value, { signal, create = false, beforePublish, durable = false } = {}) {
   signal?.throwIfAborted();
   const mode = await fs.stat(file).then(stat => stat.mode & 0o777, error => {
     if (create && error?.code === 'ENOENT') return 0o600;
@@ -60,6 +68,7 @@ export async function writeRecordJson(file, value, { signal, create = false, bef
     if (beforePublish) await beforePublish();
     signal?.throwIfAborted();
     await fs.rename(temporary, file);
+    if (durable) await syncPublishedRecord(file);
   } finally {
     await fs.rm(directory, { recursive: true, force: true }).catch(error => {
       console.error('[msb/autonomy] Could not clean record temporary directory:', error.code || error.name);

@@ -2,7 +2,8 @@
  * Task removal from a successful owner [turn](../telegram/task-removal-markers.mjs)
  * or a durable [question](../telegram/task-removal-confirmation.mjs). The
  * [action store](./reminder-store.mjs) locks the file and rechecks definitions.
- * [Spent](../../tests/spent-task-cleanup.test.mjs) and [named](../../tests/named-task-cancellation.test.mjs) checks.
+ * Checks for [spent](../../tests/spent-task-cleanup.test.mjs), [named](../../tests/named-task-cancellation.test.mjs)
+ * and [bulk](../../tests/bulk-task-cancellation.test.mjs) removal.
  */
 import path from 'node:path';
 import { withFileLock } from '../../shared/file-lock.mjs';
@@ -10,11 +11,13 @@ import { botRoot } from '../paths.mjs';
 import { loadState, NO_STATE_WRITE, updateState } from '../state.mjs';
 import { readRecordArray, writeRecordArray } from './record-file.mjs';
 import { readReminderPolicy } from './reminder-policy.mjs';
-import { cancelNamedSavedTasks, removeConfirmedNamedTask, removeSpentTasks } from './reminder-store.mjs';
+import { engageOwnerPauseLocked, readOwnerPauseGeneration, withAutonomyPauseLock } from './owner-pause.mjs';
+import { cancelNamedSavedTasks, planAllSavedTasks, removeConfirmedAllTasks, removeConfirmedNamedTask, removeSpentTasks } from './reminder-store.mjs';
 
 // Keep the deployed path and the original untyped spent-question records.
 const questionsPath = () => path.join(botRoot(), 'autonomy', 'spent-task-questions.json');
 const spentCallback = 'ct-spent';
+const allCallback = 'ct-all';
 const keepCallback = 'ct-keep';
 
 export class TaskRemovalRefusal extends Error {}
@@ -45,8 +48,49 @@ export function cancelNamedTaskFromTurn(query, { rail, signal }) {
   return cancelNamedSavedTasks(query, { rail, signal, commit: publish => commitRemoval(publish, { rail, named: true }) });
 }
 
+export async function planAllTasksFromTurn({ rail, signal }) {
+  await requireRemovalRoute((await loadState()).state, { rail, named: true });
+  signal?.throwIfAborted();
+  return planAllSavedTasks();
+}
+
 function questionTurn(question) {
-  return question.kind === 'named' ? { rail: question.rail, named: true } : undefined;
+  return ['named', 'all'].includes(question.kind) ? { rail: question.rail, named: true } : undefined;
+}
+
+function matchesRemovalCallback(question, callback, keep) {
+  if (question.kind === 'named') return keep || question.callback === callback;
+  if (question.kind === 'all') return keep || callback === allCallback;
+  return question.kind === undefined && (keep || callback === spentCallback);
+}
+
+async function applyBulkQuestion(question, questions, file, now) {
+  // Durable before STOP. An uncertain process exit or a failed retirement
+  // must never give the same confirmation authority to put STOP back.
+  if (question.applying) return { stale: true };
+  const at = now();
+  const turn = questionTurn(question);
+  const replace = next => writeRecordArray(file, questions.map(row => row === question ? next : row), { durable: true });
+  return withAutonomyPauseLock(async () => {
+    if (question.retryGeneration && question.retryGeneration !== await readOwnerPauseGeneration()) return { stale: true };
+    const result = await removeConfirmedAllTasks(question, {
+      rail: turn.rail, now: at,
+      commit: publish => commitRemoval(publish, turn),
+      markApplying: () => replace({ ...question, applying: true }),
+      engageStop: () => engageOwnerPauseLocked({ now: at, reason: 'владелец подтвердил снос кнопкой' }),
+    });
+    if (!result?.failure) return result ?? { stale: true };
+    try {
+      // A write can have installed STOP before its sync failed. A known
+      // pre-deletion failure can retry only within the same visible pause.
+      const generation = await readOwnerPauseGeneration();
+      await replace(generation ? { ...question, retryGeneration: generation } : question);
+      return { ...result, paused: Boolean(generation) };
+    } catch (error) {
+      console.error('[msb/autonomy] Could not rearm bulk removal question:', error.code || error.name);
+      return result;
+    }
+  });
 }
 
 export function saveTaskRemovalQuestion(question, signal) {
@@ -58,12 +102,11 @@ export function saveTaskRemovalQuestion(question, signal) {
   });
 }
 
-export async function resolveTaskRemovalQuestion({ ownerId, chatId, messageId }, callback = keepCallback) {
+export async function resolveTaskRemovalQuestion({ ownerId, chatId, messageId }, callback = keepCallback, { now = Date.now } = {}) {
   const file = questionsPath();
   const keep = callback === keepCallback;
   const matches = question => question?.ownerId === ownerId && question.chatId === chatId && question.messageId === messageId &&
-    (question.kind === 'named' ? keep || question.callback === callback :
-      question.kind === undefined && (keep || callback === spentCallback));
+    matchesRemovalCallback(question, callback, keep);
   // Shared Keep can belong to another confirmation. It must not create a file.
   if (!(await readRecordArray(file)).some(matches)) return null;
   return withFileLock(file, async () => {
@@ -75,15 +118,21 @@ export async function resolveTaskRemovalQuestion({ ownerId, chatId, messageId },
       await consume();
       return { kept: true };
     }
+    const retire = () => consume().catch(error => {
+      console.error('[msb/autonomy] Could not retire task removal question:', error.code || error.name);
+    });
+    if (question.kind === 'all') {
+      const result = await applyBulkQuestion(question, questions, file, now);
+      if (!result.failure) await retire();
+      return { bulk: true, ...result };
+    }
     // Keep a failed or interrupted action write retryable.
     const turn = questionTurn(question);
     const result = turn
       ? await removeConfirmedNamedTask(question, { rail: turn.rail, commit: publish => commitRemoval(publish, turn) })
       : await removeSpentTasks({ snapshot: question, commit: commitRemoval });
     if (turn && result?.failed.length) return { named: true, ...result };
-    await consume().catch(error => {
-      console.error('[msb/autonomy] Could not retire task removal question:', error.code || error.name);
-    });
+    await retire();
     return { named: Boolean(turn), ...(result ?? { removed: [], failed: [], changed: true }) };
   }).catch(error => {
     if (keep) return { keepFailed: true };

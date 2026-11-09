@@ -13,6 +13,7 @@ import { actionRoot } from '../paths.mjs';
 import { physicalRecordPath, readOptionalJson, readRecordArray, writeRecordArray } from './record-file.mjs';
 import { recordReminderBreaker } from './reminder-breaker.mjs';
 import { reminderSpacing, savedTaskSpent, spentReminder, validReminderTrigger } from './reminder-schedule.mjs';
+import { archiveSavedActions } from './task-removal-archive.mjs';
 import { matchingSavedActions, planSavedActionControl, savedActionWithEnabled, selectSavedAction,
   unavailableSavedActionControl } from './saved-action-control.mjs';
 
@@ -221,11 +222,11 @@ function checkRemovalSnapshot(snapshot, named = false) {
       (named && snapshot.candidates.length !== 1)) throw new Error('Invalid task removal snapshot');
 }
 
-async function removeCandidates({ records, save, file, env, rail, candidates, eligible, fingerprint = taskFingerprint }) {
+async function removeCandidates({ records, save, file, env, rail, candidates, eligible, fingerprint = taskFingerprint, jobs }) {
   const removed = [], failed = [];
   let changed = false, missing = false;
   if (candidates.length) {
-    const jobs = await readNativeJobMap(env);
+    jobs ??= await readNativeJobMap(env);
     for (const candidate of candidates) {
       const index = records.findIndex(action => action?.id === candidate.id && fingerprint(action) === candidate.fingerprint);
       const action = records[index];
@@ -284,4 +285,55 @@ export function removeConfirmedNamedTask(snapshot, { rail, env = process.env, co
     records, save, file, env, rail, candidates: snapshot.candidates,
     eligible: savedTaskRecord, fingerprint: taskDefinitionFingerprint,
   })), { expectedFile: snapshot.file });
+}
+
+export async function planAllSavedTasks(env = process.env) {
+  const { file, records } = await readSavedActionRecords(env);
+  if (!records.every(savedTaskRecord)) throw new Error('Invalid saved task records');
+  return { names: records.map(action => action.name), snapshot: { file, candidates: records.map(namedTaskCandidate) } };
+}
+
+function withinApprovedGroup(records, candidates) {
+  const key = ({ id, fingerprint }) => JSON.stringify([id, fingerprint]);
+  const approved = new Map();
+  for (const candidate of candidates) {
+    const ref = key(candidate);
+    approved.set(ref, (approved.get(ref) ?? 0) + 1);
+  }
+  return records.every(action => {
+    if (!savedTaskRecord(action)) return false;
+    const ref = key(namedTaskCandidate(action));
+    const count = approved.get(ref);
+    if (!count) return false;
+    approved.set(ref, count - 1);
+    return true;
+  });
+}
+
+export function removeConfirmedAllTasks(snapshot, { rail, now, markApplying, engageStop, env = process.env,
+  commit = publish => publish() } = {}) {
+  checkRemovalSnapshot(snapshot);
+  if (!snapshot.candidates.length) throw new Error('Empty bulk removal snapshot');
+  return withActions(env, (records, save, file) => commit(async () => {
+    if (!withinApprovedGroup(records, snapshot.candidates)) return { stale: true };
+    await markApplying();
+    try { await engageStop(); }
+    catch { return { failure: 'pause' }; }
+    let archive;
+    if (records.length) {
+      try { archive = await archiveSavedActions(file, records, now); }
+      catch { return { failure: 'archive' }; }
+    }
+    try {
+      const jobs = await readNativeJobMap(env);
+      const result = await removeCandidates({ records, save, file, env, rail, jobs,
+        candidates: records.map(namedTaskCandidate), eligible: savedTaskRecord, fingerprint: taskDefinitionFingerprint });
+      const nativeMayStillRun = result.failed.length > 0 ||
+        Object.values(jobs).some(job => job?.jobId && job.enabled !== false && !job.pausedBy);
+      return { ...result, archive, nativeMayStillRun };
+    } catch {
+      // The atomic action rename has not completed on this path.
+      return { failure: 'remove', archive };
+    }
+  }), { expectedFile: snapshot.file });
 }
