@@ -1253,3 +1253,37 @@ See src/telegram/task-reschedule-markers.mjs and the confirmation,
 then src/autonomy/saved-task-reschedule.mjs and its question book.
 Tests task-reschedule.test.mjs and openclaw-turn.test.mjs cover
 the three synthetic provider routes and the real local dispatcher.
+
+Edit the work text of a saved task
+----------------------------------
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Read stable lines with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+The owner prompt 24607/24624 gives EDIT_TASK, APPEND_TASK and
+DROP_FROM_TASK with a closed multiline body. Grammar 27223–27228
+and dispatch 26886–27005 also accept the compact first-pipe
+form. Processing is edit, append, drop, each full form before
+compact. Body may contain a closing bracket or pipe. WMA
+26704–26705 and pa 26679–26701 compare resolved task IDs.
+A SHOW_TASK for the same task in the reply defers replacement
+with the copy at 27203. Append and drop are still available.
+
+Iz/Nz/$z 23977–24134 use z9/Hz selection and Kz 22990–23000
+for reminder text, prompt and draft bodies. pr/Fg 24138–24144
+and 21531–21565 strip redundant scheduling leads from prompt
+or draft only. Append joins the trimmed body with one LF
+(ALA 24542–24543). Kr/ur 24036–24064 match case and punctuation
+insensitively, removing all matching lines or sentences and
+refusing an empty remainder. QLA 24065–24073 quotes removed
+lines. Missing matches show the full existing body.
+
+pg 24145–24218 validates the entire candidate through Ug
+21555–21560, even a reminder, and replaces just the body.
+Spent rows are saved directly and report that their schedule
+has passed. Live local rows use y7/U4 at 46174–46190 and
+4393–4409. Disabled native rows also try to restore their
+pause after registration. The old receipts and errors are at
+24573–24593. Native registration and map ownership are
+separate. Old ir 24928–24948 writes a whole run snapshot.
+The restored route must preserve task settings and the run
+journal without letting the old snapshot replace the edit.

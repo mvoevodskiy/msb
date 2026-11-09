@@ -322,3 +322,22 @@ test('OpenClaw reschedules an explicit local row while preserving ambiguous auto
   assert.deepEqual(retained,native);
   assert.deepEqual((await f.calls()).map(row=>row.kind),['sessions','prompt']);
 });
+
+test('OpenClaw task text changes only an explicitly local row',async t=>{
+  const f=await prepare(t,{runTurn:runAgentTurn,reply:'[EDIT_TASK: local | новый текст]\n[APPEND_TASK: native | добавка]'});
+  process.env.AUTONOMY_ENABLED='1';
+  const local={id:'local',name:'Локальная',enabled:true,runner:'cc',
+    trigger:{kind:'interval',intervalMinutes:60},task:{kind:'reminder',text:'fixture local'}};
+  const native={...local,id:'native',name:'Старая автоматическая',runner:'auto'};
+  const file=path.join(actionRoot(),'actions.json');
+  await fs.writeFile(file,JSON.stringify([local,native]));
+  await f.message('Измени текст сохранённых задач');
+  await until(()=>f.edits.some(text=>text.includes('⏱')),'OpenClaw fixture did not finish',10_000);
+  assert.match(seen('prompt',await f.calls()).prompt,/\[EDIT_TASK:/);
+  assert.match(f.edits.at(-1),/Готово: у «Локальная» новый текст/);
+  assert.match(f.edits.at(-1),/Изменение текста задачи «Старая автоматическая».*недоступно/);
+  const [updated,retained]=JSON.parse(await fs.readFile(file,'utf8'));
+  assert.equal(updated.task.text,'новый текст');
+  assert.deepEqual(retained,native);
+  assert.deepEqual((await f.calls()).map(row=>row.kind),['sessions','prompt']);
+});
