@@ -8,7 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
-import { readReminderRefusal } from '../src/autonomy/reminder-admission.mjs';
+import { readBoxReminderRefusal } from '../src/autonomy/reminder-admission.mjs';
 import { readEnvMap } from '../src/env/store.mjs';
 import { botRoot, msbRoot } from '../src/paths.mjs';
 import { loadState, saveState, updateState } from '../src/state.mjs';
@@ -59,7 +59,7 @@ async function profile(t) {
     ts: at, actionId: 'sibling', status: 'ok', costUsd: 0, tokensIn: 0,
   }) + '\n');
   const bytes = () => fs.readFile(file, 'utf8');
-  const refusal = () => readReminderRefusal({ id: 'fixture-reminder' }, at);
+  const refusal = () => readBoxReminderRefusal(at);
   const value = async (key = runCap) => (await readEnvMap()).map.get(key);
   const untouched = async () => {
     assert.equal(await fs.readFile(box, 'utf8'), runCap + '=99\n');

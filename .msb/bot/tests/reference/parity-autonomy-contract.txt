@@ -219,8 +219,8 @@ Rz 24743–24827 estimates $0.10 for an ordinary reminder. The local
 route evaluates saved stop/kill first, breaker at 13327–13341,
 fleet USD and then run/input-token caps, existing Claude quota,
 and owner/action spending. This checkpoint restores the read-side
-legacy breaker decision. Source/result bookkeeping for breaker
-transitions and the old periodic frequency brake remain separate.
+legacy breaker decision. The direct reminder result path is below.
+The old periodic frequency brake remains separate.
 
 VM/GM (11548–11669, 11740–11775, 11924–11961) use the UTC date and
 the last 500 parsed rows per own/root/bot journal (10837–10855,
@@ -314,3 +314,45 @@ Copy for the zero question/result names the selected gate only. The
 old blanket unlimited-spending statements cannot describe the other
 active constraints. Tests use disposable profiles and synthetic
 Telegram/CLI events. No live confirmation or native OpenClaw write.
+
+Direct reminder breaker outcomes.
+
+In old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf the source
+is .iia/bot/index.js. Read the old blob above with git show and
+nl -ba. 37378–37382 wires the CC ports and owner chat. nwA
+36178–36188,36263–36268 sends due actions through Rz. Ai/YPA
+16977–16986 and 37005–37036 directly send ordinary reminders.
+Rz 24829–24843 maps delivery exceptions to error. Preflight
+24797–24827 and shutdown 24848–24870 return before AD.
+24871–24883 calls AD with XLA 24736–24742 (only error increments).
+
+NIA/AD 13249–13341,13388–13429 keeps one record per action in
+breakers.json, anchored at UA 55413–55415 and 55687–55689. The
+third error opens for 300 seconds, then an eligible failed attempt
+extends the delay exponentially up to 3600 seconds. Q2 at
+24656–24682 gives zero minimum for a once trigger. A successful
+attempt closes the breaker, clears the crash history and retains
+last failure metadata. d4 at 13358–13373 and 13048–13062 sends
+one notice at each transition. CC formats Moscow by default
+(13189–13217). The OC outbox at 34451–34527 and 34851–34858 is
+separate. gU legacy schedules (108800–108830,111460–111475)
+queue regular turns outside this state machine.
+
+05b7e44 reproduced five defects on bfa5c06. Restore the direct
+result only for the still-current claimed action. The shared
+profile lock keeps distinct records and follows physical paths.
+The breaker is read after usage I/O, inside the claim transaction.
+An admission refusal leaves the breaker untouched. An unreadable
+map is left intact. The action result and journal survive a
+breaker write failure or failed notice. A write alias to the
+already-locked action file is refused before nested locking.
+
+Once is still spent after the original attempt. The opening notice
+retains the old transition text without promising automatic recovery
+of an already spent reminder. Each synthetic run and journal uses
+its captured start time. The separate simplified interval runner,
+real old recurrent actions, crashstorm and native outbox require
+their own admission and completion routes. File locks do not turn
+Telegram and the files into one transaction. The existing window
+between claim and the external send remains. All proof here uses
+owned disposable profiles and synthetic Telegram.

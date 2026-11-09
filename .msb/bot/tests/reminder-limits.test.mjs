@@ -365,7 +365,7 @@ test('an old threshold crossing announces one pause and later failures extend ba
   assert.equal(rows[cap.id].notifiedOpenAt, prior);
   assert.deepEqual(f.messages, [{ chat: ownerChat, options: undefined,
     text: '📡 Автономное действие «' + title + '» не выполнилось несколько раз подряд.\n' +
-      'Причина: не удалось отправить напоминание.\nПоставил на паузу до 00:35 (Москва).',
+      'Причина: не удалось отправить напоминание.\nПоставил на паузу до 00:35 (МСК).',
   }]);
 });
 
@@ -453,4 +453,37 @@ test('old session mapping preserves a linked breaker and refuses to overwrite da
   assert.equal(await fs.readFile(actual, 'utf8'), corrupt);
   assert.ok(f.logs.some(line => line.includes('Could not save reminder breaker')));
   assert.ok(!f.logs.some(line => line.includes(corrupt)));
+});
+
+test('a failed breaker notice leaves the saved transition and attempt intact', async t => {
+  const f = await profile(t);
+  await f.seedBreakers({ [reminder.id]: { open: false, consecutiveFailures: 2 } });
+  let deliveries = 0, notices = 0;
+  f.bot.api.sendMessage = async (_chat, text) => {
+    if (text.startsWith('⏰')) deliveries++;
+    else notices++;
+    throw Error('fixture Telegram failure');
+  };
+  await f.scheduler.tickNow();
+  await f.scheduler.tickNow();
+  assert.equal(deliveries, 1);
+  assert.equal(notices, 1);
+  assert.equal((await f.readBreakers())[reminder.id].consecutiveFailures, 3);
+  assert.equal((await f.readActions())[0].lastStatus, 'error');
+  assert.deepEqual((await f.runs()).map(row => row.status), ['error']);
+  assert.ok(f.logs.includes('[msb/reminder] Could not send the breaker notice'));
+});
+
+test('a breaker link to its own action file leaves the reminder and scheduler functional', { timeout: 3000 }, async t => {
+  const f = await profile(t);
+  await fs.mkdir(path.dirname(f.breakerFile), { recursive: true });
+  await fs.symlink(f.file, f.breakerFile);
+  // A regression must fail the watchdog without also hanging the test cleanup.
+  const stop = f.scheduler.stop;
+  f.scheduler.stop = () => { void stop(); };
+  await f.scheduler.tickNow();
+  assert.equal((await f.readActions())[0].lastStatus, 'ok');
+  assert.equal((await f.runs()).at(-1).status, 'ok');
+  assert.equal(await fs.readlink(f.breakerFile), f.file);
+  assert.ok(f.logs.some(line => line.includes('Could not save reminder breaker')));
 });

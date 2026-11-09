@@ -3,27 +3,15 @@
  * files separate. [Marker](../telegram/reminder-markers.mjs), [sender](./reminder-dispatch.mjs),
  * [menu](../telegram/routes/autonomy.mjs), [contract](../../tests/reference/parity-autonomy-contract.txt).
  */
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { withFileLock } from '../../shared/file-lock.mjs';
 import { actionRoot } from '../paths.mjs';
-import { readOptionalJson, readRecordArray, writeRecordArray } from './record-file.mjs';
+import { physicalRecordPath, readOptionalJson, readRecordArray, writeRecordArray } from './record-file.mjs';
+import { recordReminderBreaker } from './reminder-breaker.mjs';
 
-async function actionFile(env) {
-  const logical = path.join(actionRoot(env), 'actions.json');
-  try {
-    return await fs.realpath(logical);
-  } catch (error) {
-    if (error?.code !== 'ENOENT') throw error;
-    try {
-      await fs.lstat(logical);
-    } catch (missing) {
-      if (missing?.code === 'ENOENT') return logical;
-      throw missing;
-    }
-    throw error;
-  }
+function actionFile(env) {
+  return physicalRecordPath(path.join(actionRoot(env), 'actions.json'));
 }
 
 export async function readNativeJobMap(env) {
@@ -110,13 +98,17 @@ export async function claimReminder(file, snapshot, at, { env = process.env, adm
 
 export async function finishReminder(file, claimed, result, env = process.env) {
   if (await actionFile(env) !== file) return;
-  await withActions(env, async (records, save) => {
+  return withActions(env, async (records, save) => {
     if (await actionFile(env) !== file) return;
     const index = records.findIndex(action => action?.id === claimed.id);
     if (!isDeepStrictEqual(records[index], claimed)) return;
+    // A replacement may reuse the id. Both writes belong to this claim only.
+    const breaker = await recordReminderBreaker(claimed.id, claimed.lastRunAt, result, { env, lockedActionFile: file })
+      .then(event => ({ event }), breakerError => ({ breakerError }));
     records[index] = { ...claimed, lastStatus: result.status,
       lastOutcome: result.status === 'ok' ? 'ok' : 'engine_error', lastError: result.error };
-    await save();
+    const actionError = await save().then(() => undefined, error => error);
+    return { ...breaker, actionError };
   });
 }
 

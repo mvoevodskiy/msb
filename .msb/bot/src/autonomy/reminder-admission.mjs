@@ -1,14 +1,11 @@
 /**
- * Old local Rz admission for a due once/reminder. Existing breaker and
- * [box journals](./box-runs.mjs) precede [Claude quota](./subscription-gate.mjs)
- * and owner/action spend. [Dispatcher](./reminder-dispatch.mjs) owns the claim.
+ * Budget and subscription admission for a due once/reminder. [Dispatcher](./reminder-dispatch.mjs)
+ * evaluates the current [breaker](./reminder-breaker.mjs), [box journals](./box-runs.mjs),
+ * [Claude quota](./subscription-gate.mjs) and owner/action spend in order.
  * [Old reference and fixtures](../../tests/reminder-limits.test.mjs).
  */
-import path from 'node:path';
-import { actionRoot } from '../paths.mjs';
 import { ownerSpendDay } from '../billing/owner-spend.mjs';
 import { readBoxRunTotals } from './box-runs.mjs';
-import { readOptionalJson } from './record-file.mjs';
 import { claudeQuotaRefusal } from './subscription-gate.mjs';
 
 const estimate = 0.10;
@@ -74,13 +71,7 @@ function spendRefusal(action, state, at, reserveFraction) {
   }
 }
 
-export async function readReminderRefusal(action, at, env = process.env) {
-  const file = path.join(actionRoot(env), 'autonomy', 'breakers.json');
-  const breakers = await readOptionalJson(file).catch(() => null);
-  const breaker = breakers && Object.hasOwn(breakers, action.id) ? breakers[action.id] : null;
-  if (breaker?.open && Date.parse(at) < Date.parse(breaker.backoffUntil)) {
-    return { status: 'skipped', detail: 'breaker открыт до ' + breaker.backoffUntil };
-  }
+export async function readBoxReminderRefusal(at, env = process.env) {
   const detail = await boxRefusal(at, env);
   if (detail) return { status: 'blocked', detail };
 }

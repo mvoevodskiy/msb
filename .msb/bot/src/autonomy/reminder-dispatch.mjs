@@ -2,14 +2,16 @@
  * Saved once/reminder → [gate](./reminder-admission.mjs) → committed attempt
  * → single plain Telegram send or refusal → [run log](./reminder-runs.mjs).
  * [Scheduler](./scheduler.mjs) calls it without starting a CLI turn.
- * [Store](./reminder-store.mjs), [pause lock](./owner-pause.mjs),
- * [checks](../../tests/reminder-limits.test.mjs).
+ * [Store](./reminder-store.mjs) records delivery and [breaker](./reminder-breaker.mjs)
+ * transitions. [Pause lock](./owner-pause.mjs), [checks](../../tests/reminder-limits.test.mjs).
  */
 import { loadState, NO_STATE_WRITE, updateState } from '../state.mjs';
 import { singleRequestSignal } from '../telegram/presentation-api.mjs';
 import { isLocalReminderEngine, readReminderPolicy, reminderOwnerChat } from './reminder-policy.mjs';
 import { withAutonomyPauseLock } from './owner-pause.mjs';
-import { currentReminderRefusal, readReminderRefusal } from './reminder-admission.mjs';
+import { currentReminderRefusal, readBoxReminderRefusal } from './reminder-admission.mjs';
+import { readReminderBreakerRefusal } from './reminder-breaker.mjs';
+import { reminderBreakerNotice } from './reminder-breaker-notice.mjs';
 import { appendReminderRun } from './reminder-runs.mjs';
 import { claimReminder, finishReminder, reminderSnapshot } from './reminder-store.mjs';
 
@@ -27,7 +29,7 @@ export function createReminderDispatcher({ api, adminId, now, log }) {
     return { chat: boundChat, reserveFraction: policy.reserveFraction };
   }
 
-  async function admit(action, ts, earlyRefusal, publish, isStopped) {
+  async function admit(action, ts, boxRefusal, publish, isStopped) {
     const target = await destination(isStopped);
     if (!target) return;
     let admitted;
@@ -35,7 +37,9 @@ export function createReminderDispatcher({ api, adminId, now, log }) {
     // Serialize the short commit with the in-process engine/provider updates.
     await updateState(async state => {
       if (isStopped() || !isLocalReminderEngine(state.engine) || !reminderOwnerChat(state, adminId)) return NO_STATE_WRITE;
-      const refusal = earlyRefusal ?? currentReminderRefusal(action, state, ts, target.reserveFraction);
+      const breaker = await readReminderBreakerRefusal(action.id, ts);
+      if (isStopped()) return NO_STATE_WRITE;
+      const refusal = breaker ?? boxRefusal ?? currentReminderRefusal(action, state, ts, target.reserveFraction);
       const claimed = await publish(refusal);
       admitted = { action: claimed, chat: target.chat, refusal };
       return NO_STATE_WRITE;
@@ -55,18 +59,23 @@ export function createReminderDispatcher({ api, adminId, now, log }) {
       try {
         // Old shared journals can be slow. Read them before locking the local
         // pause, then recheck that both the action and route can still run.
-        const earlyRefusal = await readReminderRefusal(snapshot, ts);
+        const boxRefusal = await readBoxReminderRefusal(ts);
         const admitted = await withAutonomyPauseLock(() =>
           claimReminder(file, snapshot, ts, {
-            admit: (action, publish) => admit(action, ts, earlyRefusal, publish, isStopped),
+            admit: (action, publish) => admit(action, ts, boxRefusal, publish, isStopped),
           }));
         if (!admitted) continue;
         const { action, chat, refusal } = admitted;
         const result = refusal ?? await sendReminder(api, chat, action.task.text);
-        if (!refusal) {
-          await finishReminder(file, action, result).catch(error => {
-            log('[msb/reminder] Could not save delivery result: ' + (error.code || error.name));
-          });
+        const completion = refusal ? undefined
+          : await finishReminder(file, action, result).catch(actionError => ({ actionError }));
+        if (completion?.actionError) {
+          const error = completion.actionError;
+          log('[msb/reminder] Could not save delivery result: ' + (error.code || error.name));
+        }
+        if (completion?.breakerError) {
+          const error = completion.breakerError;
+          log('[msb/reminder] Could not save reminder breaker: ' + (error.code || error.name));
         }
         await appendReminderRun(action, ts, result).catch(error => {
           log('[msb/reminder] Could not append run: ' + (error.code || error.name));
@@ -74,6 +83,9 @@ export function createReminderDispatcher({ api, adminId, now, log }) {
         if (refusal?.status === 'blocked') {
           await sendText(api, chat, '📡 Автономное действие «' + action.name + '» приостановлено: ' + refusal.detail)
             .catch(() => log('[msb/reminder] Could not send the limit notice'));
+        } else if (completion?.event) {
+          await sendText(api, chat, reminderBreakerNotice(completion.event, action.name, ts))
+            .catch(() => log('[msb/reminder] Could not send the breaker notice'));
         }
       } catch (error) {
         log('[msb/reminder] Could not process saved action: ' + (error.code || error.name));
