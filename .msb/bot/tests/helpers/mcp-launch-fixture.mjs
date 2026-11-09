@@ -36,7 +36,7 @@ const reply=fs.existsSync(data.response)?JSON.parse(fs.readFileSync(data.respons
 const session_id='fixture-claude-session';
 console.log(JSON.stringify({type:'system',subtype:'init',session_id,model:'claude-opus-4-8'}));
 if(reply.assistant)console.log(JSON.stringify({type:'assistant',message:{content:[{type:'text',text:reply.text}]}}));
-console.log(JSON.stringify({type:'result',subtype:'success',session_id,is_error:Boolean(reply.error),result:reply.text,usage:{input_tokens:1,output_tokens:1}}));`;
+console.log(JSON.stringify({type:'result',subtype:'success',session_id,is_error:Boolean(reply.error),result:reply.text,total_cost_usd:reply.reportedUsd,usage:{input_tokens:1,output_tokens:1}}));`;
   const codexSource=`import fs from 'node:fs';
 import path from 'node:path';
 import {createInterface} from 'node:readline';
@@ -97,7 +97,7 @@ if(argv.at(-1)==='app-server'){
   delete process.env.CODEX_ACCESS_TOKEN;
   return {
     collision,hold,readError,
-    async respond(text,{error=false,assistant=false}={}){await fs.writeFile(response,JSON.stringify({text,error,assistant}),{mode:0o600});},
+    async respond(text,{error=false,assistant=false,reportedUsd}={}){await fs.writeFile(response,JSON.stringify({text,error,assistant,reportedUsd}),{mode:0o600});},
     async trace(){return (await fs.readFile(log,'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse);},
   };
 }
