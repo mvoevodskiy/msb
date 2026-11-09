@@ -45,19 +45,19 @@ const argv = process.argv.slice(2);
 if(argv[0] === '--version') { console.log('2.1.154 (Claude Code)'); process.exit(0); }
 if(argv[0] === '--help') { console.log('--tools <tools> --no-session-persistence --strict-mcp-config'); process.exit(0); }
 const input=fs.readFileSync(0,'utf8');
-fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({argv, input, cwd: process.cwd(), provider: process.env.MSB_TURN_PROVIDER,
-  oauth: Boolean(process.env.CLAUDE_CODE_OAUTH_TOKEN), api: Boolean(process.env.ANTHROPIC_API_KEY),
-  legacyApi: Boolean(process.env.IIA_ANTHROPIC_API_KEY), msbApi: Boolean(process.env.MSB_ANTHROPIC_API_KEY),
-  proxyToken: Boolean(process.env.ANTHROPIC_AUTH_TOKEN)})+'\\n');
 const emit=(kind,obj)=>console.log(JSON.stringify({type:kind,...obj}));
 const session_id='77777777-7777-4777-8777-777777777777';
 emit('system',{subtype:'init',session_id,model:'sonnet'});
 const finish=()=>{emit('result',{subtype:'success',session_id,is_error:false,result:${JSON.stringify(text)},total_cost_usd:0.02,
 usage:{input_tokens:15,output_tokens:4,cache_read_input_tokens:3,cache_creation_input_tokens:2}});};
-if (${JSON.stringify(hold)}) {
- process.on('SIGINT',()=>{fs.writeFileSync(${JSON.stringify(closed)},'signal');finish();process.exit(0);});
- setInterval(()=>{},1000);
-} else finish();`);
+const held = ${JSON.stringify(hold)};
+if (held) process.on('SIGINT',()=>{fs.writeFileSync(${JSON.stringify(closed)},'signal');finish();process.exit(0);});
+fs.appendFileSync(${JSON.stringify(log)},JSON.stringify({argv, input, cwd: process.cwd(), provider: process.env.MSB_TURN_PROVIDER,
+  oauth: Boolean(process.env.CLAUDE_CODE_OAUTH_TOKEN), api: Boolean(process.env.ANTHROPIC_API_KEY),
+  legacyApi: Boolean(process.env.IIA_ANTHROPIC_API_KEY), msbApi: Boolean(process.env.MSB_ANTHROPIC_API_KEY),
+  proxyToken: Boolean(process.env.ANTHROPIC_AUTH_TOKEN)})+'\\n');
+if (held) setInterval(()=>{},1000);
+else finish();`);
   process.env.MSB_REAL_CLAUDE = native;
   process.env.PATH = [fakeBin, shim, process.env.PATH].join(path.delimiter);
   await saveState({ ...(await loadState()).state, engine: 'cc', authMode: 'subscription', hasSubscriptionAuth: true,
