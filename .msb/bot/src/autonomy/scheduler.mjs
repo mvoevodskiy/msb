@@ -28,7 +28,7 @@ export function startScheduler({ api, adminId, scheduledTurns, timezone, now = D
   let stopped = false;
   let busy = false;
   let legacyTick, reminderTick;
-  const reminders = createReminderDispatcher({ api, adminId, now, log });
+  const reminders = createReminderDispatcher({ api, adminId, timezone, now, log });
 
   log('[msb/scheduler] Starting (delay 30s)...');
   const boot = setTimeout(tick, START_DELAY_MS);

@@ -18,13 +18,18 @@ function pauseDuration(at, downSince) {
   return unit(Math.round(hours / 24), { one: 'день', few: 'дня', many: 'дней' });
 }
 
-export function reminderBreakerNotice(event, name, at) {
-  const action = 'Автономное действие «' + name + '»';
+export function reminderBreakerNotice(event, saved, at) {
+  const action = 'Автономное действие «' + saved.name + '»';
   if (event.kind === 'recover') {
     return '✔ ' + action + ' снова работает. Пауза была ' + pauseDuration(at, event.downSince) + '.';
   }
-  // Old Rz called d4 without a zone override. A spent once has no automatic retry.
-  const until = formatReminderClock(Date.parse(event.backoffUntil), 'Europe/Moscow').replace(/^в /u, '');
+  // Old Rz called d4 without a zone override.
+  const timezone = 'Europe/Moscow';
+  const end = Date.parse(event.backoffUntil);
+  const clock = formatReminderClock(end, timezone).replace(/^в /u, '');
+  const day = end - Date.parse(at) > 20 * 3_600_000
+    ? new Intl.DateTimeFormat('ru-RU', { timeZone: timezone, day: '2-digit', month: '2-digit' }).format(end) + ', ' : '';
   const reason = event.reason ? 'Причина: ' + event.reason + '.\n' : '';
-  return '📡 ' + action + ' не выполнилось несколько раз подряд.\n' + reason + 'Поставил на паузу до ' + until + '.';
+  const recovery = saved.trigger.kind === 'once' ? '' : ' Сообщу, когда восстановится.';
+  return '📡 ' + action + ' не выполнилось несколько раз подряд.\n' + reason + 'Поставил на паузу до ' + day + clock + '.' + recovery;
 }

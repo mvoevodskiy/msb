@@ -44,7 +44,7 @@ function afterSuccess(previous, at) {
   return { next, event };
 }
 
-function afterFailure(previous, at, reason) {
+function afterFailure(previous, at, reason, minBackoffSeconds) {
   const streak = previous.consecutiveFailures;
   const consecutiveFailures = (Number.isSafeInteger(streak) && streak >= 0 ? streak : 0) + 1;
   const started = Date.parse(at);
@@ -55,7 +55,7 @@ function afterFailure(previous, at, reason) {
   if (!next.open && consecutiveFailures < failThreshold) return { next };
 
   const exponent = Math.max(0, consecutiveFailures - failThreshold);
-  const delay = Math.min(maxBackoffSeconds, baseBackoffSeconds * 2 ** exponent);
+  const delay = Math.max(minBackoffSeconds, Math.min(maxBackoffSeconds, baseBackoffSeconds * 2 ** exponent));
   next.backoffUntil = new Date(started + delay * 1000).toISOString();
   if (next.open) return { next };
 
@@ -63,7 +63,7 @@ function afterFailure(previous, at, reason) {
   return { next, event: { kind: 'open', backoffUntil: next.backoffUntil, reason } };
 }
 
-export async function recordReminderBreaker(id, at, result, { env = process.env, lockedActionFile } = {}) {
+export async function recordReminderBreaker(id, at, result, { env = process.env, lockedActionFile, minBackoffSeconds = 0 } = {}) {
   const logical = breakerPath(env);
   const file = await physicalRecordPath(logical);
   if (file === lockedActionFile) throw new Error('Breaker file aliases the action store');
@@ -71,7 +71,8 @@ export async function recordReminderBreaker(id, at, result, { env = process.env,
     if (await physicalRecordPath(logical) !== file) throw new Error('Breaker file changed');
     const rows = await readBreakers(file);
     const previous = savedBreaker(rows, id);
-    const { next, event } = result.status === 'ok' ? afterSuccess(previous, at) : afterFailure(previous, at, result.error);
+    const { next, event } = result.status === 'ok' ? afterSuccess(previous, at)
+      : afterFailure(previous, at, result.error, minBackoffSeconds);
     await writeRecordJson(file, { ...rows, [id]: next }, { create: true });
     return event;
   });

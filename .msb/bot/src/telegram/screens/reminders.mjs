@@ -1,35 +1,40 @@
 /**
- * Existing autonomy task list/card presentation for ordinary once/reminder.
+ * Existing autonomy task list/card presentation for saved literal reminders.
  * [List](./autonomy.mjs) and [callbacks](../routes/autonomy.mjs) use the
  * [scoped actions store](../../autonomy/reminder-store.mjs); no native jobs here.
  */
 import { InlineKeyboard } from 'grammy';
+import { readConfig } from '../../config.mjs';
 import { loadState } from '../../state.mjs';
 import { isLocalReminderEngine, readReminderPolicy } from '../../autonomy/reminder-policy.mjs';
 import { reminderSnapshot } from '../../autonomy/reminder-store.mjs';
-import { describeReminderTime } from '../../autonomy/reminder-time.mjs';
+import { describeReminderSchedule } from '../../autonomy/reminder-time.mjs';
+import { readReminderFrequencyDecisions, reminderIsActive } from '../../autonomy/reminder-frequency.mjs';
+import { spentReminder } from '../../autonomy/reminder-schedule.mjs';
 import { escapeHtml } from '../edit.mjs';
 import { BLANK } from './shared.mjs';
 
 export async function reminderViews(state) {
   state ??= (await loadState()).state;
-  const view = { actions: [], stopped: false, timezone: state.timezone, now: Date.now() };
+  const view = { actions: [], stopped: false, timezone: state.timezone || readConfig().timezone, now: Date.now() };
   if (!isLocalReminderEngine(state.engine)) return view;
   try {
-    const [policy, { actions }] = await Promise.all([readReminderPolicy(state), reminderSnapshot()]);
-    return { ...view, actions, stopped: policy.stopped };
+    const [policy, { actions }, decisions] = await Promise.all([
+      readReminderPolicy(state), reminderSnapshot(), readReminderFrequencyDecisions(),
+    ]);
+    return { ...view, actions, decisions, stopped: policy.stopped };
   } catch {
-    return { ...view, error: '⚠️ Не удалось прочитать разовые напоминания.' };
+    return { ...view, error: '⚠️ Не удалось прочитать напоминания.' };
   }
 }
 
-function mark(action) {
-  return action.lastRunAt ? '✖' : action.enabled ? '✔' : '⏸';
+function mark(action, view) {
+  return spentReminder(action) ? '✖' : reminderIsActive(action, view.decisions) ? '✔' : '⏸';
 }
 
 function when(action, view) {
-  const label = describeReminderTime(action.trigger.at, view.now, view.timezone);
-  return escapeHtml(action.lastRunAt ? label + ' — больше не сработает' : label);
+  const label = describeReminderSchedule(action.trigger, view.now, view.timezone);
+  return escapeHtml(spentReminder(action) ? label + ' — больше не сработает' : label);
 }
 
 function actionButton(keyboard, label, callback) {
@@ -38,7 +43,7 @@ function actionButton(keyboard, label, callback) {
 
 export function reminderRows(view, keyboard) {
   return view.actions.filter(action => action.enabled || action.disabledReason === 'owner').map(action => {
-    const status = mark(action);
+    const status = mark(action, view);
     actionButton(keyboard, (status + ' ' + action.name).slice(0, 30).toWellFormed(), 'auto:task:' + action.id);
     return status + ' <b>' + escapeHtml(action.name) + '</b> (напоминание)\n     ' + when(action, view);
   });
@@ -46,12 +51,13 @@ export function reminderRows(view, keyboard) {
 
 export function reminderCard(action, view) {
   const keyboard = new InlineKeyboard();
-  if (!action.lastRunAt) {
+  if (!spentReminder(action)) {
     actionButton(keyboard, action.enabled ? '⏸ Выключить' : '▶️ Включить', 'auto:task-toggle:' + action.id);
   }
   actionButton(keyboard, '🗑 Удалить', 'auto:task-delete:' + action.id);
   keyboard.text('« Назад', 'auto:tasks');
-  const status = action.lastRunAt ? '✖ уже не сработает' : action.enabled ? '✔ работает' : '⏸ на паузе';
+  const status = spentReminder(action) ? '✖ уже не сработает'
+    : reminderIsActive(action, view.decisions) ? '✔ работает' : '⏸ на паузе';
   const lines = ['📋 <b>' + escapeHtml(action.name) + '</b>', '', 'Вид: напоминание',
     'Статус: ' + status, 'Когда: ' + when(action, view)];
   if (view.stopped && action.enabled) lines.push('⏸ Всё на паузе.');

@@ -1,5 +1,5 @@
 /**
- * Per-bot actions.json for ordinary once/reminder. Keep interval and legacy timer
+ * Per-bot actions.json for literal once and recurring reminders. Keep tasks.json and legacy timer
  * files separate. [Marker](../telegram/reminder-markers.mjs), [sender](./reminder-dispatch.mjs),
  * [menu](../telegram/routes/autonomy.mjs), [contract](../../tests/reference/parity-autonomy-contract.txt).
  */
@@ -9,6 +9,7 @@ import { withFileLock } from '../../shared/file-lock.mjs';
 import { actionRoot } from '../paths.mjs';
 import { physicalRecordPath, readOptionalJson, readRecordArray, writeRecordArray } from './record-file.mjs';
 import { recordReminderBreaker } from './reminder-breaker.mjs';
+import { reminderSpacing, spentReminder, validReminderTrigger } from './reminder-schedule.mjs';
 
 function actionFile(env) {
   return physicalRecordPath(path.join(actionRoot(env), 'actions.json'));
@@ -23,8 +24,7 @@ export async function readNativeJobMap(env) {
 
 function isLocalReminder(action, jobs) {
   return typeof action?.id === 'string' && typeof action.name === 'string' &&
-    action.trigger?.kind === 'once' && typeof action.trigger.at === 'string' &&
-    Number.isFinite(Date.parse(action.trigger.at)) && action.task?.kind === 'reminder' &&
+    validReminderTrigger(action.trigger) && action.task?.kind === 'reminder' &&
     typeof action.task.text === 'string' && Boolean(action.task.text.trim()) &&
     !action.task.followUp && !action.pendingConfirm && !action.migratedToOc &&
     (action.runner === undefined || action.runner === 'auto' || action.runner === 'cc') &&
@@ -80,10 +80,14 @@ export async function claimReminder(file, snapshot, at, { env = process.env, adm
     const index = records.findIndex(action => action?.id === snapshot.id);
     const action = records[index];
     if (!isDeepStrictEqual(action, snapshot) || !isLocalReminder(action, await readNativeJobMap(env))) return null;
-    if (!action.enabled || action.lastRunAt || action.budget?.killSwitch ||
-        action.disabledReason === 'frequency' || Date.parse(action.trigger.at) > Date.parse(at)) return null;
     return admit(action, async refusal => {
-      const claimed = { ...action, enabled: false, disabledReason: 'spent_once', lastRunAt: at };
+      const claimed = { ...action, lastRunAt: at };
+      if (action.trigger.kind === 'once') {
+        claimed.enabled = false;
+        claimed.disabledReason = 'spent_once';
+      } else if (claimed.disabledReason === 'frequency') {
+        delete claimed.disabledReason;
+      }
       if (refusal) {
         claimed.lastStatus = 'skipped';
         claimed.lastOutcome = 'blocked';
@@ -96,16 +100,28 @@ export async function claimReminder(file, snapshot, at, { env = process.env, adm
   });
 }
 
+function sameReminderClaim(current, claimed) {
+  if (isDeepStrictEqual(current, claimed)) return true;
+  if (!current || spentReminder(claimed)) return false;
+  const ownerToggle = current.enabled === false && current.disabledReason === 'owner' ||
+    current.enabled === true && current.disabledReason === undefined;
+  const withoutToggle = ({ enabled, disabledReason, ...attempt }) => attempt;
+  return ownerToggle && isDeepStrictEqual(withoutToggle(current), withoutToggle(claimed));
+}
+
 export async function finishReminder(file, claimed, result, env = process.env) {
   if (await actionFile(env) !== file) return;
   return withActions(env, async (records, save) => {
     if (await actionFile(env) !== file) return;
     const index = records.findIndex(action => action?.id === claimed.id);
-    if (!isDeepStrictEqual(records[index], claimed)) return;
-    // A replacement may reuse the id. Both writes belong to this claim only.
-    const breaker = await recordReminderBreaker(claimed.id, claimed.lastRunAt, result, { env, lockedActionFile: file })
-      .then(event => ({ event }), breakerError => ({ breakerError }));
-    records[index] = { ...claimed, lastStatus: result.status,
+    const current = records[index];
+    if (!sameReminderClaim(current, claimed) || !isLocalReminder(current, await readNativeJobMap(env))) return;
+    // A replacement may reuse the id. An owner's pause alone retains this claim.
+    const minBackoffSeconds = Math.max(0, Math.round((reminderSpacing(claimed.trigger) ?? 0) * 120));
+    const breaker = await recordReminderBreaker(claimed.id, claimed.lastRunAt, result, {
+      env, lockedActionFile: file, minBackoffSeconds,
+    }).then(event => ({ event }), breakerError => ({ breakerError }));
+    records[index] = { ...current, lastStatus: result.status,
       lastOutcome: result.status === 'ok' ? 'ok' : 'engine_error', lastError: result.error };
     const actionError = await save().then(() => undefined, error => error);
     return { ...breaker, actionError };
@@ -116,7 +132,7 @@ export async function changeReminder(id, remove, env = process.env) {
   await withActions(env, async (records, save) => {
     const index = records.findIndex(action => action?.id === id);
     const action = records[index];
-    if (!isLocalReminder(action, await readNativeJobMap(env)) || (!remove && action.lastRunAt)) return;
+    if (!isLocalReminder(action, await readNativeJobMap(env)) || (!remove && spentReminder(action))) return;
     if (remove) records.splice(index, 1);
     else records[index] = { ...action, enabled: !action.enabled, disabledReason: action.enabled ? 'owner' : undefined };
     await save();

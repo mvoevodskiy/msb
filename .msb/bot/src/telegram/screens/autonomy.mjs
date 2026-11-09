@@ -1,10 +1,11 @@
 /**
  * Автономка: задачи, история и сохранённые права. [Таймеры](./legacy-timers.mjs).
- * Разовые [напоминания](./reminders.mjs) рядом с существующими интервальными задачами.
+ * Сохранённые [напоминания](./reminders.mjs) рядом с отдельными задачами tasks.json.
  * Навигация: [Telegram](../README.md).
  */
 import { InlineKeyboard } from 'grammy';
 import { listTasks } from '../../autonomy/store.mjs';
+import { reminderIsActive } from '../../autonomy/reminder-frequency.mjs';
 import { historyPages } from '../../autonomy/history.mjs';
 import { loadState } from '../../state.mjs';
 import { escapeHtml } from '../edit.mjs';
@@ -13,7 +14,7 @@ import { BLANK } from './shared.mjs';
 
 export async function autonomyHomeScreen() {
   const [tasks, reminders] = await Promise.all([listTasks(), reminderViews()]);
-  const active = tasks.filter(t => t.enabled !== false).length + reminders.actions.filter(t => t.enabled).length;
+  const active = tasks.filter(t => t.enabled !== false).length + reminders.actions.filter(action => reminderIsActive(action, reminders.decisions)).length;
   const kb = new InlineKeyboard()
     .text('📋 Задачи', 'auto:tasks')
     .text('📡 Мониторинг', 'auto:monitor')
@@ -42,7 +43,7 @@ export function autonomyWhatScreen() {
 Скажи словами, что делать и когда. Например: <i>«каждое утро в 9 смотри, что нового у конкурентов»</i> или <i>«раз в час проверяй сервер и пиши, только если сломалось»</i>. Штатный парсер сейчас поддерживает интервалы вида «каждые 6 часов …».
 
 <b>Что можно</b>
-Список задач и просмотр истории работают. Разовое напоминание можно открыть, поставить на паузу или удалить.
+Список задач и просмотр истории работают. Напоминание можно открыть, поставить на паузу или удалить.
 
 <b>Про права</b>
 Настройка прав сохраняется, но отдельные границы задач в open-core пока не реализованы. Используются права и сессия выбранного CLI.

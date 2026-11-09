@@ -73,3 +73,39 @@ export function formatReminderClock(millis, timezone) {
   }
   return new Date(millis).toISOString().slice(11, 16) + ' UTC';
 }
+
+const recurringPlural = new Intl.PluralRules('ru');
+function recurringUnit(count, forms) {
+  return count + ' ' + forms[recurringPlural.select(count)];
+}
+
+/** Old schedule labels for saved reminders in the existing task card. */
+export function describeReminderSchedule(trigger, now, timezone) {
+  if (trigger.kind === 'once') return describeReminderTime(trigger.at, now, timezone);
+  if (trigger.kind === 'interval') return 'каждые ' + trigger.intervalMinutes + ' мин';
+  const zone = timezone || 'Europe/Moscow';
+  const zoneLabel = Object.hasOwn(zoneNames, zone) ? zoneNames[zone] : zone;
+  const suffix = ' (' + zoneLabel + ')';
+  const [minute, hour, day, month, weekday] = trigger.cron.trim().split(/\s+/);
+  if (day === '*' && month === '*' && weekday === '*') {
+    const hourlyStep = /^\*\/(\d{1,2})$/.exec(hour);
+    if (minute === '0' && hourlyStep) {
+      return 'каждые ' + recurringUnit(Number(hourlyStep[1]), { one: 'час', few: 'часа', many: 'часов' }) + suffix;
+    }
+    const minuteStep = /^\*\/(\d{1,2})$/.exec(minute);
+    if (hour === '*' && minuteStep) {
+      return 'каждые ' + recurringUnit(Number(minuteStep[1]), { one: 'минуту', few: 'минуты', many: 'минут' });
+    }
+  }
+  if (day === '*' && month === '*' && /^\d{1,2}$/.test(minute)) {
+    if (hour === '*' && weekday === '*') return Number(minute) === 0
+      ? 'каждый час' + suffix : 'каждый час в ' + minute.padStart(2, '0') + ' минут' + suffix;
+    if (/^\d{1,2}$/.test(hour)) {
+      const dayNames = ['воскресеньям', 'понедельникам', 'вторникам', 'средам', 'четвергам', 'пятницам', 'субботам'];
+      const period = weekday === '*' ? 'каждый день' : weekday === '1-5' ? 'по будням' :
+        ['0,6', '6,0'].includes(weekday) ? 'по выходным' : /^[0-6]$/.test(weekday) ? 'по ' + dayNames[Number(weekday)] : '';
+      if (period) return period + ' в ' + hour.padStart(2, '0') + ':' + minute.padStart(2, '0') + suffix;
+    }
+  }
+  return 'по расписанию ' + trigger.cron + suffix;
+}

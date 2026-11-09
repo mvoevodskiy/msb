@@ -356,3 +356,65 @@ their own admission and completion routes. File locks do not turn
 Telegram and the files into one transaction. The existing window
 between claim and the external send remains. All proof here uses
 owned disposable profiles and synthetic Telegram.
+
+Saved recurring literal reminders.
+
+Old 36099–36139 picks active intervals from lastRunAt and tests
+cron in the owner's timezone. 22097–22174 implements numeric
+fields, wildcard, list, range and steps. All five fields match.
+The same wall-clock minute is suppressed, including the repeated
+minute after the autumn timezone change. nwA fixes V once before
+selecting all due actions (36228–36230,36263–36268), then each Rz
+captures its actual start (24757–24759). A preflight refusal still
+updates lastRunAt unless it is stopped (24797–24821). Only a once
+is disabled by the completion at 24883 and 24928–24948.
+
+Old He/spacing check at 35919–36086,24656–24682 and 24977–25000
+uses 60 minutes when its estimate recognizes the schedule. The
+stored Keep is `autonomy-cron:<id>:frequency`, `keep_as_is`, in
+UA(owner-decisions.json) (16566–16568,16608,25038–25113).
+Old Q2 makes the breaker pause at least two estimated intervals.
+Old YPA at 37005–37036 sends a literal reminder with no model.
+The list/card and toggle use the existing auto:task routes at
+114988–115165. U0/iqA at 23162–23241 format common schedules.
+
+7fc3ef6 reproduces six omissions on 973ed94. The direct dispatcher
+now preserves the old due snapshot and actual attempt time, and
+uses the existing claim, budget, breaker, and journal. Pending
+frequency rows wait, with saved Keep recognized per profile. The
+existing decision file stays read-only. Full frequency-card
+creation and applying saved hourly/turn_off are future work.
+The card distinguishes a spent once from a previously run recurring
+reminder. A pause during send preserves the new enabled state and
+still records that attempt. Replacement, removal and foreign native
+records remain fenced. Two workers for the same slot, a slow earlier
+send and the owner toggle have controlled regression tests. All
+profiles and Telegram traffic are synthetic.
+
+Separate old prompt-action boundary.
+
+Old 16974–16975 and 37091–37098 route prompt actions through
+kP/kgA. 3936–3950,3952–3988 and 23002–23063 derive posture from
+both authority and capability. The historical capability read
+maps to standard/green-yellow (file write/edit, no Bash), while
+scan maps to inspect/green-exec. 17159–17220 controls tools,
+helpers and Bash allowlists. 19475–19535,20443–20462 and
+20827–20853 implement the native tool/guard argv. 33315–33359
+uses this policy and selects optional per-action continuity.
+36776–36919,37125 and 41795–41805 isolate the workspace and
+resume only from that action's own cc-sessions store. Te/ke at
+36743–36750 uses a 30-minute CC ceiling and an earlier abort,
+with a shorter declared action timeout when present.
+
+The current simple tasks.json runner calls the shared owner turn
+and is already an explicit compatibility path. runAgentTurn reads
+owner ccSessionId/current project and writes the session result at
+turn.mjs 59–68,96–132,158–163. It cannot serve old stored prompt
+actions directly. Overlay shim/run-turn.mjs writes provider
+last-seen on success. The Codex adapter currently selects
+`danger-full-access`, can persist transport config and prepares
+native MCP. A fresh thread alone would not reproduce the old
+per-action tool boundary or isolate owner state. A separate
+provider launch and enforced policy are prerequisites for
+restoring that route. Saved prompt rows, native jobs, and
+follow-up reminders never fall through to the literal sender.

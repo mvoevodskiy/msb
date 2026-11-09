@@ -52,6 +52,7 @@ async function profile(t, rows, { state = {}, now = initial } = {}) {
     rows: async () => JSON.parse(await fs.readFile(file, 'utf8')),
     runs: async () => (await fs.readFile(journal, 'utf8')).trim().split('\n').map(JSON.parse),
     advance: async value => { clock = value; await scheduler.tickNow(); },
+    setTime(value) { clock = value; },
     decisions: rows => fs.writeFile(path.join(root, 'owner-decisions.json'), JSON.stringify({ decisions: rows })),
   };
 }
@@ -154,4 +155,70 @@ test('the existing task card can pause and resume a recurring reminder after its
   await f.callback('auto:task-toggle:control');
   await f.scheduler.tickNow();
   assert.equal(f.deliveries().length, 2);
+});
+
+test('one slow send cannot drop another cron reminder selected in the same old tick', async t => {
+  const f = await profile(t, [record('slow', cron('0 9 * * *')), record('second', cron('0 9 * * *'))],
+    { now: initial + 59_000 });
+  const send = f.bot.api.sendMessage;
+  f.bot.api.sendMessage = async (...args) => {
+    if (args[1] === '⏰ Дословно slow') f.setTime(initial + 61_000);
+    return send(...args);
+  };
+  await f.scheduler.tickNow();
+  await f.scheduler.tickNow();
+  assert.deepEqual(f.deliveries().map(row => row.text), ['⏰ Дословно slow', '⏰ Дословно second']);
+  assert.deepEqual((await f.runs()).map(row => row.ts), [at(initial + 59_000), at(initial + 61_000)]);
+});
+
+test('owner Off during an admitted recurring send preserves the real result and new pause choice', async t => {
+  const entry = record('toggle', every(60));
+  const f = await profile(t, [entry]);
+  const breakerFile = path.join(f.autonomy, 'breakers.json');
+  await fs.writeFile(breakerFile, JSON.stringify({ toggle: { open: false, consecutiveFailures: 2 } }));
+  const entered = Promise.withResolvers();
+  const release = Promise.withResolvers();
+  const send = f.bot.api.sendMessage;
+  f.bot.api.sendMessage = async (...args) => {
+    if (args[1] === '⏰ Дословно toggle') {
+      entered.resolve();
+      await release.promise;
+      throw Error('synthetic pending failure');
+    }
+    return send(...args);
+  };
+  const tick = f.scheduler.tickNow();
+  try {
+    await Promise.race([entered.promise, tick.then(() => assert.fail('Expected a send to be in flight'))]);
+    await f.callback('auto:task-toggle:toggle');
+  } finally {
+    release.resolve();
+  }
+  await tick;
+  const [saved] = await f.rows();
+  assert.equal(saved.enabled, false);
+  assert.equal(saved.disabledReason, 'owner');
+  assert.equal(saved.lastStatus, 'error');
+  assert.equal(JSON.parse(await fs.readFile(breakerFile, 'utf8')).toggle.consecutiveFailures, 3);
+  assert.equal((await f.runs()).length, 1);
+});
+
+test('simultaneous schedulers claim a recurring slot only once and leave foreign records alone', async t => {
+  const entry = record('local', every(60));
+  const separate = [
+    record('explicit-oc', every(60), { runner: 'oc' }),
+    record('mapped', every(60)),
+    record('migrated', every(60), { migratedToOc: true }),
+    record('follow-up', every(60), { task: { kind: 'reminder', text: 'Повтор', followUp: { everyMinutes: 5 } } }),
+    record('model', every(60), { task: { kind: 'prompt', prompt: 'Synthetic isolated action' } }),
+    record('bad', every(-10)),
+  ];
+  const f = await profile(t, [entry, ...separate]);
+  await fs.writeFile(path.join(f.autonomy, 'cron-jobs.json'), '{"mapped":{"jobId":"fixture-native"}}');
+  const second = f.makeScheduler();
+  t.after(() => second.stop());
+  await Promise.all([f.scheduler.tickNow(), second.tickNow()]);
+  assert.deepEqual(f.deliveries(), [{ chat: owner, text: '⏰ Дословно local' }]);
+  assert.deepEqual((await f.rows()).slice(1), separate);
+  assert.deepEqual((await f.runs()).map(row => row.actionId), ['local']);
 });

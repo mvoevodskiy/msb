@@ -8,7 +8,8 @@ import { setOwnerPause, readAutonomyPause } from '../autonomy/owner-pause.mjs';
 import { listLegacyTimers } from '../autonomy/legacy-timers.mjs';
 import { isLocalReminderEngine, readReminderPolicy } from '../autonomy/reminder-policy.mjs';
 import { reminderSnapshot, readNativeJobMap } from '../autonomy/reminder-store.mjs';
-import { describeReminderTime } from '../autonomy/reminder-time.mjs';
+import { describeReminderSchedule, describeReminderTime } from '../autonomy/reminder-time.mjs';
+import { readReminderFrequencyDecisions, reminderIsActive } from '../autonomy/reminder-frequency.mjs';
 import { listTasks } from '../autonomy/store.mjs';
 import { loadState } from '../state.mjs';
 import { limitMarker, outsideExamples, replaceAutonomyMarkers, scheduleMarker } from './autonomy-marker-text.mjs';
@@ -30,13 +31,14 @@ async function checkPolicy(context) {
 }
 
 async function localActiveTasks(now) {
-  const [intervals, reminders] = await Promise.all([
+  const [intervals, reminders, decisions] = await Promise.all([
     listTasks().catch(() => []),
     reminderSnapshot().catch(() => ({ actions: [] })),
+    readReminderFrequencyDecisions(),
   ]);
   return [
-    ...reminders.actions.filter(action => action.enabled && !action.lastRunAt)
-      .map(action => ({ name: action.name, at: action.trigger.at })),
+    ...reminders.actions.filter(action => reminderIsActive(action, decisions))
+      .map(action => ({ name: action.name, trigger: action.trigger })),
     ...intervals.filter(task => task && task.enabled !== false).map(task => {
       const next = new Date(task.nextAt ?? now);
       return {
@@ -79,7 +81,9 @@ async function describeResume(result, tasks, { now, timezone }) {
   if (pause.ownerStopped) return 'Пауза этого бота снова включена.' + timerNote;
   if (!tasks.length) return 'Снял стоп. Активных задач сейчас нет.' + timerNote;
   const { state } = await loadState();
-  const names = tasks.map(task => '• ' + task.name + ' — ' + describeReminderTime(task.at, now, state.timezone || timezone));
+  const zone = state.timezone || timezone;
+  const names = tasks.map(task => '• ' + task.name + ' — ' + (task.trigger
+    ? describeReminderSchedule(task.trigger, now, zone) : describeReminderTime(task.at, now, zone)));
   return 'Снял паузу, задачи снова в работе (' + tasks.length + '):\n' + names.join('\n') + timerNote;
 }
 

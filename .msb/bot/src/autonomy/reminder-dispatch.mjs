@@ -1,5 +1,5 @@
 /**
- * Saved once/reminder → [gate](./reminder-admission.mjs) → committed attempt
+ * Saved literal reminder → [gate](./reminder-admission.mjs) → committed attempt
  * → single plain Telegram send or refusal → [run log](./reminder-runs.mjs).
  * [Scheduler](./scheduler.mjs) calls it without starting a CLI turn.
  * [Store](./reminder-store.mjs) records delivery and [breaker](./reminder-breaker.mjs)
@@ -12,10 +12,12 @@ import { withAutonomyPauseLock } from './owner-pause.mjs';
 import { currentReminderRefusal, readBoxReminderRefusal } from './reminder-admission.mjs';
 import { readReminderBreakerRefusal } from './reminder-breaker.mjs';
 import { reminderBreakerNotice } from './reminder-breaker-notice.mjs';
+import { reminderIsDue } from './reminder-schedule.mjs';
+import { readReminderFrequencyDecisions, reminderFrequencyAllows } from './reminder-frequency.mjs';
 import { appendReminderRun } from './reminder-runs.mjs';
 import { claimReminder, finishReminder, reminderSnapshot } from './reminder-store.mjs';
 
-export function createReminderDispatcher({ api, adminId, now, log }) {
+export function createReminderDispatcher({ api, adminId, timezone, now, log }) {
   let boundChat;
   async function destination(isStopped) {
     if (isStopped() || !api || !adminId) return;
@@ -26,10 +28,10 @@ export function createReminderDispatcher({ api, adminId, now, log }) {
     if (!policy.enabled || !policy.local || policy.stopped || policy.asleep || isStopped()) return;
     // The old local runner is wired to the saved owner chat when it starts.
     boundChat ??= chat;
-    return { chat: boundChat, reserveFraction: policy.reserveFraction };
+    return { chat: boundChat, reserveFraction: policy.reserveFraction, timezone: state.timezone || timezone };
   }
 
-  async function admit(action, ts, boxRefusal, publish, isStopped) {
+  async function admit(action, slotAt, ts, boxRefusal, publish, isStopped) {
     const target = await destination(isStopped);
     if (!target) return;
     let admitted;
@@ -37,6 +39,9 @@ export function createReminderDispatcher({ api, adminId, now, log }) {
     // Serialize the short commit with the in-process engine/provider updates.
     await updateState(async state => {
       if (isStopped() || !isLocalReminderEngine(state.engine) || !reminderOwnerChat(state, adminId)) return NO_STATE_WRITE;
+      if (!reminderIsDue(action, slotAt, state.timezone || timezone)) return NO_STATE_WRITE;
+      const decisions = action.trigger.kind === 'once' ? undefined : await readReminderFrequencyDecisions();
+      if (!reminderFrequencyAllows(action, decisions)) return NO_STATE_WRITE;
       const breaker = await readReminderBreakerRefusal(action.id, ts);
       if (isStopped()) return NO_STATE_WRITE;
       const refusal = breaker ?? boxRefusal ?? currentReminderRefusal(action, state, ts, target.reserveFraction);
@@ -48,21 +53,23 @@ export function createReminderDispatcher({ api, adminId, now, log }) {
   }
 
   return async function dispatchReminders(isStopped) {
-    if (!await destination(isStopped)) return;
+    const target = await destination(isStopped);
+    if (!target) return;
     const { file, actions } = await reminderSnapshot();
+    // Old nwA selected every due row at one instant. Rz separately stamped
+    // each attempt as it started, even if an earlier send crossed the minute.
+    const slotAt = now();
     for (const snapshot of actions) {
       if (isStopped()) break;
-      const millis = now();
-      if (!snapshot.enabled || snapshot.lastRunAt || snapshot.budget?.killSwitch ||
-          snapshot.disabledReason === 'frequency' || Date.parse(snapshot.trigger.at) > millis) continue;
-      const ts = new Date(millis).toISOString();
+      if (!reminderIsDue(snapshot, slotAt, target.timezone)) continue;
+      const ts = new Date(now()).toISOString();
       try {
         // Old shared journals can be slow. Read them before locking the local
         // pause, then recheck that both the action and route can still run.
         const boxRefusal = await readBoxReminderRefusal(ts);
         const admitted = await withAutonomyPauseLock(() =>
           claimReminder(file, snapshot, ts, {
-            admit: (action, publish) => admit(action, ts, boxRefusal, publish, isStopped),
+            admit: (action, publish) => admit(action, slotAt, ts, boxRefusal, publish, isStopped),
           }));
         if (!admitted) continue;
         const { action, chat, refusal } = admitted;
@@ -84,7 +91,7 @@ export function createReminderDispatcher({ api, adminId, now, log }) {
           await sendText(api, chat, '📡 Автономное действие «' + action.name + '» приостановлено: ' + refusal.detail)
             .catch(() => log('[msb/reminder] Could not send the limit notice'));
         } else if (completion?.event) {
-          await sendText(api, chat, reminderBreakerNotice(completion.event, action.name, ts))
+          await sendText(api, chat, reminderBreakerNotice(completion.event, action, ts))
             .catch(() => log('[msb/reminder] Could not send the breaker notice'));
         }
       } catch (error) {
