@@ -7,36 +7,13 @@
 import { cancelNamedTaskFromTurn, cleanupSpentTasksFromTurn, planAllTasksFromTurn, TaskRemovalRefusal } from '../autonomy/task-removal.mjs';
 import { savedTaskTimezone } from '../autonomy/saved-task-inspection.mjs';
 import { loadState } from '../state.mjs';
-import { mcpMarkerRanges } from '../mcp/install-protocol.mjs';
-import { SKILL_BLOCKS } from '../skills/install-protocol.mjs';
-import { autonomyExample, limitMarker, outsideExamples, outsideRanges, replaceAutonomyMarkers, scheduleMarker,
-  taskCancelMarker, taskControlMarker, taskInspectionMarker } from './autonomy-marker-text.mjs';
+import { outsideExamples, outsideRanges, replaceAutonomyMarkers, taskCancelMarker, taskMutationRanges } from './autonomy-marker-text.mjs';
 import { describeSavedTaskSchedule } from './screens/task-inspection.mjs';
 import { askToCancelAllTasks, askToCancelSavedTask, describeSpentTaskCleanup } from './task-removal-confirmation.mjs';
 
 const groupRemovalMarker = /\[(CANCEL_SPENT|CANCEL_ALL)\]/g;
-const doubleQuoted = /"(?:\\[\s\S]|[^"\\])*"/g;
-const singleQuoted = /(?<![\p{L}\p{N}])'(?:\\[\s\S]|[^'\\]|'(?=[\p{L}\p{N}]))*'(?![\p{L}\p{N}])/gu;
-const structuredOpen = /\[(?:SCHEDULE_TASK|INSTALL_SKILL)\]/g;
 const spentClaim = /(?:^|\s)(?:убрал[аи]?|сн[её]с(?:л[аи])?|удалил[аи]?|готово)(?=$|[\s.,!])/iu;
 const namedClaim = /^\s*(?:[✅✔]\uFE0F?\s*)?(?:(?:уже|я)\s+){0,2}(?:отменил[аи]?|сн[её]с(?:л[аи])?|удалил[аи]?|убрал[аи]?|готово)(?=$|[\s.,!])/iu;
-
-function removalRanges(text, adjacent = []) {
-  const payloads = [
-    ...adjacent, ...text.matchAll(scheduleMarker), ...text.matchAll(limitMarker),
-    ...text.matchAll(taskControlMarker), ...text.matchAll(taskInspectionMarker), ...text.matchAll(SKILL_BLOCKS),
-    ...mcpMarkerRanges(text).map(({ start, end }) => ({ index: start, 0: text.slice(start, end) })),
-  ];
-  // Delimiters inside verbatim text or examples cannot open a quote in the reply.
-  const quoteInput = text.replace(autonomyExample, block => block.replace(/["'\\]/g, ' '));
-  const quotes = [...quoteInput.matchAll(doubleQuoted), ...quoteInput.matchAll(singleQuoted)];
-  const unclosed = outsideExamples(text, structuredOpen, [...payloads, ...quotes]).find(block => {
-    const tail = text.slice(block.index + block[0].length);
-    return /^[ \t]*\r?\n/.test(tail) || /^\s*[\[{]/.test(tail);
-  });
-  if (unclosed) payloads.push({ index: unclosed.index, 0: text.slice(unclosed.index) });
-  return { payloads, quotes };
-}
 
 function hasEmptySuffix(text, block) {
   const suffix = text.slice(block.index + block[0].length).split('\n', 1)[0];
@@ -66,7 +43,7 @@ async function applyGroupRemoval(type, context, ctx) {
 
 export async function processGroupTaskRemovalMarkers(text, context, ctx) {
   if (typeof text !== 'string' || !/\[CANCEL_(?:SPENT|ALL)\]/.test(text)) return text;
-  const { payloads, quotes } = removalRanges(text, [...text.matchAll(taskCancelMarker)]);
+  const { payloads, quotes } = taskMutationRanges(text, [...text.matchAll(taskCancelMarker)]);
   const commands = outsideExamples(text, groupRemovalMarker, [...payloads, ...quotes])
     .filter(block => hasEmptySuffix(text, block));
   const results = new Map();
@@ -108,7 +85,7 @@ async function cancelTask(query, context, ctx) {
 
 export async function processTaskCancelMarkers(text, context, ctx) {
   if (typeof text !== 'string' || !text.includes('[CANCEL_TASK:')) return text;
-  const { payloads, quotes } = removalRanges(text);
+  const { payloads, quotes } = taskMutationRanges(text);
   const blocks = outsideExamples(text, taskCancelMarker, [...payloads, ...quotes]);
   return replaceAutonomyMarkers(text, blocks, async block => {
     context.signal?.throwIfAborted();

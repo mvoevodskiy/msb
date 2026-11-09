@@ -34,6 +34,7 @@ import { deliverTurnResponse } from './response.mjs';
 import { deliverView } from './view-delivery.mjs';
 import { processPauseMarkers } from './pause-markers.mjs';
 import { processGroupTaskRemovalMarkers, processTaskCancelMarkers } from './task-removal-markers.mjs';
+import { prepareTaskRescheduleMarkers, processTaskRescheduleMarkers } from './task-reschedule-markers.mjs';
 import { processTaskControlMarkers } from './task-control-markers.mjs';
 import { processTaskInspectionMarkers } from './task-inspection-markers.mjs';
 import { processLimitMarkers } from './limit-markers.mjs';
@@ -562,11 +563,13 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         timezone: cfg.timezone, now: now(), signal,
         codexAvailable, checkSavedCodex,
       };
-      const reminders = await processReminderMarkers(out.text, autonomy);
+      const reschedule = prepareTaskRescheduleMarkers(out.text);
+      const reminders = await processReminderMarkers(reschedule.text, autonomy);
       const pausedTasks = await processPauseMarkers(reminders, autonomy, ctx);
       const askedRemoval = await processGroupTaskRemovalMarkers(pausedTasks, autonomy, ctx);
       const inspected = await processTaskInspectionMarkers(askedRemoval, autonomy, ctx);
-      const cancelled = await processTaskCancelMarkers(inspected, autonomy, ctx);
+      const rescheduled = await processTaskRescheduleMarkers(inspected, autonomy, ctx, reschedule.commands);
+      const cancelled = await processTaskCancelMarkers(rescheduled, autonomy, ctx);
       const controlled = await processTaskControlMarkers(cancelled, autonomy);
       const actionText = await processLimitMarkers(controlled, autonomy, ctx);
       const replyText = await processInstallMarkers({ ...out, text: actionText }, { signal, readProvider: bot[Symbol.for('msb.mcpProvider')] });

@@ -9,10 +9,7 @@ import { InlineKeyboard } from 'grammy';
 import { listLegacyTimers } from '../autonomy/legacy-timers.mjs';
 import { resolveTaskRemovalQuestion, saveTaskRemovalQuestion, TaskRemovalRefusal } from '../autonomy/task-removal.mjs';
 import { nameReference } from '../../shared/callback-ref.mjs';
-import { deliverOwnerQuestion, emptyOwnerKeyboard } from './owner-confirmation.mjs';
-import { escapeHtml } from './edit.mjs';
-import { singleRequestSignal } from './presentation-api.mjs';
-import { deliverView } from './view-delivery.mjs';
+import { closeOwnerQuestion, deliverOwnerQuestion } from './owner-confirmation.mjs';
 
 const confirm = 'ct-spent';
 const confirmAll = 'ct-all';
@@ -76,22 +73,6 @@ export function describeSpentTaskCleanup(result) {
   return { toast, text: lines.join('\n\n') };
 }
 
-async function closeQuestion(ctx, chatId, msgId, line) {
-  const original = ctx.callbackQuery.message?.text || '';
-  const text = escapeHtml([original, line].filter(Boolean).join('\n\n'));
-  const threadId = ctx.callbackQuery.message?.message_thread_id;
-  const topic = threadId && threadId !== 1 ? { message_thread_id: threadId } : {};
-  const options = part => ({ parse_mode: 'HTML', reply_markup: part.keyboard });
-  const request = () => singleRequestSignal(AbortSignal.timeout(15_000));
-  // This is the receipt for a settled write on a known message. Navigation
-  // or a second tap must not cancel removal of that message's buttons.
-  await deliverView({ text, keyboard: emptyOwnerKeyboard }, {
-    edit: part => ctx.api.editMessageText(chatId, msgId, part.text, options(part), request()),
-    reply: part => ctx.reply(part.text, { ...options(part), ...topic }, request()),
-  }).catch(() => ctx.api.editMessageReplyMarkup(chatId, msgId,
-    { reply_markup: emptyOwnerKeyboard }, request()).catch(() => {}));
-}
-
 function namedResponse(result) {
   if (result.removed.length) return { toast: 'Снёс', text: '✖ Снёс «' + result.removed[0] + '»' };
   if (result.missing) return { toast: 'Этой задачи уже нет', text: 'Этой задачи уже нет.' };
@@ -150,7 +131,7 @@ export async function handleTaskRemovalConfirmation({ cfg, ctx, data, chatId, ms
     const { toast, text } = result.kept ? { toast: 'Оставил', text: '✔ Оставил на месте' } :
       result.bulk ? await bulkResponse(result) : result.named ? namedResponse(result) : describeSpentTaskCleanup(result);
     await answer({ text: toast });
-    await closeQuestion(ctx, chatId, msgId, text);
+    await closeOwnerQuestion(ctx, chatId, msgId, text);
   }
   return true;
 }

@@ -123,7 +123,7 @@ test('a spent task moves immediately and the real scheduler delivers exactly onc
   assert.match(await fs.readFile(f.journal, 'utf8'), /"actionId":"spent"/);
 });
 
-test('a disabled owner task uses the old direct day unit and leaves global STOP in force', async t => {
+test('a disabled owner task uses the old direct day unit and leaves the bot-wide STOP in force', async t => {
   const old = row('paused', 'На паузе', { enabled: false, disabledReason: 'owner' });
   const f = await profile(t, { output: command(old.id, '+1 day'), records: [old] });
   await fs.writeFile(f.stop, 'owner STOP fixture');
@@ -215,6 +215,28 @@ test('a newer question supersedes the old card and Keep retires only the shown o
   await f.untouched();
 });
 
+test('a failed newer keyboard leaves the previously published reschedule card usable', async t => {
+  let reply = command(live.id, '+2h');
+  const f = await profile(t, { output: () => ({ ok: true, text: reply }) });
+  await f.turn();
+  const first = f.question();
+  assert.ok(first);
+  const publish = f.bot.api.editMessageReplyMarkup;
+  t.mock.method(f.bot.api, 'editMessageReplyMarkup', async (chatId, messageId, options, ...rest) => {
+    if (messageId !== first && options.reply_markup?.inline_keyboard?.some(row =>
+      row.some(button => button.callback_data === 'rs:Exact-ID'))) throw new Error('fixture keyboard publication failed');
+    return publish(chatId, messageId, options, ...rest);
+  });
+  reply = command(live.id, '+3h');
+  assert.match(await f.turn(), /Не удалось перенести задачу/);
+  assert.ok(f.question() > first);
+  assert.deepEqual(await f.records(), [live]);
+  await f.click('rs:Exact-ID', { messageId: first });
+  assert.equal(f.toast(), 'Перенёс');
+  assert.deepEqual((await f.records())[0].trigger, { kind: 'once', at: twoHours });
+  await f.untouched();
+});
+
 test('a replacement definition and a new native map both invalidate the approved local move', async t => {
   const f = await profile(t);
   await f.turn();
@@ -292,6 +314,45 @@ test('failed publication leaves the old schedule and the same card can retry', a
   await f.untouched();
 });
 
+test('a committed move to the same cron cannot replay after question retirement fails', async t => {
+  const trigger = { kind: 'cron', cron: '0 13 * * *', timezone: 'Europe/Moscow' };
+  const old = row('same', 'Тот же срок', { trigger, lastRunAt: new Date(now).toISOString() });
+  const f = await profile(t, { output: command(old.id, trigger.cron), records: [old] });
+  await f.turn();
+  assert.ok(f.question());
+  const rename = fs.rename;
+  t.mock.method(fs, 'rename', async (from, to) => {
+    if (path.basename(to) === 'task-reschedule-questions.json' &&
+        JSON.parse(await fs.readFile(from, 'utf8')).length === 0) throw new Error('fixture retirement failed');
+    return rename(from, to);
+  });
+  await f.click('rs:same');
+  assert.equal(f.toast(), 'Перенёс');
+  const scheduler = f.scheduler();
+  await scheduler.tickNow();
+  const [claimed] = await f.records();
+  assert.equal(claimed.lastRunAt, new Date(now).toISOString());
+  assert.equal(f.delivered().length, 1);
+  await f.click('rs:same');
+  assert.equal(f.toast(), 'Подтверждение устарело');
+  assert.deepEqual(await f.records(), [claimed]);
+  await scheduler.tickNow();
+  assert.equal(f.delivered().length, 1);
+});
+
+test('moving an owner-disabled local event row to a time uses the new trigger', async t => {
+  const old = row('event', 'Бывшая проверка', {
+    enabled: false, disabledReason: 'owner', trigger: {
+      kind: 'when', check: { kind: 'process', name: 'fixture' }, everyMinutes: 5, fire: 'changed',
+    },
+  });
+  const f = await profile(t, { output: command(old.id, '+2h'), records: [old] });
+  assert.match(await f.turn(), /Перенёс: «Бывшая проверка»/);
+  assert.equal(f.question(), 0);
+  assert.deepEqual(withoutRevision((await f.records())[0]), expectedRecord(old, { kind: 'once', at: twoHours }));
+  await f.untouched();
+});
+
 test('changing the owner zone makes an old cron preview stale', async t => {
   const f = await profile(t, { output: command(live.id, '0 9 * * *') });
   await f.turn();
@@ -309,6 +370,27 @@ test('quoted, nested and unterminated reschedule text cannot move or pause tasks
   assert.doesNotMatch(final, /Автономка остановлена|Спросил подтверждение ниже/);
   assert.equal(f.question(), 0);
   await assert.rejects(fs.stat(f.stop), { code: 'ENOENT' });
+  assert.deepEqual(await f.records(), [live]);
+  await f.untouched();
+});
+
+test('a literal quote in the earlier cleanup result cannot hide a valid reschedule', async t => {
+  const spent = row('spent', 'Архив " утро', { trigger: { kind: 'once', at: prior }, lastRunAt: prior });
+  const f = await profile(t, { records: [live, spent],
+    output: '[CANCEL_SPENT]\n' + command(live.id, '+2h') + '\nСледующая "фраза".' });
+  const final = await f.turn();
+  assert.match(final, /Архив " утро/);
+  assert.match(final, /Спросил подтверждение ниже — перенесу по кнопке/);
+  assert.ok(f.question());
+  assert.deepEqual(await f.records(), [live]);
+});
+
+test('a damaged reschedule with a trailing unmatched bracket cannot pause its embedded task', async t => {
+  const f = await profile(t, { output: '[RESCHEDULE_TASK: x | [PAUSE_TASK: Exact-ID] [' });
+  const final = await f.turn();
+  assert.match(final, /Не понял, что и на когда переносить/);
+  assert.doesNotMatch(final, /«Почта» на паузе/);
+  assert.equal(f.question(), 0);
   assert.deepEqual(await f.records(), [live]);
   await f.untouched();
 });

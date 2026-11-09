@@ -2,7 +2,7 @@
  * Per-bot actions.json for saved literal and model actions. Keep tasks.json and legacy timer
  * files separate. [Marker](../telegram/reminder-markers.mjs), [sender](./reminder-dispatch.mjs),
  * [menu](../telegram/routes/autonomy.mjs), [individual state](./saved-action-control.mjs),
- * [inventory](./saved-task-inspection.mjs), [task removal](./task-removal.mjs),
+ * [inventory](./saved-task-inspection.mjs), [task removal](./task-removal.mjs), [reschedule](./saved-task-reschedule.mjs),
  * [contract](../../tests/reference/parity-autonomy-contract.txt).
  */
 import path from 'node:path';
@@ -40,7 +40,7 @@ export function isLocalSavedAction(action, jobs) {
   return task?.kind === 'prompt' && typeof task.prompt === 'string' && Boolean(task.prompt.trim());
 }
 
-async function withActions(env, update, { signal, create, expectedFile } = {}) {
+export async function withActions(env, update, { signal, create, expectedFile } = {}) {
   signal?.throwIfAborted();
   const file = await actionFile(env);
   if (expectedFile && file !== expectedFile) return null;
@@ -197,7 +197,7 @@ export async function changeSavedAction(id, remove, env = process.env) {
 }
 
 const taskFingerprint = action => createHash('sha256').update(JSON.stringify(action)).digest('hex');
-function taskDefinitionFingerprint(action) {
+export function taskDefinitionFingerprint(action) {
   // Scheduler outcomes or an owner's pause do not replace this task.
   const { enabled, disabledReason, lastRunAt, lastStatus, lastOutcome, lastError, ...definition } = action;
   return taskFingerprint(definition);

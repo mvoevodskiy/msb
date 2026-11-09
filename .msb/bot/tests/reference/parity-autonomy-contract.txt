@@ -1227,3 +1227,29 @@ Native registration 46192–46235 is a separate Gateway write.
 An automatic/unset runner can resolve to OC (VY 4008–4017);
 a missing map is insufficient evidence of local ownership
 on OC. A mapped or migrated job must not be moved locally.
+
+New open-core reuses the registration trigger parser and the
+locked action writer. Scheduling an ordinary supported task
+changes the existing row and adds a fresh schedule revision.
+The scheduler compares that row against the previous claim.
+A late completed delivery keeps its journal without stamping
+the new schedule. A new revision also fences a duplicate
+confirmation for an identical cron even if card retirement fails.
+The bot-wide STOP and the original task gates stay in effect.
+
+The pending offer lives in a separate per-bot book, with owner,
+chat, message, physical action file, full ID, definition, rail
+and resolved trigger. Its buttons appear only after binding.
+A newer offer supersedes the earlier one after publication.
+A failed publication retains the earlier offer. A cron offer
+becomes stale when the owner changes timezone. A failed atomic
+action write keeps the current offer available to retry. The
+native map is checked again immediately before publication.
+
+The worker recognizes the original command before inserting
+task names from other actions, then executes it after inspection.
+A malformed reschedule cannot expose a nested pause or removal.
+See src/telegram/task-reschedule-markers.mjs and the confirmation,
+then src/autonomy/saved-task-reschedule.mjs and its question book.
+Tests task-reschedule.test.mjs and openclaw-turn.test.mjs cover
+the three synthetic provider routes and the real local dispatcher.
