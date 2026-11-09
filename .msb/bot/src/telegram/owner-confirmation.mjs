@@ -1,6 +1,6 @@
 /**
  * Deliver a question, persist its message binding, then expose its buttons.
- * Used by [limits](./limit-confirmation.mjs) and [spent tasks](./spent-task-confirmation.mjs).
+ * Used by [limits](./limit-confirmation.mjs) and [spent tasks](./task-removal-confirmation.mjs).
  * Retire the binding and clear the keyboard when publication fails.
  */
 import { singleRequestSignal } from './presentation-api.mjs';

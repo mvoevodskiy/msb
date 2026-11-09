@@ -13,7 +13,7 @@ import { promptRegistrationPermissions, promptRegistrationReady } from '../auton
 import { readAutonomyPause } from '../autonomy/owner-pause.mjs';
 import { reminderRegistrationAdvice } from '../autonomy/reminder-registration-advice.mjs';
 import { describeReminderConfirmation, parseReminderMarker } from '../autonomy/reminder-protocol.mjs';
-import { limitMarker, outsideExamples, replaceAutonomyMarkers, scheduleMarker, taskControlMarker, taskInspectionMarker } from './autonomy-marker-text.mjs';
+import { limitMarker, outsideExamples, replaceAutonomyMarkers, scheduleMarker, taskCancelMarker, taskControlMarker, taskInspectionMarker } from './autonomy-marker-text.mjs';
 
 const disabled = 'Автономные задачи сейчас выключены.';
 const unsupported = 'Фоновую задачу сейчас не ставлю: задачи по времени на этом движке пока не подключены.';
@@ -82,7 +82,7 @@ async function register(raw, context) {
 
 export async function processReminderMarkers(text, context) {
   if (typeof text !== 'string' || !text.includes('[SCHEDULE_TASK]')) return text;
-  const blocks = outsideExamples(text, scheduleMarker, [...text.matchAll(limitMarker), ...text.matchAll(taskControlMarker), ...text.matchAll(taskInspectionMarker)]);
+  const blocks = outsideExamples(text, scheduleMarker, [...text.matchAll(limitMarker), ...text.matchAll(taskControlMarker), ...text.matchAll(taskCancelMarker), ...text.matchAll(taskInspectionMarker)]);
   return replaceAutonomyMarkers(text, blocks, async block => {
     context.signal?.throwIfAborted();
     return context.ownerId && context.ok ? register(block[1], context) : { text: '(задача не обработана)' };

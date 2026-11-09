@@ -1110,3 +1110,20 @@ profile, chat/message, file and task definition. Runtime progress
 is not a new task definition. Keep is single-use and non-mutating.
 Mapped native removal required confirmed X9 before deleting the
 row (45980–46015/46243–46257), an independent ownership contract.
+
+The new named route reuses matching and schedule formatting, the
+old ordered final dispatch, the spent cleanup writer and the same
+durable question file. A live question binds its exact byte-limited
+callback, owner, chat/message, physical file, captured rail and
+definition. The existing ct-spent records keep their layout and
+ct-keep resolves by the delivered binding. A normal completion or
+pause updates execution state and preserves the approved definition.
+Replacement and schedule changes need a new question. Local
+deletion keeps the native scope check before publication. On OC it
+still requires explicit local runner cc and no native mapping.
+
+Nested protocol selectors are invalid, including a command copied
+from a task body. A literal unmatched opening bracket still works
+as ordinary text. Quotation delimiters inside rendered verbatim
+data cannot extend a quote over a later real command. Both cases
+are exercised through the final Telegram worker.

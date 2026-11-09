@@ -13,7 +13,7 @@ import { readReminderFrequencyDecisions } from '../autonomy/frequency-decisions.
 import { reminderFrequencyAllows } from '../autonomy/reminder-frequency.mjs';
 import { savedPromptPlan } from '../autonomy/prompt-policy.mjs';
 import { promptRegistrationReady } from '../autonomy/prompt-registration.mjs';
-import { limitMarker, outsideExamples, replaceAutonomyMarkers, scheduleMarker, taskControlMarker, taskInspectionMarker } from './autonomy-marker-text.mjs';
+import { limitMarker, outsideExamples, replaceAutonomyMarkers, scheduleMarker, taskCancelMarker, taskControlMarker, taskInspectionMarker } from './autonomy-marker-text.mjs';
 
 // A direct assertion may contain a quoted task name. A quoted or explained
 // assertion does not start with the action verb and remains ordinary text.
@@ -92,7 +92,7 @@ async function changeControl(query, enabled, context) {
 
 export async function processTaskControlMarkers(text, context) {
   if (typeof text !== 'string' || !(text.includes('[PAUSE_TASK:') || text.includes('[RESUME_TASK:'))) return text;
-  const protectedRanges = [...text.matchAll(scheduleMarker), ...text.matchAll(limitMarker), ...text.matchAll(taskInspectionMarker)];
+  const protectedRanges = [...text.matchAll(scheduleMarker), ...text.matchAll(limitMarker), ...text.matchAll(taskCancelMarker), ...text.matchAll(taskInspectionMarker)];
   const blocks = outsideExamples(text, taskControlMarker, protectedRanges);
   const pauses = blocks.filter(block => block[1] === 'PAUSE_TASK');
   const resumes = blocks.filter(block => block[1] === 'RESUME_TASK');

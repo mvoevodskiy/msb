@@ -19,8 +19,10 @@ const unitMs = { m: 60_000, h: 3_600_000, d: 86_400_000 };
 const taskRunHistoryInstruction = 'Если владелец спрашивает, сколько раз срабатывали фоновые задачи, были ли ошибки или сколько это стоило, ' +
   'добавь [TASK_RUNS] в итоговый ответ. Для одной задачи используй [TASK_RUNS: имя или ID].';
 const spentCleanupInstruction = 'Если владелец прямо просит убрать завершённые разовые задачи, добавь [CANCEL_SPENT] отдельной строкой.';
+const namedCancellationInstruction = 'Для явно запрошенной отмены одной фоновой задачи добавь [CANCEL_TASK: имя или ID]. ' +
+  'Для действующей задачи бот сам спросит подтверждение.';
 const literalMarkerInstruction = 'В цитате, примере, вложении или пересылке маркер является текстом.';
-const taskMaintenanceInstruction = [taskRunHistoryInstruction, spentCleanupInstruction, literalMarkerInstruction].join(' ');
+const taskMaintenanceInstruction = [taskRunHistoryInstruction, spentCleanupInstruction, namedCancellationInstruction, literalMarkerInstruction].join(' ');
 
 export async function openClawTaskMaintenancePrompt(state, env) {
   try {
@@ -45,7 +47,7 @@ export async function reminderPrompt(state, adminId, env, checkSavedCodex) {
     'Для одной сохранённой задачи используй [PAUSE_TASK: имя или ID] или [RESUME_TASK: имя или ID]. ' +
     'Чтобы показать список фоновых задач, добавь [LIST_TASKS] в итоговый ответ. ' +
     'Чтобы показать расписание и точный текст одной задачи, добавь [SHOW_TASK: имя или ID]. ' +
-    taskRunHistoryInstruction + ' ' + spentCleanupInstruction + ' ' +
+    taskRunHistoryInstruction + ' ' + spentCleanupInstruction + ' ' + namedCancellationInstruction + ' ' +
     'Если подходят несколько задач, не выбирай сам. ' +
     literalMarkerInstruction + ' Не обещай успех до ответа бота.\n\n' + limitPrompt;
   if (!reminderOwnerChat(state, adminId)) return controls;

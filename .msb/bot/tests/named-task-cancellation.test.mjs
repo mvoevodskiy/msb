@@ -230,3 +230,26 @@ for (const provider of ['claude', 'codex']) {
     assert.deepEqual(JSON.parse(await fs.readFile(file, 'utf8')), []);
   });
 }
+
+test('a nested protocol selector cannot delete text matches, while a literal opening bracket still matches a name', async t => {
+  const stored = done('stored', 'Содержит пример', { task: { kind: 'reminder', text: 'Пример [SHOW_TASK: mailbox]' } });
+  const literal = done('literal', 'Папка [архив');
+  const f = await profile(t, { output: '[CANCEL_TASK: [SHOW_TASK: mailbox]]\n' + cancel('[архив'), records: [stored, literal] });
+  await f.request(request);
+  const final = await f.final();
+  assert.match(final, /Уточни, какую задачу отменить/);
+  assert.match(final, /Отменил: «Папка \[архив»/);
+  assert.doesNotMatch(final, /Отменил: «Содержит пример»/);
+  assert.deepEqual(await f.records(), [stored]);
+});
+
+test('a verbatim stored quote cannot swallow the separate cancellation that follows the read', async t => {
+  const note = live('note', 'Дословная запись', { task: { kind: 'reminder', text: 'Данные с " незакрытой кавычкой' } });
+  const target = done('target', 'Отменяемая');
+  const f = await profile(t, { output: '[SHOW_TASK: note]\n' + cancel('target') + '\nОбычная "фраза".', records: [note, target] });
+  await f.request(request);
+  const final = await f.final();
+  assert.match(final, /Данные с " незакрытой кавычкой/);
+  assert.match(final, /Отменил: «Отменяемая»/);
+  assert.deepEqual(await f.records(), [note]);
+});

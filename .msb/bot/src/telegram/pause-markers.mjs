@@ -14,7 +14,7 @@ import { readReminderFrequencyDecisions } from '../autonomy/frequency-decisions.
 import { savedPromptPlan } from '../autonomy/prompt-policy.mjs';
 import { listTasks } from '../autonomy/store.mjs';
 import { loadState } from '../state.mjs';
-import { limitMarker, outsideExamples, replaceAutonomyMarkers, scheduleMarker, taskControlMarker, taskInspectionMarker } from './autonomy-marker-text.mjs';
+import { limitMarker, outsideExamples, replaceAutonomyMarkers, scheduleMarker, taskCancelMarker, taskControlMarker, taskInspectionMarker } from './autonomy-marker-text.mjs';
 import { askToPauseLegacyTimers } from './pause-confirmation.mjs';
 
 const control = /\[(STOP_ALL|RESUME_ALL)\]/g;
@@ -112,7 +112,7 @@ async function changePause(command, context, ctx) {
 
 export async function processPauseMarkers(text, context, ctx) {
   if (typeof text !== 'string' || !(text.includes('[STOP_ALL]') || text.includes('[RESUME_ALL]'))) return text;
-  const protectedRanges = [...text.matchAll(scheduleMarker), ...text.matchAll(limitMarker), ...text.matchAll(taskControlMarker), ...text.matchAll(taskInspectionMarker)];
+  const protectedRanges = [...text.matchAll(scheduleMarker), ...text.matchAll(limitMarker), ...text.matchAll(taskControlMarker), ...text.matchAll(taskCancelMarker), ...text.matchAll(taskInspectionMarker)];
   const blocks = outsideExamples(text, control, protectedRanges).filter(block => {
     const suffix = text.slice(block.index + block[0].length).split('\n', 1)[0];
     return !suffix.replace(control, '').trim();

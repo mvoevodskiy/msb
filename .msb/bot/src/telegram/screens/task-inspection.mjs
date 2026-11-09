@@ -61,7 +61,7 @@ function runStatus(action, now, timezone) {
   return status.join(' · ');
 }
 
-function schedule(action, now, timezone) {
+export function describeSavedTaskSchedule(action, now, timezone) {
   const { trigger } = action;
   if (trigger?.kind === 'when') return eventSchedule(action, now, timezone);
   if (!validReminderTrigger(trigger)) return trigger?.kind === 'heartbeat' ? 'heartbeat' : 'расписание не удалось прочитать';
@@ -77,7 +77,7 @@ function schedule(action, now, timezone) {
 }
 
 function taskRow(action, now, timezone) {
-  return savedTaskLabel(action) + ' — ' + schedule(action, now, timezone);
+  return savedTaskLabel(action) + ' — ' + describeSavedTaskSchedule(action, now, timezone);
 }
 
 function nativePause(job, policy) {
@@ -150,7 +150,7 @@ export function describeSavedTask(action, now, timezone, { native }) {
   const eventUnavailable = action.trigger?.kind === 'when' && !native
     ? ' · проверка по событию пока не подключена к локальному движку' : '';
   const intro = '«' + action.name + '» — ' + kind(action) + '.\nРасписание: ' +
-    schedule(action, now, timezone) + paused + eventUnavailable;
+    describeSavedTaskSchedule(action, now, timezone) + paused + eventUnavailable;
   const body = action.task.kind === 'reminder' ? action.task.text :
     ['prompt', 'draft'].includes(action.task.kind) ? action.task.prompt : undefined;
   const fragments = [{ text: intro + '\n\n' }];

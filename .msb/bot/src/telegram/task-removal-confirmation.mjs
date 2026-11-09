@@ -1,11 +1,13 @@
 /**
- * The original buttons for the historical once group in [LIST_TASKS](./task-inspection-markers.mjs).
- * [Owner confirmation](./owner-confirmation.mjs) arms the delivered question; [router](./router.mjs)
- * resolves it through the [profile store](../autonomy/spent-task-cleanup.mjs).
- * The [direct marker](./spent-task-markers.mjs) shares the result text.
+ * Old buttons for a named [CANCEL_TASK](./task-removal-markers.mjs) or
+ * the spent group in [LIST_TASKS](./task-inspection-markers.mjs).
+ * [Owner transport](./owner-confirmation.mjs) arms the question. [Router](./router.mjs)
+ * resolves it through the [profile binding](../autonomy/task-removal.mjs).
+ * [Ingress checks](../../tests/named-task-cancellation.test.mjs).
  */
 import { InlineKeyboard } from 'grammy';
-import { resolveSpentTaskQuestion, saveSpentTaskQuestion, SpentCleanupRefusal } from '../autonomy/spent-task-cleanup.mjs';
+import { resolveTaskRemovalQuestion, saveTaskRemovalQuestion, TaskRemovalRefusal } from '../autonomy/task-removal.mjs';
+import { nameReference } from '../../shared/callback-ref.mjs';
 import { deliverOwnerQuestion, emptyOwnerKeyboard } from './owner-confirmation.mjs';
 import { escapeHtml } from './edit.mjs';
 import { singleRequestSignal } from './presentation-api.mjs';
@@ -15,8 +17,22 @@ const confirm = 'ct-spent';
 const keep = 'ct-keep';
 const plural = new Intl.PluralRules('ru');
 
-export function isSpentTaskConfirmation(data) {
-  return data === confirm;
+const namedPrefix = 'ct:';
+
+export function isTaskRemovalConfirmation(data) {
+  return data === confirm || data.startsWith(namedPrefix);
+}
+
+export function askToCancelSavedTask(ctx, { action, snapshot }, schedule, { ownerId, rail, threadId, signal }) {
+  const callback = namedPrefix + nameReference(action.id, { marker: 'a~', actionPrefix: namedPrefix });
+  const owner = Number(ownerId);
+  return deliverOwnerQuestion(ctx, {
+    text: 'Снести фоновую задачу «' + action.name + '»?\nСработает ' + schedule + '. Снос необратим.',
+    keyboard: new InlineKeyboard().text('Снести ✖', callback).text('Оставить', keep),
+    threadId, signal,
+    save: binding => saveTaskRemovalQuestion({ ...binding, ...snapshot, ownerId: owner, kind: 'named', callback, rail }, signal),
+    discard: binding => resolveTaskRemovalQuestion({ ...binding, ownerId: owner }),
+  });
 }
 
 export function askToClearSpentTasks(ctx, file, candidates, { ownerId, threadId, signal }) {
@@ -26,8 +42,8 @@ export function askToClearSpentTasks(ctx, file, candidates, { ownerId, threadId,
     text: 'Убрать из списка ' + count + ' ' + word + '? Они уже не сработают.',
     keyboard: new InlineKeyboard().text('Убрать ✖', confirm).text('Оставить', keep),
     threadId, signal,
-    save: binding => saveSpentTaskQuestion({ ...binding, ownerId: Number(ownerId), file, candidates }, signal),
-    discard: binding => resolveSpentTaskQuestion({ ...binding, ownerId: Number(ownerId) }, false),
+    save: binding => saveTaskRemovalQuestion({ ...binding, ownerId: Number(ownerId), file, candidates }, signal),
+    discard: binding => resolveTaskRemovalQuestion({ ...binding, ownerId: Number(ownerId) }),
   });
 }
 
@@ -60,22 +76,31 @@ async function closeQuestion(ctx, chatId, msgId, line) {
     { reply_markup: emptyOwnerKeyboard }, request()).catch(() => {}));
 }
 
-export async function handleSpentTaskConfirmation({ cfg, ctx, data, chatId, msgId, answer }) {
-  const remove = data === confirm;
+function namedResponse(result) {
+  if (result.removed.length) return { toast: 'Снёс', text: '✖ Снёс «' + result.removed[0] + '»' };
+  if (result.missing) return { toast: 'Этой задачи уже нет', text: 'Этой задачи уже нет.' };
+  return { toast: 'Подтверждение устарело', text: 'Подтверждение устарело.' };
+}
+
+export async function handleTaskRemovalConfirmation({ cfg, ctx, data, chatId, msgId, answer }) {
+  const remove = data !== keep;
   let result;
   try {
-    result = await resolveSpentTaskQuestion({ chatId, messageId: msgId, ownerId: Number(cfg.adminId) }, remove);
+    result = await resolveTaskRemovalQuestion({ chatId, messageId: msgId, ownerId: Number(cfg.adminId) }, data);
   } catch (error) {
     if (!remove) return false;
-    await answer({ text: error instanceof SpentCleanupRefusal ? error.message : 'Не смог убрать, попробуй ещё раз',
-      show_alert: true });
+    const fallback = data === confirm ? 'Не смог убрать, попробуй ещё раз' : 'Не смог снести, попробуй ещё раз';
+    await answer({ text: error instanceof TaskRemovalRefusal ? error.message : fallback, show_alert: true });
     return true;
   }
   if (!result && !remove) return false;
   if (result?.keepFailed) await answer({ text: 'Не смог закрыть вопрос, попробуй ещё раз', show_alert: true });
   else if (!result) await answer({ text: 'Подтверждение устарело' });
-  else {
-    const { toast, text } = result.kept ? { toast: 'Оставил', text: '✔ Оставил на месте' } : describeSpentTaskCleanup(result);
+  else if (result.named && result.failed.length) {
+    await answer({ text: 'Не смог снять — попробуй ещё раз', show_alert: true });
+  } else {
+    const { toast, text } = result.kept ? { toast: 'Оставил', text: '✔ Оставил на месте' } :
+      result.named ? namedResponse(result) : describeSpentTaskCleanup(result);
     await answer({ text: toast });
     await closeQuestion(ctx, chatId, msgId, text);
   }

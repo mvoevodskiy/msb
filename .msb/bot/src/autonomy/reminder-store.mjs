@@ -2,7 +2,7 @@
  * Per-bot actions.json for saved literal and model actions. Keep tasks.json and legacy timer
  * files separate. [Marker](../telegram/reminder-markers.mjs), [sender](./reminder-dispatch.mjs),
  * [menu](../telegram/routes/autonomy.mjs), [individual state](./saved-action-control.mjs),
- * [inventory](./saved-task-inspection.mjs), [spent cleanup](./spent-task-cleanup.mjs),
+ * [inventory](./saved-task-inspection.mjs), [task removal](./task-removal.mjs),
  * [contract](../../tests/reference/parity-autonomy-contract.txt).
  */
 import path from 'node:path';
@@ -13,7 +13,7 @@ import { actionRoot } from '../paths.mjs';
 import { physicalRecordPath, readOptionalJson, readRecordArray, writeRecordArray } from './record-file.mjs';
 import { recordReminderBreaker } from './reminder-breaker.mjs';
 import { reminderSpacing, savedTaskSpent, spentReminder, validReminderTrigger } from './reminder-schedule.mjs';
-import { planSavedActionControl, savedActionWithEnabled, selectSavedAction,
+import { matchingSavedActions, planSavedActionControl, savedActionWithEnabled, selectSavedAction,
   unavailableSavedActionControl } from './saved-action-control.mjs';
 
 function actionFile(env) {
@@ -196,51 +196,92 @@ export async function changeSavedAction(id, remove, env = process.env) {
 }
 
 const taskFingerprint = action => createHash('sha256').update(JSON.stringify(action)).digest('hex');
+function taskDefinitionFingerprint(action) {
+  // Scheduler outcomes or an owner's pause do not replace this task.
+  const { enabled, disabledReason, lastRunAt, lastStatus, lastOutcome, lastError, ...definition } = action;
+  return taskFingerprint(definition);
+}
 const spentTaskCandidate = action => ({ id: action.id, fingerprint: taskFingerprint(action) });
-const enabledSpentTask = action => typeof action?.id === 'string' && typeof action.name === 'string' &&
-  action.enabled && savedTaskSpent(action);
+const namedTaskCandidate = action => ({ id: action.id, fingerprint: taskDefinitionFingerprint(action) });
+const savedTaskRecord = action => typeof action?.id === 'string' && typeof action.name === 'string';
+const enabledSpentTask = action => savedTaskRecord(action) && action.enabled && savedTaskSpent(action);
+
+// On OC, an automatic old row without a mapping is not affirmative local ownership.
+function ownedForRemoval(action, jobs, rail) {
+  return localActionScope(action, jobs) && (rail !== 'oc' || action.runner === 'cc');
+}
 
 export function spentTaskCandidates(spent, jobs) {
   if (!jobs) return [];
-  return spent.filter(action => localActionScope(action, jobs))
-    .map(spentTaskCandidate);
+  return spent.filter(action => localActionScope(action, jobs)).map(spentTaskCandidate);
 }
 
-export function removeSpentTasks({ snapshot, rail, env = process.env, signal, commit = publish => publish() } = {}) {
-  if (snapshot && (typeof snapshot.file !== 'string' || !snapshot.file || !Array.isArray(snapshot.candidates))) {
-    throw new Error('Invalid spent-task confirmation snapshot');
-  }
-  // An old automatic row without a job mapping is ambiguous on OpenClaw.
-  const owned = (action, jobs) => localActionScope(action, jobs) && (rail !== 'oc' || action.runner === 'cc');
-  return withActions(env, (records, save, file) => commit(async () => {
-    // A delivered question authorizes its snapshot. The direct request selects
-    // the current historical group under the same action file lock.
-    const selected = snapshot ? snapshot.candidates : records.filter(enabledSpentTask).map(spentTaskCandidate);
-    if (!selected.length) return { removed: [], failed: [], changed: false };
+function checkRemovalSnapshot(snapshot, named = false) {
+  if (typeof snapshot?.file !== 'string' || !snapshot.file || !Array.isArray(snapshot.candidates) ||
+      (named && snapshot.candidates.length !== 1)) throw new Error('Invalid task removal snapshot');
+}
+
+async function removeCandidates({ records, save, file, env, rail, candidates, eligible, fingerprint = taskFingerprint }) {
+  const removed = [], failed = [];
+  let changed = false, missing = false;
+  if (candidates.length) {
     const jobs = await readNativeJobMap(env);
-    const removed = [], failed = [];
-    let changed = false;
-    for (const candidate of selected) {
-      const index = records.findIndex(action => action?.id === candidate.id && taskFingerprint(action) === candidate.fingerprint);
+    for (const candidate of candidates) {
+      const index = records.findIndex(action => action?.id === candidate.id && fingerprint(action) === candidate.fingerprint);
       const action = records[index];
-      if (!enabledSpentTask(action)) {
+      if (!eligible(action)) {
         changed = true;
+        missing ||= !records.some(row => row?.id === candidate.id);
         continue;
       }
-      if (!owned(action, jobs)) {
+      if (!ownedForRemoval(action, jobs, rail)) {
         failed.push(action.name);
         continue;
       }
       removed.push(action);
       records.splice(index, 1);
     }
-    if (removed.length) await save(async () => {
-      if (await actionFile(env) !== file) throw new Error('Action file changed');
-      const latestJobs = await readNativeJobMap(env);
-      if (removed.some(action => !owned(action, latestJobs))) {
-        throw new Error('A local cleanup candidate gained a native binding');
-      }
-    });
-    return { removed: removed.map(action => action.name), failed, changed };
-  }), { expectedFile: snapshot?.file, signal });
+  }
+  if (removed.length) await save(async () => {
+    if (await actionFile(env) !== file) throw new Error('Action file changed');
+    const latestJobs = await readNativeJobMap(env);
+    if (removed.some(action => !ownedForRemoval(action, latestJobs, rail))) {
+      throw new Error('A local removal candidate gained a native binding');
+    }
+  });
+  return { removed: removed.map(action => action.name), failed, changed, missing };
+}
+
+export function removeSpentTasks({ snapshot, rail, env = process.env, signal, commit = publish => publish() } = {}) {
+  if (snapshot) checkRemovalSnapshot(snapshot);
+  return withActions(env, (records, save, file) => commit(() => removeCandidates({
+    records, save, file, env, rail, eligible: enabledSpentTask,
+    candidates: snapshot ? snapshot.candidates : records.filter(enabledSpentTask).map(spentTaskCandidate),
+  })), { expectedFile: snapshot?.file, signal });
+}
+
+export function cancelNamedSavedTasks(query, { rail, env = process.env, signal, commit = publish => publish() } = {}) {
+  return withActions(env, (records, save, file) => commit(async () => {
+    if (!query) return { error: 'Уточни, какую задачу отменить.' };
+    const matches = matchingSavedActions(records, query);
+    if (!matches.length) return { error: 'Не нашёл задачу «' + query + '».' };
+    const [action] = matches;
+    if (!matches.every(savedTaskSpent)) {
+      if (matches.length > 1) return { choices: matches };
+      const jobs = await readNativeJobMap(env);
+      if (!ownedForRemoval(action, jobs, rail)) return { unavailable: action.name };
+      return { action, snapshot: { file, candidates: [namedTaskCandidate(action)] } };
+    }
+    const result = await removeCandidates({ records, save, file, env, rail,
+      candidates: matches.map(spentTaskCandidate), eligible: savedTaskSpent });
+    return { ...result, action, group: matches.length > 1 };
+  }), { signal });
+}
+
+export function removeConfirmedNamedTask(snapshot, { rail, env = process.env, commit = publish => publish() } = {}) {
+  checkRemovalSnapshot(snapshot, true);
+  return withActions(env, (records, save, file) => commit(() => removeCandidates({
+    records, save, file, env, rail, candidates: snapshot.candidates,
+    eligible: savedTaskRecord, fingerprint: taskDefinitionFingerprint,
+  })), { expectedFile: snapshot.file });
 }

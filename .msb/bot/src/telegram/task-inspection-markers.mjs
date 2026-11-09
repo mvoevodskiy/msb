@@ -1,7 +1,7 @@
 /**
  * Successful owner reply → LIST_TASKS, SHOW_TASK or [TASK_RUNS](../autonomy/saved-task-runs.mjs).
  * The list can offer a
- * [separate owner question](./spent-task-confirmation.mjs). [Bot worker](./bot.mjs)
+ * [separate owner question](./task-removal-confirmation.mjs). [Bot worker](./bot.mjs)
  * supplies the captured rail; [selector](../autonomy/saved-action-control.mjs) and
  * [screen](./screens/task-inspection.mjs) use the existing per-bot records.
  * [Telegram checks](../../tests/saved-task-inspection.test.mjs).
@@ -13,10 +13,10 @@ import { readSavedTaskList, savedTaskIsNative, savedTaskTimezone } from '../auto
 import { readSavedTaskRunHistory } from '../autonomy/saved-task-runs.mjs';
 import { loadState } from '../state.mjs';
 import { describeSavedTask, describeSavedTaskList } from './screens/task-inspection.mjs';
-import { askToClearSpentTasks } from './spent-task-confirmation.mjs';
+import { askToClearSpentTasks } from './task-removal-confirmation.mjs';
 import { describeSavedTaskRunHistory } from './screens/task-run-history.mjs';
 import { limitMarker, outsideExamples, replaceAutonomyMarkers, scheduleMarker,
-  taskControlMarker, taskInspectionMarker } from './autonomy-marker-text.mjs';
+  taskCancelMarker, taskControlMarker, taskInspectionMarker } from './autonomy-marker-text.mjs';
 
 const readableTask = action => typeof action?.id === 'string' && typeof action.name === 'string' &&
   typeof action.task?.kind === 'string';
@@ -71,7 +71,7 @@ async function inspect(block, context, ctx) {
 export async function processTaskInspectionMarkers(text, context, ctx) {
   if (typeof text !== 'string' ||
       !['[LIST_TASKS]', '[SHOW_TASK:', '[TASK_RUNS'].some(marker => text.includes(marker))) return text;
-  const ranges = [...text.matchAll(scheduleMarker), ...text.matchAll(limitMarker), ...text.matchAll(taskControlMarker)];
+  const ranges = [...text.matchAll(scheduleMarker), ...text.matchAll(limitMarker), ...text.matchAll(taskControlMarker), ...text.matchAll(taskCancelMarker)];
   const blocks = outsideExamples(text, taskInspectionMarker, ranges);
   return replaceAutonomyMarkers(text, blocks, async block => {
     context.signal?.throwIfAborted();

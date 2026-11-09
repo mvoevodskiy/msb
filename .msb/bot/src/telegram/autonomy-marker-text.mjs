@@ -2,15 +2,17 @@
  * Text-only autonomy marker boundaries and final replacement. Shared by the
  * [reminder](./reminder-markers.mjs), [pause](./pause-markers.mjs) and
  * [limit](./limit-markers.mjs), [inspection](./task-inspection-markers.mjs) and
- * [task control](./task-control-markers.mjs) and [cleanup](./spent-task-markers.mjs) handlers.
+ * [task control](./task-control-markers.mjs) and [cleanup](./task-removal-markers.mjs) handlers.
  */
 import { escapeHtml } from './edit.mjs';
 
 export const scheduleMarker = /\[SCHEDULE_TASK\]([\s\S]*?)\[\/SCHEDULE_TASK\]/g;
 export const limitMarker = /\[SET_LIMIT\s+([^\]]+)\]/g;
 export const taskControlMarker = /\[(PAUSE_TASK|RESUME_TASK):([^\]\r\n]*)\]/g;
+// Match the whole malformed nested form so another route cannot use the inner marker.
+export const taskCancelMarker = /\[CANCEL_TASK:(?:([^\[\]\r\n]*\[[^\]\r\n]*)\][ \t]*\]|([^\]\r\n]*)\])/g;
 export const taskInspectionMarker = /\[(LIST_TASKS|TASK_RUNS)\]|\[(SHOW_TASK|TASK_RUNS):([^\]\r\n]*)\]/g;
-const example = /\x60{3}[\s\S]*?(?:\x60{3}|(?![\s\S]))|\x60[^\x60\r\n]+\x60|«[^»]*»|^[ \t]*>.*$|<(pre|code|blockquote)\b[^>]*>[\s\S]*?<\/\1>/gim;
+export const autonomyExample = /\x60{3}[\s\S]*?(?:\x60{3}|(?![\s\S]))|\x60[^\x60\r\n]+\x60|«[^»]*»|^[ \t]*>.*$|<(pre|code|blockquote)\b[^>]*>[\s\S]*?<\/\1>/gim;
 
 export function outsideRanges(text, pattern, ranges) {
   return [...text.matchAll(pattern)].filter(block => !ranges.some(range =>
@@ -18,7 +20,7 @@ export function outsideRanges(text, pattern, ranges) {
 }
 
 export function outsideExamples(text, pattern, protectedRanges = []) {
-  return outsideRanges(text, pattern, [...text.matchAll(example), ...protectedRanges]);
+  return outsideRanges(text, pattern, [...text.matchAll(autonomyExample), ...protectedRanges]);
 }
 
 const safeText = value => escapeHtml(value)

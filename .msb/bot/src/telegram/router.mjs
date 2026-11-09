@@ -7,7 +7,7 @@
  * задачи → [autonomy](./routes/autonomy.mjs), источники → [monitor](./routes/monitor.mjs).
  * Подтверждение паузы таймеров → [pause](./pause-confirmation.mjs),
  * снятие лимита → [limit](./limit-confirmation.mjs), частота → [frequency](./frequency-confirmation.mjs),
- * очистка разовых задач → [spent task](./spent-task-confirmation.mjs).
+ * подтверждение удаления → [task removal](./task-removal-confirmation.mjs).
  * Остальные семейства видны в прямых imports ниже; rendering → [screens](./screens.mjs).
  * Состояние → [state](../state.mjs), shared pending принадлежит createBot.
  * Prepared views → [view delivery](./view-delivery.mjs); short views stay unchanged.
@@ -30,7 +30,7 @@ import { handleSettingsRoute } from './routes/settings.mjs';
 import { handleEnginesRoute } from './routes/engines.mjs';
 import { handlePauseConfirmation, isPauseConfirmation } from './pause-confirmation.mjs';
 import { handleLimitConfirmation, isLimitConfirmation } from './limit-confirmation.mjs';
-import { handleSpentTaskConfirmation, isSpentTaskConfirmation } from './spent-task-confirmation.mjs';
+import { handleTaskRemovalConfirmation, isTaskRemovalConfirmation } from './task-removal-confirmation.mjs';
 import { handleFrequencyConfirmation, isFrequencyConfirmation } from './frequency-confirmation.mjs';
 import { handleAutonomyRoute } from './routes/autonomy.mjs';
 import { handleMonitorRoute } from './routes/monitor.mjs';
@@ -81,8 +81,8 @@ export async function handleCallback({ bot, cfg, pending, ctx, plan, now = Date.
   };
   const limitConfirmation = isLimitConfirmation(data);
   const frequencyConfirmation = isFrequencyConfirmation(data);
-  const spentConfirmation = isSpentTaskConfirmation(data);
-  if (!isModelSelectionCallback(data) && !isPauseConfirmation(data) && !limitConfirmation && !frequencyConfirmation && !spentConfirmation) await answer();
+  const removalConfirmation = isTaskRemovalConfirmation(data);
+  if (!isModelSelectionCallback(data) && !isPauseConfirmation(data) && !limitConfirmation && !frequencyConfirmation && !removalConfirmation) await answer();
   if (!chatId) return;
   if (['menu:back', 'menu:close', 'menu:agent', 'menu:settings', 'settings:back', 'mon:back', 'settings:bots:cancel'].includes(data)) pending.delete(chatId);
   const show = async view => {
@@ -101,7 +101,7 @@ export async function handleCallback({ bot, cfg, pending, ctx, plan, now = Date.
       await bot[Symbol.for('msb.engineProviderView')]?.(state));
     const context = { bot, cfg, pending, ctx, plan, answer, data, chatId, msgId, show, state, engineMenu, now, signal: scope.signal };
     if ((limitConfirmation || data === 'ct-keep') && await handleLimitConfirmation(context)) return;
-    if ((spentConfirmation || data === 'ct-keep') && await handleSpentTaskConfirmation(context)) return;
+    if ((removalConfirmation || data === 'ct-keep') && await handleTaskRemovalConfirmation(context)) return;
     if (isPauseConfirmation(data)) return handlePauseConfirmation(context);
     if (frequencyConfirmation) return handleFrequencyConfirmation(context);
     for (const route of ROUTES) {
