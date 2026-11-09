@@ -3,6 +3,7 @@
  * Admission failure/cross-chat checks: [input boundary](../tests/input-boundary.test.mjs).
  * Native skills metadata → [Codex reader](../codex-skills.mjs), core read routes remain shared.
  * Native MCP metadata → [Codex user catalog](../codex-mcp.mjs).
+ * Saved Codex admission and execution → [adapter](../adapters/saved-codex.mjs).
  * Навигация: [Обвязка](../README.md).
  */
 import { beginCallbackRender, runCallbackScope } from '../../shared/callback-renders.mjs';
@@ -10,7 +11,7 @@ import { registerEngineProviderView } from '../engine-menu.mjs';
 import { registerCompactProvider } from '../compact-codex.mjs';
 import {registerSkillsProvider} from '../codex-skills.mjs';
 import {registerMcpProvider} from '../codex-mcp.mjs';
-import { runSavedCodexPrompt } from '../adapters/saved-codex.mjs';
+import { runSavedCodexPrompt, savedCodexPromptReady } from '../adapters/saved-codex.mjs';
 import { createSavedCodexQuotaReader } from '../adapters/saved-codex-quota.mjs';
 import { clearPendingAuth } from '../auth.mjs';
 import { clearPendingLocalIp } from '../local-ssh.mjs';
@@ -24,6 +25,7 @@ export function installUpdateHook(BotClass, env = process.env) {
   registerSkillsProvider(BotClass, env);
   registerMcpProvider(BotClass, env);
   BotClass.prototype[Symbol.for('msb.savedCodexPrompt')] = runSavedCodexPrompt;
+  BotClass.prototype[Symbol.for('msb.savedCodexPromptReady')] = savedCodexPromptReady;
   BotClass.prototype[Symbol.for('msb.createSavedCodexQuotaReader')] = createSavedCodexQuotaReader;
   const ownerId = Number(env.ADMIN_ID || env.OWNER_USER_ID || '0');
   const closedCore = env.MSB_USE_CLOSED_CORE === '1';

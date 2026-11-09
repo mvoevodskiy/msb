@@ -52,7 +52,7 @@ export async function savedActionSnapshot(env = process.env) {
   return { file, actions: records.filter(action => isLocalSavedAction(action, jobs)) };
 }
 
-export async function addReminder(action, { env = process.env, signal, check } = {}) {
+export async function addSavedAction(action, { env = process.env, signal, commit = publish => publish() } = {}) {
   return withActions(env, async (records, save) => {
     const value = env.AUTONOMY_MAX_ACTIONS;
     const number = value === undefined || value === '' ? 20 : Number(value);
@@ -61,15 +61,15 @@ export async function addReminder(action, { env = process.env, signal, check } =
       return { error: 'Не получилось: достигнут лимит активных автодействий (' + max +
         '). Отключи или удали лишние — или скажи мне: «подними предел задач», и места станет больше.' };
     }
-    const error = await check?.();
-    if (error) return { error };
-    const base = 'conv-reminder-' + action.createdAt.replace(/[:.]/g, '-');
-    let id = base;
-    for (let suffix = 2; records.some(row => row?.id === id); suffix++) id = base + '-' + suffix;
-    const saved = { ...action, id };
-    records.push(saved);
-    await save();
-    return { action: saved, previous: records.slice(0, -1) };
+    return commit(async () => {
+      const base = 'conv-' + action.task.kind + '-' + action.createdAt.replace(/[:.]/g, '-');
+      let id = base;
+      for (let suffix = 2; records.some(row => row?.id === id); suffix++) id = base + '-' + suffix;
+      const saved = { ...action, id };
+      records.push(saved);
+      await save();
+      return { action: saved, previous: records.slice(0, -1) };
+    });
   }, { signal, create: true });
 }
 

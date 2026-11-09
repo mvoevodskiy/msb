@@ -538,11 +538,13 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       }
       signal.throwIfAborted();
       const reminderOwner = !entry.isAutoTurn && isAdmin(ctx, cfg.adminId) ? cfg.adminId : 0;
+      const codexAvailable = Boolean(bot[Symbol.for('msb.savedCodexPrompt')]);
+      const checkSavedCodex = codexAvailable ? bot[Symbol.for('msb.savedCodexPromptReady')] : undefined;
       const { state } = await loadState();
       signal.throwIfAborted();
       const paused = Boolean(state.costPaused);
       const out = paused ? { ok: false, text: SPEND_PAUSED } : await runTurn({ prompt: entry.prompt ?? text, signal,
-        ...(reminderOwner ? { reminderOwner } : {}),
+        ...(reminderOwner ? { reminderOwner, checkSavedCodex } : {}),
         ...(entry.isAutoTurn ? { isAutoTurn: true } : {}), onStatus: ev => {
         if (ev.kind === 'provider') history?.provider(ev.providerId);
         progress.onStatus(ev);
@@ -554,7 +556,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       const autonomy = {
         ownerId: reminderOwner, rail: out.reminderRail, ok: out.ok, chatId, threadId: thread,
         timezone: cfg.timezone, now: now(), signal,
-        codexAvailable: Boolean(bot[Symbol.for('msb.savedCodexPrompt')]),
+        codexAvailable, checkSavedCodex,
       };
       const reminders = await processReminderMarkers(out.text, autonomy);
       const pausedTasks = await processPauseMarkers(reminders, autonomy, ctx);

@@ -2,7 +2,8 @@
  * Scheduler-only Codex invocation. [Core policy](../../../../.msb/bot/src/autonomy/prompt-policy.mjs)
  * supplies allowed tools. [Owned process](./owned-cli.mjs) and [workspace MCP](./saved-workspace-mcp.mjs)
  * keep the native account and foreground session separate. [Local usage](./saved-codex-otlp.mjs)
- * includes scoped helper spend in the saved action journal.
+ * includes scoped helper spend in the saved action journal. [Registration](../../../../.msb/bot/src/autonomy/prompt-registration.mjs)
+ * may check the same local account and executable without launching a turn.
  */
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -60,6 +61,16 @@ function argv({ model, effort, scope, scratch, helpers, usageArgs }, baseUrl) {
     ...Object.entries(options).flatMap(([key, value]) => ['-c', key + '=' + JSON.stringify(value)]), ...usageArgs, '-'];
 }
 
+function savedCodexBin(account) {
+  const bin = account && findBin('codex', account.childEnv);
+  if (bin && path.isAbsolute(bin)) return bin;
+}
+
+export async function savedCodexPromptReady(env = process.env) {
+  if (env.JARVIS_CC_ONLY === '1') return false;
+  return Boolean(savedCodexBin(await readSavedCodexAccount(env)));
+}
+
 async function subscriptionProfile(env) {
   const account = await readSavedCodexAccount(env);
   if (!account) return;
@@ -78,8 +89,8 @@ export async function runSavedCodexPrompt({ cwd, prompt, model, tools, directori
   const account = await subscriptionProfile(env);
   if (!account || signal.aborted) return;
   const { childEnv, config } = account;
-  const bin = findBin('codex', childEnv);
-  if (!bin || !path.isAbsolute(bin) || !await canLaunch()) return;
+  const bin = savedCodexBin(account);
+  if (!bin || !await canLaunch()) return;
   const version = await runOwnedCli(bin, ['--version'], { cwd, env: childEnv,
     signal: AbortSignal.any([signal, AbortSignal.timeout(5000)]) });
   if (version.code !== 0 || version.stdout.trim() !== 'codex-cli ' + CODEX_CLI_VERSION || signal.aborted) return;

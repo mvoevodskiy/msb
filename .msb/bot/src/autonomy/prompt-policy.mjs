@@ -1,7 +1,8 @@
 /**
  * Saved prompt authority from old B9/JO. [Dispatcher](./reminder-dispatch.mjs)
  * checks a captured plan before claim; [native runner](./prompt-turn.mjs) uses
- * the same plan again before spawn. [Checks](../../tests/saved-prompt-action.test.mjs).
+ * the same plan again before spawn. [Registration](./prompt-registration.mjs) uses
+ * the same ordinary-action boundary. [Checks](../../tests/saved-prompt-action.test.mjs).
  */
 import { resolveModel } from '../state.mjs';
 import { claudeAutoTurnModel, cleanClaudeModelId, getClaudeModel } from '../agent/models.mjs';
@@ -10,23 +11,30 @@ import { isLocalReminderEngine } from './reminder-policy.mjs';
 const baseTools = ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'TodoWrite', 'ToolSearch'];
 const editTools = ['Write', 'Edit', 'NotebookEdit'];
 
-export function savedPromptPlan(action, state, env = process.env, codexAvailable = false) {
-  const { task, authority, capability, output } = action;
+export function savedPromptProvider(state, env = process.env, codexAvailable = false) {
+  if (!isLocalReminderEngine(state.engine)) return;
   const subscription = state.authMode === 'subscription' && state.hasSubscriptionAuth;
-  const oauth = (!state.authMode || state.authMode === 'subscription') && env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
   const provider = state.extAuthBypass || 'claude';
-  if (task?.kind !== 'prompt' || !isLocalReminderEngine(state.engine)) return;
-  if (provider === 'codex') {
-    if (!codexAvailable || !subscription || env.JARVIS_CC_ONLY === '1' ||
-        (task.provider && task.provider !== 'codex')) return;
-  } else if (provider !== 'claude' || (!subscription && !oauth) ||
-      (task.provider && !['anthropic', 'claude'].includes(task.provider))) return;
-  const posture = authority?.profile ?? 'narrow';
-  const grant = capability ?? 'read';
-  if (!['narrow', 'standard'].includes(posture) || !['none', 'read'].includes(grant) || task.shell ||
-      task.bashAllow?.length || action.requiresApproval || action.run?.memory === 'continuous' || action.memory === 'continuous' ||
-      action.handoff || task.team?.length || task.sources?.length || task.freshness || action.verify?.enabled ||
-      output?.store || (output?.format && output.format !== 'tg-message')) return;
+  if (provider === 'codex' && codexAvailable && subscription && env.JARVIS_CC_ONLY !== '1') return provider;
+  const oauth = (!state.authMode || state.authMode === 'subscription') && env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
+  if (provider === 'claude' && (subscription || oauth)) return provider;
+}
+
+export function ordinarySavedPrompt(action) {
+  const { task, authority, capability, output } = action;
+  return task?.kind === 'prompt' && ['narrow', 'standard'].includes(authority?.profile ?? 'narrow') &&
+    ['none', 'read'].includes(capability ?? 'read') && !task.shell && !task.bashAllow?.length &&
+    !action.requiresApproval && action.run?.memory !== 'continuous' && action.memory !== 'continuous' &&
+    !action.handoff && !task.team?.length && !task.sources?.length && !task.freshness && !action.verify?.enabled &&
+    !output?.store && (!output?.format || output.format === 'tg-message');
+}
+
+export function savedPromptPlan(action, state, env = process.env, codexAvailable = false) {
+  if (!ordinarySavedPrompt(action)) return;
+  const provider = savedPromptProvider(state, env, codexAvailable);
+  if (!provider) return;
+  const { task, authority, capability, output } = action;
+  if (task.provider && !(provider === 'codex' ? task.provider === 'codex' : ['anthropic', 'claude'].includes(task.provider))) return;
 
   let model;
   if (provider === 'claude') {
@@ -44,7 +52,7 @@ export function savedPromptPlan(action, state, env = process.env, codexAvailable
     }
   }
   const tools = [...baseTools];
-  if (posture === 'standard' || grant === 'read') tools.push(...editTools);
+  if (authority?.profile === 'standard' || (capability ?? 'read') === 'read') tools.push(...editTools);
   if (task.helpers !== false) tools.push('Agent', 'Task');
   const declared = action.budget?.maxRunSeconds;
   const seconds = Number.isFinite(declared) ? Math.min(1800, Math.max(30, Math.round(declared))) : 1800;

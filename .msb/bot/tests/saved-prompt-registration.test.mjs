@@ -140,9 +140,13 @@ test('advanced and explicitly routed requests are refused instead of being saved
     promptAction(once, { shell: true }),
     promptAction(once, {}, { memory: 'continuous' }),
     promptAction(once, { team: [{ name: 'fixture', brief: 'собирает' }] }),
+    promptAction(once, { team: { name: 'fixture' } }),
+    promptAction(once, { bashAllow: { command: 'fixture' } }),
+    promptAction(once, { sources: { path: 'fixture' } }),
     promptAction(once, { freshness: { paths: ['/fixture'], maxAgeHours: 2 } }),
     promptAction(once, { provider: 'codex', model: 'gpt-fixture' }),
     promptAction(once, {}, { output: { store: true } }),
+    promptAction(once, {}, { authority: { profile: 'narrow' }, capability: 'none' }),
     promptAction({ kind: 'when', check: { kind: 'service', unit: 'fixture' } }),
   ].map(marker).join('\n');
   const f = await reminderFixture(t, { output });
@@ -194,4 +198,24 @@ test('a provider switch before publishing refuses an unavailable route and leave
   assert.match(final, /сбор на выбранном движке недоступен/);
   assert.doesNotMatch(final, /Ок, поставил/);
   await assert.rejects(fs.stat(f.actionFile), { code: 'ENOENT' });
+});
+
+test('API-only native Codex is not offered or confirmed as a saved subscription runner', async t => {
+  const f = await mcpFixture(t, 'codex', { runTurn: runAgentTurn });
+  const native = await nativeFixtures(f);
+  process.env.AUTONOMY_ENABLED = '1';
+  await saveState({ ...(await loadState()).state, chatId: 42, userId: 42,
+    authMode: 'subscription', hasSubscriptionAuth: true });
+  const auth = path.join(process.env.CODEX_HOME, 'auth.json');
+  const original = JSON.stringify({ auth_mode: 'api_key', OPENAI_API_KEY: 'fixture-native-api-only' });
+  await fs.writeFile(auth, original);
+  await native.respond(marker(promptAction()));
+  await f.message('Через пятнадцать минут сверь заметки');
+  await until(() => f.edits.some(text => text.includes('⏱')), 'controlled Codex answer did not arrive', 10_000);
+  const [{ prompt }] = (await native.trace()).slice(-1);
+  assert.match(prompt, /\[SCHEDULE_TASK\].*"kind":"reminder"/);
+  assert.doesNotMatch(prompt, /\[SCHEDULE_TASK\].*"kind":"prompt"/);
+  assert.ok(f.edits.some(text => text.includes('сбор на выбранном движке недоступен')));
+  await assert.rejects(fs.stat(path.join(actionRoot(), 'actions.json')), { code: 'ENOENT' });
+  assert.equal(await fs.readFile(auth, 'utf8'), original);
 });

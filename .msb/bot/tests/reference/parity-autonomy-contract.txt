@@ -832,3 +832,18 @@ modes or an unavailable selected runner cannot be published as
 an ordinary successful collection. A prompt never launches in
 the owner conversation or in the other provider. Test normal
 Telegram ingress and the real saved runner with synthetic CLIs.
+
+The open-core parser runs the old work-body guard after selecting
+the text alias, so aliases cannot bypass it. It accepts only the
+ordinary action modes executable by the existing saved runner and
+refuses explicit marker options it cannot honor. The model advertises
+the collection route when its selected local provider is available.
+At commit the per-profile action lock and the same in-process
+state queue used by provider switches recheck that route and the
+owner binding. Codex registration and advertising also check the
+effective local ChatGPT file profile and executable through the
+adapter. Native version and service reachability remain launch
+checks. The transaction does not rewrite the owner state.
+The saved action does not bind to a provider session. It uses the
+selected supported provider at its due time, within the existing
+isolated tool plan and unchanged budget and breaker gates.
