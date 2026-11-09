@@ -102,6 +102,10 @@ python3 STAGE/ops/deploy.py --rollback BACKUP
 копируются. Проверка получает read-only export, отдельные writable results/HOME
 и временный `/tmp`, без сети. `exec` у tmpfs нужен fake CLI/STT-скриптам тестов;
 без него они закономерно падают с EACCES, это не допустимый RED продукта.
+Запуск с --init собирает остановленные дочерние процессы. Без него Python
+на PID 1 может оставить PID завершившегося guard в состоянии Z после
+группового SIGINT. Тест отмены проверяет исчезновение PID, поэтому контейнер
+должен использовать init, как целевой Linux использует systemd.
 
 Проверено: Docker Desktop4.84 / Engine29.6.2, Linux arm64, pinned base Node22.23.2.
 Первый snapshot74241e3:202core+78overlay+15reference+13release PASS (308tests),
@@ -120,7 +124,7 @@ docker build -t msb-local-checks:node22 -f tools/release/Dockerfile "$MSB_CHECK_
 mkdir -p "$MSB_CHECK_STAGE/checks/results" "$MSB_CHECK_STAGE/checks/test-home"
 ln -s /opt/msb-deps/node_modules "$MSB_CHECK_STAGE/checks/source/.msb/bot/node_modules"
 ln -s /opt/msb-deps/node_modules "$MSB_CHECK_STAGE/checks/source/overlay/bot/node_modules"
-docker run --rm --network none --read-only --user "$(id -u):$(id -g)" \
+docker run --rm --init --network none --read-only --user "$(id -u):$(id -g)" \
   --tmpfs /tmp:rw,exec,mode=1777 --env PYTHONDONTWRITEBYTECODE=1 \
   --mount "type=bind,src=$MSB_CHECK_STAGE,dst=/stage,readonly" \
   --mount "type=bind,src=$MSB_CHECK_STAGE/checks/results,dst=/stage/checks/results" \
