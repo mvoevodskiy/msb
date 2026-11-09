@@ -11,7 +11,7 @@ import { reminderSnapshot, readNativeJobMap } from '../autonomy/reminder-store.m
 import { describeReminderTime } from '../autonomy/reminder-time.mjs';
 import { listTasks } from '../autonomy/store.mjs';
 import { loadState } from '../state.mjs';
-import { outsideExamples, replaceAutonomyMarkers, scheduleMarker } from './autonomy-marker-text.mjs';
+import { limitMarker, outsideExamples, replaceAutonomyMarkers, scheduleMarker } from './autonomy-marker-text.mjs';
 import { askToPauseLegacyTimers } from './pause-confirmation.mjs';
 
 const control = /\[(STOP_ALL|RESUME_ALL)\]/g;
@@ -105,7 +105,8 @@ async function changePause(command, context, ctx) {
 
 export async function processPauseMarkers(text, context, ctx) {
   if (typeof text !== 'string' || !(text.includes('[STOP_ALL]') || text.includes('[RESUME_ALL]'))) return text;
-  const blocks = outsideExamples(text, control, [...text.matchAll(scheduleMarker)]).filter(block => {
+  const protectedRanges = [...text.matchAll(scheduleMarker), ...text.matchAll(limitMarker)];
+  const blocks = outsideExamples(text, control, protectedRanges).filter(block => {
     const suffix = text.slice(block.index + block[0].length).split('\n', 1)[0];
     return !suffix.replace(control, '').trim();
   });

@@ -18,7 +18,7 @@ import { fixture } from './helpers/menu-fixture.mjs';
 const now = Date.parse('2026-11-08T12:00:00.000Z');
 const at = new Date(now).toISOString();
 const runCap = 'AUTONOMY_DAILY_CAP_RUNS';
-const questionText = 'Снять дневной запас ходов совсем? Число фоновых ходов за день перестанет ограничиваться.';
+const questionText = 'Снять дневной запас ходов совсем?';
 const confirm = 'lim0:daily_cap_runs';
 const otherCap = 'lim0:daily_cap_tokens';
 const keep = 'ct-keep';
@@ -102,7 +102,7 @@ test('valid conversational limits use the bot writer and are immediately visible
   }
   assert.match(await f.bytes(), /# комментарий к профилю/);
   assert.equal(await f.value('FIXTURE_SETTING'), 'preserve');
-  assert.match((await f.refusal()).detail, /весь дневной запас \(1\)/);
+  assert.match((await f.refusal()).detail, /весь дневной запас \(1\).*подними дневной запас ходов/);
   await f.untouched();
 });
 
@@ -222,7 +222,7 @@ test('quoted and incoming markers, disabled autonomy, and a late other engine do
   assert.match(disabled, /Автономные задачи сейчас выключены/);
   process.env.AUTONOMY_ENABLED = '1';
   const switched = await f.ask(async () => {
-    await updateState(state => { state.engine = 'oc'; });
+    await updateState(state => ({ ...state, engine: 'oc' }));
     return { ok: true, text: '[SET_LIMIT daily_cap_runs 1]' };
   });
   assert.match(switched, /на этом движке пока не подключено/);
@@ -283,4 +283,58 @@ test('stopping during question delivery leaves no actionable limit confirmation'
   await f.click(confirm, { messageId });
   assert.equal(await f.bytes(), initial);
   assert.equal(process.env[runCap], '40');
+});
+
+test('a pending first marker corrects its claim without cancelling a second valid change', async t => {
+  const f = await profile(t);
+  const reply = await f.ask('Дневной предел снят.\n[SET_LIMIT daily_cap_runs 0]\n[SET_LIMIT max_actions 5]');
+  assert.doesNotMatch(reply, /Дневной предел снят/);
+  assert.match(reply, /Спросил подтверждение ниже/);
+  assert.match(reply, /предел активных задач теперь 5/);
+  assert.equal(await f.value(), '40');
+  assert.equal(await f.value('AUTONOMY_MAX_ACTIONS'), '5');
+});
+
+for (const zero of [false, true]) {
+  test(`engine switch before publishing ${zero ? 'a confirmed zero' : 'a nonzero limit'} prevents the write`, async t => {
+    const f = await profile(t);
+    if (zero) await f.ask('[SET_LIMIT daily_cap_runs 0]');
+    const release = Promise.withResolvers();
+    let writing = false;
+    const writeFile = fs.writeFile.bind(fs);
+    t.mock.method(fs, 'writeFile', async (file, ...options) => {
+      const result = await writeFile(file, ...options);
+      if (file === f.file + '.tmp.' + process.pid && !writing) {
+        writing = true;
+        await release.promise;
+      }
+      return result;
+    });
+    const change = zero ? f.click(confirm) : f.ask('[SET_LIMIT daily_cap_runs 1]');
+    try {
+      await until(() => writing, 'the per-bot env temp write must be waiting');
+      await updateState(state => ({ ...state, engine: 'oc' }));
+    } finally {
+      release.resolve();
+    }
+    const result = await change;
+    assert.match(zero ? f.toast() : result, /на этом движке пока не подключено/);
+    assert.equal(await f.bytes(), initial);
+    assert.equal(process.env[runCap], '40');
+    if (zero) {
+      await updateState(state => ({ ...state, engine: 'cc' }));
+      await f.click(confirm);
+      assert.equal(await f.value(), '0', 'an engine refusal retains the confirmation for a later retry');
+    }
+  });
+}
+
+test('the restored active-task limit hint leads to the same existing reminder store', async t => {
+  const f = await profile(t);
+  const reminder = '[SCHEDULE_TASK]{"trigger":{"kind":"once","at":"+10m"},"task":{"kind":"reminder","text":"Проверить"}}[/SCHEDULE_TASK]';
+  await f.ask('[SET_LIMIT max_actions 1]');
+  assert.match(await f.ask(reminder), /Ок, поставил/);
+  assert.match(await f.ask(reminder), /лимит активных автодействий \(1\).*подними предел задач/);
+  await f.ask('[SET_LIMIT max_actions 2]', 'Подними предел задач до двух');
+  assert.match(await f.ask(reminder), /Ок, поставил/);
 });

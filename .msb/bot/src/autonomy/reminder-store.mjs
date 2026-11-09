@@ -71,7 +71,7 @@ export async function addReminder(action, { env = process.env, signal, check } =
     const max = Number.isFinite(number) && number >= 0 ? number : 20;
     if (max > 0 && records.filter(row => row?.enabled).length + 1 > max) {
       return { error: 'Не получилось: достигнут лимит активных автодействий (' + max +
-        '). Отключи или удали лишние.' };
+        '). Отключи или удали лишние — или скажи мне: «подними предел задач», и места станет больше.' };
     }
     const error = await check?.();
     if (error) return { error };

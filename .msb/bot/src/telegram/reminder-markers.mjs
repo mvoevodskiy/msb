@@ -7,7 +7,7 @@ import { loadState } from '../state.mjs';
 import { readReminderPolicy, reminderOwnerChat } from '../autonomy/reminder-policy.mjs';
 import { addReminder } from '../autonomy/reminder-store.mjs';
 import { describeReminderConfirmation, parseReminderMarker } from '../autonomy/reminder-protocol.mjs';
-import { outsideExamples, replaceAutonomyMarkers, scheduleMarker } from './autonomy-marker-text.mjs';
+import { limitMarker, outsideExamples, replaceAutonomyMarkers, scheduleMarker } from './autonomy-marker-text.mjs';
 
 const disabled = 'Автономные задачи сейчас выключены.';
 const unsupported = 'Фоновую задачу сейчас не ставлю: разовые напоминания на этом движке пока не подключены.';
@@ -53,7 +53,7 @@ async function register(raw, context) {
 
 export async function processReminderMarkers(text, context) {
   if (typeof text !== 'string' || !text.includes('[SCHEDULE_TASK]')) return text;
-  const blocks = outsideExamples(text, scheduleMarker);
+  const blocks = outsideExamples(text, scheduleMarker, [...text.matchAll(limitMarker)]);
   return replaceAutonomyMarkers(text, blocks, async block => {
     context.signal?.throwIfAborted();
     return context.ownerId && context.ok ? register(block[1], context) : { text: '(задача не обработана)' };

@@ -259,8 +259,7 @@ with zero cost. Blocked sends one plain notice to the saved owner;
 breaker skip sends none. The new route commits before the notice
 so a failed Telegram request cannot make the action runnable
 again. History renders the old neutral skip/block state and
-details (10901–10923,10989–11015). Limit messages omit the old
-offer to change caps from conversation until SET_LIMIT is connected.
+details (10901–10923,10989–11015). Conversation cap controls and the original hints are covered below.
 
 The checkpoint is local and verified through the real scheduler
 with disposable paths and synthetic Telegram. Native cron/outbox,
@@ -285,3 +284,33 @@ valid quota, and missing/invalid telemetry never overwrites it.
 The scheduler and the existing Claude side of Pult use the same
 saved field. The Codex collector has its own account source.
 All tests here use owned executable fixtures and temporary profiles.
+
+Conversation limit control.
+
+Old prompt 24609, Pa/x7 26053–26075 and 26238–26274, Zw/Ta
+26163–26209 and final dispatch 27096–27109 establish the five keys,
+finite validation before rounding and zero confirmation. 106646–106703
+sends in the originating chat/topic. The keyboard uses lim0:<key> and
+ct-keep. 113219–113262 writes only on confirm, acknowledges the choice
+and edits the original message. Old 11532–11542 and 11766–11774 advise
+asking to increase action, run and token limits.
+
+e466325 reproduces the absent dispatch and absent Claude/Codex prompt.
+The restoration uses the existing per-bot env writer and does not copy
+Ta's global .env scope. A bot's threshold can change while sibling
+profiles retain their thresholds. The amount compared by the existing
+daily cap is still the server journal total. Saved owner costs and
+costPaused, native cron, account auth and other admission gates are
+independent of this write. Positive values are visible after the
+atomic .env rename and in-process environment update. The last engine
+and abort checks precede publication even when the write had to wait.
+
+The owner zero question is durable and bound to bot/chat/message/key
+before the buttons are shown. Keep consumes only that question. A
+rejected write keeps the question for retry. A process crash between
+consumption and publication may require the owner to ask again.
+Shared ct-keep still goes to the timer handler for a timer question.
+Copy for the zero question/result names the selected gate only. The
+old blanket unlimited-spending statements cannot describe the other
+active constraints. Tests use disposable profiles and synthetic
+Telegram/CLI events. No live confirmation or native OpenClaw write.

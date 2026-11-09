@@ -9,6 +9,7 @@ import {resetCliConversation} from '../sessions/selection.mjs';
  * Формы → [dispatcher](./forms.mjs); pending в этом процессе; записи → [state](../state.mjs) / [env](../env/store.mjs).
  * Индикация → [progress](./progress.mjs), итог → [response](./response.mjs),
  * План/комментарий → [plan actions](./plan-actions.mjs) → тот же inbox; final marker → [plan](./plan.mjs).
+ * Лимиты автономки из ответа → [limit markers](./limit-markers.mjs) → [подтверждение](./limit-confirmation.mjs).
  * журнал Пульта → [history](./history.mjs), STT → [voice](./voice.mjs).
  * /cost → [saved spend view](./screens/spend.mjs); saved owner pause gates the model turn.
  * Final [reminder](./reminder-markers.mjs) and [owner pause](./pause-markers.mjs), then installation markers.
@@ -32,6 +33,7 @@ import { parsePlanResponse } from './plan.mjs';
 import { deliverTurnResponse } from './response.mjs';
 import { deliverView } from './view-delivery.mjs';
 import { processPauseMarkers } from './pause-markers.mjs';
+import { processLimitMarkers } from './limit-markers.mjs';
 import { processReminderMarkers } from './reminder-markers.mjs';
 import { processInstallMarkers } from './install-markers.mjs';
 import { registerProjectCommands } from './project-commands.mjs';
@@ -554,7 +556,8 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         timezone: cfg.timezone, now: now(), signal,
       };
       const reminders = await processReminderMarkers(out.text, autonomy);
-      const actionText = await processPauseMarkers(reminders, autonomy, ctx);
+      const pausedTasks = await processPauseMarkers(reminders, autonomy, ctx);
+      const actionText = await processLimitMarkers(pausedTasks, autonomy, ctx);
       const replyText = await processInstallMarkers({ ...out, text: actionText }, { signal, readProvider: bot[Symbol.for('msb.mcpProvider')] });
       signal.throwIfAborted();
       turn.completed = true;

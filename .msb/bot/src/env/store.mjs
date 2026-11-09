@@ -100,7 +100,7 @@ export async function listEnvEntries(env = process.env) {
     }));
 }
 
-export async function setEnvKey(key, value, env = process.env, { internal = false, comment } = {}) {
+export async function setEnvKey(key, value, env = process.env, { internal = false, comment, signal, beforePublish } = {}) {
   if (!/^[A-Z0-9_]+$/.test(key)) {
     throw new Error('Ключ: только A-Z, цифры и _');
   }
@@ -111,13 +111,22 @@ export async function setEnvKey(key, value, env = process.env, { internal = fals
   validateEnvComment(comment);
   const file = envFilePath(env);
   return serializeEnvMutation(async () => {
+    signal?.throwIfAborted();
     const { lines } = await readEnvFile(file);
     ensureDir(path.dirname(file));
     const kept = replaceEnvValue(lines, key, normalized, comment?.trim());
     const body = `${kept.join('\n').replace(/\n*$/, '')}\n`;
     const tmp = `${file}.tmp.${process.pid}`;
-    await fs.writeFile(tmp, body, { mode: 0o600 });
-    await fs.rename(tmp, file);
+    try {
+      await fs.writeFile(tmp, body, { mode: 0o600, signal });
+      // Callers can reject an obsolete turn at the end of the write queue.
+      await beforePublish?.();
+      signal?.throwIfAborted();
+      await fs.rename(tmp, file);
+    } catch (error) {
+      await fs.rm(tmp, { force: true }).catch(() => {});
+      throw error;
+    }
     profile.setEnvValue(env, key, normalized);
     return { file, key };
   });

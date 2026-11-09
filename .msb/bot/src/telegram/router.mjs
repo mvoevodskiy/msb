@@ -5,7 +5,8 @@
  * выбор движка → [engines](./routes/engines.mjs), проекты → [projects](./routes/projects.mjs),
  * навыки → [skills](./routes/skills.mjs), MCP → [workspace](./routes/workspace.mjs), сессии → [sessions](./routes/sessions.mjs),
  * задачи → [autonomy](./routes/autonomy.mjs), источники → [monitor](./routes/monitor.mjs).
- * Старая кнопка паузы таймеров → [pause confirmation](./pause-confirmation.mjs).
+ * Подтверждение паузы таймеров → [pause](./pause-confirmation.mjs),
+ * снятие лимита → [limit](./limit-confirmation.mjs).
  * Остальные семейства видны в прямых imports ниже; rendering → [screens](./screens.mjs).
  * Состояние → [state](../state.mjs), shared pending принадлежит createBot.
  * Prepared views → [view delivery](./view-delivery.mjs); short views stay unchanged.
@@ -27,6 +28,7 @@ import { handleBotsRoute } from './routes/bots.mjs';
 import { handleSettingsRoute } from './routes/settings.mjs';
 import { handleEnginesRoute } from './routes/engines.mjs';
 import { handlePauseConfirmation, isPauseConfirmation } from './pause-confirmation.mjs';
+import { handleLimitConfirmation, isLimitConfirmation } from './limit-confirmation.mjs';
 import { handleAutonomyRoute } from './routes/autonomy.mjs';
 import { handleMonitorRoute } from './routes/monitor.mjs';
 import {handleWorkspaceRoute,isMcpReadCallback} from './routes/workspace.mjs';
@@ -74,7 +76,8 @@ export async function handleCallback({ bot, cfg, pending, ctx, plan, now = Date.
     answered = true;
     await ctx.answerCallbackQuery(options).catch(() => {});
   };
-  if (!isModelSelectionCallback(data) && !isPauseConfirmation(data)) await answer();
+  const limitConfirmation = isLimitConfirmation(data);
+  if (!isModelSelectionCallback(data) && !isPauseConfirmation(data) && !limitConfirmation) await answer();
   if (!chatId) return;
   if (['menu:back', 'menu:close', 'menu:agent', 'menu:settings', 'settings:back', 'mon:back', 'settings:bots:cancel'].includes(data)) pending.delete(chatId);
   const show = async view => {
@@ -92,6 +95,7 @@ export async function handleCallback({ bot, cfg, pending, ctx, plan, now = Date.
     const engineMenu = async snapshot => enginesScreen(state, snapshot,
       await bot[Symbol.for('msb.engineProviderView')]?.(state));
     const context = { bot, cfg, pending, ctx, plan, answer, data, chatId, msgId, show, state, engineMenu, now, signal: scope.signal };
+    if ((limitConfirmation || data === 'ct-keep') && await handleLimitConfirmation(context)) return;
     if (isPauseConfirmation(data)) return handlePauseConfirmation(context);
     for (const route of ROUTES) {
       const result = await route(context);
