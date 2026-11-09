@@ -1287,3 +1287,34 @@ pause after registration. The old receipts and errors are at
 separate. Old ir 24928–24948 writes a whole run snapshot.
 The restored route must preserve task settings and the run
 journal without letting the old snapshot replace the edit.
+
+New open-core applies the three operations through the
+existing actions lock and current engine state. Ownership
+is checked again just before the atomic write. Literal
+reminder, prompt and legacy draft bodies remain editable
+when they are local. Editing a stored draft does not add
+a draft runner. The same path preserves flags, recipient,
+budget, permissions, history, and the original schedule.
+Mapped and migrated native rows remain outside this writer.
+
+The parser reserves complete bodies from the original reply
+before registration, reschedule, other task actions and
+install processing. Paired nested tags stay in that body.
+Quotes inside it cannot shorten the range or change the
+next marker. Literal examples return only at final delivery,
+after plan parsing. A body in another structured payload
+stays in that payload. The show guard resolves original
+selectors against the same locked records as the edit.
+
+The action store compares all fields besides the sanctioned
+body revision when settling a matching run claim. A delayed
+completed attempt retains its last outcome and run journal
+while keeping the edited body. If pre-launch rejects the old
+prompt, restore the claim's prior runtime fields and preserve
+the new body. A new schedule, another definition, or a
+changed native map still fences a late completion.
+
+Follow src/telegram/task-text-markers.mjs and its syntax,
+then src/autonomy/saved-task-text-edit.mjs and the shared
+owner-task-update.mjs. task-text-edit.test.mjs exercises
+the worker, production record writes and local dispatcher.

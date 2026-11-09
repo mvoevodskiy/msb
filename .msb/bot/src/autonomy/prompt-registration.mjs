@@ -26,7 +26,7 @@ export const scheduledPromptInstruction = 'Для обычного сбора п
   'для тишины, task.helpers:false для работы без помощников и maxMinutes в минутах. ' +
   'Этот маршрут выполняет обычный сбор без команд и без памяти между запусками.\n';
 
-function workBody(value) {
+export function savedWorkBody(value) {
   let body = value;
   for (let pass = 0; pass < 3; pass++) {
     const before = body;
@@ -35,6 +35,10 @@ function workBody(value) {
   }
   body = body.trim();
   return body.length < 12 ? value : body;
+}
+
+export function asksToScheduleAnotherTask(text) {
+  return anotherTask.test(text);
 }
 
 export function parsePromptRegistration(marker) {
@@ -52,8 +56,8 @@ export function parsePromptRegistration(marker) {
   const source = task.prompt ?? task.text ?? task.topic;
   const raw = typeof source === 'string' ? source.trim() : '';
   if (!raw) return { error: 'Не получилось: для задачи-запроса нужен текст инструкции' };
-  const prompt = workBody(raw);
-  if (anotherTask.test(prompt)) return { error: nested };
+  const prompt = savedWorkBody(raw);
+  if (asksToScheduleAnotherTask(prompt)) return { error: nested };
   const rawMinutes = marker.maxMinutes;
   const minutes = typeof rawMinutes === 'number' || typeof rawMinutes === 'string' ? Number(rawMinutes) : NaN;
   return {

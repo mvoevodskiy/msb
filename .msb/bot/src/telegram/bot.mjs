@@ -35,6 +35,7 @@ import { deliverView } from './view-delivery.mjs';
 import { processPauseMarkers } from './pause-markers.mjs';
 import { processGroupTaskRemovalMarkers, processTaskCancelMarkers } from './task-removal-markers.mjs';
 import { prepareTaskRescheduleMarkers, processTaskRescheduleMarkers } from './task-reschedule-markers.mjs';
+import { prepareTaskTextMarkers, processTaskTextMarkers, restoreTaskTextLiterals } from './task-text-markers.mjs';
 import { processTaskControlMarkers } from './task-control-markers.mjs';
 import { processTaskInspectionMarkers } from './task-inspection-markers.mjs';
 import { processLimitMarkers } from './limit-markers.mjs';
@@ -563,23 +564,26 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         timezone: cfg.timezone, now: now(), signal,
         codexAvailable, checkSavedCodex,
       };
-      const reschedule = prepareTaskRescheduleMarkers(out.text);
+      const textEdits = prepareTaskTextMarkers(out.text);
+      const reschedule = prepareTaskRescheduleMarkers(textEdits.text);
       const reminders = await processReminderMarkers(reschedule.text, autonomy);
       const pausedTasks = await processPauseMarkers(reminders, autonomy, ctx);
       const askedRemoval = await processGroupTaskRemovalMarkers(pausedTasks, autonomy, ctx);
       const inspected = await processTaskInspectionMarkers(askedRemoval, autonomy, ctx);
       const rescheduled = await processTaskRescheduleMarkers(inspected, autonomy, ctx, reschedule.commands);
-      const cancelled = await processTaskCancelMarkers(rescheduled, autonomy, ctx);
+      const editedTasks = await processTaskTextMarkers(rescheduled, autonomy, textEdits);
+      const cancelled = await processTaskCancelMarkers(editedTasks, autonomy, ctx);
       const controlled = await processTaskControlMarkers(cancelled, autonomy);
       const actionText = await processLimitMarkers(controlled, autonomy, ctx);
       const replyText = await processInstallMarkers({ ...out, text: actionText }, { signal, readProvider: bot[Symbol.for('msb.mcpProvider')] });
       signal.throwIfAborted();
       turn.completed = true;
       responseReady = true;
+      const restoreText = value => restoreTaskTextLiterals(value, textEdits);
       await deliverTurnResponse(ctx, status.message_id, replyText, out.ok ? {
         elapsedMs: performance.now() - startedAt, costUsd: out.result?.costUsd, context: out.result?.context,
-      } : {});
-      deliveredText = parsePlanResponse(replyText)?.cleanText ?? replyText; delivered = true;
+      } : {}, { restoreText });
+      deliveredText = restoreText(parsePlanResponse(replyText)?.cleanText ?? replyText); delivered = true;
     } catch (err) {
       await progress?.stop();
       if (signal.aborted) await stopped().catch(() => {});

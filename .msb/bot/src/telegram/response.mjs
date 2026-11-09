@@ -182,9 +182,9 @@ async function send(ctx, html, keyboard) {
  * only on the final chunk, including plain fallback. Error notices can opt out.
  * [createBot](./bot.mjs) owns cancellation; [delivery tests](../../tests/plan-handoff.test.mjs).
  */
-export async function deliverTurnResponse(ctx, statusId, text, telemetry = {}, { allowPlan = true } = {}) {
+export async function deliverTurnResponse(ctx, statusId, text, telemetry = {}, { allowPlan = true, restoreText = value => value } = {}) {
   const plan = allowPlan && parsePlanResponse(text);
-  const body = renderResponseHtml(plan ? plan.cleanText : text || 'Ответ не пришёл — попробуй ещё раз.');
+  const body = renderResponseHtml(restoreText(plan ? plan.cleanText : text || 'Ответ не пришёл — попробуй ещё раз.'));
   const footer = formatTurnFooter(telemetry);
   const complete = body + footer;
   if (complete.length <= LIMIT && !plan) {

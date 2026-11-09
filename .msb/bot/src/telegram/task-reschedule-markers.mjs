@@ -4,9 +4,8 @@
  * [Schedule writer](../autonomy/saved-task-reschedule.mjs) and
  * [question](./task-reschedule-confirmation.mjs). [Checks](../../tests/task-reschedule.test.mjs).
  */
-import { randomUUID } from 'node:crypto';
 import { rescheduleTaskFromTurn } from '../autonomy/saved-task-reschedule.mjs';
-import { outsideExamples, replaceAutonomyMarkers, taskCancelMarker, taskMutationRanges, taskRescheduleMarker } from './autonomy-marker-text.mjs';
+import { outsideExamples, replaceAutonomyMarkers, reserveAutonomyMarkers, taskCancelMarker, taskMutationRanges, taskRescheduleMarker } from './autonomy-marker-text.mjs';
 import { describeSavedTaskSchedule } from './screens/task-inspection.mjs';
 import { askToRescheduleTask } from './task-reschedule-confirmation.mjs';
 
@@ -36,21 +35,8 @@ export function prepareTaskRescheduleMarkers(text) {
   if (typeof text !== 'string' || !text.includes('[RESCHEDULE_TASK:')) return { text };
   const { payloads, quotes } = taskMutationRanges(text, [...text.matchAll(taskCancelMarker)]);
   const blocks = outsideExamples(text, taskRescheduleMarker, [...payloads, ...quotes]);
-  if (!blocks.length) return { text };
-
-  // Keep positions across earlier replacements without parsing quotes again
-  // after they render stored names. Only original commands receive a token.
-  const nonce = randomUUID();
-  const commands = new Map();
-  const parts = [];
-  let offset = 0;
-  for (const block of blocks) {
-    const token = '[RESCHEDULE_TASK:' + nonce + '-' + commands.size + ']';
-    commands.set(token, block[1]);
-    parts.push(text.slice(offset, block.index), token);
-    offset = block.index + block[0].length;
-  }
-  return { text: parts.join('') + text.slice(offset), commands };
+  // Recognize original commands before neighboring results insert stored names.
+  return reserveAutonomyMarkers(text, blocks, '[RESCHEDULE_TASK:');
 }
 
 export async function processTaskRescheduleMarkers(text, context, ctx, commands) {
@@ -58,6 +44,6 @@ export async function processTaskRescheduleMarkers(text, context, ctx, commands)
   const blocks = [...text.matchAll(taskRescheduleMarker)].filter(block => commands.has(block[0]));
   return replaceAutonomyMarkers(text, blocks, block => {
     context.signal?.throwIfAborted();
-    return context.ownerId && context.ok ? reschedule(commands.get(block[0]), context, ctx) : { text: '(задача не обработана)' };
+    return context.ownerId && context.ok ? reschedule(commands.get(block[0])[1], context, ctx) : { text: '(задача не обработана)' };
   }, { claim, correctBeforeEach: true, quoteGuard: /\x60/u });
 }

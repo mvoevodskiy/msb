@@ -5,9 +5,8 @@
  * publishing. [Telegram and scheduler checks](../../tests/task-reschedule.test.mjs).
  */
 import { randomUUID } from 'node:crypto';
-import { NO_STATE_WRITE, updateState } from '../state.mjs';
-import { readReminderPolicy } from './reminder-policy.mjs';
-import { isLocalSavedAction, readNativeJobMap, taskDefinitionFingerprint, withActions } from './reminder-store.mjs';
+import { withOwnerTaskUpdate } from './owner-task-update.mjs';
+import { isLocalSavedAction, readNativeJobMap, taskDefinitionFingerprint } from './reminder-store.mjs';
 import { savedTaskSpent } from './reminder-schedule.mjs';
 import { parseReminderTrigger } from './reminder-trigger-input.mjs';
 import { selectSavedAction, unavailableSavedActionControl } from './saved-action-control.mjs';
@@ -40,27 +39,6 @@ async function canMove(next, rail, env) {
   return (rail !== 'oc' || next.runner === 'cc') && isLocalSavedAction(next, await readNativeJobMap(env));
 }
 
-function withScheduleEdit({ rail, timezone, signal, env = process.env }, update, expectedFile) {
-  return withActions(env, async (records, save, file) => {
-    let result;
-    // Use the same actions -> state order as admission. The callback route
-    // and owner clock cannot change between the check and publication.
-    await updateState(async state => {
-      signal?.throwIfAborted();
-      const policy = await readReminderPolicy(state, env);
-      if (!policy.enabled) result = { error: 'Автономные задачи сейчас выключены.' };
-      else if (!['cc', 'oc'].includes(rail) || rail !== (state.engine || 'cc')) {
-        result = expectedFile ? { stale: true } : { error: 'Перенос задач на этом движке пока не подключён.' };
-      } else {
-        const zone = state.timezone || timezone || 'Europe/Moscow';
-        result = await update(records, save, { file, zone, rail, env });
-      }
-      return NO_STATE_WRITE;
-    }, env);
-    return result;
-  }, { signal, expectedFile });
-}
-
 async function saveMovedAction(records, save, index, next, { rail, env, zone }) {
   // A move to the same cron still resets its run stamp. Fence old questions
   // and old run completions with a different definition after every move.
@@ -75,7 +53,7 @@ async function saveMovedAction(records, save, index, next, { rail, env, zone }) 
 export function rescheduleTaskFromTurn(selector, text, context) {
   const query = selector.trim();
   if (!query) return { error: 'Уточни, какую задачу перенести.' };
-  return withScheduleEdit(context, async (records, save, scope) => {
+  return withOwnerTaskUpdate(context, async (records, save, scope) => {
     const selection = selectSavedAction(records, query);
     if (!selection.action) return selection;
     const { action } = selection;
@@ -90,11 +68,11 @@ export function rescheduleTaskFromTurn(selector, text, context) {
       action, next, timezone: scope.zone,
       snapshot: { file: scope.file, id: action.id, fingerprint: taskDefinitionFingerprint(action), trigger: parsed.trigger },
     };
-  });
+  }, { unavailable: 'Перенос задач на этом движке пока не подключён.' });
 }
 
 export function applyTaskReschedule(question, { timezone, env }) {
-  return withScheduleEdit({ rail: question.rail, timezone, env }, async (records, save, scope) => {
+  return withOwnerTaskUpdate({ rail: question.rail, timezone, env }, async (records, save, scope) => {
     const index = records.findIndex(action => action?.id === question.id);
     const action = records[index];
     if (!action || taskDefinitionFingerprint(action) !== question.fingerprint ||
@@ -102,5 +80,5 @@ export function applyTaskReschedule(question, { timezone, env }) {
     const next = rescheduledAction(action, question.trigger);
     if (!await canMove(next, scope.rail, scope.env)) return { stale: true };
     return saveMovedAction(records, save, index, next, scope);
-  }, question.file);
+  }, { expectedFile: question.file });
 }

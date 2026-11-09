@@ -2,7 +2,8 @@
  * Per-bot actions.json for saved literal and model actions. Keep tasks.json and legacy timer
  * files separate. [Marker](../telegram/reminder-markers.mjs), [sender](./reminder-dispatch.mjs),
  * [menu](../telegram/routes/autonomy.mjs), [individual state](./saved-action-control.mjs),
- * [inventory](./saved-task-inspection.mjs), [task removal](./task-removal.mjs), [reschedule](./saved-task-reschedule.mjs),
+ * [inventory](./saved-task-inspection.mjs), [task removal](./task-removal.mjs),
+ * [reschedule](./saved-task-reschedule.mjs), [text edit](./saved-task-text-edit.mjs),
  * [contract](../../tests/reference/parity-autonomy-contract.txt).
  */
 import path from 'node:path';
@@ -13,6 +14,7 @@ import { actionRoot } from '../paths.mjs';
 import { physicalRecordPath, readOptionalJson, readRecordArray, writeRecordArray } from './record-file.mjs';
 import { recordReminderBreaker } from './reminder-breaker.mjs';
 import { reminderSpacing, savedTaskSpent, spentReminder, validReminderTrigger } from './reminder-schedule.mjs';
+import { taskBodyField } from './saved-task-text.mjs';
 import { archiveSavedActions } from './task-removal-archive.mjs';
 import { matchingSavedActions, planSavedActionControl, savedActionWithEnabled, selectSavedAction,
   unavailableSavedActionControl } from './saved-action-control.mjs';
@@ -119,13 +121,25 @@ export function claimSavedAction(file, snapshot, at, { env = process.env, admit 
   }), env);
 }
 
-function sameReminderClaim(current, claimed) {
+function sameClaimAfterBodyEdit(current, claimed) {
   if (isDeepStrictEqual(current, claimed)) return true;
+  if (!current?.taskTextRevision || current.taskTextRevision === claimed.taskTextRevision) return false;
+  const field = taskBodyField(current.task);
+  if (!field) return false;
+  // An owner edit can keep a run claim. Other definition changes, including
+  // rescheduling, still fence the completion even if they reuse the ID.
+  const task = { ...current.task, [field]: claimed.task?.[field] };
+  const taskTextRevision = claimed.taskTextRevision;
+  return isDeepStrictEqual({ ...current, task, taskTextRevision }, { ...claimed, taskTextRevision });
+}
+
+function sameReminderClaim(current, claimed) {
+  if (sameClaimAfterBodyEdit(current, claimed)) return true;
   if (!current || spentReminder(claimed)) return false;
   const ownerToggle = current.enabled === false && current.disabledReason === 'owner' ||
     current.enabled === true && current.disabledReason === undefined;
   const withoutToggle = ({ enabled, disabledReason, ...attempt }) => attempt;
-  return ownerToggle && isDeepStrictEqual(withoutToggle(current), withoutToggle(claimed));
+  return ownerToggle && sameClaimAfterBodyEdit(withoutToggle(current), withoutToggle(claimed));
 }
 
 export async function finishSavedAction(file, before, claimed, result, env = process.env) {
@@ -141,7 +155,10 @@ export async function finishSavedAction(file, before, claimed, result, env = pro
       if (result.status === 'stopped' && result.fileCommitStarted) {
         records[index] = { ...current, lastStatus: 'stopped', lastOutcome: 'stopped', lastError: undefined };
       } else {
-        records[index] = isDeepStrictEqual(current, claimed) ? before : { ...current, lastRunAt: before.lastRunAt };
+        const toggled = current.enabled !== claimed.enabled || current.disabledReason !== claimed.disabledReason;
+        const retry = { ...before, task: current.task };
+        if (current.taskTextRevision) retry.taskTextRevision = current.taskTextRevision;
+        records[index] = toggled ? { ...current, lastRunAt: before.lastRunAt } : retry;
       }
       await save();
       return;
@@ -208,7 +225,7 @@ const savedTaskRecord = action => typeof action?.id === 'string' && typeof actio
 const enabledSpentTask = action => savedTaskRecord(action) && action.enabled && savedTaskSpent(action);
 
 // On OC, an automatic old row without a mapping is not affirmative local ownership.
-function ownedForRemoval(action, jobs, rail) {
+export function ownsLocalSavedAction(action, jobs, rail) {
   return localActionScope(action, jobs) && (rail !== 'oc' || action.runner === 'cc');
 }
 
@@ -235,7 +252,7 @@ async function removeCandidates({ records, save, file, env, rail, candidates, el
         missing ||= !records.some(row => row?.id === candidate.id);
         continue;
       }
-      if (!ownedForRemoval(action, jobs, rail)) {
+      if (!ownsLocalSavedAction(action, jobs, rail)) {
         failed.push(action.name);
         continue;
       }
@@ -246,7 +263,7 @@ async function removeCandidates({ records, save, file, env, rail, candidates, el
   if (removed.length) await save(async () => {
     if (await actionFile(env) !== file) throw new Error('Action file changed');
     const latestJobs = await readNativeJobMap(env);
-    if (removed.some(action => !ownedForRemoval(action, latestJobs, rail))) {
+    if (removed.some(action => !ownsLocalSavedAction(action, latestJobs, rail))) {
       throw new Error('A local removal candidate gained a native binding');
     }
   });
@@ -270,7 +287,7 @@ export function cancelNamedSavedTasks(query, { rail, env = process.env, signal, 
     if (!matches.every(savedTaskSpent)) {
       if (matches.length > 1) return { choices: matches };
       const jobs = await readNativeJobMap(env);
-      if (!ownedForRemoval(action, jobs, rail)) return { unavailable: action.name };
+      if (!ownsLocalSavedAction(action, jobs, rail)) return { unavailable: action.name };
       return { action, snapshot: { file, candidates: [namedTaskCandidate(action)] } };
     }
     const result = await removeCandidates({ records, save, file, env, rail,

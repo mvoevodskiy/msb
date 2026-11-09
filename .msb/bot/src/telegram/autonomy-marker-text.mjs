@@ -5,6 +5,7 @@
  * [task control](./task-control-markers.mjs), [cleanup](./task-removal-markers.mjs)
  * and [reschedule](./task-reschedule-markers.mjs).
  */
+import { randomUUID } from 'node:crypto';
 import { escapeHtml } from './edit.mjs';
 import { mcpMarkerRanges } from '../mcp/install-protocol.mjs';
 import { SKILL_BLOCKS } from '../skills/install-protocol.mjs';
@@ -49,6 +50,22 @@ export function taskMutationRanges(text, adjacent = []) {
   });
   if (unclosed) payloads.push({ index: unclosed.index, 0: text.slice(unclosed.index) });
   return { payloads, quotes };
+}
+
+// Preserve original marker positions through neighboring response handlers.
+export function reserveAutonomyMarkers(text, blocks, prefix) {
+  if (!blocks.length) return { text };
+  const nonce = randomUUID();
+  const commands = new Map();
+  const parts = [];
+  let offset = 0;
+  for (const block of blocks) {
+    const token = prefix + nonce + '-' + commands.size + ']';
+    commands.set(token, block);
+    parts.push(text.slice(offset, block.index), token);
+    offset = block.index + block[0].length;
+  }
+  return { text: parts.join('') + text.slice(offset), commands };
 }
 
 const safeText = value => escapeHtml(value)

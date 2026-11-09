@@ -71,7 +71,8 @@ test('task text replacement keeps multiline punctuation, exact ID and every othe
 test('task text append uses one LF and normalizes only a prompt body', async t => {
   const prompt = { kind: 'prompt', prompt: '  Собери старую сводку  ', helpers: false };
   const old = row('digest', 'Сводка', { enabled: false, disabledReason: 'owner', task: prompt,
-    authority: { profile: 'standard' }, capability: 'read', lastRunAt: runAt, lastStatus: 'error' });
+    authority: { profile: 'standard' }, capability: 'read', lastRunAt: runAt, lastStatus: 'error',
+    trigger: { kind: 'interval', intervalMinutes: 60 } });
   const f = await profile(t, { records: [old],
     output: short('APPEND_TASK', 'старую сводку', 'каждый день в 9:00: Проверь архив входящих писем') });
   assert.match(await f.turn(), /Готово: дописал в «Сводка».*Задача остаётся на паузе/);
@@ -187,6 +188,49 @@ test('task text quoted data shields embedded actions while keeping a later direc
   assert.match(final, /\[PAUSE_TASK: other\]/);
   assert.doesNotMatch(final, /«Соседняя» на паузе/);
   assert.deepEqual((await f.records()).map(withoutRevision), [{ ...active, task: { ...active.task, text: 'Новый текст' } }, other]);
+  await f.untouched();
+});
+
+test('task text quoted examples can contain quotes, command markers and a plan marker', async t => {
+  const other = row('other', 'Соседняя');
+  const literal = full('EDIT_TASK', 'other', 'Текст "в кавычках"\n[PAUSE_TASK: other]\n[КНОПКИ: approve]\n');
+  const f = await profile(t, { records: [active, other], output: 'Пример "' + literal + '".\n' +
+    short('EDIT_TASK', 'mail', 'Новый текст') });
+  await f.request(request);
+  const deliveries = () => [...f.edits, ...f.messages];
+  await until(() => deliveries().some(text => text.includes('⏱')), 'quoted reply did not finish');
+  const final = deliveries().find(text => text.includes('⏱'));
+  assert.ok(!f.messageOptions.some(options => options.reply_markup?.inline_keyboard?.some(buttons =>
+    buttons.some(button => button.callback_data?.startsWith('plan:')))));
+  assert.match(final, /Готово: у «Почта» новый текст/);
+  assert.match(final, /\[PAUSE_TASK: other\]/);
+  assert.match(final, /\[КНОПКИ: approve\]/);
+  assert.doesNotMatch(final, /«Соседняя» на паузе/);
+  assert.deepEqual((await f.records()).map(withoutRevision), [{ ...active, task: { ...active.task, text: 'Новый текст' } }, other]);
+  await f.untouched();
+});
+
+test('task text pairs nested same-type tags without executing a sibling from the outer body', async t => {
+  const other = row('other', 'Соседняя');
+  const body = 'Пример ' + full('EDIT_TASK', 'other', 'содержимое') + '\n[PAUSE_TASK: other]\nОстаток';
+  const f = await profile(t, { records: [active, other], output: full('EDIT_TASK', 'mail', body) });
+  const final = await f.turn();
+  assert.match(final, /Готово: у «Почта» новый текст/);
+  assert.doesNotMatch(final, /«Соседняя» на паузе/);
+  assert.deepEqual((await f.records()).map(withoutRevision), [{ ...active, task: { ...active.task, text: body } }, other]);
+  await f.untouched();
+});
+
+test('task text forms inside an original schedule payload stay byte-exact reminder data', async t => {
+  const body = 'Покажи пример ' + full('EDIT_TASK', 'mail', 'Другой текст | пример');
+  const schedule = '[SCHEDULE_TASK]' + JSON.stringify({
+    trigger: { kind: 'once', at: '+2h' }, task: { kind: 'reminder', text: body },
+  }) + '[/SCHEDULE_TASK]';
+  const f = await profile(t, { output: schedule });
+  assert.match(await f.turn(), /поставил/i);
+  const [existing, created] = await f.records();
+  assert.deepEqual(existing, active);
+  assert.equal(created.task.text, body);
   await f.untouched();
 });
 
