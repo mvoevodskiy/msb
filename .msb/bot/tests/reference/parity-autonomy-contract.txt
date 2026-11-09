@@ -547,3 +547,10 @@ The fake API asks real Linux Codex to call the owned read, glob,
 grep, write and edit tools and checks protected aliases and old
 rollout bytes. Live OAuth refresh, public search results and
 production Telegram acceptance are separate checks.
+
+The file bridge also excludes the temporary server profiles made by
+shared/codex-mcp-profile.mjs and core mcp/launch.mjs and the private
+OpenClaw, speech and other saved Codex scratch directories. The
+scheduler regression creates a real staged MCP file with synthetic
+headers during a saved turn. Read and write are rejected, and a
+normal temporary text file remains accessible.

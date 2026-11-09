@@ -21,11 +21,13 @@ function isProtected(file, rule) {
     return tail.endsWith('/**') ? segments.includes(tail.slice(0, -3))
       : segments.some(segment => transactionName(segment, tail));
   }
-  if (rule.endsWith('/.records-*/**')) {
-    const directory = path.dirname(path.dirname(rule));
-    return under(file, directory) && path.relative(directory, file).startsWith('.records-');
+  if (rule.endsWith('/**')) {
+    const directory = rule.slice(0, -3);
+    const name = path.basename(directory);
+    if (!name.endsWith('*')) return under(file, directory);
+    const parent = path.dirname(directory);
+    return under(file, parent) && path.relative(parent, file).startsWith(name.slice(0, -1));
   }
-  if (rule.endsWith('/**')) return under(file, rule.slice(0, -3));
   if (rule.endsWith('/*.json*')) {
     return path.dirname(file) === path.dirname(rule) && path.matchesGlob(path.basename(file), '*.json*');
   }

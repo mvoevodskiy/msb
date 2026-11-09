@@ -6,6 +6,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { startScheduler } from '../src/autonomy/scheduler.mjs';
@@ -13,6 +14,8 @@ import { setOwnerPause } from '../src/autonomy/owner-pause.mjs';
 import { actionRoot, statePath } from '../src/paths.mjs';
 import { loadState, saveState } from '../src/state.mjs';
 import { fixture } from './helpers/menu-fixture.mjs';
+import { stageCodexMcp } from '../shared/codex-mcp-profile.mjs';
+import { savedWorkspaceTools } from '../../../overlay/bot/ext/adapters/saved-workspace-tools.mjs';
 
 const now = Date.parse('2026-11-09T12:00:00.000Z');
 const owner = 42;
@@ -186,4 +189,26 @@ test('an explicit helper requirement waits for its scoped Codex route', async t 
   await f.scheduler.tickNow();
   assert.equal(await f.call(), null);
   assert.deepEqual(await f.actions(), [action]);
+});
+
+test('a saved Codex turn cannot read or edit a concurrently staged foreground MCP profile', async t => {
+  const f = await profile(t);
+  const staged = await stageCodexMcp([{ name: 'fixture', config: { type: 'http', url: 'https://invalid.test/',
+    headers: { Authorization: 'synthetic-profile-secret' } } }], f.workspace, process.env);
+  t.after(staged.close);
+  await f.scheduler.tickNow();
+  const { argv } = await f.call();
+  const key = 'mcp_servers.saved_workspace.args=';
+  const [, raw] = JSON.parse(argv.find(arg => arg.startsWith(key)).slice(key.length));
+  const bridge = await savedWorkspaceTools(JSON.parse(raw));
+  const pending = path.join(staged.codexCustom.directory, 'servers.json');
+  const before = await fs.readFile(pending);
+  await assert.rejects(bridge.call('read_file', { path: pending }), /Доступ к пути запрещён/);
+  await assert.rejects(bridge.call('write_file', { path: pending, text: 'unauthorized' }), /Доступ к пути запрещён/);
+  assert.deepEqual(await fs.readFile(pending), before);
+  const ordinary = await fs.mkdtemp(path.join(os.tmpdir(), 'ordinary-scheduled-fixture-'));
+  t.after(() => fs.rm(ordinary, { recursive: true, force: true }));
+  const note = path.join(ordinary, 'note.txt');
+  await fs.writeFile(note, 'ordinary temporary work');
+  assert.equal(await bridge.call('read_file', { path: note }), 'ordinary temporary work');
 });

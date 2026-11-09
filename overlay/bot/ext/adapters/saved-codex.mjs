@@ -18,6 +18,9 @@ import { savedWorkspaceToolNames } from './saved-workspace-tools.mjs';
 
 const bridge = fileURLToPath(new URL('./saved-workspace-mcp.mjs', import.meta.url));
 const provider = 'msb_saved_prompt';
+// Producers: shared/codex-mcp-profile and core mcp/launch, mcp/openclaw-setup,
+// agent/openclaw-turn and media/stt. Temporary user work keeps its old scope.
+const privateScratch = ['msb-mcp-', 'msb-oc-mcp-', 'msb-oc-turn-', 'msb-stt-', 'msb-saved-codex-'];
 const disabled = ['shell_tool', 'shell_snapshot', 'hooks', 'plugin_hooks', 'multi_agent', 'multi_agent_v2',
   'skill_mcp_dependency_install', 'plugins', 'remote_plugin', 'apps', 'memories', 'view_image', 'image_generation', 'goals'];
 
@@ -104,7 +107,9 @@ export async function runSavedCodexPrompt({ cwd, prompt, model, tools, directori
     const physicalRuntime = await Promise.all(localRuntime.map(file => fs.realpath(file)));
     if (signal.aborted || !await canLaunch()) return;
     const fileCommitMarker = path.join(scratch, 'file-commit-started');
-    const scope = { cwd, directories, denied: [...denied, ...account.protectedFiles, ...localRuntime, ...physicalRuntime, scratch],
+    const scratchRoots = new Set([os.tmpdir(), path.dirname(scratch)]);
+    const privatePaths = [...scratchRoots].flatMap(root => privateScratch.map(prefix => path.join(root, prefix + '*', '**')));
+    const scope = { cwd, directories, denied: [...denied, ...account.protectedFiles, ...localRuntime, ...physicalRuntime, ...privatePaths],
       tools, fileCommitMarker };
     const args = argv({ model: resolveCodexModel(undefined, config, model || account.models.codex),
       effort: account.efforts.codex || resolveCodexEffort(config), scope, scratch }, baseUrl);
