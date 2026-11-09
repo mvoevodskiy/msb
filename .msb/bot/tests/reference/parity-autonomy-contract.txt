@@ -1383,3 +1383,39 @@ Read telegram/legacy-timer-markers.mjs and its confirmation,
 then autonomy/legacy-timer-actions.mjs, legacy-timer-delete.mjs
 and legacy-timers.mjs. legacy-timer-conversation.test.mjs
 checks the old menu, shared writer, owner and due race.
+
+Native protected-file conformance for saved collections
+------------------------------------------------------
+Old Dn in readable blob 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11
+at 20560–20567 emits Read, Write and Edit spellings for each
+protected path. The old Claude argv appends those at 20850.
+Current prompt-turn.mjs and agent/claude.mjs pass the native
+Read and Edit path rules and the isolated tool allowlist.
+Claude Code matches file mutation rules on Edit(path), which
+covers Write and NotebookEdit. A separate path-specific Write
+rule has no effect. Official permission reference:
+https://code.claude.com/docs/en/permissions#what-read-and-edit-rules-cover
+
+Run claude-saved-prompt-loopback.mjs with an official Linux
+2.1.154 or 2.1.316 binary in network-none Docker as described
+above. The synthetic API requests Read, Write, Edit and
+NotebookEdit. Creation and overwriting of protected files
+are denied, including a directory alias and its physical
+path with spaces. Text and notebook controls write successfully
+in the workspace. The actual tool results and file bytes are
+checked, including when NotebookEdit is absent from startup
+advertisement. The fixture uses a synthetic login and checks that hooks, MCP and saved sessions stay isolated.
+
+The Codex 0.166.0 fixture now enters the real scheduler and
+runSavedPrompt before the native adapter. It checks protected
+bot .env reads and writes through an alias and a direct path,
+notebook edits under the saved sessions path, and allowed
+text and notebook writes inside the workspace. It also checks
+the synthetic owner report, unchanged auth, config, rollout
+and bot profile bytes, and the no-shell and narrow tool gates.
+The model and profile are synthetic.
+
+The native probes confirm that the current rules enforce
+the old protected-file boundary in these ordinary saved runs.
+The evidence covers the parent tools. Helper inheritance and
+broader authority have separate checkpoints.

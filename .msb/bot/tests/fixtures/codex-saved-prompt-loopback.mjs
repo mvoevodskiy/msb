@@ -1,6 +1,6 @@
 /**
  * [Production saved Codex adapter](../../../../overlay/bot/ext/adapters/saved-codex.mjs)
- * against a local Responses fixture on the pinned Linux CLI. Use network-none
+ * through the real scheduler against a local Responses fixture. Use network-none
  * Docker with the command in [the old contract](../reference/parity-autonomy-contract.txt).
  */
 import assert from 'node:assert/strict';
@@ -9,13 +9,22 @@ import http from 'node:http';
 import os from 'node:os';
 import path from 'node:path';
 import { runSavedCodexPrompt } from '../../../../overlay/bot/ext/adapters/saved-codex.mjs';
+import { startScheduler } from '../../src/autonomy/scheduler.mjs';
+import { saveState } from '../../src/state.mjs';
 
 const binary = process.argv[2];
 assert.ok(path.isAbsolute(binary));
 // This workspace stands in for normal user files, outside the adapter's private scratch prefix.
 const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'msb-native-codex-check-')));
 const home = path.join(root, 'home'), native = path.join(root, 'account');
-const cwd = path.join(home, 'autonomy', 'cc-workspace'), bin = path.join(root, 'bin');
+const profile = path.join(home, '.iia', 'bots', 'default');
+const cwd = path.join(profile, 'autonomy', 'cc-workspace'), bin = path.join(root, 'bin');
+const ownerEnv = path.join(profile, '.env');
+const protectedNotebook = path.join(profile, 'sessions', 'protected.ipynb');
+const allowedNotebook = path.join(cwd, 'sample.ipynb');
+const ownerAlias = path.join(cwd, 'bot-env.txt');
+const notebook = JSON.stringify({ cells: [{ cell_type: 'markdown', metadata: {}, source: ['original'] }],
+  metadata: {}, nbformat: 4, nbformat_minor: 5 });
 const secret = path.join(native, 'auth.json');
 const config = path.join(native, 'config.toml');
 const profileMarker = path.join(root, 'forbidden-mcp-started');
@@ -35,11 +44,16 @@ const cases = {
     { tool: 'glob_files', args: { pattern: '*.txt' }, expected: 'sample.txt' },
     { tool: 'grep_files', args: { pattern: '^second$' }, expected: ':2:second' },
     { tool: 'read_file', args: { path: 'alias.txt' }, expected: 'Доступ к пути запрещён' },
+    { tool: 'read_file', args: { path: 'bot-env.txt' }, expected: 'Доступ к пути запрещён' },
   ],
   standard: [
     { tool: 'write_file', args: { path: 'new.txt', text: 'new file' }, expected: 'new.txt' },
     { tool: 'edit_file', args: { path: 'sample.txt', old: 'second', text: 'changed' }, expected: 'sample.txt' },
     { tool: 'write_file', args: { path: 'alias.txt', text: 'denied' }, expected: 'Доступ к пути запрещён' },
+    { tool: 'write_file', args: { path: ownerEnv, text: 'denied' }, expected: 'Доступ к пути запрещён' },
+    { tool: 'write_file', args: { path: 'bot-env.txt', text: 'denied' }, expected: 'Доступ к пути запрещён' },
+    { tool: 'edit_notebook', args: { path: protectedNotebook, cell: 0, text: 'denied' }, expected: 'Доступ к пути запрещён' },
+    { tool: 'edit_notebook', args: { path: 'sample.ipynb', cell: 0, text: 'owned notebook' }, expected: 'sample.ipynb' },
   ],
 };
 let phase, step, failure;
@@ -96,9 +110,13 @@ const service = http.createServer(async (req, res) => {
 });
 
 try {
-  await Promise.all([cwd, bin, path.dirname(oldRollout)].map(dir => fs.mkdir(dir, { recursive: true, mode: 0o700 })));
+  await Promise.all([cwd, bin, path.dirname(oldRollout), path.dirname(protectedNotebook)].map(dir => fs.mkdir(dir, { recursive: true, mode: 0o700 })));
   await fs.symlink(binary, path.join(bin, 'codex'));
   await fs.symlink(secret, path.join(cwd, 'alias.txt'));
+  await fs.writeFile(ownerEnv, 'SYNTHETIC_BOT_PROFILE_MARKER');
+  await fs.symlink(ownerEnv, ownerAlias);
+  await fs.writeFile(protectedNotebook, notebook);
+  await fs.writeFile(allowedNotebook, notebook);
   await fs.writeFile(workspaceFile, 'first\nsecond');
   await fs.writeFile(secret, JSON.stringify({ auth_mode: 'chatgpt', tokens: { id_token: fakeJwt,
     access_token: access, refresh_token: 'fixture-refresh', account_id: 'fixture-account' },
@@ -106,31 +124,64 @@ try {
   await fs.writeFile(oldRollout, old);
   await fs.writeFile(config, 'model = "gpt-5.4"\n[mcp_servers.foreign]\ncommand = "/bin/sh"\nargs = ["-c", ' +
     JSON.stringify('touch "' + profileMarker + '"') + ']\n');
-  const files = [secret, config, oldRollout];
-  const previous = await Promise.all(files.map(file => fs.readFile(file)));
   await new Promise((resolve, reject) => { service.once('error', reject); service.listen(0, '127.0.0.1', resolve); });
   const baseUrl = 'http://127.0.0.1:' + service.address().port + '/v1';
-  const env = { HOME: home, CODEX_HOME: native, PATH: bin + path.delimiter + process.env.PATH,
-    OPENAI_API_KEY: 'fixture-should-be-ignored', CODEX_ACCESS_TOKEN: 'fixture-should-be-ignored' };
-  const read = ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'TodoWrite', 'ToolSearch'];
-  for (const name of ['narrow', 'standard']) {
-    phase = name;
-    step = 0;
-    const tools = name === 'narrow' ? read : [...read, 'Write', 'Edit', 'NotebookEdit'];
-    const prompt = name === 'narrow' ? 'Open the exact URL ' + requestedUrl : 'Run the stored fixture action.';
-    const result = await runSavedCodexPrompt({ cwd, prompt, model: 'gpt-5.4', tools,
-      directories: [home, os.tmpdir()], denied: [], signal: AbortSignal.timeout(65_000),
-      canLaunch: async () => true }, env, { baseUrl });
-    if (failure) throw failure;
-    assert.equal(result?.isError, false, JSON.stringify(result));
-    assert.equal(result.text, name === 'narrow' ? pageReply : standardReply);
-    assert.equal(result.fileCommitStarted, name === 'standard');
-    assert.equal(step, cases[name].length + 1);
+  const owner = -100777;
+  Object.assign(process.env, { HOME: home, CODEX_HOME: native, PATH: bin + path.delimiter + process.env.PATH,
+    OPENAI_API_KEY: 'fixture-should-be-ignored', CODEX_ACCESS_TOKEN: 'fixture-should-be-ignored',
+    MSB_RUNTIME_PROFILE: 'jar1', MSB_RUNTIME_ROOT: path.join(home, '.iia'), MSB_BOT_ID: 'default', AUTONOMY_ENABLED: '1' });
+  const stateFile = await saveState({ engine: 'cc', authMode: 'subscription', hasSubscriptionAuth: true,
+    extAuthBypass: 'codex', chatId: owner, userId: 42, timezone: 'Europe/Moscow' });
+  const files = [secret, config, oldRollout, ownerEnv, stateFile, protectedNotebook];
+  const previous = await Promise.all(files.map(file => fs.readFile(file)));
+  const instant = Date.now();
+  const actions = path.join(profile, 'actions.json');
+  const reports = [];
+  let result;
+  const scheduler = startScheduler({
+    adminId: 42, timezone: 'Europe/Moscow', now: () => instant, log() {},
+    api: { sendMessage: async (chat, text) => { reports.push({ chat, text }); } },
+    runTurn: () => assert.fail('Saved Codex turn must not use the owner session'),
+    runCodexPrompt: async (options, env) => {
+      result = await runSavedCodexPrompt(options, env, { baseUrl });
+      return result;
+    },
+  });
+  try {
+    for (const name of ['narrow', 'standard']) {
+      phase = name;
+      step = 0;
+      result = undefined;
+      const prompt = name === 'narrow' ? 'Open the exact URL ' + requestedUrl : 'Run the stored fixture action.';
+      await fs.writeFile(actions, JSON.stringify([{
+        id: 'fixture-' + name, name, enabled: true, runner: 'auto',
+        trigger: { kind: 'once', at: new Date(instant - 1000).toISOString() },
+        task: { kind: 'prompt', prompt, model: 'gpt-5.4', helpers: false },
+        authority: { profile: name }, capability: name === 'narrow' ? 'none' : 'read',
+        budget: { maxRunSeconds: 120 }, output: { format: 'tg-message' },
+      }]));
+      await scheduler.tickNow();
+      if (failure) throw failure;
+      const expected = name === 'narrow' ? pageReply : standardReply;
+      assert.equal(result?.isError, false, JSON.stringify(result));
+      assert.equal(result.text, expected);
+      assert.equal(result.fileCommitStarted, name === 'standard');
+      assert.equal(step, cases[name].length + 1);
+      assert.ok(reports.some(report => report.chat === owner && report.text.includes(standardReply) &&
+        (name !== 'narrow' || report.text.includes('href="' + requestedUrl + '"'))));
+      const [saved] = JSON.parse(await fs.readFile(actions, 'utf8'));
+      assert.equal(saved.lastStatus, 'ok');
+      assert.equal(saved.disabledReason, 'spent_once');
+    }
+  } finally {
+    await scheduler.stop();
   }
   assert.deepEqual(await Promise.all(files.map(file => fs.readFile(file))), previous);
   assert.deepEqual(await fs.readdir(path.join(native, 'sessions')), ['old-rollout.jsonl']);
   assert.equal(await fs.readFile(workspaceFile, 'utf8'), 'first\nchanged');
   assert.equal(await fs.readFile(path.join(cwd, 'new.txt'), 'utf8'), 'new file');
+  const updatedCell = JSON.parse(await fs.readFile(allowedNotebook, 'utf8')).cells[0].source;
+  assert.equal(Array.isArray(updatedCell) ? updatedCell.join('') : updatedCell, 'owned notebook');
   await assert.rejects(fs.stat(profileMarker), { code: 'ENOENT' });
   assert.equal(inventory.narrow.some(tool => /write_file|edit_file|edit_notebook/.test(tool)), false);
   assert.ok(inventory.standard.some(tool => tool.endsWith('edit_notebook')));
@@ -138,9 +189,11 @@ try {
     assert.ok(names.includes('web_search'));
     assert.equal(names.some(tool => /exec_command|write_stdin|apply_patch|view_image|foreign|spawn_agent/.test(tool)), false);
   }
-  console.log(JSON.stringify({ production_adapter: true, version: '0.166.0', cli_platform: process.platform,
+  console.log(JSON.stringify({ production_adapter: true, scheduler_and_core_scope: true,
+    version: '0.166.0', cli_platform: process.platform,
     native_profile_files_byte_exact: true, rollout_separate: true, shell_exposed: false,
-    workspace_read_glob_grep_write_edit: true, protected_alias_denied: true,
+    workspace_read_glob_grep_write_edit: true, workspace_notebook_edit: true, protected_alias_denied: true,
+    protected_bot_profile_and_notebook_denied: true, saved_owner_profile_byte_exact: true,
     hosted_url_open_protocol: true, real_external_page_read: false,
     inherited_mcp_started: false, tools: inventory, production_auth: false, network: 'loopback-only' }, null, 2));
 } finally {

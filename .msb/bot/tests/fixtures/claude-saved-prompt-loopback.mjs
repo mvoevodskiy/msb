@@ -20,11 +20,27 @@ const cwd = path.join(bot, 'autonomy', 'cc-workspace');
 const secret = path.join(bot, '.env');
 const protectedWrite = path.join(home, '.iia', 'bots', 'sibling', 'state.json');
 const allowedWrite = path.join(cwd, 'result.txt');
+const allowedNotebook = path.join(cwd, 'allowed.ipynb');
+const sessions = path.join(bot, 'sessions');
+const realSessions = path.join(home, 'fixture physical sessions');
+const sessionAlias = path.join(cwd, 'session-alias');
+const protectedNotebook = path.join(realSessions, 'protected.ipynb');
+const aliasWrite = path.join(sessionAlias, 'forbidden.txt');
+const physicalWrite = path.join(realSessions, 'forbidden-direct.txt');
 const shell = path.join(cwd, 'shell.txt');
 const mcp = path.join(cwd, 'mcp.txt');
 const hook = path.join(cwd, 'hook.txt');
 await fs.mkdir(cwd, { recursive: true });
 await fs.mkdir(path.dirname(protectedWrite), { recursive: true });
+await fs.mkdir(realSessions);
+await fs.symlink(realSessions, sessions);
+await fs.symlink(sessions, sessionAlias);
+const notebook = JSON.stringify({
+  cells: [{ id: 'fixture-cell', cell_type: 'code', metadata: {}, source: ['old notebook'], outputs: [], execution_count: null }],
+  metadata: {}, nbformat: 4, nbformat_minor: 5,
+});
+await fs.writeFile(protectedNotebook, notebook);
+await fs.writeFile(allowedNotebook, notebook);
 const bin = path.join(root, 'bin');
 await fs.mkdir(bin);
 await fs.symlink(nativeBin, path.join(bin, 'claude'));
@@ -36,11 +52,22 @@ await fs.writeFile(path.join(home, '.claude', 'settings.json'), JSON.stringify({
 await fs.writeFile(path.join(home, '.claude.json'), JSON.stringify({ mcpServers: {
   fixture: { command: '/bin/sh', args: ['-c', 'touch ' + mcp] },
 } }));
+const notebookChange = { cell_id: 'fixture-cell', edit_mode: 'replace', new_source: 'new notebook' };
 const calls = [
-  ['Read', { file_path: secret }],
-  ['Write', { file_path: protectedWrite, content: 'should be denied' }],
-  ['Write', { file_path: allowedWrite, content: 'owned fixture write' }],
-  ['Bash', { command: 'touch ' + shell, description: 'Synthetic forbidden shell' }],
+  ['Read', { file_path: secret }, false],
+  ['Write', { file_path: protectedWrite, content: 'should be denied' }, false],
+  ['Write', { file_path: secret, content: 'should be denied' }, false],
+  ['Edit', { file_path: secret, old_string: 'SYNTHETIC_PROTECTED_MARKER', new_string: 'should be denied' }, false],
+  ['Read', { file_path: path.join(sessionAlias, 'protected.ipynb') }, false],
+  ['Write', { file_path: aliasWrite, content: 'should be denied' }, false],
+  ['Write', { file_path: physicalWrite, content: 'should be denied' }, false],
+  ['NotebookEdit', { notebook_path: protectedNotebook, ...notebookChange }, false],
+  ['Write', { file_path: allowedWrite, content: 'owned fixture write' }, true],
+  ['Read', { file_path: allowedWrite }, true],
+  ['Edit', { file_path: allowedWrite, old_string: 'fixture write', new_string: 'fixture edit' }, true],
+  ['Read', { file_path: allowedNotebook }, true],
+  ['NotebookEdit', { notebook_path: allowedNotebook, ...notebookChange }, true],
+  ['Bash', { command: 'touch ' + shell, description: 'Synthetic forbidden shell' }, false],
 ];
 const advertised = new Set();
 const results = new Map();
@@ -101,9 +128,9 @@ await saveState(state);
 const stateFile = path.join(bot, 'state.json');
 const before = await fs.readFile(stateFile);
 const action = { id: 'probe', task: { kind: 'prompt', prompt: 'Synthetic isolated Claude probe' },
-  capability: 'read', authority: { profile: 'standard' }, budget: { maxRunSeconds: 30 } };
+  capability: 'read', authority: { profile: 'standard' }, budget: { maxRunSeconds: 75 } };
 const plan = savedPromptPlan(action, state);
-const cancel = AbortSignal.timeout(10_000);
+const cancel = AbortSignal.timeout(50_000);
 let outcome;
 try {
   outcome = await runSavedPrompt(action, plan, { signal: cancel, isCurrent: async () => true });
@@ -113,16 +140,31 @@ try {
 assert.equal(outcome.status, 'ok', JSON.stringify({ status: outcome.status, error: outcome.error, sequence, advertised: [...advertised] }));
 assert.ok(usedOAuth && modelRequests > 0);
 assert.deepEqual(await fs.readFile(stateFile), before);
-assert.ok(advertised.has('Read') && advertised.has('Write'));
+for (const tool of ['Read', 'Write', 'Edit']) assert.ok(advertised.has(tool), 'Missing control tool ' + tool);
+// A newer CLI may defer NotebookEdit. Its actual result and file are checked below.
 assert.ok(!advertised.has('Bash') && ![...advertised].some(tool => tool?.startsWith('mcp__')));
-assert.equal(await fs.readFile(allowedWrite, 'utf8'), 'owned fixture write');
-for (const file of [protectedWrite, shell, mcp, hook]) await assert.rejects(fs.stat(file), { code: 'ENOENT' });
-assert.ok(!JSON.stringify([...results.values()]).includes('SYNTHETIC_PROTECTED_MARKER'));
-assert.equal(results.get('toolu_fixture_1')?.is_error, true);
-assert.equal(results.get('toolu_fixture_2')?.is_error, true);
+for (const [index, [name, , allowed]] of calls.entries()) {
+  const result = results.get('toolu_fixture_' + (index + 1));
+  assert.ok(result, 'Missing result ' + (index + 1) + ' ' + name);
+  assert.equal(result.is_error !== true, allowed, 'Unexpected result ' + (index + 1) + ' ' + name + ': ' + JSON.stringify(result.content));
+}
+assert.equal(await fs.readFile(allowedWrite, 'utf8'), 'owned fixture edit');
+const edited = JSON.parse(await fs.readFile(allowedNotebook, 'utf8'));
+const updatedCell = edited.cells[0].source;
+assert.equal(Array.isArray(updatedCell) ? updatedCell.join('') : updatedCell, 'new notebook');
+for (const file of [protectedWrite, aliasWrite, physicalWrite, shell, mcp, hook]) {
+  await assert.rejects(fs.stat(file), { code: 'ENOENT' });
+}
+assert.equal(await fs.readFile(secret, 'utf8'), 'SYNTHETIC_PROTECTED_MARKER');
+assert.equal(await fs.readFile(protectedNotebook, 'utf8'), notebook);
+const readBack = results.get('toolu_fixture_1');
+assert.ok(!JSON.stringify(readBack).includes('SYNTHETIC_PROTECTED_MARKER'));
 const projects = path.join(home, '.claude', 'projects');
 const paths = await fs.readdir(projects, { recursive: true }).catch(() => []);
 assert.ok(!paths.some(name => name.endsWith('.jsonl')));
-console.log(JSON.stringify({ passed: true, permittedWrite: true, protectedReadAndWriteDenied: true,
+console.log(JSON.stringify({ passed: true, permittedWrite: true, permittedEditAndNotebookEdit: true,
+  notebookEditAdvertised: advertised.has('NotebookEdit'),
+  protectedReadAndWriteDenied: true, protectedEditAndNotebookEditDenied: true,
+  protectedDirectoryAliasAndPhysicalWriteDenied: true, protectedFilesByteExact: true,
   shellNotAdvertisedOrExecuted: true, mcpNotStarted: true, userHookNotStarted: true, nativeSessionNotPersisted: true,
   usedSyntheticOAuth: true, ownerStateUnchanged: true, attemptedToolCalls: calls.length }));
