@@ -298,3 +298,27 @@ test('OpenClaw bulk cancellation confirms locally owned rows and preserves uncer
   assert.deepEqual(JSON.parse(await fs.readFile(file,'utf8')),[native]);
   assert.deepEqual((await f.calls()).map(row=>row.kind),['sessions','prompt']);
 });
+
+test('OpenClaw reschedules an explicit local row while preserving ambiguous automatic rows',async t=>{
+  const f=await prepare(t,{runTurn:runAgentTurn,reply:'[RESCHEDULE_TASK: local | +2h]\n[RESCHEDULE_TASK: native | +2h]'});
+  process.env.AUTONOMY_ENABLED='1';
+  const local={id:'local',name:'Локальная',enabled:true,runner:'cc',
+    trigger:{kind:'interval',intervalMinutes:60},task:{kind:'reminder',text:'fixture local'}};
+  const native={...local,id:'native',name:'Старая автоматическая',runner:'auto'};
+  const file=path.join(actionRoot(),'actions.json');
+  const before=JSON.stringify([local,native]);
+  await fs.writeFile(file,before);
+  await f.message('Перенеси две фоновые задачи');
+  await until(()=>f.edits.some(text=>text.includes('⏱')),'OpenClaw fixture did not finish',10_000);
+  assert.match(seen('prompt',await f.calls()).prompt,/\[RESCHEDULE_TASK:/);
+  const messageId=f.messages.findIndex(text=>text.startsWith('Перенести фоновую задачу «Локальная»'))+1;
+  assert.ok(messageId);
+  assert.match(f.edits.at(-1),/перенос.*недоступен/i);
+  assert.equal(await fs.readFile(file,'utf8'),before);
+  await f.callback('rs:local',42,{messageId});
+  assert.equal(f.callbackAnswers.at(-1)[0].text,'Перенёс');
+  const [updated, retained]=JSON.parse(await fs.readFile(file,'utf8'));
+  assert.equal(updated.trigger.kind,'once');
+  assert.deepEqual(retained,native);
+  assert.deepEqual((await f.calls()).map(row=>row.kind),['sessions','prompt']);
+});

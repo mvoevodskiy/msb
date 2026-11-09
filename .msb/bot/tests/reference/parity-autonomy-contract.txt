@@ -1185,3 +1185,45 @@ task-removal-confirmation.mjs, then src/autonomy/task-removal.mjs,
 owner-pause.mjs, reminder-store.mjs and task-removal-archive.mjs.
 The bulk-task-cancellation.test.mjs fixture exercises ingress,
 the confirmation, STOP, on-disk snapshots and failure boundaries.
+
+Reschedule an existing task from the owner conversation
+------------------------------------------------------
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Read the stable form with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+Prompt 24604/24650 and dispatch 26872–26885 split RESCHEDULE_TASK
+at the first pipe, after SHOW_TASK and before edit/cancel/pause.
+z9/Hz 23673–23691 and 22968–22973 prefer exact ID, then match
+case-insensitive name, work text or reminder text. Empty or
+ambiguous selectors are explicit. hr 23727–23749 distinguishes
+five numeric cron fields from a one-off date. Dz 22546–22587
+and $r/qr 22473–22498 accept relative minute/hour/day units,
+including a trailing phrase and zero, or a Date.parse instant.
+Past values become immediately due. Cron uses the owner zone
+and rejects known intervals below an hour. The current new
+registration validator also rejects malformed or unsafe cron
+forms which the old approximate zz 22499–22545 did not detect.
+
+hg 23773–23854 invokes RJ and live registration directly for
+disabled or already fired one-offs (G4 23243–23245). RJ at
+23757–23772 sets enabled, swaps trigger and drops lastRunAt,
+lastStatus, lastOutcome, nextFireAt and pendingReschedule.
+It clears owner and spent_once reasons and preserves other
+data, including lastError, gates and the task ID. The active
+branch shows «Было» and «Станет» in the originating topic with
+«Перенести ⏱» (rs:) and «Оставить» (ct-keep). Local registration
+y7 46174–46190 uses U4 4393–4409. It leaves separate run history
+and legacy schedules alone. Migrated actions get the explicit
+refusal at 23750–23756 and 23799–23805.
+
+oqA 23855–23886 and callbacks 113219–113226/113266–113310
+read the latest pending proposal from the first exact or
+prefix ID. Keep only edited Telegram. An older card could
+apply a newer time. Rz/ir 24881–24884 and 24928–24948 write
+the old whole record at completion, which can replace a
+new schedule. Preserve the workflow while binding the shown
+offer and keeping the current action-store claim fence.
+Native registration 46192–46235 is a separate Gateway write.
+An automatic/unset runner can resolve to OC (VY 4008–4017);
+a missing map is insufficient evidence of local ownership
+on OC. A mapped or migrated job must not be moved locally.
