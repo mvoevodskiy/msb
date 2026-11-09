@@ -1,16 +1,19 @@
 /**
  * Final owner response → [validation](../autonomy/reminder-protocol.mjs) →
- * [per-bot action](../autonomy/reminder-store.mjs). Worker: [bot](./bot.mjs).
- * Checks: [real worker + scheduler](../../tests/one-shot-reminder.test.mjs).
+ * [per-bot action](../autonomy/reminder-store.mjs) → [advice](../autonomy/reminder-registration-advice.mjs).
+ * Worker: [bot](./bot.mjs). [One-off checks](../../tests/one-shot-reminder.test.mjs)
+ * and [recurring checks](../../tests/recurring-reminder-registration.test.mjs).
  */
 import { loadState } from '../state.mjs';
 import { readReminderPolicy, reminderOwnerChat } from '../autonomy/reminder-policy.mjs';
 import { addReminder } from '../autonomy/reminder-store.mjs';
+import { readAutonomyPause } from '../autonomy/owner-pause.mjs';
+import { reminderRegistrationAdvice } from '../autonomy/reminder-registration-advice.mjs';
 import { describeReminderConfirmation, parseReminderMarker } from '../autonomy/reminder-protocol.mjs';
 import { limitMarker, outsideExamples, replaceAutonomyMarkers, scheduleMarker } from './autonomy-marker-text.mjs';
 
 const disabled = 'Автономные задачи сейчас выключены.';
-const unsupported = 'Фоновую задачу сейчас не ставлю: разовые напоминания на этом движке пока не подключены.';
+const unsupported = 'Фоновую задачу сейчас не ставлю: напоминания на этом движке пока не подключены.';
 const noCollector = 'Фоновую задачу сейчас не ставлю: на этом боксе некому вернуть результат, он до тебя не дойдёт.';
 const invalid = 'Не понял задачу — повтори, пожалуйста.';
 const failed = 'Не удалось поставить задачу.';
@@ -34,7 +37,7 @@ async function register(raw, context) {
     } catch {
       return { error: invalid };
     }
-    const parsed = parseReminderMarker(value, context);
+    const parsed = parseReminderMarker(value, { ...context, timezone: policy.timezone });
     if (!parsed.action) return parsed;
     const saved = await addReminder(parsed.action, {
       signal: context.signal,
@@ -44,7 +47,9 @@ async function register(raw, context) {
       },
     });
     if (!saved.action) return saved;
-    return { text: describeReminderConfirmation(saved.action, context.now, policy.timezone, policy) };
+    const advice = await reminderRegistrationAdvice(saved.action, saved.previous, context.now, policy.timezone).catch(() => '');
+    const pause = await readAutonomyPause().catch(() => ({ unknown: true }));
+    return { text: describeReminderConfirmation(saved.action, context.now, policy.timezone, pause, advice) };
   } catch {
     context.signal?.throwIfAborted();
     return { error: failed };

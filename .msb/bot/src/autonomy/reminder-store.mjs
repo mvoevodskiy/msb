@@ -69,7 +69,7 @@ export async function addReminder(action, { env = process.env, signal, check } =
     const saved = { ...action, id };
     records.push(saved);
     await save();
-    return { action: saved };
+    return { action: saved, previous: records.slice(0, -1) };
   }, { signal, create: true });
 }
 

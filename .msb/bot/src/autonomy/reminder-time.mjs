@@ -1,7 +1,10 @@
 /**
- * Local date and time for the old once/reminder confirmation and task cards.
- * Called by [protocol](./reminder-protocol.mjs) and [views](../telegram/screens/autonomy.mjs).
+ * Local date and time for [registration](./reminder-protocol.mjs) and
+ * [task cards](../telegram/screens/reminders.mjs). Next cron slot uses the
+ * same [owner clock](./reminder-schedule.mjs) as the local scheduler.
  */
+import { nextReminderCronAt } from './reminder-schedule.mjs';
+
 const zoneNames = {
   'Europe/Moscow': 'МСК', 'Europe/Kiev': 'Киев', 'Europe/Kyiv': 'Киев',
   'Europe/Minsk': 'Минск', 'Asia/Yekaterinburg': 'ЕКБ', 'Asia/Novosibirsk': 'НСК',
@@ -38,8 +41,7 @@ function sameDate(a, b) {
   return a.year === b.year && a.month === b.month && a.day === b.day;
 }
 
-export function describeReminderTime(at, now, timezone) {
-  const target = Date.parse(at);
+function localDateLabel(target, now, timezone) {
   let zone = timezone || 'Europe/Moscow';
   let parts;
   try {
@@ -53,7 +55,12 @@ export function describeReminderTime(at, now, timezone) {
   const day = sameDate(time, parts(now)) ? 'сегодня' :
     sameDate(time, parts(now + dayMs)) ? 'завтра' : time.day + ' ' + time.month;
   const label = Object.hasOwn(zoneNames, zone) ? zoneNames[zone] : time.timeZoneName.replace('GMT', 'UTC');
-  const when = day + ' в ' + time.hour + ':' + time.minute + ' (' + label + ')';
+  return day + ' в ' + time.hour + ':' + time.minute + ' (' + label + ')';
+}
+
+export function describeReminderTime(at, now, timezone) {
+  const target = Date.parse(at);
+  const when = localDateLabel(target, now, timezone);
   if (target <= now) return 'срок уже наступил (' + when + ')';
   const minutes = Math.round((target - now) / 60_000);
   if (minutes < 1 || minutes >= 60) return when;
@@ -80,7 +87,7 @@ function recurringUnit(count, forms) {
 }
 
 /** Old schedule labels for saved reminders in the existing task card. */
-export function describeReminderSchedule(trigger, now, timezone) {
+export function describeReminderSchedule(trigger, now, timezone, { codeCron = false } = {}) {
   if (trigger.kind === 'once') return describeReminderTime(trigger.at, now, timezone);
   if (trigger.kind === 'interval') return 'каждые ' + trigger.intervalMinutes + ' мин';
   const zone = timezone || 'Europe/Moscow';
@@ -89,11 +96,11 @@ export function describeReminderSchedule(trigger, now, timezone) {
   const [minute, hour, day, month, weekday] = trigger.cron.trim().split(/\s+/);
   if (day === '*' && month === '*' && weekday === '*') {
     const hourlyStep = /^\*\/(\d{1,2})$/.exec(hour);
-    if (minute === '0' && hourlyStep) {
+    if (minute === '0' && hourlyStep && 24 % Number(hourlyStep[1]) === 0) {
       return 'каждые ' + recurringUnit(Number(hourlyStep[1]), { one: 'час', few: 'часа', many: 'часов' }) + suffix;
     }
     const minuteStep = /^\*\/(\d{1,2})$/.exec(minute);
-    if (hour === '*' && minuteStep) {
+    if (hour === '*' && minuteStep && 60 % Number(minuteStep[1]) === 0) {
       return 'каждые ' + recurringUnit(Number(minuteStep[1]), { one: 'минуту', few: 'минуты', many: 'минут' });
     }
   }
@@ -107,5 +114,13 @@ export function describeReminderSchedule(trigger, now, timezone) {
       if (period) return period + ' в ' + hour.padStart(2, '0') + ':' + minute.padStart(2, '0') + suffix;
     }
   }
-  return 'по расписанию ' + trigger.cron + suffix;
+  const literal = codeCron ? '`' + trigger.cron + '`' : trigger.cron;
+  return 'по расписанию ' + literal + suffix;
+}
+
+export function describeRegisteredReminderSchedule(trigger, now, timezone = 'Europe/Moscow') {
+  const label = describeReminderSchedule(trigger, now, timezone, { codeCron: true });
+  if (trigger.kind !== 'cron') return label;
+  const next = nextReminderCronAt(trigger.cron, now, timezone);
+  return next === undefined ? label : label + ' · следующее ' + localDateLabel(next, now, timezone);
 }

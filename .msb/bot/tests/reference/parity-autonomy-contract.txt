@@ -772,6 +772,18 @@ New registration must reject cron fields that the direct matcher
 cannot parse or that use out-of-range values. The old field count
 alone could save a schedule with no executable slot. Likewise an
 invalid explicit zone could fail D9 after the action was saved.
-These checks apply to registration; existing saved records and
-the old local due clock stay compatible. Named follow-ups,
-prompt actions and native OpenClaw registration are separate.
+The new marker also rejects impossible month/day combinations and
+an observed sub-hour minute pair in valid ranges that zz could not
+estimate. The existing saved-record parser and frequency decisions
+remain compatible. The next-slot confirmation starts on the following
+minute, uses the actual local due matcher and omits a forecast past
+the legacy 45-day horizon. Irregular steps use the old literal-cron
+fallback so the caption agrees with the calculated time.
+
+After the action commit, pause is sampled again. If that read fails,
+the bot confirms the durable save and reports the pause state as
+unknown. The scheduler still checks the state before any run. The
+existing action cap, owner route, one-off behavior and independent
+legacy timer file are covered by the same fixture.
+Named follow-ups, prompt actions and native OpenClaw registration
+are separate.

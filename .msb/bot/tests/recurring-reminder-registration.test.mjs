@@ -25,6 +25,12 @@ test('a weekday reminder is saved before confirmation and recurs at the owner cl
     text: '  Проверить почту <входящие>  ', timezone: 'Asia/Yekaterinburg',
   })) + '\n\nСледующая просьба.';
   const f = await reminderFixture(t, { output });
+  const edit = f.bot.api.editMessageText;
+  let published;
+  t.mock.method(f.bot.api, 'editMessageText', async (...args) => {
+    if (args[2].includes('Ок, поставил:')) published = await f.records().catch(() => undefined);
+    return edit(...args);
+  });
   await f.request('По будням в 9 напоминай проверить почту');
   const final = await f.final();
   assert.match(final, /Утренний список/);
@@ -32,6 +38,7 @@ test('a weekday reminder is saved before confirmation and recurs at the owner cl
   assert.match(final, /Следующая просьба/);
   assert.doesNotMatch(final, /SCHEDULE_TASK/);
   const [entry] = await f.records();
+  assert.deepEqual(published, [entry]);
   assert.deepEqual(entry.trigger, { kind: 'cron', cron: '0  9 * * 1-5', timezone: 'Asia/Yekaterinburg' });
   assert.deepEqual(entry.task, { kind: 'reminder', text: 'Проверить почту <входящие>' });
   assert.deepEqual(entry.origin, { chatId: chat, threadId: 17 });
@@ -70,6 +77,8 @@ test('a weekday reminder is saved before confirmation and recurs at the owner cl
 test('the old 60-minute floor and executable cron validation apply before publishing the action', async t => {
   const payloads = [
     recurring('*/59 * * * *'),
+    recurring('0-30/15 * * * *'),
+    recurring('0 9 31 2 *'),
     recurring('00 * * *'),
     recurring('0,bad 9 * * *'),
     recurring('88 9 * * *'),
@@ -84,6 +93,7 @@ test('the old 60-minute floor and executable cron validation apply before publis
   await f.request('Проверь расписания и поставь допустимые');
   const final = await f.final();
   assert.match(final, /слишком часто: каждые 59 мин\. Каждый запуск стоит денег, поэтому регулярные задачи ставим не чаще раза в час/);
+  assert.match(final, /слишком часто: каждые 15 мин/);
   assert.match(final, /для регулярной задачи нужен корректный cron \(5 полей\)/);
   assert.match(final, /для напоминания нужен текст/);
   assert.match(final, /часовой пояс.*Invalid\/Fixture/);
@@ -94,7 +104,7 @@ test('the old 60-minute floor and executable cron validation apply before publis
   ]);
   assert.notEqual(saved[0].id, saved[1].id);
   assert.match(final, /«Граница» — каждый час \(МСК\) · следующее сегодня в 14:00 \(МСК\)/);
-  assert.match(final, /«Диапазон» — по расписанию .*15 8-10 \* \* \*/);
+  assert.match(final, /«Диапазон» — по расписанию <code>15 8-10 \* \* \*<\/code>/);
 });
 
 test('a STOP committed just after registration appears in the confirmation and gates due sends', async t => {
@@ -177,3 +187,43 @@ for (const provider of ['claude', 'codex']) {
     assert.equal(entry.trigger.cron, '0 9 * * *');
   });
 }
+
+test('irregular cron steps show the literal schedule and a possible distant date remains valid', async t => {
+  const output = [
+    recurring('*/90 * * * *', { name: 'Длинный минутный шаг' }),
+    recurring('0 */25 * * *', { name: 'Длинный часовой шаг' }),
+    recurring('0 9 29 2 *', { name: 'Високосный день' }),
+  ].map(marker).join('\n');
+  const f = await reminderFixture(t, { output });
+  await f.request('Поставь эти регулярные напоминания');
+  const final = await f.final();
+  assert.match(final, /«Длинный минутный шаг» — по расписанию <code>\*\/90 \* \* \* \*<\/code> \(МСК\) · следующее сегодня в 14:00/);
+  assert.match(final, /«Длинный часовой шаг» — по расписанию <code>0 \*\/25 \* \* \*<\/code> \(МСК\) · следующее завтра в 00:00/);
+  assert.match(final, /«Високосный день» — по расписанию <code>0 9 29 2 \*<\/code> \(МСК\)\./);
+  assert.equal((await f.records()).length, 3);
+});
+
+test('a failed post-write pause read cannot turn a saved reminder into an unqualified success', async t => {
+  const f = await reminderFixture(t, { output: marker(recurring('0 * * * *')) });
+  const autonomy = path.join(f.directory, 'autonomy');
+  const stop = path.join(autonomy, 'STOP');
+  const target = path.join(await fs.realpath(f.directory), 'actions.json');
+  await fs.mkdir(autonomy, { recursive: true });
+  const rename = fs.rename;
+  t.mock.method(fs, 'rename', async (from, to) => {
+    await rename(from, to);
+    if (to !== target) return;
+    await fs.writeFile(stop, 'fixture pause');
+    await fs.writeFile(path.join(f.directory, 'remote-config.json'), '{ fixture invalid json');
+  });
+  await f.request('Поставь напоминание каждый час');
+  const final = await f.final();
+  assert.match(final, /Поставил: «Напоминание: Проверить почту»/);
+  assert.match(final, /Состояние паузы не удалось прочитать/);
+  assert.doesNotMatch(final, /Ок, поставил|Не удалось поставить задачу/);
+  assert.equal((await f.records()).length, 1);
+  const scheduler = f.scheduler();
+  f.setTime(monday);
+  await scheduler.tickNow();
+  assert.equal(f.delivered().length, 0);
+});
