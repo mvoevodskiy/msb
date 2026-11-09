@@ -1,7 +1,8 @@
 /**
  * Per-bot actions.json for saved literal and model actions. Keep tasks.json and legacy timer
  * files separate. [Marker](../telegram/reminder-markers.mjs), [sender](./reminder-dispatch.mjs),
- * [menu](../telegram/routes/autonomy.mjs), [contract](../../tests/reference/parity-autonomy-contract.txt).
+ * [menu](../telegram/routes/autonomy.mjs), [individual state](./saved-action-control.mjs),
+ * [contract](../../tests/reference/parity-autonomy-contract.txt).
  */
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
@@ -10,6 +11,8 @@ import { actionRoot } from '../paths.mjs';
 import { physicalRecordPath, readOptionalJson, readRecordArray, writeRecordArray } from './record-file.mjs';
 import { recordReminderBreaker } from './reminder-breaker.mjs';
 import { reminderSpacing, spentReminder, validReminderTrigger } from './reminder-schedule.mjs';
+import { planSavedActionControl, savedActionWithEnabled, selectSavedAction,
+  unavailableSavedActionControl } from './saved-action-control.mjs';
 
 function actionFile(env) {
   return physicalRecordPath(path.join(actionRoot(env), 'actions.json'));
@@ -152,13 +155,32 @@ export async function savedActionClaimIsCurrent(file, claimed, env = process.env
   return isDeepStrictEqual(current, claimed) && isLocalSavedAction(current, await readNativeJobMap(env));
 }
 
+export async function setNamedSavedActionEnabled(selector, enabled, { env = process.env, signal, commit = publish => publish() } = {}) {
+  const query = selector.trim();
+  if (!query) {
+    return { error: enabled ? 'Уточни, какую задачу вернуть в работу.' : 'Уточни, какую задачу поставить на паузу.' };
+  }
+  return withActions(env, (records, save) => commit(async () => {
+    const target = selectSavedAction(records, query);
+    if (!target.action) return target;
+    const { action } = target;
+    if (!isLocalSavedAction(action, await readNativeJobMap(env))) return { error: unavailableSavedActionControl(action) };
+    const change = planSavedActionControl(action, enabled);
+    if (change.changed) {
+      records[records.indexOf(action)] = change.action;
+      await save();
+    }
+    return change;
+  }), { signal });
+}
+
 export async function changeSavedAction(id, remove, env = process.env) {
   await withActions(env, async (records, save) => {
     const index = records.findIndex(action => action?.id === id);
     const action = records[index];
     if (!isLocalSavedAction(action, await readNativeJobMap(env)) || (!remove && spentReminder(action))) return;
     if (remove) records.splice(index, 1);
-    else records[index] = { ...action, enabled: !action.enabled, disabledReason: action.enabled ? 'owner' : undefined };
+    else records[index] = savedActionWithEnabled(action, !action.enabled);
     await save();
   });
 }

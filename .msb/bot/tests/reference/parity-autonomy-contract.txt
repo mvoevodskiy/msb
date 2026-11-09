@@ -884,3 +884,17 @@ controls are separate from actions.json (24608). Local confirmation
 reports an active STOP or frequency hold rather than promising
 that the task is firing. Keep the per-profile queue and file
 boundaries and the existing flags for adjacent tasks.
+
+The open-core task selector sees foreign and local rows together.
+It resolves and persists under the action-file lock and verifies
+the local route in the existing in-process state queue. No-op and
+refused actions do not rewrite the action file. The scheduler
+keeps its admitted attempt and completion rules, including an
+already started prompt turn. STOP and breaker state remain separate.
+
+Like the old detector, all pause markers are applied before any
+resume markers. Results replace their own marker in the original
+text. Quoted examples and nested control or scheduling markers
+have no effect. A direct success claim with a quoted task name is
+corrected when its own command fails. A neighboring success and
+a quoted example remain visible.

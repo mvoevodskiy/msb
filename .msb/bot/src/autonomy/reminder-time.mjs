@@ -118,9 +118,14 @@ export function describeReminderSchedule(trigger, now, timezone, { codeCron = fa
   return 'по расписанию ' + literal + suffix;
 }
 
-export function describeRegisteredReminderSchedule(trigger, now, timezone = 'Europe/Moscow') {
+export function describeReminderScheduleWithNext(trigger, now, timezone = 'Europe/Moscow', lastRunAt) {
   const label = describeReminderSchedule(trigger, now, timezone, { codeCron: true });
-  if (trigger.kind !== 'cron') return label;
-  const next = nextReminderCronAt(trigger.cron, now, timezone);
-  return next === undefined ? label : label + ' · следующее ' + localDateLabel(next, now, timezone);
+  let next;
+  if (trigger.kind === 'cron') next = nextReminderCronAt(trigger.cron, now, timezone);
+  if (trigger.kind === 'interval') {
+    const last = lastRunAt ? Date.parse(lastRunAt) : 0;
+    next = Math.max(now, last + trigger.intervalMinutes * 60_000);
+  }
+  if (!Number.isFinite(new Date(next).getTime())) return label;
+  return label + ' · следующее ' + localDateLabel(next, now, timezone);
 }
