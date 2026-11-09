@@ -12,7 +12,8 @@ import { runSavedCodexPrompt } from '../../../../overlay/bot/ext/adapters/saved-
 
 const binary = process.argv[2];
 assert.ok(path.isAbsolute(binary));
-const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'msb-saved-codex-proof-')));
+// This workspace stands in for normal user files, outside the adapter's private scratch prefix.
+const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'msb-native-codex-check-')));
 const home = path.join(root, 'home'), native = path.join(root, 'account');
 const cwd = path.join(home, 'autonomy', 'cc-workspace'), bin = path.join(root, 'bin');
 const secret = path.join(native, 'auth.json');
@@ -54,7 +55,8 @@ const service = http.createServer(async (req, res) => {
     const previous = cases[phase][step - 1];
     if (previous) {
       const out = input.input.find(item => item.type === 'function_call_output' && item.call_id === 'call_' + (step - 1));
-      assert.ok(JSON.stringify(out)?.includes(previous.expected), phase + ' result ' + previous.tool);
+      const observed = JSON.stringify(out);
+      assert.ok(observed?.includes(previous.expected), phase + ' result ' + previous.tool + ' ' + observed?.slice(0, 500));
     }
     const next = cases[phase][step];
     let item;
