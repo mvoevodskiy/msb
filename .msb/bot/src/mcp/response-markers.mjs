@@ -7,18 +7,21 @@ import {MCP_OPEN,INVALID_MCP,MCP_WRITE_FAILED,mcpMarkerRanges,parseMcpPayload} f
 import {codexManagedMcpName} from '../../shared/codex-mcp-name.mjs';
 import {enrollCustomMcp} from './managed.mjs';
 import {readClaudeMcp} from './claude.mjs';
+import {nativeMcpScope} from '../../shared/mcp-native-scope.mjs';
 
 async function inheritedScope(name,target,{env,signal,readProvider}) {
   const options={cwd:target?.cwd,env,signal};
-  if(target?.provider==='claude'){
+  if(!target?.nativeScope || await nativeMcpScope(target.provider,target.cwd,env)!==target.nativeScope)
+    throw Error('MCP profile changed during the turn');
+  if(target.provider==='claude'){
     const view=await readClaudeMcp(options);
-    if(!view)throw Error('Unreadable Claude MCP profile');
+    if(view?.scope!==target.nativeScope)throw Error('Unreadable or changed Claude MCP profile');
     return view.entries.some(row=>row.name===name)?view.scope:undefined;
   }
-  if(target?.provider==='codex'){
+  if(target.provider==='codex'){
     const view=await readProvider?.({engine:'cc',extAuthBypass:'codex'},{...options,effective:true});
     const alias=codexManagedMcpName(name,target.env);
-    if(!view || view.entries.some(row=>row.name===alias))throw Error('Unavailable MCP alias');
+    if(view?.scope!==target.nativeScope || view.entries.some(row=>row.name===alias))throw Error('Unavailable MCP alias');
     return view.nativeNames.includes(name)?view.scope:undefined;
   }
 }
@@ -34,7 +37,7 @@ export async function processMcpMarkers(text,target,{env=process.env,signal,read
   if(server){
     try{
       const replaceScope=await inheritedScope(server.name,target,{env,signal,readProvider});
-      await enrollCustomMcp(server,target,{signal,replaceScope});
+      await enrollCustomMcp(server,target,{signal,replaceScope,nativeEnv:env});
       signal?.throwIfAborted();
       message='Подключил MCP-сервер «'+server.name+'». Заработает со следующего сообщения.';
     }catch(error){

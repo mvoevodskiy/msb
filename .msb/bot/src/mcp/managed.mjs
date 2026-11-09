@@ -15,6 +15,7 @@ import {isCustomMcpName} from './install-protocol.mjs';
 import {createCustomMcpConfig,isCustomMcpRecord,readCustomMcpConfig,retireCustomMcpConfig} from './custom-config.mjs';
 import {selectedMcpProvider} from './catalog.mjs';
 import {recordNativeMcpRemoval} from './native-removal.mjs';
+import {nativeMcpScope} from '../../shared/mcp-native-scope.mjs';
 
 export const supportsManagedMcp=provider=>provider==='claude' || provider==='codex';
 export const supportsMcpTemplate=provider=>provider==='oc' || supportsManagedMcp(provider);
@@ -100,7 +101,7 @@ export function captureMcpInstallTarget(state,env) {
   return Object.freeze({provider,env:scoped});
 }
 
-export async function enrollCustomMcp({name,config},target,{signal,replaceScope}={}) {
+export async function enrollCustomMcp({name,config},target,{signal,replaceScope,nativeEnv=process.env}={}) {
   if(!target?.env || !supportsManagedMcp(target.provider) || !isCustomMcpName(name))throw Error('Unsupported MCP target');
   const {provider,env}=target;
   let written,previous;
@@ -108,6 +109,8 @@ export async function enrollCustomMcp({name,config},target,{signal,replaceScope}
     await updateState(async state=>{
       signal?.throwIfAborted();
       written=await createCustomMcpConfig(config,env);
+      if(await nativeMcpScope(provider,target.cwd,nativeEnv)!==target.nativeScope)
+        throw Error('MCP profile changed before publication');
       signal?.throwIfAborted();
       previous=state.managedMcp?.[provider]?.[name];
       if(replaceScope)recordNativeMcpRemoval(state,{provider,scope:replaceScope,name});

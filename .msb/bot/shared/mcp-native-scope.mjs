@@ -25,6 +25,11 @@ export async function canonicalMcpPath(file) {
   }
 }
 
+export function nativeMcpScope(provider,cwd,env) {
+  const file=provider==='claude'?claudeMcpPath(cwd,env):codexMcpPath(cwd,env);
+  return canonicalMcpPath(file);
+}
+
 export function removedNativeNames(state,provider,scope) {
   const profiles=state.removedNativeMcp?.[provider];
   const names=scope && isConfigObject(profiles) && Object.hasOwn(profiles,scope)?profiles[scope]:null;
@@ -33,6 +38,6 @@ export function removedNativeNames(state,provider,scope) {
 
 export async function codexNativeRemoval(state,cwd,env) {
   if(!state.removedNativeMcp?.codex)return;
-  const scope=await canonicalMcpPath(codexMcpPath(cwd,env));
+  const scope=await nativeMcpScope('codex',cwd,env);
   return {scope,names:removedNativeNames(state,'codex',scope)};
 }

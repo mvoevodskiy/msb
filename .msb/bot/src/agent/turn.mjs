@@ -20,6 +20,7 @@ import {skillInstallPrompt} from '../skills/install-protocol.mjs';
 import {prepareMcpLaunch} from '../mcp/launch.mjs';
 import {captureMcpInstallTarget} from '../mcp/managed.mjs';
 import {mcpInstallPrompt} from '../mcp/install-protocol.mjs';
+import {nativeMcpScope} from '../../shared/mcp-native-scope.mjs';
 
 /**
  * runAgentTurn: prompt/signal → выбранный CLI → результат и guarded session/usage.
@@ -95,6 +96,7 @@ export async function runAgentTurn({
   if (signal?.aborted) return aborted();
   const providerId=state.extAuthBypass || 'claude';
   mcp=await prepareMcpLaunch(state,providerId,env,cwd);
+  const installScope=mcpInstall?await nativeMcpScope(mcpInstall.provider,cwd,env):undefined;
   if (signal?.aborted) return aborted();
 
   let lastTool = '';
@@ -152,7 +154,7 @@ export async function runAgentTurn({
   // Error diagnostics can contain arbitrary text. A partial error is eligible
   // only when the CLI returned actual assistant text.
   const canInstallMcp=result.text && (!result.isError || (providerId==='claude' && result.assistantTextObserved));
-  return { ok: !result.isError, text, result, skillInstall, mcpInstall:canInstallMcp && mcpInstall?{...mcpInstall,cwd}:null };
+  return { ok: !result.isError, text, result, skillInstall, mcpInstall:canInstallMcp && mcpInstall?{...mcpInstall,cwd,nativeScope:installScope}:null };
   } finally {
     await mcp?.close?.();
     if (firstSession) await updateState(s => releaseFirstSession(s, firstSession) ? s : NO_STATE_WRITE, env).catch(() => {});

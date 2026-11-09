@@ -321,3 +321,12 @@ synthetic production-ingress cases reproduce silent replacement of
 the new profile for Claude and Codex. A third retargets the Claude
 profile while the private definition is staged. All three currently
 report success and commit state. These are intentional RED checks.
+
+The correction captures the canonical MCP file at the runner handoff.
+The finalizer requires both the current native path and the provider
+catalog to match that path. The state transaction checks again after
+staging the private file and cleans it on a mismatch. No new profile
+inherits a removal from a stale model reply. Provider switches with
+the same underlying file retain the already accepted captured-provider
+behavior. Three release-review reproductions now pass, alongside all
+27 marker cases in the focused file.
