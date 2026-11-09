@@ -898,3 +898,46 @@ text. Quoted examples and nested control or scheduling markers
 have no effect. A direct success claim with a quoted task name is
 corrected when its own command fails. A neighboring success and
 a quoted example remain visible.
+
+
+Read the saved task list or one complete task from the conversation.
+
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Read the preserved bundle with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+The owner prompt at 24598–24608 advertises LIST_TASKS and SHOW_TASK.
+The final dispatcher at 26832–26869 reads only when the collector
+is enabled. xg 23512–23563 groups enabled active records, enabled
+historical spent one-offs, and owner-paused records. Other disabled
+rows are left out of the list. Normal once completion at 24883
+and 24928–24948 disables the row as spent_once. A historical
+enabled row with a once stamp can still appear in the spent group
+(G4 at 23243–23245). A global STOP adds its own header.
+
+Tg 23492–23510 displays the stored run date and outcome. Uz at
+21108–21133 and Zz/WqA at 21278–21280 / 21379–21391 supply the
+old labels. A mapped paused job contributes vr at 23458–23474.
+br/Ig at 23475–23491 and 21847–21958 add silence only after the
+grace window and process warm-up, with no newer action or journal
+attempt. It uses up to 500 records, a minimum one-hour margin,
+and twice the expected cadence. Bi/Yi/ER at 17035–17126 list
+enabled legacy schedules separately and flag overlaps. The
+normal actions.json report does not use the simplified tasks.json.
+
+mg 23913–23975 and z9 23673–23691 show one chosen action regardless
+of its enabled state, including legacy/native metadata. The old
+message includes schedule, owner pause, full prefixed text (mr at
+23908–23911), explicitly configured features, and last run or
+system hold. qJ/Kz at 22974–23000 define kind and body. nM/aM at
+15563–15567 / 15574–15588 describe conditional records. U0 at
+23203–23241 supplies schedule text. On the local route the
+forecast uses the same owner clock as dispatch. The show reply
+must preserve stored Markdown and commands as literal data.
+It does not fetch a native transcript or execute stored work.
+
+xg 23535–23542 can also offer a separate spent cleanup card.
+Its mutating callback at 113143–113178 and kg at 23565–23587
+are a distinct confirmation workflow. This checkpoint restores
+the read output and does not publish an inert cleanup button.
+Test through the normal Claude/Codex foreground path with
+disposable records and synthetic transports.
