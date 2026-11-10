@@ -711,3 +711,28 @@ test('form timeout parity: timezone had no old TTL and remains editable after te
   await f.callback('settings:tz');clock+=700_000;
   await f.message('Pacific/Honolulu');assert.equal((await loadState()).state.timezone,'Pacific/Honolulu');
 });
+
+test('Codex failed setting callbacks show the previous choice and keep the active conversation', async (t) => {
+  const f = await fixture(t);
+  process.env.CODEX_HOME = path.join(f.home, '.codex');
+  await fs.mkdir(process.env.CODEX_HOME, { recursive: true });
+  const configFile = path.join(process.env.CODEX_HOME, 'config.toml');
+  const config = 'model = "gpt-6.1-terra"\nmodel_reasoning_effort = "max"\n';
+  await fs.writeFile(configFile, config);
+  const before = await fs.readFile(f.storeFile, 'utf8');
+  const state = (await loadState()).state;
+  const rename = fs.rename;
+  t.mock.method(fs, 'rename', async (from, to) => {
+    if (path.basename(to) === 'config.toml') throw new Error('fixture native config unavailable');
+    return rename(from, to);
+  });
+  await f.callback('ext:model:set:gpt-5.4-mini');
+  assert.match(f.edits.at(-1), /Не сменил модель/);
+  assert.match(f.edits.at(-1), /модель: <b>gpt-6\.1-terra<\/b>/);
+  await f.callback('ext:effort:set:high');
+  assert.match(f.edits.at(-1), /❌ fixture native config unavailable/);
+  assert.match(f.edits.at(-1), /Глубина: <b>max<\/b>/);
+  assert.equal(await fs.readFile(f.storeFile, 'utf8'), before);
+  assert.equal(await fs.readFile(configFile, 'utf8'), config);
+  assert.deepEqual((await loadState()).state, state);
+});
