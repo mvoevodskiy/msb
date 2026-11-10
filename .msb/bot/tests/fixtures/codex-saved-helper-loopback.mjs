@@ -15,8 +15,9 @@ import { savedPromptPlan } from '../../src/autonomy/prompt-policy.mjs';
 import { runSavedPrompt } from '../../src/autonomy/prompt-turn.mjs';
 import { saveState } from '../../src/state.mjs';
 
-const binary = process.argv[2];
+const [binary, selection] = process.argv.slice(2);
 assert.ok(path.isAbsolute(binary));
+assert.ok(selection === undefined || selection === 'named');
 const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'msb-native-helper-check-')));
 const home = path.join(root, 'home'), native = path.join(root, 'native');
 const cwd = path.join(home, '.iia', 'bots', 'default', 'autonomy', 'cc-workspace');
@@ -36,7 +37,7 @@ const parentReply = 'fixture parent completed';
 const scope = ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'Agent', 'Task'];
 const namedRole = { name: 'Проверяющий', brief: 'Сверяет заметки и сообщает факт.' };
 const namedBrief = namedRole.name + ': ' + namedRole.brief;
-const cases = ['reader', 'writer', 'attachment', 'role', 'disabled', 'cancel', 'named'];
+const cases = selection === 'named' ? ['named'] : ['reader', 'writer', 'attachment', 'role', 'disabled', 'cancel', 'named'];
 const counts = {};
 let state, failure, accounting, sequence = 0;
 
@@ -128,8 +129,8 @@ const service = http.createServer(async (req, res) => {
       assert.ok(names.includes('read_file'));
       assert.equal(input.model, 'gpt-5.4');
       if (state.kind === 'named' && step === 0) {
-        assert.ok(input.input.some(item => item.role === 'user' && JSON.stringify(item).includes(namedBrief)),
-          'The saved role brief reaches the isolated native child');
+        assert.ok(input.input.some(item => item.type === 'agent_message' && JSON.stringify(item).includes(namedBrief)),
+          'The saved role brief reaches the isolated native child in its delegation message');
         state.namedBriefReceived = true;
       }
       if (state.kind === 'cancel') {
@@ -161,7 +162,7 @@ const service = http.createServer(async (req, res) => {
     ]) res.write('event: ' + type + '\ndata: ' + JSON.stringify({ type, ...fields }) + '\n\n');
     res.end();
   } catch (error) {
-    failure = error;
+    failure ??= error;
     res.writeHead(500).end();
   }
 });
@@ -235,15 +236,18 @@ try {
     }
     assert.equal(state.requests.size, ['attachment', 'disabled'].includes(kind) || state.roleRejected ? 1 : 2);
   }
-  assert.equal(await fs.readFile(path.join(cwd, 'helper.txt'), 'utf8'), 'written by the scoped helper');
+  if (counts.writer) assert.equal(await fs.readFile(path.join(cwd, 'helper.txt'), 'utf8'), 'written by the scoped helper');
   assert.deepEqual(await fs.readdir(path.join(native, 'sessions')), ['old-rollout.jsonl']);
   assert.deepEqual(await Promise.all(protectedFiles.map(file => fs.readFile(file))), before);
-  console.log(JSON.stringify({ version: '0.166.0', parent_and_helper_threads: counts,
+  const proof = { version: '0.166.0', parent_and_helper_threads: counts,
+    native_profile_files_byte_exact: true, native_sessions_unchanged: true, named_brief_reached_native_child: true,
+    production_auth: false, network: 'loopback-only' };
+  if (!selection) Object.assign(proof, {
     narrow_read_and_protected_denial: true, standard_child_write: true, local_attachment_rejected: true,
-    custom_role_scope_widening_rejected: true, active_child_closed_on_abort: true, native_profile_files_byte_exact: true,
-    native_sessions_unchanged: true, explicit_disable_native_tools: true, named_brief_reached_native_child: true,
-    input_token_accounting: accounting,
-    production_auth: false, network: 'loopback-only' }, null, 2));
+    custom_role_scope_widening_rejected: true, active_child_closed_on_abort: true,
+    explicit_disable_native_tools: true, input_token_accounting: accounting,
+  });
+  console.log(JSON.stringify(proof, null, 2));
 } finally {
   service.closeAllConnections();
   await new Promise(resolve => service.close(resolve));

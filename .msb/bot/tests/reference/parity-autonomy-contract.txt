@@ -1524,7 +1524,9 @@ validation errors, persisted fields and matching role IDs.
 In network-none Docker run claude-saved-helper-loopback.mjs
 with the native binary and named (2.1.316) or legacy-named
 (2.1.154). The child request receives the selected brief and
-inherits file and shell scope. codex-saved-helper-loopback.mjs
-on 0.166.0 also uses the core saved runner for the named case.
-The selected brief reaches a distinct native child thread and
-returns to the parent. Native auth and session data are synthetic.
+inherits file and shell scope. On Codex 0.166.0 run
+codex-saved-helper-loopback.mjs with the native binary and
+the optional named selector. This case uses the core saved runner.
+The selected brief reaches a distinct child thread in its native
+agent_message item. The parent's tool receives the child result.
+Native auth and session data are synthetic.
