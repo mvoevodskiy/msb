@@ -7,6 +7,9 @@
 import { openClawCommandJson } from '../agent/openclaw-gateway.mjs';
 
 const tagPrefix = 'msb-once-reminder:';
+const isRunTime = value => Number.isSafeInteger(value) && value > 0 && Number.isFinite(new Date(value).getTime());
+// A later cron list can see completion that the preceding cron.runs read missed.
+const observedRunAt = job => [job?.state?.runningAtMs, job?.state?.lastRunAtMs].find(isRunTime);
 
 export function nativeReminderEntry(profile, nonce) {
   return { kind: 'once-reminder', profile, tag: tagPrefix + nonce, enabled: false };
@@ -45,13 +48,17 @@ export async function setNativeReminderEnabled(gateway, entry, enabled) {
   const job = await findNativeJob(gateway, entry);
   if (job === undefined) return { ok: !enabled, gone: true };
   if (!job) return { ok: false };
-  if (job.enabled === enabled) return { ok: true, changed: false };
+  const started = observedRunAt(job);
+  if (job.enabled === enabled) return { ok: true, changed: false, runAtMs: enabled ? undefined : started };
+  if (enabled && started) return { ok: false, runAtMs: started };
   const result = await gateway.run(['cron', enabled ? 'enable' : 'disable', job.id, '--json']);
-  if (ownsJob(result, entry) && result.enabled === enabled) return { ok: true, changed: true };
+  if (ownsJob(result, entry) && result.enabled === enabled) {
+    return { ok: true, changed: true, runAtMs: enabled ? undefined : observedRunAt(result) ?? started };
+  }
   const current = await findNativeJob(gateway, entry);
-  if (current === undefined) return { ok: !enabled, gone: true };
+  if (current === undefined) return { ok: !enabled, gone: true, runAtMs: enabled ? undefined : started };
   const ok = current?.enabled === enabled;
-  return { ok, changed: ok };
+  return { ok, changed: ok, runAtMs: ok && !enabled ? observedRunAt(current) ?? started : undefined };
 }
 
 export async function removeNativeReminder(gateway, entry) {
@@ -63,10 +70,10 @@ export async function removeNativeReminder(gateway, entry) {
 }
 
 export async function readNativeReminderFinish(gateway, entry, signal) {
-  if (!entry.jobId) return;
+  if (!gateway || !entry.jobId) return null;
   const result = await gateway.run(['cron', 'runs', '--id', entry.jobId, '--limit', '10', '--json'], signal);
-  if (!Array.isArray(result?.entries)) return;
+  if (!Array.isArray(result?.entries)) return null;
   const finished = result.entries.filter(row => row?.jobId === entry.jobId && row.action === 'finished' &&
-    Number.isSafeInteger(row.runAtMs) && row.runAtMs > 0 && Number.isFinite(new Date(row.runAtMs).getTime()));
+    isRunTime(row.runAtMs) && (!entry.awaitingRunAtMs || row.runAtMs === entry.awaitingRunAtMs));
   return finished.sort((left, right) => left.runAtMs - right.runAtMs)[0];
 }

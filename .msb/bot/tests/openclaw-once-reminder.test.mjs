@@ -10,6 +10,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { openClawTaskMaintenancePrompt } from '../src/autonomy/reminder-protocol.mjs';
 import { loadState } from '../src/state.mjs';
+import { readRecentRuns } from '../src/autonomy/history.mjs';
 import { statePath } from '../src/paths.mjs';
 import { chat, marker, reminderFixture, scheduledAt, until } from './helpers/reminder-registration-fixture.mjs';
 
@@ -18,7 +19,7 @@ const due = Date.parse(scheduledAt);
 const json = value => JSON.stringify(value);
 
 async function profile(t, { rejectAdd = false, foreign = false, rejectEnable = false,
-  ambiguousAdd = false, switchAfterAdd = false, fleetStopOnEnable = false } = {}) {
+  ambiguousAdd = false, switchAfterAdd = false, fleetStopOnEnable = false, disableAckRunAt = null } = {}) {
   let reply = marker();
   const f = await reminderFixture(t, { engine: 'oc', output: () => ({ ok: true, text: reply, reminderRail: 'oc' }) });
   const config = path.join(f.directory, 'openclaw', 'openclaw.json');
@@ -66,7 +67,9 @@ async function profile(t, { rejectAdd = false, foreign = false, rejectEnable = f
     '  else if (args[1] === "enable" || args[1] === "disable") {',
     '    if (JSON.parse(fs.readFileSync(' + json(toggleFailures) + ')).includes(args[1]+":"+args[2])) process.exit(5);',
     '    if (args[1] === "enable" && ' + json(rejectEnable) + ') process.exit(6);',
-    '    jobs[index].enabled = args[1] === "enable"; save(); output(jobs[index]);',
+    '    jobs[index].enabled = args[1] === "enable"; save();',
+    '    const runningAtMs = args[1] === "disable" ? ' + json(disableAckRunAt) + ' : null;',
+    '    output(runningAtMs ? {...jobs[index], state:{runningAtMs}} : jobs[index]);',
     ...(fleetStopOnEnable ? ['    if (jobs[index].enabled) fs.writeFileSync(' +
       json(path.join(f.directory, 'remote-config.json')) + ', JSON.stringify({autonomyGlobalStop:true}));'] : []),
     '  } else process.exit(9);',
@@ -428,18 +431,17 @@ test('an operator-disabled one-shot is spent and never sent after owner RESUME',
   assert.equal((await f.records()).find(row => row.id === action.id).lastOutcome, 'stopped');
   const journal = (await fs.readFile(path.join(f.directory, 'autonomy', 'runs.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
   assert.deepEqual(journal.map(row => [row.nativeJobId, row.status]), [[jobId, 'stopped']]);
+  assert.equal((await readRecentRuns()).runs[0].status, 'stopped');
   assert.match(await f.command('[TASK_RUNS: ' + action.id + ']'), /снят стопом/);
 });
 
 test('resume waits for a running-at-disable one-shot even while its terminal record is missing', async t => {
-  const f = await profile(t);
+  const f = await profile(t, { disableAckRunAt: due });
   const { action, jobId } = await addForPause(f, 'Запись ещё пишется');
-  const owned = (await f.jobs()).find(job => job.id === jobId);
-  await f.writeJobs([f.other, { ...owned, state: { runningAtMs: due } }]);
   f.setTime(due);
   assert.match(await f.command('[STOP_ALL]'), /снято с расписания задач: 1/);
-  // OpenClaw can clear runningAt before its asynchronous cron log append.
-  await f.writeJobs([f.other, { ...owned, enabled: false, state: {} }]);
+  // The run started after listing, appeared in the disable ack and left running state.
+  await f.runEntries([{ ...disabledRun(jobId), runAtMs: due - 1000 }]);
   assert.doesNotMatch(await f.command('[RESUME_ALL]'), /задачи снова в работе/);
   const scheduler = f.scheduler();
   await scheduler.tickNow();
@@ -466,4 +468,22 @@ test('a completed ordinary model error after STOP is delivered once without rear
   assert.equal((await f.calls()).filter(args => args[1] === 'enable' && args[2] === jobId).length, 1);
   assert.equal((await f.records()).find(row => row.id === action.id).lastOutcome, 'ok');
   assert.deepEqual(f.delivered().map(item => item.text), ['⏰ Текст Обычная ошибка']);
+});
+
+test('resume recovers the run time from native state for a previously saved pause', async t => {
+  const f = await profile(t);
+  const { action, jobId } = await addForPause(f, 'Ранее приостановленная');
+  f.setTime(due);
+  await f.command('[STOP_ALL]');
+  const owned = (await f.jobs()).find(job => job.id === jobId);
+  await f.writeJobs([f.other, { ...owned, state: { lastRunAtMs: due } }]);
+  assert.doesNotMatch(await f.command('[RESUME_ALL]'), /задачи снова в работе/);
+  assert.equal((await f.mapping())[action.id].awaitingRunAtMs, due);
+  const scheduler = f.scheduler();
+  await scheduler.tickNow();
+  assert.equal(await jobEnabled(f, jobId), false);
+  await f.runEntries([disabledRun(jobId)]);
+  await scheduler.tickNow();
+  assert.equal((await f.records()).find(row => row.id === action.id).lastOutcome, 'stopped');
+  assert.deepEqual(f.delivered(), []);
 });

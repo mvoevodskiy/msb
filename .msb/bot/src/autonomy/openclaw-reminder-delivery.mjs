@@ -5,11 +5,18 @@
  */
 import { singleRequestSignal } from '../telegram/presentation-api.mjs';
 import { appendSavedActionRun } from './reminder-runs.mjs';
+import { readNativeReminderFinish } from './openclaw-reminder-cron.mjs';
 
 const maxAttempts = 8;
 const measured = (...values) => values.find(value => Number.isSafeInteger(value) && value >= 0);
 
-export function nativeReminderDelivery(action, terminal, ownerChat) {
+export async function readNativeReminderDelivery(gateway, entry, action, ownerChat, now, signal) {
+  if (!entry.awaitingRunAtMs && !(now >= Date.parse(action.trigger.at))) return;
+  const terminal = await readNativeReminderFinish(gateway, entry, signal);
+  if (!terminal) return terminal;
+  if (terminal.status === 'error' && terminal.error === 'Cron job disabled by operator.') {
+    return { runAtMs: terminal.runAtMs, status: 'stopped' };
+  }
   const origin = action.origin;
   const usage = terminal.usage ?? {};
   const tokensIn = measured(usage.input, usage.inputTokens, usage.input_tokens, usage.prompt);
@@ -41,12 +48,15 @@ export async function sendNativeReminder(api, entry, persist, now) {
 }
 
 export async function recordNativeReminder(entry, action, save, env) {
-  const { runAtMs, tokensIn, tokensOut } = entry.delivery;
+  const { runAtMs, status, tokensIn, tokensOut } = entry.delivery;
   const lastRunAt = new Date(runAtMs).toISOString();
-  if (action.lastRunAt !== lastRunAt || action.lastOutcome !== 'ok') {
-    await save({ ...action, lastRunAt, lastStatus: 'ok', lastOutcome: 'ok', lastError: undefined,
-      enabled: false, disabledReason: 'spent_once' });
+  const stopped = status === 'stopped';
+  const outcome = stopped ? 'stopped' : 'ok';
+  if (action.lastRunAt !== lastRunAt || action.lastOutcome !== outcome) {
+    await save({ ...action, lastRunAt, lastStatus: stopped ? 'skipped' : 'ok', lastOutcome: outcome,
+      lastError: undefined, enabled: false, disabledReason: 'spent_once' });
   }
-  await appendSavedActionRun(action, lastRunAt, { status: 'ok', nativeJobId: entry.jobId,
-    detail: 'напоминание поставлено в очередь на доставку', tokensIn, tokensOut }, { env, costVisible: false });
+  await appendSavedActionRun(action, lastRunAt, { status: outcome, nativeJobId: entry.jobId,
+    detail: stopped ? 'остановил стоп-кран' : 'напоминание поставлено в очередь на доставку',
+    tokensIn, tokensOut }, { env, costVisible: false });
 }

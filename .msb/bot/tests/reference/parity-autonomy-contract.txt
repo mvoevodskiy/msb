@@ -1626,5 +1626,49 @@ additional pause argument. It pauses one job individually,
 stops the other through the same final owner marker,
 waits past its deadline, resumes the general group and
 observes one literal delivery. The personal job remains
-disabled. Live Telegram and cancellation of already
-running native work are separate checks.
+disabled. Live Telegram is a separate check.
+
+Already running OpenClaw once stopped by the owner
+-------------------------------------------------
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js, readable via
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+YM 11284–11381 asks for active cancellation and fences future
+scheduling. HwA 34478–34494 checks STOP before enqueuing the
+literal reminder and records stopped instead. WwA 34336–34357,
+eR 21126–21165 and G4 23243–23244 consume the once attempt when
+that terminal is reconciled. XjA 11401–11444 and wJ 46068–46117
+could enable the job before a delayed terminal was processed.
+The old literal branch at 34496–34500 also did not distinguish
+a late cancelled result once STOP had already cleared.
+
+Native proof uses the sealed OpenClaw 2026.9.5 archive identified
+in parity-openclaw-turn-contract.txt. In dist/service-2p4wpEJ4.mjs,
+5024 cancels the active run on disable with the exact error
+"Cron job disabled by operator.". Lines 883–895 replace runningAtMs
+with lastRunAtMs from the same startedAt. The normal finalization
+writes the task ledger at 3850–3856 and commits job state at
+3887–3927 before the finished event. A later cron list can see
+completion after the preceding cron.runs request returned no row.
+The isolated CLI confirms runningAtMs in
+the job list and disable acknowledgement, the same runAtMs on
+the terminal, and deliveryStatus not-requested.
+
+Keep the observed run time in the tagged mapping across STOP,
+resume, and restart. Both resume paths look for a terminal
+before enabling. An already started once waits until its exact
+run is available, including when an older mapping must recover
+the timestamp from native job state. The explicit disabled-run
+error records one stopped attempt and leaves no delivery
+payload. An ordinary native failure still queues the literal
+reminder once. Native removal and journal dedup remain by ID.
+History accepts both the current nativeJobId and the old
+kill-switch detail for stopped native reminders.
+
+Run openclaw-once-native-loopback.mjs with the extra active-stop
+argument in the same isolated Docker recipe. It holds a native
+model stream open, sends both owner markers, and asserts one
+native execution, zero Telegram sends, one stopped history row
+and unchanged neighboring jobs/profiles. The delayed-log case
+and ordinary error use the deterministic fixture in
+openclaw-once-reminder.test.mjs.

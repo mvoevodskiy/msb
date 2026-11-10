@@ -83,3 +83,13 @@ test('history merges the reminder and interval schemas without duplicating a lin
   assert.equal(combined.malformed, 0);
   assert.deepEqual(combined.runs.map(run => run.taskId), ['interval', 'reminder']);
 });
+
+test('history recognizes the old native reminder STOP record without a job ID', async t => {
+  const { env } = await profile(t);
+  const file = reminderRunPath(env);
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify({ ts: '2026-11-06T09:05:00Z', actionId: 'old-native',
+    kind: 'reminder', status: 'stopped', detail: 'kill-switch (global): владелец сказал остановить' }) + '\n');
+  const { runs } = await readRecentRuns({ env });
+  assert.deepEqual(runs.map(run => [run.taskId, run.status]), [['old-native', 'stopped']]);
+});

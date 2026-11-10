@@ -21,25 +21,30 @@ import { readSavedActionRunTail } from '../../src/autonomy/reminder-runs.mjs';
 import { saveState } from '../../src/state.mjs';
 
 const [cli, mode] = process.argv.slice(2);
-assert.ok(path.isAbsolute(cli) && (mode === undefined || mode === 'pause'));
+assert.ok(path.isAbsolute(cli) && [undefined, 'pause', 'active-stop'].includes(mode));
+const activeStop = mode === 'active-stop';
 const execute = promisify(execFile);
 const root = await fs.mkdtemp('/tmp/oc-once-product-');
 const bin = path.join(root, 'bin');
 const processes = [];
 const reminder = 'Напомни <буквальный текст>';
 const modelSummary = 'Native model response deliberately differs';
-let modelCalls = 0;
+let modelCalls = 0, modelStreamAborted = false;
 const model = http.createServer(async (req, res) => {
   for await (const chunk of req) {}
   if (req.method !== 'POST' || req.url !== '/v1/chat/completions') return res.writeHead(404).end();
   modelCalls++;
   res.writeHead(200, { 'content-type': 'text/event-stream' });
-  for (const [delta, finish_reason] of [[{ role: 'assistant' }, null], [{ content: modelSummary }, null], [{}, 'stop']]) {
+  const interrupted = activeStop && modelCalls === 1;
+  const frames = [[{ role: 'assistant' }, null]];
+  if (!interrupted) frames.push([{ content: modelSummary }, null], [{}, 'stop']);
+  for (const [delta, finish_reason] of frames) {
     const chunk = { id: 'chatcmpl_fixture', object: 'chat.completion.chunk', created: 1, model: 'fixture-model',
       choices: [{ index: 0, delta, finish_reason }] };
     res.write('data: ' + JSON.stringify(chunk) + '\n\n');
   }
-  res.end('data: [DONE]\n\n');
+  if (interrupted) res.once('close', () => { modelStreamAborted = !res.writableEnded; });
+  else res.end('data: [DONE]\n\n');
 });
 
 async function availablePort() {
@@ -149,6 +154,17 @@ try {
     assert.equal(jobs.find(row => row.id === personalEntry.jobId)?.enabled, false);
   }
 
+  let interruptedRunAt;
+  if (activeStop) {
+    const deadline = Date.parse(at) + 25_000;
+    while (!modelCalls && Date.now() < deadline) await delay(200);
+    assert.equal(modelCalls, 1);
+    assert.match(await processPauseMarkers('[STOP_ALL]', context(), {}), /снято с расписания задач: 1/);
+    interruptedRunAt = (await readNativeJobMap())[action.id].awaitingRunAtMs;
+    assert.ok(Number.isSafeInteger(interruptedRunAt));
+    assert.doesNotMatch(await processPauseMarkers('[RESUME_ALL]', context(), {}), /задачи снова в работе/);
+  }
+
   const telegram = [];
   const start = () => startScheduler({ adminId: 42, timezone: 'Europe/Moscow', log() {},
     api: { sendMessage: async (...args) => { telegram.push(args.slice(0, 3)); } },
@@ -157,23 +173,33 @@ try {
   const deadline = Date.now() + 65_000;
   do {
     await scheduler.tickNow();
-    if (telegram.length) break;
+    if (activeStop ? !(await readNativeJobMap())[action.id] : telegram.length) break;
     await delay(500);
   } while (Date.now() < deadline);
   const sent = [origin, '⏰ ' + reminder, { message_thread_id: 17,
     reply_parameters: { message_id: 43, allow_sending_without_reply: true } }];
-  assert.deepEqual(telegram, [sent]);
+  const expected = activeStop ? [] : [sent];
+  assert.deepEqual(telegram, expected);
   await scheduler.stop();
   scheduler = start();
   await scheduler.tickNow();
-  assert.deepEqual(telegram, [sent]);
+  assert.deepEqual(telegram, expected);
 
   const { entries } = await primary.run('cron', 'runs', '--id', entry.jobId, '--limit', '5', '--json');
   assert.equal(entries.length, 1);
   assert.equal(entries[0].jobId, entry.jobId);
-  assert.equal(entries[0].summary, modelSummary);
-  assert.equal(entries[0].status, 'ok');
-  assert.equal(entries[0].delivered, false);
+  if (activeStop) {
+    assert.equal(entries[0].status, 'error');
+    assert.equal(entries[0].error, 'Cron job disabled by operator.');
+    assert.equal(entries[0].runAtMs, interruptedRunAt);
+    assert.equal(entries[0].deliveryStatus, 'not-requested');
+    assert.equal(modelStreamAborted, true);
+    assert.equal((await readNativeJobMap())[action.id], undefined);
+  } else {
+    assert.equal(entries[0].summary, modelSummary);
+    assert.equal(entries[0].status, 'ok');
+    assert.equal(entries[0].delivered, false);
+  }
   assert.equal(modelCalls, 1);
   if (personalEntry) {
     assert.equal((await list(primary)).find(row => row.id === personalEntry.jobId)?.enabled, false);
@@ -182,13 +208,18 @@ try {
   assert.deepEqual(await list(primary), before[0]);
   assert.deepEqual(await list(other), before[1]);
   assert.deepEqual(await protectedBytes(), snapshot);
-  const [run] = await readSavedActionRunTail(5);
-  assert.equal(run.nativeJobId, entry.jobId);
-  assert.equal(run.status, 'ok');
-  assert.equal((await readSavedActionRecords()).records[0].disabledReason, 'spent_once');
-  console.log(JSON.stringify({ nativeModelCalls: modelCalls, nativeTerminalRun: true, exactOriginTopicAndReply: true,
+  const runs = await readSavedActionRunTail(5);
+  assert.equal(runs.length, 1);
+  assert.equal(runs[0].nativeJobId, entry.jobId);
+  assert.equal(runs[0].status, activeStop ? 'stopped' : 'ok');
+  const [spent] = (await readSavedActionRecords()).records;
+  assert.equal(spent.disabledReason, 'spent_once');
+  assert.equal(spent.lastOutcome, activeStop ? 'stopped' : 'ok');
+  console.log(JSON.stringify({ nativeModelCalls: modelCalls, nativeTerminalRun: true,
     literalTelegramDeliveries: telegram.length, repeatedAfterRestart: false, noNativeDelivery: true,
-    autoDeletedNativeJob: true, bothGatewaysPreexistingJobsUnchanged: true, protectedProfileBytesMatch: true,
+    bothGatewaysPreexistingJobsUnchanged: true, protectedProfileBytesMatch: true,
+    ...(activeStop ? { modelStreamAborted, matchedDisabledRunStart: true, stoppedHistoryRows: runs.length,
+      noRearmAfterOwnerResume: true, retiredStoppedNativeJob: true } : { exactOriginTopicAndReply: true, autoDeletedNativeJob: true }),
     ...(mode === 'pause' ? { pausedThroughOwnerMarkers: true, resumedAfterDeadline: true,
       personalJobStillPaused: true, noModelCallUnderStop: true } : {}),
     network: 'loopback-only' }));

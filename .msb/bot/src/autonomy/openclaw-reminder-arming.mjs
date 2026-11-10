@@ -21,6 +21,7 @@ export function nativeReminderPauseCause(action, policy, canRun) {
 
 export async function applyNativeReminderArming(gateway, entry, pause) {
   const result = await setNativeReminderEnabled(gateway, entry, !pause);
+  if (result.runAtMs) entry.awaitingRunAtMs = result.runAtMs;
   if (!result.ok) return result;
   entry.enabled = !pause && !result.gone;
   if (pause) entry.pausedBy = pause;

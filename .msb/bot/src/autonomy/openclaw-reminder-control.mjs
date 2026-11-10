@@ -15,6 +15,7 @@ import { withActions } from './reminder-store.mjs';
 import { planSavedActionControl, selectSavedAction, unavailableSavedActionControl } from './saved-action-control.mjs';
 import { spentReminder } from './reminder-schedule.mjs';
 import { applyNativeReminderArming, isOwnedNativeReminder, nativeReminderPauseCause } from './openclaw-reminder-arming.mjs';
+import { readNativeReminderDelivery } from './openclaw-reminder-delivery.mjs';
 
 const unavailable = { error: 'Управление задачами на этом движке пока не подключено.' };
 
@@ -36,15 +37,28 @@ async function updateArming(gateway, jobs, action, context, profile, env) {
   const route = await currentControl(context, profile, env);
   if (!route || context.signal?.aborted) return { ok: false };
   const entry = jobs[action.id];
-  const enabled = entry.enabled, previousPause = entry.pausedBy;
+  const enabled = entry.enabled, previousPause = entry.pausedBy, previousRun = entry.awaitingRunAtMs;
   const pause = nativeReminderPauseCause(action, route.policy, true);
+  if (!pause) {
+    const terminal = await readNativeReminderDelivery(gateway, entry, action,
+      reminderOwnerChat(route.state, context.ownerId), context.now, context.signal);
+    if (terminal) {
+      entry.delivery = terminal;
+      delete entry.awaitingRunAtMs;
+      await writeNativeJobMap(jobs, env);
+      return { ok: true, completed: terminal.status };
+    }
+    if (terminal === null || entry.awaitingRunAtMs || context.signal?.aborted) return { ok: false };
+  }
   let result = await applyNativeReminderArming(gateway, entry, pause);
   if (result.ok && !pause) {
     const settled = await currentControl(context, profile, env);
     const held = settled ? nativeReminderPauseCause(action, settled.policy, true) : 'inactive';
     if (held) result = await applyNativeReminderArming(gateway, entry, held);
   }
-  if (enabled !== entry.enabled || previousPause !== entry.pausedBy) await writeNativeJobMap(jobs, env);
+  if (enabled !== entry.enabled || previousPause !== entry.pausedBy || previousRun !== entry.awaitingRunAtMs) {
+    await writeNativeJobMap(jobs, env);
+  }
   return result;
 }
 
@@ -73,6 +87,8 @@ export async function setOwnedNativeReminderEnabled(selector, enabled, context, 
     }
     const gateway = await openOwnedLocalGateway(env, { expectedFile: profile, signal: context.signal });
     const native = await updateArming(gateway, jobs, change.action, context, profile, env);
+    if (native.completed) return { error: '«' + action.name +
+      (native.completed === 'stopped' ? '» снята стопом.' : '» уже сработала.') + ' Для нового запуска поставь её заново.' };
     return { ...change, state: route.state, nativeUnconfirmed: !native.ok, nativeHeld: enabled && !entry.enabled };
   }, { durable: true }), env);
 }
@@ -105,8 +121,9 @@ export async function syncOwnedNativeReminderPause(stop, context, env = process.
         if (stop && native.ok && native.changed && jobs[action.id].enabled === false) result.fenced++;
       }
     }
-    result.tasks = pending.filter(action => action.enabled && (stop ||
-      jobs[action.id].enabled && !jobs[action.id].pausedBy)).map(action => ({ name: action.name, trigger: action.trigger }));
+    result.tasks = pending.filter(action => action.enabled && !jobs[action.id].delivery && (stop ||
+      jobs[action.id].enabled && !jobs[action.id].pausedBy && !jobs[action.id].awaitingRunAtMs))
+      .map(action => ({ name: action.name, trigger: action.trigger }));
     return result;
   }), env);
 }

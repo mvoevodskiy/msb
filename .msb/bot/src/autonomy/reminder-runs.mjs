@@ -49,7 +49,10 @@ export async function latestSavedActionRun(actionId, limit, env = process.env) {
 export function parseSavedActionRun(row) {
   if (!['reminder', 'prompt'].includes(row?.kind)) return undefined;
   const completed = ['ok', 'error', 'blocked', 'skipped'].includes(row.status);
-  if (!completed && !(row.kind === 'prompt' && ['stopped', 'deferred'].includes(row.status))) return undefined;
+  const stoppedNative = row.kind === 'reminder' && row.status === 'stopped' &&
+    (typeof row.nativeJobId === 'string' && Boolean(row.nativeJobId) ||
+      typeof row.detail === 'string' && /^kill-switch \([^)]+\):/.test(row.detail));
+  if (!completed && !stoppedNative && !(row.kind === 'prompt' && ['stopped', 'deferred'].includes(row.status))) return undefined;
   if (typeof row.ts !== 'string' || !Number.isFinite(Date.parse(row.ts)) || typeof row.actionId !== 'string') return null;
   const skipped = row.status !== 'ok' && row.status !== 'error';
   return { at: row.ts, taskId: row.actionId, name: row.name, ok: row.status === 'ok',
