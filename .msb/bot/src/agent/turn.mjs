@@ -45,6 +45,7 @@ import {nativeMcpScope} from '../../shared/mcp-native-scope.mjs';
  * владелец записи сессии → [result transaction](./session-result.mjs) / [state](../state.mjs),
  * [first-start token](../../shared/session-starts.mjs), [description ledger](../sessions/ledger.mjs).
  * Native Claude rejected resume uses the same launch and one new reservation.
+ * Partial failure telemetry is for delivery. Terminal notices carry no model actions.
  * Проверки: [polling/session fences](../../tests/turn-lifecycle.test.mjs),
  * [provider isolation](../../../../overlay/bot/ext/tests/reference/provider-switch.test.mjs),
  * [project cwd](../../tests/project-execution.test.mjs), [project races](../../tests/project-races.test.mjs).
@@ -184,16 +185,19 @@ export async function runAgentTurn({
     }
   }
 
-  const partial = providerId === 'codex' && result.providerId === 'codex' &&
+  const codexPartial = providerId === 'codex' && result.providerId === 'codex' &&
     result.isError && result.subtype === 'error_partial' && Boolean(result.text);
-  const turnWindow = partial ? { start: turnStartedAt, end: Date.now() } : undefined;
+  const claudeFailure = providerId === 'claude' && result.isError;
+  const claudePartial = claudeFailure ? result.assistantReply : null;
+  const turnWindow = codexPartial ? { start: turnStartedAt, end: Date.now() } : undefined;
   if (quotaWrite) await quotaWrite;
   let context = null;
   if (!signal?.aborted && !result.aborted) {
     context = providerId === 'claude' ? result.context ?? null
       : await readSessionContext(result.sessionId, codexProfile ?? env, { cwd, turnWindow });
   }
-  result.context = partial ? null : context;
+  const partialReply = codexPartial ? { context } : claudePartial ? { context: claudePartial.context } : null;
+  result.context = partialReply ? null : context;
   if (result.sessionId && !result.resumeRejected) {
     await updateState(s=>applySessionResult(s,{snapshot:state,reservation:firstSession,result,prompt,signal}),env);
   }
@@ -203,7 +207,7 @@ export async function runAgentTurn({
   }
 
   const text =
-    result.text ||
+    claudePartial?.text || result.text ||
     (result.isError
       ? `Ход завершился с ошибкой${result.subtype ? ` (${result.subtype})` : ''}.${result.stderr ? `\n\n${result.stderr.slice(0, 500)}` : ''}`
       : lastTool
@@ -212,11 +216,12 @@ export async function runAgentTurn({
 
   // Error diagnostics can contain arbitrary text. A partial error is eligible
   // only when the CLI returned actual assistant text.
-  const canInstallMcp=result.text && (!result.isError || (providerId==='claude' && result.assistantTextObserved));
+  const canInstallMcp=result.text && (!result.isError || claudePartial);
   const display = result.errorDisplay;
   return { ok: !result.isError, text: display ? display.before + text + display.after : text, result, skillInstall,
     ...(display ? { modelText: text } : {}),
-    ...(partial ? { partialReply: { context } } : {}),
+    ...(partialReply ? { partialReply } : {}),
+    ...(claudeFailure && !claudePartial ? { terminalNotice: true } : {}),
     mcpInstall:canInstallMcp && mcpInstall?{...mcpInstall,cwd,nativeScope:installScope}:null,
     ...(reminderRail ? { reminderRail: 'cc' } : {}),
   };

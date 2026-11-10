@@ -13,6 +13,8 @@
  * Native context input and compact threshold → [Claude context](./claude-context.mjs).
  * The pre-abort assistant reply is frozen before signalling the CLI group.
  * [Telegram stop checks](../../tests/turn-lifecycle.test.mjs).
+ * Native API error frames stay separate from the assistant and its usage.
+ * [Partial error checks](../../tests/claude-partial-error.test.mjs).
  * [Native-shim regression](../../../../overlay/bot/ext/tests/reference/provider-switch.test.mjs).
  */
 import { spawn } from 'node:child_process';
@@ -246,6 +248,7 @@ export async function runClaudeTurn(opts) {
     let providerId = null;
     let subtype;
     let errorDisplay;
+    let apiErrorText = '';
     let isError = false;
     let inputTokens = 0;
     let outputTokens = 0;
@@ -310,6 +313,12 @@ export async function runClaudeTurn(opts) {
           case 'assistant': {
             assistantObserved = true;
             const msg = ev.message;
+            // Native Claude 2.1.316 sends API errors as marked assistant frames.
+            if (compact && (!providerId || providerId === 'claude') && ev.is_api_error_message === true) {
+              apiErrorText = (msg?.content || []).filter(part => part.type === 'text')
+                .map(part => part.text).join('').trim() || apiErrorText;
+              break;
+            }
             if (msg?.usage) {
               if (compact) updateClaudeInputSample(latestInput, msg.usage);
               if (typeof msg.usage.input_tokens === 'number') inputTokens = msg.usage.input_tokens;
@@ -382,20 +391,24 @@ export async function runClaudeTurn(opts) {
       }
       const context = currentClaudeContext();
       const assistantReply = aborted ? stoppedReply : captureClaudeReply(context);
+      const failed = isError || code !== 0;
+      if (!aborted && failed && assistantReply && apiErrorText) {
+        errorDisplay = { before: '', after: '\n\n' + apiErrorText };
+      }
       resolve({
         sessionId,
         ...(context ? { context } : {}),
         ...(assistantReply ? { assistantReply } : {}),
         spawned: true,
         sessionIdObserved,
-        text: text.trim(),
+        text: text.trim() || apiErrorText,
         assistantTextObserved,
         ...(resumeRejected ? { resumeRejected } : {}),
         model,
         providerId,
         subtype,
         ...(errorDisplay ? { errorDisplay } : {}),
-        isError: isError || code !== 0,
+        isError: failed,
         exitCode: code,
         signal,
         aborted,

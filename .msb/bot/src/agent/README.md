@@ -104,6 +104,10 @@ ID остаётся доступной, счётчик не растёт от о
 и его замер до отправки сигнала. [Telegram](../telegram/bot.mjs) завершает
 этим фрагментом ход, остановленный владельцем. [Проверки](../../tests/turn-lifecycle.test.mjs).
 
+[Ошибки обычного хода](turn.mjs) передают частичный текст и его контекст
+в общий футер. [Кадры ошибки API](claude.mjs) выводятся отдельно от текста,
+который может запускать действия. [Проверки](../../tests/claude-partial-error.test.mjs).
+
 
 Claude control/plan uses the old conversational instructions in [mode-prompt](mode-prompt.mjs)
 from the same provider/mode snapshot as its CLI options. Both map to acceptEdits;

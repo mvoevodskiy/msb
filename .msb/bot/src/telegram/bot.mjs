@@ -10,7 +10,7 @@ import {resetCliConversation} from '../sessions/selection.mjs';
  * Формы → [dispatcher](./forms.mjs); pending в этом процессе; записи → [state](../state.mjs) / [env](../env/store.mjs).
  * Индикация → [progress](./progress.mjs), итог → [response](./response.mjs).
  * Owner stop may deliver the frozen [Claude fragment](../agent/claude.mjs) without running response actions.
- * Диагностика Codex добавляется после обработки подлинного текста модели.
+ * Диагностика CLI добавляется после обработки подлинного текста модели.
  * План/комментарий → [plan actions](./plan-actions.mjs) → тот же inbox; final marker → [plan](./plan.mjs).
  * Лимиты автономки из ответа → [limit markers](./limit-markers.mjs) → [подтверждение](./limit-confirmation.mjs).
  * журнал Пульта → [history](./history.mjs), STT → [voice](./voice.mjs).
@@ -596,7 +596,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       outcome = paused ? 'blocked' : out.ok ? 'ok' : 'error';
       await progress.stop();
       if (signal.aborted || out.error === 'aborted') { await stopped(); return; }
-      if (out.bootstrap || (!out.ok && result?.providerId === 'codex' && result.subtype === 'error_notice')) {
+      if (out.bootstrap || out.terminalNotice || (!out.ok && result?.providerId === 'codex' && result.subtype === 'error_notice')) {
         turn.completed = true;
         responseReady = true;
         const notice = stripMcpMarkerPayloads(out.text);

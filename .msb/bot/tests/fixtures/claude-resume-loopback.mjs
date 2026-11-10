@@ -1,5 +1,5 @@
 /**
- * Native Claude resume, last-input context and in-flight stop conformance. Run in an offline disposable Linux container:
+ * Native Claude resume, context, stop and partial-error conformance in an offline disposable Linux container:
  * node .msb/bot/tests/fixtures/claude-resume-loopback.mjs /absolute/native/claude
  * [Runner](../../src/agent/turn.mjs) uses the actual PATH shim and a loopback model.
  */
@@ -34,6 +34,10 @@ const stop = new AbortController();
 const stopPrompt = 'fixture cancel with the first fragment';
 const draft = 'fixture draft before SIGINT';
 let stopRequests = 0;
+const errorPrompt = 'fixture stop after an ordinary API error';
+const errorDraft = 'fixture draft before API rejection';
+const terminalError = 'fixture ordinary terminal transport error';
+let failing = false, errorRequests = 0;
 const samples = [
   { input_tokens: 10000, cache_read_input_tokens: 60000, cache_creation_input_tokens: 20000, output_tokens: 5 },
   { input_tokens: 25000, cache_read_input_tokens: 130000, cache_creation_input_tokens: 25000, output_tokens: 5 },
@@ -55,6 +59,15 @@ const server = http.createServer(async (req, res) => {
       return typeof message.content === 'string' ? [message.content] :
         message.content.filter(block => block.type === 'text').map(block => block.text);
     });
+    if (failing) {
+      errorRequests++;
+      if (errorRequests === 1) return sendClaudeFixtureReply(res, body, 'msg_fixture_failure', [
+        { type: 'text', text: errorDraft },
+        { type: 'tool_use', id: 'toolu_fixture_error_read', name: 'Read', input: { file_path: ownedFile } },
+      ], 'tool_use', samples[0]);
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: terminalError } }));
+    }
     if (current.includes(stopPrompt)) {
       stopRequests++;
       if (stopRequests === 1) {
@@ -146,6 +159,19 @@ try {
   assert.equal(afterStop.ccSessionId, id);
   assert.deepEqual(afterStop.lastCcUsage, state.lastCcUsage);
   assert.equal(afterStop.sessionHistory[1].messageCount, 3);
+
+  failing = true;
+  const failed = await runAgentTurn({ prompt: errorPrompt, signal: AbortSignal.timeout(30000) });
+  assert.equal(failed.ok, false);
+  assert.equal(failed.result.exitCode, 1);
+  assert.ok(errorRequests >= 2);
+  assert.equal(failed.modelText, errorDraft);
+  assert.equal(failed.text, errorDraft + '\n\nAPI Error: 400 ' + terminalError);
+  assert.deepEqual(failed.partialReply, { context: expectedContext[0] });
+  const afterFailure = (await loadState()).state;
+  assert.equal(afterFailure.ccSessionId, id);
+  assert.deepEqual(afterFailure.lastCcUsage, state.lastCcUsage);
+  assert.equal(afterFailure.sessionHistory[1].messageCount, 4);
   console.log(JSON.stringify({
     version, native_launches: launches.length, model_requests: requests.length,
     missing_resume_model_requests: 0, retry_same_project: true, resumed_same_new_id: true,
@@ -153,6 +179,8 @@ try {
     measured_context: expectedContext, launch_window: 1000000, launch_percent: 90,
     stop_case: { model_requests: stopRequests, draft_preserved: true, context: stopped.result.assistantReply.context,
       active_id_and_previous_usage_unchanged: true },
+    error_case: { model_requests: errorRequests, exit_code: failed.result.exitCode, draft_separate: true,
+      context: failed.partialReply.context, active_id_and_previous_usage_unchanged: true },
   }));
 } finally {
   server.closeAllConnections();
