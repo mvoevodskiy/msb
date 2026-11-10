@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { writeFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -27,6 +28,17 @@ if (name === 'claude') {
   const valid = process.env.REFERENCE_LOGIN !== 'invalid';
   process.stderr.write(valid ? 'Logged in using ChatGPT\n' : 'Not logged in\n');
   process.exitCode = valid ? 0 : 1;
+} else if (name === 'codex' && argv[0] === 'exec' && process.env.REFERENCE_SCENARIO === 'codex-first-stop') {
+  process.once('SIGINT', () => {
+    writeFileSync(path.join(process.env.HOME, 'reference-native-stopped'), 'yes');
+    process.exit(130);
+  });
+  const started = JSON.stringify({ type: 'thread.started', thread_id: thread });
+  await new Promise(resolve => process.stdout.write(started.slice(0, 9), resolve));
+  await new Promise(resolve => setTimeout(resolve, 20));
+  await new Promise(resolve => process.stdout.write(started.slice(9) + '\r\n', resolve));
+  await fs.writeFile(path.join(process.env.HOME, 'reference-native-started'), 'yes');
+  setInterval(() => {}, 60_000);
 } else if (name === 'codex' && argv[0] === 'exec') {
   const calls = (await fs.readFile(traceFile, 'utf8')).trim().split('\n').map(JSON.parse)
     .filter((entry) => entry.name === 'codex' && entry.argv[0] === 'exec');

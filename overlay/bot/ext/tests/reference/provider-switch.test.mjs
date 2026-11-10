@@ -66,6 +66,40 @@ test('reference: Codex failures preserve resume and never replay an executed ope
 });
 
 
+test('reference: a native first-stop keeps the issued Codex session available only in history', async (t) => {
+  const r = await scenario(t, 'codex-first-stop');
+  assert.equal(r.nativeExecutions, 1);
+  assert.equal(r.nativeStopped, true);
+  assert.equal(r.aborted, true);
+  assert.equal(r.ok, false);
+  assert.equal(r.text, 'Остановлено.');
+  assert.equal(r.active, null);
+  assert.equal(r.parked, null);
+  assert.equal(r.storedNative, null);
+  assert.deepEqual(r.lastUsage, r.priorUsage);
+  assert.equal(r.pending, null);
+  assert.equal(r.context, null);
+  assert.equal(r.observedId, session);
+  assert.deepEqual(r.history.map(({ id, providerId, messageCount, firstPrompt }) => ({ id, providerId, messageCount, firstPrompt })), [{
+    id: session, providerId: 'codex', messageCount: 1, firstPrompt: 'reference first Codex turn',
+  }]);
+});
+
+test('reference: a native first-error without a result does not promote a provisional Codex session', async (t) => {
+  const r = await scenario(t, 'codex-first-empty-error');
+  assert.equal(r.nativeExecutions, 1);
+  assert.equal(r.aborted, false);
+  assert.equal(r.ok, false);
+  assert.match(r.text, /Reference model unavailable/);
+  assert.equal(r.observedId, null);
+  assert.equal(r.active, null);
+  assert.equal(r.parked, null);
+  assert.equal(r.storedNative, null);
+  assert.deepEqual(r.lastUsage, r.priorUsage);
+  assert.equal(r.pending, null);
+  assert.deepEqual(r.history, []);
+});
+
 test('reference: a turn stays with its original provider if selection changes before shim starts', async (t) => {
   const r = await scenario(t, 'pinned-route');
   assert.equal(r.codexCalls, 1);

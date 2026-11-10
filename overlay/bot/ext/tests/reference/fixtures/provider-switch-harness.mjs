@@ -268,6 +268,47 @@ if (engineMenuScenario) {
     loginChecked: (await trace()).some((entry) => entry.name === 'codex' && entry.argv.join(' ') === 'login status'),
     announcedSwitch: f.calls.some((call) => String(call.payload.text || '').includes('Агент теперь на')),
     apiCalls: f.calls.length };
+} else if (scenario === 'codex-first-stop' || scenario === 'codex-first-empty-error') {
+  const stopped = scenario === 'codex-first-stop';
+  const { ccSessionId, ...firstState } = initialState;
+  const priorUsage = { sessionId: 'earlier-session', contextTokens: 123, contextWindow: 1000 };
+  await writeJSON(stateFile, { ...firstState, extAuthBypass: 'codex', lastCcUsage: priorUsage });
+  await writeJSON(storeFile, { ...initialStore, active: 'codex' });
+  const shimBin = fileURLToPath(new URL('../../../shim/bin/', import.meta.url));
+  process.env.PATH = [shimBin, binDir, path.dirname(process.execPath), '/usr/bin', '/bin'].join(':');
+  const { runAgentTurn } = await import('../../../../../../.msb/bot/src/agent/turn.mjs');
+  const controller = new AbortController();
+  const pending = runAgentTurn({ prompt: 'reference first Codex turn', signal: controller.signal });
+  const exists = name => fs.access(path.join(fixtureHome, name)).then(() => true, () => false);
+  let out;
+  try {
+    if (stopped) {
+      const deadline = Date.now() + 5000;
+      while (!await exists('reference-native-started')) {
+        if (Date.now() > deadline) throw new Error('Codex did not emit thread.started');
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      // The CLI is held open after flushing its JSONL record. Allow its pipes to drain before stop.
+      await new Promise(resolve => setTimeout(resolve, 300));
+      controller.abort();
+    }
+    out = await pending;
+  } finally {
+    controller.abort();
+    await pending.catch(() => {});
+  }
+  const state = await readJSON(stateFile);
+  result = {
+    nativeExecutions: (await trace()).filter(entry => entry.name === 'codex' && entry.argv[0] === 'exec').length,
+    nativeStopped: await exists('reference-native-stopped'),
+    aborted: Boolean(out.result?.aborted), ok: out.ok, text: out.text,
+    observedId: out.result?.sessionId || null, context: out.result?.context ?? null,
+    active: state.ccSessionId ?? null, parked: state.parkedCcSessions?.codex ?? null,
+    lastUsage: state.lastCcUsage, priorUsage,
+    pending: state.pendingCcSessionStarts ?? null,
+    storedNative: (await readJSON(storeFile)).sessions.codex ?? null,
+    history: state.sessionHistory ?? [],
+  };
 } else if (scenario === 'model-error' || scenario === 'stream-cut') {
   await writeJSON(storeFile, { ...initialStore, active: 'codex', sessions: { codex: thread } });
   await writeJSON(stateFile, { ...initialState, extAuthBypass: 'codex', ccSessionId: session });
