@@ -78,3 +78,20 @@ test('device completion and wait accept auth only from the selected Codex profil
   assert.equal((await waitCodexNativeAuth({ env, home, timeoutMs: 1000, pollMs: 20 })).ok, true);
   await assert.rejects(fs.stat(path.join(home, '.codex/auth.json')), { code: 'ENOENT' });
 });
+
+
+test('codexLoginStatus recognizes configured API-key output only with successful CLI status', async (t) => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-codex-api-status-'));
+  t.after(() => fs.rm(home, { recursive: true, force: true }));
+  const env = { HOME: home, PATH: home };
+  const bin = path.join(home, 'codex');
+  const output = 'echo "API key configured - fixture***key" >&2\n' +
+    'echo "Authentication is checked when you send a request." >&2\n';
+  const write = (body, code) => fs.writeFile(bin, '#!/bin/sh\n' + body + 'exit ' + code + '\n', { mode: 0o700 });
+  await write(output, 1);
+  assert.equal((await codexLoginStatus(env, home)).ok, false);
+  await write('echo "API key not configured"\n', 0);
+  assert.equal((await codexLoginStatus(env, home)).ok, false);
+  await write('echo "WARNING: temporary profile"\n' + output, 0);
+  assert.equal((await codexLoginStatus(env, home)).ok, true);
+});
