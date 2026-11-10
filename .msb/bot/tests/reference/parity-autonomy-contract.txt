@@ -1419,3 +1419,34 @@ The native probes confirm that the current rules enforce
 the old protected-file boundary in these ordinary saved runs.
 The evidence covers the parent tools. Helper inheritance and
 broader authority have separate checkpoints.
+
+Native Claude helpers for ordinary saved collections
+----------------------------------------------------
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Read stable lines with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+I8 at 3929–3935 enables helpers for a prompt unless
+task.helpers is false. zJ and KR 17159–17220 select
+Agent and Task within the parent tool posture. WR
+17182–17184 describes the inherited rights. rqA
+23428–23437 shows the hint only on explicit true and
+a supported CLI. kgA 33315–33359 tells an opted-out
+collector to work alone and passes the helper flag
+to JO. JO 36832–36851 passes tools and roles to IJ.
+
+q7 20595–20599 with the 2.1.172 cutoff at 20957 gates
+native role registration. xn 20827–20854 passes the
+default researcher and worker definitions (21058–21067)
+in --agents when helpers are allowed. An explicit named
+team can override those definitions on the old path.
+The default researcher prompt requests read-only work.
+Both roles are subject to the parent tool policy.
+
+At 4b60b33 a general-purpose helper on Claude 2.1.316
+read and wrote an ordinary file and received refusals
+for protected paths and Bash. The same CLI refused
+the old worker role because it was absent from the
+launch. The core grants Agent/Task but has no --agents
+binding in the isolated launcher. Test the exact argv,
+the old opt-out instruction, and a real child request
+against a local API. No production account is involved.

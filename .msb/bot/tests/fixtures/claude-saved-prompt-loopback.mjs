@@ -10,6 +10,7 @@ import path from 'node:path';
 import { savedPromptPlan } from '../../src/autonomy/prompt-policy.mjs';
 import { runSavedPrompt } from '../../src/autonomy/prompt-turn.mjs';
 import { saveState } from '../../src/state.mjs';
+import { sendClaudeFixtureReply } from './claude-loopback-reply.mjs';
 
 const nativeBin = process.argv[2];
 assert.ok(path.isAbsolute(nativeBin || ''), 'Pass the absolute native Claude CLI path');
@@ -75,20 +76,8 @@ let sequence = 0;
 let usedOAuth = true;
 let modelRequests = 0;
 
-function response(res, model, block, stopReason, stream) {
-  const message = { id: 'msg_fixture_' + sequence, type: 'message', role: 'assistant', model, content: [block],
-    stop_reason: stopReason, stop_sequence: null, usage: { input_tokens: 11, output_tokens: 5, cache_creation_input_tokens: 0, cache_read_input_tokens: 0 } };
-  if (!stream) { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(message)); return; }
-  res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-  const emit = (type, fields) => res.write('event: ' + type + '\ndata: ' + JSON.stringify({ type, ...fields }) + '\n\n');
-  emit('message_start', { message: { ...message, content: [], stop_reason: null, usage: { ...message.usage, output_tokens: 0 } } });
-  emit('content_block_start', { index: 0, content_block: block.type === 'tool_use' ? { ...block, input: {} } : { ...block, text: '' } });
-  emit('content_block_delta', { index: 0, delta: block.type === 'tool_use'
-    ? { type: 'input_json_delta', partial_json: JSON.stringify(block.input) } : { type: 'text_delta', text: block.text } });
-  emit('content_block_stop', { index: 0 });
-  emit('message_delta', { delta: { stop_reason: stopReason, stop_sequence: null }, usage: { output_tokens: 5 } });
-  emit('message_stop', {});
-  res.end();
+function response(res, body, block, reason) {
+  return sendClaudeFixtureReply(res, body, 'msg_fixture_' + sequence, block, reason);
 }
 
 const server = http.createServer(async (req, res) => {
@@ -100,16 +89,16 @@ const server = http.createServer(async (req, res) => {
     const body = JSON.parse(raw);
     modelRequests++;
     usedOAuth &&= req.headers.authorization === 'Bearer fixture-local-oauth' && req.headers['x-api-key'] === undefined;
-    if (!(body.tools?.length)) { response(res, body.model, { type: 'text', text: 'fixture' }, 'end_turn', body.stream); return; }
+    if (!(body.tools?.length)) { response(res, body, { type: 'text', text: 'fixture' }, 'end_turn'); return; }
     for (const tool of body.tools) advertised.add(tool.name || tool.type);
     for (const message of body.messages) {
       if (!Array.isArray(message.content)) continue;
       for (const part of message.content) if (part.type === 'tool_result') results.set(part.tool_use_id, part);
     }
     const item = calls[sequence++];
-    if (!item) { response(res, body.model, { type: 'text', text: 'completed native probe' }, 'end_turn', body.stream); return; }
+    if (!item) { response(res, body, { type: 'text', text: 'completed native probe' }, 'end_turn'); return; }
     const [name, input] = item;
-    response(res, body.model, { type: 'tool_use', id: 'toolu_fixture_' + sequence, name, input }, 'tool_use', body.stream);
+    response(res, body, { type: 'tool_use', id: 'toolu_fixture_' + sequence, name, input }, 'tool_use');
   } catch {
     res.writeHead(500); res.end('{}');
   }

@@ -23,7 +23,7 @@ const action = (id, changes = {}) => ({ id, name: 'Сбор ' + id, enabled: tru
   capability: 'read', authority: { profile: 'standard' }, output: { format: 'tg-message', store: false }, ...changes });
 const shim = fileURLToPath(new URL('../../../overlay/bot/ext/shim/bin', import.meta.url));
 
-async function profile(t, actions, { state = {}, text = 'Отчёт задачи <данные>', hold = false } = {}) {
+async function profile(t, actions, { state = {}, text = 'Отчёт задачи <данные>', hold = false, version = '2.1.154' } = {}) {
   const f = await fixture(t, async () => assert.fail('Saved action must not call the shared owner turn'),
     { overlay: false, runtimeProfile: 'jar1' });
   for (const key of ['MSB_SESSION_DIR', 'IIA_SESSION_DIR', 'AUTONOMY_DIR', 'AUTONOMY_DAILY_CAP_USD',
@@ -42,7 +42,7 @@ async function profile(t, actions, { state = {}, text = 'Отчёт задачи
   await fs.writeFile(path.join(fakeBin, 'codex'), '#!/bin/sh\nexit 77\n', { mode: 0o700 });
   await fs.writeFile(native, `import fs from 'node:fs';
 const argv = process.argv.slice(2);
-if(argv[0] === '--version') { console.log('2.1.154 (Claude Code)'); process.exit(0); }
+if(argv[0] === '--version') { console.log(${JSON.stringify(version + ' (Claude Code)')}); process.exit(0); }
 if(argv[0] === '--help') { console.log('--tools <tools> --no-session-persistence --strict-mcp-config'); process.exit(0); }
 const input=fs.readFileSync(0,'utf8');
 const emit=(kind,obj)=>console.log(JSON.stringify({type:kind,...obj}));
@@ -106,6 +106,7 @@ test('a saved Claude prompt uses the old isolated workspace, native tool boundar
   assert.equal(value(call, '--model'), 'sonnet');
   assert.equal(value(call, '--permission-mode'), 'acceptEdits');
   assert.ok(!call.argv.includes('--resume'));
+  assert.ok(!call.argv.includes('--agents'), 'Older CLI keeps its native built-in roles');
   assert.ok(call.argv.includes('--no-session-persistence'));
   assert.ok(call.argv.includes('--strict-mcp-config'));
   assert.equal(value(call, '--mcp-config'), '{"mcpServers":{}}');
@@ -128,6 +129,34 @@ test('a saved Claude prompt uses the old isolated workspace, native tool boundar
   assert.match(f.edits.at(-1), /Вид: сбор/);
   await f.callback('auto:task-toggle:default');
   assert.equal((await f.actions())[0].enabled, false);
+});
+
+for (const helpers of [undefined, true]) {
+  test('saved Claude helper roles are registered on supported CLI with helpers ' + String(helpers), async t => {
+    const task = { kind: 'prompt', prompt: 'Проверь источники', ...(helpers === undefined ? {} : { helpers }) };
+    const f = await profile(t, [action('helper-roles', { task })], { version: '2.1.316' });
+    await f.scheduler.tickNow();
+    const [call] = await f.calls();
+    assert.ok(call.argv.includes('--agents'));
+    const roles = JSON.parse(value(call, '--agents'));
+    assert.deepEqual(Object.keys(roles), ['researcher', 'worker']);
+    assert.match(roles.researcher.prompt, /read-only/);
+    assert.match(roles.worker.prompt, /delegated task/);
+    const tools = value(call, '--tools').split(',');
+    assert.ok(tools.includes('Agent') && tools.includes('Task'));
+    assert.ok(!tools.includes('Bash'));
+  });
+}
+
+test('saved Claude helper opt-out carries the old work instruction on a supported CLI', async t => {
+  const task = { kind: 'prompt', prompt: 'Проверь источники', helpers: false };
+  const f = await profile(t, [action('no-helpers', { task })], { version: '2.1.316' });
+  await f.scheduler.tickNow();
+  const [call] = await f.calls();
+  assert.ok(!call.argv.includes('--agents'));
+  const tools = value(call, '--tools').split(',');
+  assert.ok(!tools.includes('Agent') && !tools.includes('Task'));
+  assert.match(call.input, /Помощников не зови, всю работу делай сам: так попросил владелец\./);
 });
 
 test('an explicitly narrow saved prompt keeps quiet without writing or spawning helpers', async t => {
