@@ -109,7 +109,18 @@ try {
   await once(model, 'listening');
   const [primary, other] = await Promise.all([startGateway('primary'), startGateway('other')]);
   const list = profile => profile.run('cron', 'list', '--all', '--json').then(result => stableJobs(result.jobs));
-  const before = await Promise.all([list(primary), list(other)]);
+  async function initialJobs(profile) {
+    // The pinned Gateway serves health before all default declarations are registered.
+    const declared = ['Memory Dreaming Promotion', 'heartbeat-main', 'skill-collection-review-main'];
+    const deadline = Date.now() + 20_000;
+    do {
+      const jobs = await list(profile);
+      if (declared.every(name => jobs.some(job => job.name === name))) return jobs;
+      await delay(250);
+    } while (Date.now() < deadline);
+    assert.fail('Default Gateway job declarations did not finish');
+  }
+  const before = await Promise.all([initialJobs(primary), initialJobs(other)]);
   const ownerChat = -100777, origin = -100321;
   const stateFile = await saveState({ engine: 'oc', userId: 42, chatId: ownerChat, timezone: 'Europe/Moscow',
     ccSessionId: 'fixture-claude-session' }, primary.env);
@@ -218,6 +229,7 @@ try {
   console.log(JSON.stringify({ nativeModelCalls: modelCalls, nativeTerminalRun: true,
     literalTelegramDeliveries: telegram.length, repeatedAfterRestart: false, noNativeDelivery: true,
     bothGatewaysPreexistingJobsUnchanged: true, protectedProfileBytesMatch: true,
+    baselineJobCounts: before.map(jobs => jobs.length),
     ...(activeStop ? { modelStreamAborted, matchedDisabledRunStart: true, stoppedHistoryRows: runs.length,
       noRearmAfterOwnerResume: true, retiredStoppedNativeJob: true } : { exactOriginTopicAndReply: true, autoDeletedNativeJob: true }),
     ...(mode === 'pause' ? { pausedThroughOwnerMarkers: true, resumedAfterDeadline: true,

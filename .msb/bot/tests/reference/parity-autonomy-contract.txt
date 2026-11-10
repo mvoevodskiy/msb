@@ -1669,6 +1669,8 @@ Run openclaw-once-native-loopback.mjs with the extra active-stop
 argument in the same isolated Docker recipe. It holds a native
 model stream open, sends both owner markers, and asserts one
 native execution, zero Telegram sends, one stopped history row
-and unchanged neighboring jobs/profiles. The delayed-log case
+and unchanged neighboring jobs/profiles. The snapshot waits for
+the pinned Gateway's asynchronous default job declarations after
+health succeeds. The delayed-log case
 and ordinary error use the deterministic fixture in
 openclaw-once-reminder.test.mjs.
