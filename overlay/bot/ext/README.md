@@ -56,6 +56,13 @@ Owner-check выполняется в [`installUpdateHook`](integration/update-h
 по-прежнему не меняет state. Смена провайдера увеличивает `sessionEpoch`, чтобы поздний ответ старого хода не
 заменил текущую сессию. Повторный выбор того же provider не переключает беседу.
 
+Выбор Codex из store имеет приоритет над значением из native config. Если
+CODEX_HOME относительный, [разрешение профиля](../shared/codex-profile.mjs)
+использует каталог активного проекта. Модель, глубина и кэш в меню относятся к
+этому профилю. Явный выбор записывает значение в store и config.toml этого
+профиля. Обычный ход читает внешний профиль без записи HTTP-настроек в него
+или в неактивный HOME/.codex. [Проверки](tests/codex-profile-preferences.test.mjs).
+
 ## Исполнение CLI
 
 [`shim/run-turn.mjs`](shim/run-turn.mjs) — граница с ядром: читает Claude argv/stdin,

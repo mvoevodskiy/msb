@@ -1,19 +1,17 @@
 import profile from '../shared/profile.cjs';
 import { VISIBLE_PERMISSION_MODES } from '../shared/permission-modes.mjs';
-import fs from 'node:fs/promises';
 import os from 'node:os';
-import path from 'node:path';
 import { PROVIDERS, getProvider, providerButtonLabel } from './providers.mjs';
 import { configuredMap } from './env.mjs';
-import { loadStore, getSelectedEffort } from './store.mjs';
+import { loadStore } from './store.mjs';
 import {
   listModelsForProvider,
   resolveDisplayedModel,
   modelLabel,
   providerTitle,
 } from './models-catalog.mjs';
-import { readCodexNativeConfig } from './codex-native.mjs';
-import { botStatePath } from './paths.mjs';
+import { readCodexProfileConfig, resolveSelectedCodexProfileDir } from '../shared/codex-profile.mjs';
+import { readBotState } from './paths.mjs';
 
 /** Из «🔌 Подключение» всегда назад в настройки, не в «Агент → Модель». */
 const BACK = 'menu:settings';
@@ -48,28 +46,16 @@ function keyboard(rows) {
   return { inline_keyboard: rows };
 }
 
-async function readBotState(env = process.env, home = os.homedir()) {
-  try {
-    return JSON.parse(await fs.readFile(botStatePath(env, home), 'utf8'));
-  } catch {
-    return {};
-  }
-}
-
 export { writeBotPermissionMode } from './integration/actions.mjs';
 
-async function currentModelId(providerId, store, env, home) {
-  return resolveDisplayedModel(providerId, store.models?.[providerId], env, home);
-}
-
-async function currentEffortId(providerId, env, home) {
-  const stored = await getSelectedEffort(providerId, env, home);
-  if (stored) return stored;
-  if (providerId === 'codex') {
-    const cfg = await readCodexNativeConfig(home);
-    return cfg.modelReasoningEffort || null;
-  }
-  return null;
+async function currentPreferences(providerId, store, env, home, state) {
+  const profileDir = providerId === 'codex'
+    ? await resolveSelectedCodexProfileDir(state ?? await readBotState(env, home), env, home).catch(() => null)
+    : null;
+  const native = profileDir ? await readCodexProfileConfig(profileDir).catch(() => null) : null;
+  const savedEffort = store.efforts?.[providerId];
+  const effortId = (typeof savedEffort === 'string' ? savedEffort.trim() : '') || native?.modelReasoningEffort || null;
+  return { profileDir, modelId: resolveDisplayedModel(providerId, store.models?.[providerId], native?.model), effortId };
 }
 
 export function providerSupportsEffort(providerId) {
@@ -200,8 +186,8 @@ export async function buildModelMenu(env = process.env, home) {
   const p = getProvider(providerId);
   if (!p || p.id === 'claude') return null;
 
-  const models = await listModelsForProvider(providerId, env, home);
-  const current = await resolveDisplayedModel(providerId, store.models?.[providerId], env, home);
+  const { modelId: current, profileDir } = await currentPreferences(providerId, store, env, home);
+  const models = await listModelsForProvider(providerId, env, home, profileDir);
   const title = providerTitle(providerId);
 
   const lines = [
@@ -243,7 +229,7 @@ export function modelSwitchedText(providerId, modelId) {
 /**
  * Экран «🧠 Агент» для активного Cursor/Codex/Qwen — провайдер и его модель, не Claude.
  */
-export async function buildAgentMenu(env = process.env, home = os.homedir(), notice = '') {
+export async function buildAgentMenu(env = process.env, home = env.HOME || os.homedir(), notice = '') {
   const store = await loadStore(env, home);
   const providerId = store.active || 'claude';
   const p = getProvider(providerId);
@@ -251,11 +237,8 @@ export async function buildAgentMenu(env = process.env, home = os.homedir(), not
 
   const state = await readBotState(env, home);
   const title = providerTitle(providerId);
-  const modelId = await currentModelId(providerId, store, env, home);
+  const { modelId, effortId } = await currentPreferences(providerId, store, env, home, state);
   const model = modelLabel(providerId, modelId) || modelId || '—';
-  const effortId = providerSupportsEffort(providerId)
-    ? await currentEffortId(providerId, env, home)
-    : null;
   const perm = providerId === 'codex' ? 'полный доступ, без подтверждений' : PERM_LABELS[state.permissionMode] || PERM_LABELS.auto;
 
   const lines = [];
@@ -266,7 +249,7 @@ export async function buildAgentMenu(env = process.env, home = os.homedir(), not
     `Провайдер: <b>${esc(title)}</b>`,
     `Модель: <b>${esc(model)}</b>`,
   );
-  if (effortId) lines.push(`Глубина: <b>${esc(EFFORT_LABELS[effortId] || effortId)}</b>`);
+  if (providerSupportsEffort(providerId) && effortId) lines.push(`Глубина: <b>${esc(EFFORT_LABELS[effortId] || effortId)}</b>`);
   lines.push(`Режим: <b>${esc(perm)}</b>`, `Подключение: <b>${esc(title)}</b>`, '⠀');
 
   const rows = [];
@@ -296,7 +279,7 @@ export async function buildAgentMenu(env = process.env, home = os.homedir(), not
   };
 }
 
-export async function buildEffortMenu(env = process.env, home = os.homedir()) {
+export async function buildEffortMenu(env = process.env, home = env.HOME || os.homedir()) {
   const store = await loadStore(env, home);
   const providerId = store.active || 'claude';
   if (!providerSupportsEffort(providerId)) {
@@ -315,8 +298,7 @@ export async function buildEffortMenu(env = process.env, home = os.homedir()) {
   }
 
   const title = providerTitle(providerId);
-  const modelId = await currentModelId(providerId, store, env, home);
-  const current = await currentEffortId(providerId, env, home);
+  const { modelId, effortId: current } = await currentPreferences(providerId, store, env, home);
   const levels = [
     { id: 'low', desc: 'быстро, минимум раздумий' },
     { id: 'medium', desc: 'обычная глубина' },
@@ -353,7 +335,7 @@ export async function buildEffortMenu(env = process.env, home = os.homedir()) {
   return { text: lines.join('\n'), keyboard: keyboard(rows), providerId, current };
 }
 
-export async function buildPermModeMenu(env = process.env, home = os.homedir()) {
+export async function buildPermModeMenu(env = process.env, home = env.HOME || os.homedir()) {
   const store = await loadStore(env, home);
   const providerId = store.active || 'claude';
   if (!providerId || providerId === 'claude') return null;
@@ -361,7 +343,7 @@ export async function buildPermModeMenu(env = process.env, home = os.homedir()) 
   const title = providerTitle(providerId);
   const state = await readBotState(env, home);
   const current = state.permissionMode || 'auto';
-  const modelId = await currentModelId(providerId, store, env, home);
+  const { modelId } = await currentPreferences(providerId, store, env, home, state);
   const modes = VISIBLE_PERMISSION_MODES;
 
   const lines = [

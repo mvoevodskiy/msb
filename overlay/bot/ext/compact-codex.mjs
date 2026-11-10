@@ -17,7 +17,7 @@ export async function compactCodex(snapshot, { signal, isCurrent = async () => t
   if (!session || session.providerId !== 'codex' || !isValidCodexThreadId(session.nativeId)) {
     return { ok: false, error: 'Нет активной сессии Codex.' };
   }
-  const auth = await codexChildEnvironment(env);
+  const auth = await codexChildEnvironment(env, undefined, cwd);
   if (!auth.configured) return { ok: false, error: 'Авторизация Codex не найдена.' };
   const bin = findBin('codex', auth.env);
   if (!bin) return { ok: false, error: 'Codex CLI не найден.' };

@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -19,6 +20,14 @@ export function botDir(env = process.env, home) {
 
 export function botStatePath(env = process.env, home) {
   return path.join(botDir(env, home), 'state.json');
+}
+
+export async function readBotState(env = process.env, home = env.HOME || os.homedir()) {
+  try {
+    return JSON.parse(await fs.readFile(botStatePath(env, home), 'utf8')) ?? {};
+  } catch {
+    return {};
+  }
 }
 
 /** Локальный префикс npm для Codex/Qwen — без sudo. */

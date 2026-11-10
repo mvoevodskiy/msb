@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { botRoot, homeDir } from '../paths.mjs';
+import { botRoot } from '../paths.mjs';
+import { readCodexProfileConfig, resolveSelectedCodexProfileDir } from '../../shared/codex-profile.mjs';
 import { readClaudeVersion } from './claude-version.mjs';
 import { modelShortLabel } from './models.mjs';
 import { effectiveClaudeEffort } from './effort.mjs';
@@ -24,20 +25,17 @@ export async function agentDisplay(state, env = process.env) {
     return { engine: 'Claude Code', model, label: modelShortLabel(model,version),
       effort: effectiveClaudeEffort(model,state.ccEffort || state.effort,version) };
   }
-  let native = {};
+  let native;
   if (provider === 'codex') {
     try {
-      const text = (await fs.readFile(path.join(env.CODEX_HOME || path.join(homeDir(env), '.codex'), 'config.toml'), 'utf8')).split(/^\s*\[/m, 1)[0];
-      for (const key of ['model', 'model_reasoning_effort']) {
-        const match = text.match(new RegExp(`^\\s*${key}\\s*=\\s*(\"(?:[^\"\\\\]|\\\\.)*\")`, 'm'));
-        if (match) native[key] = JSON.parse(match[1]);
-      }
-    } catch { /* native config is optional */ }
+      const directory = await resolveSelectedCodexProfileDir(state, env);
+      native = await readCodexProfileConfig(directory);
+    } catch { /* Native config is optional. */ }
   }
   const previous = state.lastCcUsage?.sessionId === state.ccSessionId ? state.lastCcUsage : null;
   return {
     engine: TITLES[provider] || provider,
-    model: store.models?.[provider] || native.model || previous?.model || '—',
-    effort: store.efforts?.[provider] || native.model_reasoning_effort || null,
+    model: store.models?.[provider] || native?.model || previous?.model || '—',
+    effort: store.efforts?.[provider] || native?.modelReasoningEffort || null,
   };
 }

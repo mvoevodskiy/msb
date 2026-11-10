@@ -15,7 +15,7 @@ const ccSessionId = 'ext:codex:' + thread;
 const nativeAuth = '{"tokens":{"access_token":"fixture"}}\n';
 const inactiveConfig = 'model = "gpt-5.4"\nmodel_reasoning_effort = "low"\n';
 const activeConfig = [
-  'model = "gpt-5.4-mini" # native default',
+  '  model = "gpt-5.4-mini" # native default',
   "model_reasoning_effort = 'high' # root setting",
   'model_provider = "fixture" # keep this provider',
   'stream_idle_timeout_ms = 600000',

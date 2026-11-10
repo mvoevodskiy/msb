@@ -11,6 +11,7 @@ import {prepareCodexMcp} from '../codex-mcp-launch.mjs';
 import { decodeExtSession, getSelectedModel, getSelectedEffort } from '../store.mjs';
 import { enrichPath, ensureProviderCli } from '../ensure-cli.mjs';
 import {
+  codexHome,
   readCodexNativeConfig,
   resolveCodexModel,
   resolveCodexEffort,
@@ -265,7 +266,7 @@ export function finalizeParsed({ res, parsedOut, model, resumeRequested }) {
   };
 }
 
-export async function runCodexTurn({ prompt, parsed, cwd, env, home = os.homedir(), onThreadStarted }) {
+export async function runCodexTurn({ prompt, parsed, cwd, env = process.env, home = env.HOME || os.homedir(), onThreadStarted }) {
   const envPath = { ...env, PATH: enrichPath(env, home) };
   let bin = findBin('codex', envPath);
   if (!bin) {
@@ -274,7 +275,7 @@ export async function runCodexTurn({ prompt, parsed, cwd, env, home = os.homedir
     bin = ensured.bin;
   }
 
-  const auth = await codexChildEnvironment(env, home);
+  const auth = await codexChildEnvironment(env, home, cwd);
   if (!auth.configured) {
     return {
       ok: false,
@@ -283,23 +284,26 @@ export async function runCodexTurn({ prompt, parsed, cwd, env, home = os.homedir
     };
   }
 
-  // HTTP-only provider — до первого хода, иначе 5× reconnect на WS.
+  // The default bot profile keeps its managed HTTP workaround. An external
+  // CODEX_HOME owns its transport and must not be edited by an ordinary turn.
   let httpProviderId = profile.resolveProfile(env, home).codexHttpProviderId;
-  let forceHttp = true;
-  try {
-    const tr = await ensureCodexStableTransport(home, env);
-    httpProviderId = tr.providerId;
-    forceHttp = !tr.skippedProviderSwitch;
-    if (tr.changed) {
-      console.error(
-        `[msb/ext/codex] transport → ${tr.providerId}${tr.baseUrl ? ` (${tr.baseUrl})` : ''}`,
-      );
+  let forceHttp = auth.profileDir === codexHome(home);
+  if (forceHttp) {
+    try {
+      const tr = await ensureCodexStableTransport(home, env);
+      httpProviderId = tr.providerId;
+      forceHttp = !tr.skippedProviderSwitch;
+      if (tr.changed) {
+        console.error(
+          '[msb/ext/codex] transport → ' + tr.providerId + (tr.baseUrl ? ' (' + tr.baseUrl + ')' : ''),
+        );
+      }
+    } catch (err) {
+      console.error('[msb/ext/codex] ensure transport failed:', err?.message || err);
     }
-  } catch (err) {
-    console.error('[msb/ext/codex] ensure transport failed:', err?.message || err);
   }
 
-  const nativeConfig = await readCodexNativeConfig(home);
+  const nativeConfig = await readCodexNativeConfig(home, auth.profileDir);
   const preferred = await getSelectedModel('codex', env, home);
   const preferredEffort = await getSelectedEffort('codex', env, home);
   const model = resolveCodexModel(parsed?.model, nativeConfig, preferred);

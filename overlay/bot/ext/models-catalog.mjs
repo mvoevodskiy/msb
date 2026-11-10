@@ -8,7 +8,6 @@ import { spawn } from 'node:child_process';
 import { getProvider } from './providers.mjs';
 import { findBin } from './adapters/run-cli.mjs';
 import { enrichPath } from './ensure-cli.mjs';
-import { codexHome, readCodexNativeConfig } from './codex-native.mjs';
 
 /** Кураторский список — если CLI/кэш недоступны. */
 export const PROVIDER_MODELS = Object.freeze({
@@ -52,9 +51,9 @@ function uniqById(list) {
   return out;
 }
 
-async function readCodexModelsCache(home = os.homedir()) {
+async function readCodexModelsCache(profileDir) {
   try {
-    const raw = await fs.readFile(path.join(codexHome(home), 'models_cache.json'), 'utf8');
+    const raw = await fs.readFile(path.join(profileDir, 'models_cache.json'), 'utf8');
     const data = JSON.parse(raw);
     const models = Array.isArray(data?.models) ? data.models : [];
     return models
@@ -130,10 +129,10 @@ async function listCursorModelsLive(env = process.env, home = os.homedir()) {
 /**
  * @returns {Promise<Array<{id:string,label:string,desc?:string}>>}
  */
-export async function listModelsForProvider(providerId, env = process.env, home = os.homedir()) {
+export async function listModelsForProvider(providerId, env = process.env, home = os.homedir(), profileDir) {
   const base = [...(PROVIDER_MODELS[providerId] || [])];
   if (providerId === 'codex') {
-    const cached = await readCodexModelsCache(home);
+    const cached = profileDir ? await readCodexModelsCache(profileDir) : [];
     return uniqById([...base, ...cached]);
   }
   if (providerId === 'cursor') {
@@ -143,14 +142,8 @@ export async function listModelsForProvider(providerId, env = process.env, home 
   return uniqById(base);
 }
 
-export async function resolveDisplayedModel(providerId, storedId, env = process.env, home = os.homedir()) {
-  if (storedId) return storedId;
-  if (providerId === 'codex') {
-    const cfg = await readCodexNativeConfig(home);
-    if (cfg.model) return cfg.model;
-  }
-  const list = PROVIDER_MODELS[providerId] || [];
-  return list[0]?.id || null;
+export function resolveDisplayedModel(providerId, storedId, nativeModel) {
+  return storedId || nativeModel || PROVIDER_MODELS[providerId]?.[0]?.id || null;
 }
 
 export function modelLabel(providerId, modelId) {

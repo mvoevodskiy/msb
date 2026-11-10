@@ -8,7 +8,7 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { codexAuthPath, codexConfigPath, parseCodexTomlScalars } from './codex-native.mjs';
+import { codexAuthPath, codexHome, parseCodexTomlScalars } from './codex-native.mjs';
 import profile from '../shared/profile.cjs';
 
 export const MSB_HTTP_PROVIDER_ID = 'msb_http';
@@ -29,13 +29,13 @@ async function detectAuthMode(home) {
   return 'chatgpt';
 }
 
-function providerBlock(baseUrl, providerId) {
+function providerBlock(baseUrl, providerId, idleTimeout) {
   const namespace = providerId === 'iia_http' ? 'iia' : 'msb';
   return [
     `# BEGIN ${namespace}-ext codex-http`,
     `# HTTP-only: без Responses WebSocket (см. openai/codex#20739, #22634)`,
     `model_provider = "${providerId}"`,
-    'stream_idle_timeout_ms = 600000',
+    'stream_idle_timeout_ms = ' + idleTimeout,
     '',
     `[model_providers.${providerId}]`,
     `name = "${namespace.toUpperCase()} HTTP (no websocket)"`,
@@ -55,7 +55,7 @@ function providerBlock(baseUrl, providerId) {
  */
 export async function ensureCodexStableTransport(home, env = process.env) {
   home ??= env.HOME || os.homedir();
-  const file = codexConfigPath(home);
+  const file = path.join(codexHome(home), 'config.toml');
   const authMode = await detectAuthMode(home);
   const baseUrl = authMode === 'api' ? API_BASE : CODEX_CHATGPT_BASE;
 
@@ -74,7 +74,7 @@ export async function ensureCodexStableTransport(home, env = process.env) {
   const namespace = providerId === 'iia_http' ? 'iia' : 'msb';
   const markBegin = `# BEGIN ${namespace}-ext codex-http`;
   const markEnd = `# END ${namespace}-ext codex-http`;
-  const block = providerBlock(baseUrl, providerId);
+  const block = providerBlock(baseUrl, providerId, scalars.stream_idle_timeout_ms || '600000');
   // Не перехватываем ollama/lmstudio/custom — только дефолтный openai и наш msb_http.
   const managed =
     !currentProvider ||
@@ -87,9 +87,12 @@ export async function ensureCodexStableTransport(home, env = process.env) {
     const after = end + markEnd.length;
     next = `${next.slice(0, begin).trimEnd()}\n\n${block}${next.slice(after).replace(/^\n+/, '')}`;
   } else if (managed) {
-    // Уберём одиночный model_provider = "openai", если был — блок задаст свой.
-    next = next.replace(/^model_provider\s*=\s*"[^"]*"\s*\n?/m, '');
-    next = `${next.trimEnd()}\n\n${block}`;
+    // Both managed settings belong at the root, before any user tables.
+    const tableAt = text.search(/^[ \t]*\[/m);
+    const root = tableAt < 0 ? text : text.slice(0, tableAt);
+    const tables = tableAt < 0 ? '' : text.slice(tableAt);
+    const rest = root.replace(/^[ \t]*(?:model_provider|stream_idle_timeout_ms)[ \t]*=.*(?:\n|$)/gm, '').trimEnd();
+    next = rest + '\n\n' + block + tables;
   } else {
     // Чужой provider: только увеличим idle timeout, WS не трогаем.
     if (!/^stream_idle_timeout_ms\s*=/m.test(next)) {

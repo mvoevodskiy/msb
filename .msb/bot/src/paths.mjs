@@ -32,12 +32,7 @@ export function actionRoot(env = process.env) {
   return path.resolve(path.dirname(sessionDir(env)));
 }
 
-export function workspaceDir(env = process.env) {
-  const workspace = profile.envValue(env, 'MSB_WORKSPACE_DIR');
-  if (workspace) return workspace;
-  // cwd is bind-mount of workspace in production
-  return process.cwd();
-}
+export { workspaceDir } from '../shared/project-paths.mjs';
 
 export function autonomyDir(env = process.env) {
   return env.AUTONOMY_DIR || path.join(msbRoot(env), 'autonomy');
