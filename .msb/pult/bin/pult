@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# Команда для ботов: вопросы к Михаилу и карточки проектов на Пульте. pult --help
+exec node --disable-warning=ExperimentalWarning "$(dirname "$(readlink -f "$0")")/../src/cli/pult.ts" "$@"

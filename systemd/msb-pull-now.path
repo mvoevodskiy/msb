@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch for delivery pull-now trigger (publish nudge)
+StartLimitBurst=0
+
+[Path]
+PathExists=/home/client/.msb/.pull-now
+
+[Install]
+WantedBy=multi-user.target

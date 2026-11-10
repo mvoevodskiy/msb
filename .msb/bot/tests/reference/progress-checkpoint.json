@@ -1,0 +1,47 @@
+{
+  "stage": "legacy-progress-and-final-delivery",
+  "base_commit": "3e53298e0ca0ebbf03525074b7c514495b8d10f0",
+  "platform": "macOS",
+  "core": {
+    "passed": 43,
+    "failed": 0
+  },
+  "overlay": {
+    "passed": 55,
+    "failed": 0
+  },
+  "reference": {
+    "passed": 3,
+    "failed": 4,
+    "skipped": 0,
+    "todo": 0,
+    "progress": "passed",
+    "stop": "passed"
+  },
+  "covered": [
+    "silent CLI thinking frames and typing",
+    "5/15-minute cadence",
+    "abort drains old edit and clears timers",
+    "legacy tool labels and raw details",
+    "short answer replaces original status",
+    "long Unicode/HTML answer splits with one footer",
+    "legacy list/mention/filename formatting",
+    "edit failure fallback cleans only supplied status",
+    "topic preserved in sent messages",
+    "known CLI cost forwarded",
+    "session and stop lifecycle preserved"
+  ],
+  "remaining_reference_failures": [
+    "voice",
+    "invalid login",
+    "overlay owner guard",
+    "Codex error/replay"
+  ],
+  "limits": [
+    "Native Codex context telemetry is not yet wired into the new runner; unknown percentages are omitted.",
+    "Legacy global flood-adaptive controller is not ported; current autoRetry remains.",
+    "No live Telegram, models, Linux or JAR1 test."
+  ],
+  "jar1_touched": false,
+  "real_credentials_used": false
+}

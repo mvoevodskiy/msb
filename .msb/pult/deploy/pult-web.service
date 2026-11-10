@@ -1,0 +1,33 @@
+# /etc/systemd/system/pult-web.service — веб-сервис Пульта: вход, API, тревоги, сводка в 08:00.
+# Ставит deploy/install.sh (прежний файл — копия в /home/client/pult-data/backups/systemd/).
+# Системный юнит с User=client: пользовательские юниты на этом сервере не ставятся (~/.config — root).
+# Код — выкладочная копия /home/client/pult-deploy (не рабочая папка), данные — /home/client/pult-data,
+# секреты — /home/client/pult-secrets/web.env (0600, пишет deploy/secrets.sh).
+# Падает больше 5 раз за 10 мин — остаётся остановленным и шлёт тревогу через pult-notify-failure@.
+[Unit]
+Description=Пульт: веб-сервис (вход, API, тревоги, сводка)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
+OnFailure=pult-notify-failure@%n.service
+
+[Service]
+Type=simple
+User=client
+Group=client
+WorkingDirectory=/home/client/pult-deploy
+EnvironmentFile=/home/client/pult-secrets/web.env
+ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning --disallow-code-generation-from-strings /home/client/pult-deploy/src/server/main.ts
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=yes
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pult-web
+
+[Install]
+WantedBy=multi-user.target

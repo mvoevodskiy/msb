@@ -1,0 +1,334 @@
+MCP old-to-new contract and evidence
+
+Baseline. Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf keeps the
+bundled entry at .iia/bot/index.js. The readable reference is
+cfa19389d535d48c161b4bbda7c54aa7649c90f6:.msb/bot/vendor/deobfuscated.js,
+blob 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11.
+Read git show BLOB | sed -n 'FIRST,LASTp'. Audit base and last accepted JAR1
+source 736e6bc05b7e678b96178b41a11e23c904aa5f98. Its workspace renderer has
+no catalog, card or configuration writes. The work is split into read views,
+configuration/setup and model marker stages with independent evidence.
+
+Reachable read views. 111781 and 121787–90 open menu:mcp. 111798–906 yGA and
+SGA read the configured names from Claude's user config. Hi at 17843–49
+resolves CLAUDE_CONFIG_DIR/.claude.json or HOME/.claude.json. Count in
+workspace (N), rows in stored order, transport http when type=http or url
+exists, otherwise stdio. Empty workspace is Нет серверов. Card at
+121073–88 shows Tools: mcp__NAME__* and the old delete/back actions.
+102947–80, 103114–29, 55413–15 and 55687–90 establish optional status from
+mcp-status.json in dirname(sessionDir). `needs-auth` and `failed` have the
+old visible text. No observed sidecar producer is claimed. A configured
+row or absence of failure status does not prove a connected service.
+
+OpenClaw branch at 111805–27 uses native mcp list --json, without file
+fallback. 30069–30132 accept arrays and objects at mcp.servers, servers or
+root. 30213–38 retries once with delay. Old defaults at 32800–04 are 15s
+and 2s, with a 45s first cold timeout. 30574–30604 sorts names, shows
+transport and target and bounds the output. It shows Add and Back only.
+Stale cards must not read a different provider. New callbacks bind the
+provider and config root to a bounded reference. The old literals may
+open known Claude rows for reading. Backend error remains distinct from
+an actual empty configuration. UI projection exposes names and types.
+OpenClaw targets omit URL credentials, query and fragment, with command
+args, headers and env values excluded from all menu metadata.
+
+Codex addition uses the installed 0.166 app-server initialize, initialized,
+config/read(cwd, includeLayers=true) in an owned HOME and CODEX_HOME. The
+actual pinned probe is recorded in mcp-native-0.166-protocol.json. User
+layer is distinguished from trusted repo and effective config. The returned
+layer includes raw header and env values. Convert it to names/types before
+exposing any data to core. User-layer inventory does not require an auth
+check or connect to configured HTTP or stdio servers. Native CLI mcp list
+may perform HTTP auth discovery and emit raw env/headers. Protocol source
+rust-v0.166.0 codex-rs/app-server-protocol/src/protocol/v2/config.rs at
+73–82, 319–336 and 388–409. CLI source codex-rs/cli/src/mcp_cmd.rs at
+645–709. UI uses the same owned read scope and delivery as other menus.
+The runtime adapter was also called against the installed 0.166 binary in
+an isolated network namespace. A trusted repo added a repo-only server,
+a decoy default HOME added a wrong-home server and the custom CODEX_HOME
+contained two user entries with fixture headers and env values. The
+adapter returned only the two projected user rows. An empty symlinked
+CODEX_HOME returned no rows and did not create config.toml. Both checks
+used an owned scratch profile, no credentials and no model or MCP turn.
+
+Write obligations for later stages. 120970–121073 Add lists only absent
+Supadata/Apify names, starts the exact token forms, and lets the user ask
+for a custom server. 119219–85 clears the pending form before validating
+sd_/apify_api_, rejects spaces, deletes the accepted key message best
+effort, then stores the key and configures the captured provider. Old
+119245–53 Supadata uses https://api.supadata.ai/mcp with x-api-key and Apify
+uses https://mcp.apify.com with Authorization Bearer. Validate current
+service contracts before restoring time-sensitive defaults. The owner's
+settled per-bot secret scope overrides the old global s1 writer. The same
+named key can have different values for two bots. Setup must avoid writing
+another bot's key or exposing it in native argv, logs or catalog. Verify
+effective provider configuration and per-bot credentials separately.
+Old Claude PY/Ii at 17989–18005 update only mcpServers. OC setup/unset at
+30437–49/30486–30545/30547–72 use the native CLI. Normal OC list renders
+no row delete action. The old OC write may fail after saving the key. A
+stored key or config entry alone does not establish external availability.
+
+Write-stage capability. Official Supadata worker src/worker.ts retains a
+direct x-api-key branch on the hosted /mcp route. Apify's official MCP
+documentation describes the existing Bearer API token header. The native
+Codex 0.166 transport probe and report are mcp-native-0.166-transport.mjs
+and mcp-native-0.166-transport.json. The owned test loopback received
+initialize, tools/list and tools/call with distinct synthetic keys from
+two process environments sharing a native home. Omitting A's override
+stopped its calls while B kept working. Native config was byte-exact.
+An override with an empty http_headers table retained a lower-layer
+header under the same server name. Do not merge a managed server onto
+a native same-name definition. This proof exercises raw native transport
+independently of the bot's enrollment and launch wiring.
+
+Custom marker. 19349–56/19474–19515 demonstrate the actual Claude prompt
+producer. 106578–591/106731–755 process it before plan. 57210–57331 parse
+first complete ADD_MCP (HTTPS or stdio, string headers/args), remove later
+complete blocks, preserve ordinary reply and replace marker with the old
+result. INSTALL_SKILL and ADD_MCP share the old enable flag. The old
+finish passes the accumulated response and its eligible fallback through
+this stage. In open-core, aborted turns and thrown infrastructure errors
+remain outside the execution stage. Old OC prompt 29650–29653 did not
+advertise ADD_MCP. Its generic finalizer invoked the Claude writer, so
+there is no old marker-to-OC writer to port. Custom and template entries
+use the current bot and the provider of the originating action.
+
+ADD_MCP is a direct installation with no button, token form, confirmation
+or external availability check. UkA 57152–57155 binds its writer to PY.
+PY 17989–17997 upserts mcpServers[name] in the Claude user file. The Add
+menu and Apify/Supadata forms at 120970–121073 are independent paths.
+The marker recognises exact uppercase tags and names trimmed/lowercased
+to 2–49 characters matching [a-z0-9][a-z0-9_-]{1,48}. HTTP requires an
+https:// non-whitespace string and keeps only string-valued headers.
+stdio requires a nonempty trimmed command, with only string args kept.
+The first marker is replaced with the original success, invalid-input or
+write-failure text. All later complete ADD_MCP markers are discarded.
+
+At d6f1f8f, ten production-ingress cases reproduce the missing marker
+on both CLI prompt and Telegram delivery. The baseline test command is
+node --test .msb/bot/tests/mcp-marker.test.mjs .msb/bot/tests/mcp-launch.test.mjs.
+The eight earlier launch cases pass. This is a local RED checkpoint.
+
+Stage completion requires the actual read/add/remove/marker routes, old
+prompts and forms, scoped writes, test-defined external conditions and
+same-commit acceptance. The read checkpoint remains local while setup,
+removal and markers are incomplete. Preserve unrelated state and auth.
+
+Managed template checkpoint. Old 119219–119285 saved an env key and passed
+the submitted value to the selected native writer. Configuring the
+second engine did not rewrite the first engine's registered headers.
+The new writer keeps only a per-provider template/key reference in
+managedMcp state. The first uses the conventional key name and a second
+engine using the same template gets a provider suffix if the first
+still uses the conventional name. All values stay in the bot's .env.
+Deleting a bot-owned registration preserves its key and sibling profiles.
+
+Form and launch tests exercise the real ingress, core runner, shim and
+Codex adapter with owned fake executables. On installed Claude 2.1.316,
+the separate loopback probe reached initialize/tools/list with different
+bot credentials, preserved ordinary native entries and observed the
+provider's per-invocation deniedMcpServers setting. It did not observe a
+Claude MCP tool call. Native Codex 0.166 tool calls were observed using
+the separate raw transport probe. Both isolated probes used synthetic
+credentials. No authenticated commercial tool use is established.
+
+Codex preflight skips current effective same-name definitions and omits
+their dedicated credential variables. Normal app-owned enrollments do not
+edit native config. An external same-name native config edit after the
+preflight and before exec still creates a merge race. Pinned references:
+codex-rs/config/src/merge.rs 90–144, utils/cli/src/config_override.rs 44–75,
+config/src/overrides.rs 8–14 and exec/src/lib.rs 484–505. CLI override
+maps are merged recursively and exec independently reloads its layers.
+The checkpoint must stay local while that race, inherited-native
+removal, ADD_MCP and the unimplemented OpenClaw turn/setup route remain.
+
+Codex namespace checkpoint. 6e4e083 uses the production launcher to
+reproduce the native same-name race with actual tools/call. A normal
+native apify definition is added after preparation. Installed 0.166
+sent its synthetic header to the managed endpoint before the fix.
+Now bot-owned Codex entries derive a reserved key from the bot profile
+and service, and share this calculation between launch and card. A
+normal native entry can arrive in the same window and both tools still
+call their own endpoints with separate credentials. The list retains
+both rows and disambiguates the bot row only on duplicate display names.
+Native and Claude tool names, and provider/root callback binding, keep
+their own rules. A native entry already occupying the generated key
+prevents both registration through the form and runtime projection.
+
+This isolates ordinary externally edited names. The pinned native merge
+still applies if an external writer deliberately targets the exact
+generated bot key after the guard. The selected-name guard is not an
+atomic native snapshot, and generated names belong to the bot namespace.
+The race RED and GREEN proof files only contain synthetic values or
+boolean outcomes. Reproduce in an owned, loopback-only namespace via
+node .msb/bot/tests/reference/mcp-native-0.166-transport.mjs /absolute/codex --race.
+
+Claude permissions checkpoint. Old kn at 20907–20910 reads user
+mcpServers keys. Runner 20834–20838 appends mcp__<name> to its default
+--allowedTools path and keeps its separate explicit --tools branch.
+The new normal launch had omitted those arguments. Restore scoped
+rules for configured native names and the bot-owned entries that will
+actually launch. Plain names use the old server rule. An unambiguous
+wildcard is used for plain names containing a double underscore or
+ending in underscore, as Claude documents. Names containing characters
+that could split or change permission rules do not create an automatic
+allow rule. A caller's explicit tool list and existing deny rules still
+apply unchanged. The real core/shim fixture checks the exact argv.
+
+Native proof correction. The earlier Claude transport fixture logged
+tools/list requests but returned HTTP 500 because it read params on
+every RPC, including list requests that omitted them. This was a fixture
+error. The corrected loopback fixture returns the tool catalog and the
+local model stub requests an offered tool. Installed Claude 2.1.316
+reaches tools/call with two synthetic bot credentials using the old
+server-level permission. Per-invocation denial of a separate native
+server still works, with original native definitions preserved. The
+evidence covers the native CLI with a local protocol stub and no real
+commercial-service or model account.
+
+Inherited removal checkpoint. 9506081 reproduces the missing old Delete
+action. Old 121073–121108 showed the button and refreshed the workspace
+after Ii at 17998–18005 deleted only the shared Claude mcpServers key.
+The accepted per-bot boundary keeps that shared file and its credentials.
+The new native delete reference binds bot, provider, physical user config
+file and name, while old managed delete references stay valid. It never
+treats an old raw read link as authority to remove. Catalog, Add and
+direct template setup use the same visible selection. Re-add preserves
+the independent bot credential and never removes the shared key.
+
+The scope metadata lives under removedNativeMcp in the bot state. Normal
+turns and /compact project it through native launch. Claude adds a
+per-invocation deniedMcpServers setting, which keeps user/project deny
+settings and their files. A validated managed replacement of the same
+name uses the existing native config precedence. Codex verifies the
+current user layer and overlays enabled=false only on present names.
+A failed preflight blocks the scoped Codex launch. Both runners also
+stop if the physical profile changes after preparation, including
+when the original profile has no exclusions and the new one does.
+The scope is by effective name for that bot/profile, including any
+same-name project override. Native administrative precedence applies.
+
+Two compact bypass RED assertions, one stale catalog RED assertion,
+and one launch-retarget RED assertion per CLI were reproduced during
+integration. The fixtures exercise the real compact routing/shim, reject
+stale cross-bot or file references, and capture the new scope on the
+next invocation.
+The Codex 0.166 owned probe applies the current production adapter with
+both disable and managed re-add options, then calls the retained and
+managed tools and verifies no disabled endpoint connection. The sibling
+invocation can still call the original native tool and the config bytes
+match. An absent name before preparation does not get an overlay. The
+separate --late-absence case shows that a native target removed between
+the two processes can stop native startup. No automatic replay was added.
+All native probes use loopback, synthetic credentials and owned profiles.
+
+ADD_MCP restoration. 908677b recorded ten failing ingress cases.
+The restored Telegram finalizer replaces the first complete payload,
+discards later blocks, and preserves ordinary response ordering and
+the shared disable flag. It carries the bot and provider observed at
+turn start. Completed partial Claude assistant text stays eligible.
+Codex error diagnostics, infrastructure errors and stopped turns
+cannot publish an MCP entry. Cancellation before the atomic state
+rename discards the newly staged private configuration.
+
+The old PY assignment replaced the native key at the same name.
+For this bot, when the marker replaces a name inherited from the
+user layer, the writer records the existing scoped exclusion in the
+same state update as its private entry. Delete removes the owned
+entry and keeps the inherited name hidden here. The native file and
+a sibling bot's view remain available. Replacing a bot template
+retires its registration and preserves its separate .env value.
+An occupied Codex reserved alias fails before enrollment. An external
+write targeting the alias between CLI preparation and launch retains
+the existing native layer boundary.
+
+Two old regex flaws were reproduced with synthetic headers. Quoted
+closing-tag text caused the remaining payload to be exposed, and a
+truncated JSON payload was delivered verbatim. The parser respects
+JSON string boundaries and removes incomplete payloads before Telegram
+and the diary, preserving ordinary mentions. The established invalid
+message covers an incomplete JSON payload.
+
+The private configuration is under the bot's mcp-config directory,
+mode 0600. State stores only its identifier and transport. Claude uses
+the existing managed config and permissions path. The Codex adapter
+checks the effective native config before composing a temporary named
+profile. The selected profile overlays the base Codex configuration
+for one normal exec and uses the existing per-bot alias. URLs, headers,
+and command arguments stay out of the Codex CLI argv. The core owns
+cleanup after launch. Loader reference:
+https://github.com/openai/codex/blob/rust-v0.166.0/codex-rs/core/src/config/mod.rs#L1990-L1997
+
+The corresponding .mjs native probe runs in an owned loopback-only
+profile, with a synthetic local model endpoint. The paired .json
+records HTTP and stdio tools/call after resuming the same actual
+Codex thread. The sibling kept its original native entries, the shared config
+matched its original bytes and the temporary profile was removed.
+The Telegram tests cover the prompt/marker/store/launch UI using
+synthetic CLI binaries. 24 marker, 74 related and 1,026 full local
+checks passed. JAR1 production and the OpenClaw turn/write routes
+are outside this local checkpoint.
+
+OpenClaw form RED. The old OpenClaw workspace at 111805–111827
+generated Add and Back only. 120970–121073 filtered templates against
+the native list and displayed the Supadata/Apify key prompts.
+119219–119285 consumes a one-shot input, validates prefix/whitespace,
+attempts deletion of the Telegram key message, persists the key,
+then registers streamable HTTP without probing the service.
+Ts 30437–30449 builds mcp add with --no-probe. VH 30486–30545
+checks the exit and tries a best-effort mcp reload (30453–30484).
+The failure branch keeps the saved key. The accepted per-bot key
+boundary replaces the old shared s1 writer at 119246.
+
+At cb065b3 the OpenClaw list renders the template buttons, but
+mcp:setup rejects the selected provider before arming the form.
+Six owned-profile ingress cases reproduce that failure. Existing
+Claude/Codex form and owner checks still pass. A registration can
+be accepted only on a native profile attributable to this bot;
+one key must never overwrite shared or sibling MCP settings.
+Old ordinary OpenClaw used acpx (29210–29226, 32195–32268,
+32902–32938), distinct from the registry CLI. List/registration
+alone is not evidence of an MCP tool call in that route.
+
+OpenClaw form restoration. fd7c21e pinned six missing-form failures.
+The existing form arms on both service buttons and keeps its one-shot
+validation, key-message removal, and original success reply. The key
+is saved before native registration. Provider records reserve separate
+per-bot env keys for this engine and the existing Claude/Codex templates.
+A saved key without native registration stays out of the native list.
+
+The registration path verifies two bot-owned physical paths, requires
+the local Gateway, compares config.get's physical target with the form's
+captured file, and writes only the template leaf. A private batch file
+keeps headers out of argv. A second read verifies the registered URL and
+transport. A stale form, an existing definition or a different Gateway
+leaves native config untouched. The failed-registration reply confirms
+the key only, because direct service use is unproved in that branch.
+
+OpenClaw 2026.9.5 in the native fixture accepts both the historical
+mcp add --no-probe and config set --batch-file with its Gateway active.
+The new route uses the latter with a scoped configuration. The real
+Gateway hot-reloads the registry and supplies the tool to the same
+named acpx 0.13.0 conversation. The paired JSON is the Docker evidence.
+OpenClaw gateway/install provisioning and live Telegram acceptance
+remain separate. JAR1's accepted running source is 736e6bc.
+
+Release review RED at 23dbcb4. The old producer and consumer remain
+19349–19356, 57210–57331 and 106578–106595. Old PY at 17989–17997
+upserted the selected name in one native Claude profile. The new
+per-bot boundary explicitly preserves inherited records of another
+profile. The runner captured bot/provider/cwd, while the finalizer
+could reread a different physical file after a path retarget. Two
+synthetic production-ingress cases reproduce silent replacement of
+the new profile for Claude and Codex. A third retargets the Claude
+profile while the private definition is staged. All three currently
+report success and commit state. These are intentional RED checks.
+
+The correction captures the canonical MCP file at the runner handoff.
+The finalizer requires both the current native path and the provider
+catalog to match that path. The state transaction checks again after
+staging the private file and cleans it on a mismatch. No new profile
+inherits a removal from a stale model reply. Provider switches with
+the same underlying file retain the already accepted captured-provider
+behavior. Three release-review reproductions now pass, alongside all
+27 marker cases in the focused file.

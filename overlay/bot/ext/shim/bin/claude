@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# Shim: подменяет `claude` на адаптер ext, если активен Cursor/Codex/Qwen.
+# Настоящий бинарь ищется через MSB_REAL_CLAUDE (выставляет run.mjs).
+set -euo pipefail
+ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+exec node "$ROOT/shim/run-turn.mjs" "$@"

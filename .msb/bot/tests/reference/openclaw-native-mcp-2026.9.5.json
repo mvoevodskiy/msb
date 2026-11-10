@@ -1,0 +1,16 @@
+{
+  "version": "OpenClaw 2026.9.5 (ec9c1a1)",
+  "acpxVersion": "0.13.0",
+  "gate": "same_owned_gateway",
+  "noProbe": true,
+  "hotReloadWithoutRestart": true,
+  "nativeMcpToolCalled": true,
+  "sameNamedSession": true,
+  "otherEngineIdPreserved": true,
+  "neighborConfigExact": true,
+  "neighborKeyAbsent": true,
+  "warmGatewaySwitchIsolated": true,
+  "priorSessionRecorded": true,
+  "productionProfile": false,
+  "network": "container loopback only"
+}

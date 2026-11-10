@@ -1,0 +1,301 @@
+114900|    if (Y) {
+114901|      try {
+114902|        await R.api.editMessageText(B, Y, C, {
+114903|          parse_mode: "HTML",
+114904|          reply_markup: F
+114905|        });
+114906|        return;
+114907|      } catch {}
+114908|    }
+114909|    await R.api.sendMessage(B, C, {
+114910|      parse_mode: "HTML",
+114911|      reply_markup: F
+114912|    }).catch(() => {});
+114913|  };
+114914|  try {
+114915|    let C = await Promise.resolve().then(() => {
+114916|      qU();
+114917|      return $U;
+114918|    });
+114919|    let F = new JA().text("« Назад", "auto:home");
+114920|    if (Q === "auto:home") {
+114921|      let {
+114922|        text: U,
+114923|        kb: Z
+114924|      } = await iGA();
+114925|      await J(U, Z);
+114926|      return;
+114927|    }
+114928|    if (Q === "auto:rights" || Q === "auto:rights-toggle") {
+114929|      if (Q === "auto:rights-toggle") {
+114930|        let E = await m().then(X => X?.autonomyRights === true).catch(() => false);
+114931|        if (E || (await nGA())) {
+114932|          await RB(X => {
+114933|            if (E) {
+114934|              delete X.autonomyRights;
+114935|            } else {
+114936|              X.autonomyRights = true;
+114937|            }
+114938|          }).catch(() => {});
+114939|          console.error(`[iia/autonomy] права фоновых задач ${E ? "выключены" : "включены"} владельцем`);
+114940|        }
+114941|      }
+114942|      let {
+114943|        text: U,
+114944|        kb: Z
+114945|      } = await l2Q();
+114946|      await J(U, Z);
+114947|      return;
+114948|    }
+114949|    if (Q === "auto:what") {
+114950|      await J(C.renderWhatIsIt(), F);
+114951|      return;
+114952|    }
+114953|    if (Q === "auto:monitor") {
+114954|      n$.set(B, "auto:home");
+114955|      let {
+114956|        text: U,
+114957|        kb: Z
+114958|      } = await ZC("auto:home");
+114959|      await J(U, Z);
+114960|      return;
+114961|    }
+114962|    if (Q === "auto:tasks") {
+114963|      let {
+114964|        loadActions: U
+114965|      } = await Promise.resolve().then(() => {
+114966|        fA();
+114967|        return CB;
+114968|      });
+114969|      let {
+114970|        nextFireLabel: Z,
+114971|        taskKindWord: E,
+114972|        lastRunNote: X,
+114973|        willNeverFireAgain: V
+114974|      } = await Promise.resolve().then(() => {
+114975|        uB();
+114976|        return A2;
+114977|      });
+114978|      let {
+114979|        isGloballyStopped: W
+114980|      } = await Promise.resolve().then(() => {
+114981|        uQ();
+114982|        return N8;
+114983|      });
+114984|      let D = (await m().catch(() => null))?.timezone;
+114985|      let z = new Date();
+114986|      let I = (await U().catch(() => [])).filter(N => N.enabled || N.disabledReason === "owner").map(N => ({
+114987|        id: N.id,
+114988|        name: N.name,
+114989|        kindWord: E(N.task.kind),
+114990|        nextLabel: Z(N, z, D),
+114991|        lastNote: X(N, z, D),
+114992|        enabled: N.enabled,
+114993|        spent: V(N)
+114994|      }));
+114995|      let q = await W().catch(() => false);
+114996|      let $ = new JA();
+114997|      for (let N of I) {
+114998|        let L = N.spent ? "✖" : N.enabled ? "✔" : "⏸";
+114999|        $.text(`${L} ${N.name}`.slice(0, 30), `auto:task:${N.id}`).row();
+115000|      }
+115001|      $.text("« Назад", "auto:home");
+115002|      await J(C.renderTasksScreen(I, q), $);
+115003|      return;
+115004|    }
+115005|    if (Q.startsWith("auto:task:")) {
+115006|      let U = Q.slice(10);
+115007|      let {
+115008|        loadActions: Z,
+115009|        effectivePosture: E,
+115010|        helpersRequested: X
+115011|      } = await Promise.resolve().then(() => {
+115012|        fA();
+115013|        return CB;
+115014|      });
+115015|      let {
+115016|        nextFireLabel: V,
+115017|        taskKindWord: W,
+115018|        lastRunNote: G,
+115019|        willNeverFireAgain: D
+115020|      } = await Promise.resolve().then(() => {
+115021|        uB();
+115022|        return A2;
+115023|      });
+115024|      let {
+115025|        postureNoteForOwner: z
+115026|      } = await Promise.resolve().then(() => {
+115027|        gY();
+115028|        return NR;
+115029|      });
+115030|      let {
+115031|        teamOf: H,
+115032|        teamLine: j
+115033|      } = await Promise.resolve().then(() => {
+115034|        oC();
+115035|        return kc;
+115036|      });
+115037|      let {
+115038|        isDirection: I,
+115039|        memoryWord: q
+115040|      } = await Promise.resolve().then(() => {
+115041|        sC();
+115042|        return uc;
+115043|      });
+115044|      let {
+115045|        isWhen: $,
+115046|        conditionWord: N
+115047|      } = await Promise.resolve().then(() => {
+115048|        MY();
+115049|        return Id;
+115050|      });
+115051|      let L = await m().catch(() => null);
+115052|      let M = new Date();
+115053|      let g = (await Z().catch(() => [])).find(v => v.id === U);
+115054|      if (!g) {
+115055|        await J("⚠️ Задача не найдена. Возможно, её уже убрали.", new JA().text("« Назад", "auto:tasks"));
+115056|        return;
+115057|      }
+115058|      let w = X(g);
+115059|      let O = "";
+115060|      try {
+115061|        if (L?.autonomyRights === true && L?.engine !== "oc") {
+115062|          let {
+115063|            postureToCcTools: v,
+115064|            postureToCcBashAllow: c
+115065|          } = await Promise.resolve().then(() => {
+115066|            gY();
+115067|            return NR;
+115068|          });
+115069|          let {
+115070|            backgroundRightsApplicable: n
+115071|          } = await Promise.resolve().then(() => {
+115072|            NJ();
+115073|            return vn;
+115074|          });
+115075|          let {
+115076|            autonomyRightsButtonShown: d
+115077|          } = await Promise.resolve().then(() => {
+115078|            X7();
+115079|            return RR;
+115080|          });
+115081|          let {
+115082|            caps: r
+115083|          } = await Promise.resolve().then(() => {
+115084|            G8();
+115085|            return xq;
+115086|          });
+115087|          let o = E(g);
+115088|          if (d({
+115089|            engine: L.engine,
+115090|            optedIn: false,
+115091|            caps: await r().catch(() => {
+115092|              return;
+115093|            })
+115094|          }) && n(v(o, {
+115095|            helpers: w
+115096|          }), c(o))) {
+115097|            O = C.TASK_ADMIN_RIGHTS_NOTE;
+115098|          }
+115099|        }
+115100|      } catch {}
+115101|      let h = C.renderTaskCard({
+115102|        name: g.name,
+115103|        kindWord: W(g.task.kind),
+115104|        prompt: String(g.task.prompt ?? g.task.text ?? ""),
+115105|        nextLabel: V(g, M, L?.timezone),
+115106|        lastNote: G(g, M, L?.timezone),
+115107|        enabled: g.enabled,
+115108|        spent: D(g),
+115109|        authorityNote: z(E(g), {
+115110|          helpers: w
+115111|        }) + O,
+115112|        team: j(H(g)),
+115113|        memory: I(g) ? q(g) : "",
+115114|        condition: $(g) ? N(g) : ""
+115115|      });
+115116|      let f = new JA();
+115117|      if (g.enabled) {
+115118|        f.text("⏸ Выключить", `auto:task-toggle:${g.id}`).row();
+115119|      } else {
+115120|        f.text("▶️ Включить", `auto:task-toggle:${g.id}`).row();
+115121|      }
+115122|      f.text("🗑 Удалить", `auto:task-delete:${g.id}`).row();
+115123|      f.text("« Назад", "auto:tasks");
+115124|      await J(h, f);
+115125|      return;
+115126|    }
+115127|    if (Q.startsWith("auto:task-toggle:")) {
+115128|      let U = Q.slice(17);
+115129|      let {
+115130|        loadActions: Z,
+115131|        upsertAction: E
+115132|      } = await Promise.resolve().then(() => {
+115133|        fA();
+115134|        return CB;
+115135|      });
+115136|      let X = (await Z().catch(() => [])).find(G => G.id === U);
+115137|      if (X) {
+115138|        await E({
+115139|          ...X,
+115140|          enabled: !X.enabled,
+115141|          disabledReason: X.enabled ? "owner" : undefined
+115142|        });
+115143|      }
+115144|      let {
+115145|        text: V,
+115146|        kb: W
+115147|      } = await vGA();
+115148|      await J(V, W);
+115149|      return;
+115150|    }
+115151|    if (Q.startsWith("auto:task-delete:")) {
+115152|      let U = Q.slice(17);
+115153|      let {
+115154|        removeAction: Z
+115155|      } = await Promise.resolve().then(() => {
+115156|        fA();
+115157|        return CB;
+115158|      });
+115159|      await Z(U).catch(() => {});
+115160|      let {
+115161|        text: E,
+115162|        kb: X
+115163|      } = await vGA();
+115164|      await J(E, X);
+115165|      return;
+115166|    }
+115167|    if (Q === "auto:history") {
+115168|      let {
+115169|        readRecentRuns: U
+115170|      } = await Promise.resolve().then(() => {
+115171|        o0();
+115172|        return uC;
+115173|      });
+115174|      let {
+115175|        summarizeRuns: Z
+115176|      } = await Promise.resolve().then(() => {
+115177|        mz();
+115178|        return Dw;
+115179|      });
+115180|      let E = await m().catch(() => null);
+115181|      let X = await U(500).catch(() => []);
+115182|      let V = Z(X, {
+115183|        now: new Date(),
+115184|        timezone: E?.timezone
+115185|      });
+115186|      await J(`\uD83D\uDD53 <b>История фоновой работы</b>
+115187|
+115188|${V}
+115189|⠀`, F);
+115190|      return;
+115191|    }
+115192|    if (Q === "auto:timers") {
+115193|      let {
+115194|        loadSchedules: U,
+115195|        formatSchedule: Z
+115196|      } = await Promise.resolve().then(() => {
+115197|        nQ();
+115198|        return eQ;
+115199|      });
+115200|      let E = await U().catch(() => []);

@@ -1,0 +1,58 @@
+{
+  "$comment": "Сток MSB: без продуктовых ботов/сервисов. Секретов нет — они в env. Пути с ~ раскрываются. Боты из ~/.msb/bots подхватываются сами (discoverExtraBots).",
+  "host": "Сервер ботов",
+  "timezone": "Europe/Moscow",
+  "intervalSec": 60,
+  "botsRoot": "~/.msb/bots",
+  "bots": [
+    {
+      "id": "default",
+      "name": "Основной",
+      "unit": "msb-bot@default.service",
+      "projects": []
+    }
+  ],
+  "services": [
+    {
+      "id": "nginx",
+      "name": "nginx",
+      "unit": "nginx.service",
+      "project": null,
+      "optional": true
+    },
+    {
+      "id": "pult-collector",
+      "name": "Пульт: сборщик",
+      "unit": "pult-collector.service",
+      "project": "Пульт",
+      "optional": true
+    },
+    {
+      "id": "pult-web",
+      "name": "Пульт: веб",
+      "unit": "pult-web.service",
+      "project": "Пульт",
+      "optional": true
+    }
+  ],
+  "platformUnits": [
+    "msb-sync.timer",
+    "msb-engine-tick.timer",
+    "msb-tick-puller.timer"
+  ],
+  "timers": [],
+  "taskRules": [],
+  "registry": {
+    "projects": "~/workspace/ops/pult/projects.json",
+    "asks": "~/workspace/ops/pult/asks.json"
+  },
+  "balances": {},
+  "thresholds": {
+    "memPct": 90,
+    "diskPct": 90,
+    "heavyServiceMemMb": 2048,
+    "heavyServiceCores": 0.5,
+    "missedRunsWarn": 3,
+    "expensiveTaskTokens24h": 5000000
+  }
+}

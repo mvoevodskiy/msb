@@ -1,0 +1,5 @@
+# Узкий sudoers для client: bot-ctl и systemctl по msb-bot@* / msb-engine status (чтение).
+# Полные права — только явный opt-in etc/sudoers.d/msb-full-rights (НЕ ставится bootstrap'ом).
+client ALL=(root) NOPASSWD: /usr/local/bin/bot-ctl.sh *
+client ALL=(root) NOPASSWD: /bin/systemctl restart msb-bot@*, /bin/systemctl stop msb-bot@*, /bin/systemctl start msb-bot@*, /bin/systemctl status msb-bot@*, /bin/systemctl is-active msb-bot@*, /bin/systemctl reset-failed msb-bot@*
+client ALL=(root) NOPASSWD: /usr/local/sbin/msb-engine status

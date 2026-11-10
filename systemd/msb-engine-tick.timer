@@ -1,0 +1,11 @@
+[Unit]
+Description=msb-engine: base-layer tick (state.json, bot/OC revive)
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=15min
+RandomizedDelaySec=60
+Unit=msb-engine-tick.service
+
+[Install]
+WantedBy=timers.target

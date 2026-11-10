@@ -1,0 +1,30 @@
+# /etc/systemd/system/pult-web.service — веб Пульта (вход, API, тревоги, сводка).
+# Код в коробке: /home/client/.msb/pult (выкл по умолчанию; вкл из /settings → Пульт).
+# Данные: /home/client/pult-data · секреты: /home/client/pult-secrets/web.env
+[Unit]
+Description=Пульт: веб-сервис (вход, API, тревоги, сводка)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
+OnFailure=pult-notify-failure@%n.service
+
+[Service]
+Type=simple
+User=client
+Group=client
+WorkingDirectory=/home/client/.msb/pult
+EnvironmentFile=/home/client/pult-secrets/web.env
+ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning --disallow-code-generation-from-strings /home/client/.msb/pult/src/server/main.ts
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=yes
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pult-web
+
+[Install]
+WantedBy=multi-user.target

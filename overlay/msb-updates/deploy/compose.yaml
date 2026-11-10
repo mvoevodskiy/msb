@@ -1,0 +1,21 @@
+services:
+  msb-updates:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    image: msb-updates:local
+    container_name: msb-updates
+    restart: unless-stopped
+    ports:
+      - "8787:8787"
+    env_file:
+      - ./env
+    environment:
+      PORT: "8787"
+      MSB_UPDATES_DATA: /data
+      BOT_MODE: webhook
+    volumes:
+      - ../data-runtime:/data
+      - ../:/app:ro
+    # для SSH с хаба на бот-серверы нужен исходящий доступ; host network проще на LAN
+    # network_mode: host

@@ -1,0 +1,12 @@
+{
+  "name": "workspace-tools",
+  "private": true,
+  "type": "module",
+  "description": "Скрипты под повторяющиеся действия агента: остатки, расход, сверки. Без зависимостей, Node 22+.",
+  "scripts": {
+    "test": "node --disable-warning=ExperimentalWarning --test tests/*.test.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  }
+}

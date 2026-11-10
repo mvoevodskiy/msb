@@ -1,0 +1,1532 @@
+Old→new audit: task persistence and legacy timer management.
+
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf holds .iia/bot/index.js.
+Readable cfa19389d535d48c161b4bbda7c54aa7649c90f6:.msb/bot/vendor/deobfuscated.js
+is blob 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11. Read it with git show BLOB.
+
+Interval persistence checkpoint.
+Rz→ir (24883,24928–24949) records the result of one action; U4 (4393–4408)
+updates that ID through oA's file transaction and keeps other IDs from the latest
+file. It does not save a whole action list captured before a long runner call.
+
+New baseline b5a781d store/scheduler lost concurrent addTask while the runner was
+pending, collided on same-PID temp writes and could resurrect a removed task.
+Five deterministic regressions RED; the fix reuses shared/file-lock.mjs, reloads
+before write and conditionally commits only one unchanged task's execution fields.
+A failed later task cannot roll back an already completed task checkpoint.
+Independent processes add tasks to the same JSON in a separate regression.
+All HOME/data/runner/notifications in these tests are synthetic; no real API/CLI.
+
+Scope: no new timer controls, rights, UI, task types or change to nextAt semantics.
+Old interval uses each run's start (Rz24757–24759,ir24883,lwA36099–36122), not its
+completion. The current tick-wide now issue for later tasks is a separate case.
+Task JSON locking does not reserve execution across multiple scheduler processes
+or external writers that bypass the store. A changed task's stale result is
+intentionally discarded; no exactly-once or instant abort-on-edit is promised.
+
+Legacy timer management checkpoint.
+
+Old 111725 exposes auto:timers. 115192–115225 reads schedules.json and
+shows empty/list, count, status, file order and Back. 115227–115251 opens
+the selected timer or the missing warning, with a 200-character preview
+and explicit toggle/delete. 115253–115293 toggles enabled or removes an
+ID and rerenders the list. It keeps the execution stamp on toggle.
+z7/ZF at 18045–18068 reads/writes an array. o4 at 18305–18310 and UA
+at 55413–55415 use the parent of IIA_SESSION_DIR (55687–55689).
+j$A at 18284–18303 formats once, daily and weekly.
+
+53fb3fc reproduces six defects at the old Telegram ingress with a
+disposable HOME. The management fix uses sessionDir's mapped parent,
+preserves unknown fields and only updates the selected ID under the
+existing file lock. A damaged array/file is never replaced by a menu
+write. The UI keeps the old wording and callbacks and escapes stored
+markup. The session override, corrupt bytes and concurrent callbacks
+are checked separately. The old ZF write follows an existing link.
+The new lock and atomic replacement use its physical target and keep
+the link. An exclusive temporary file in an owned directory cannot
+overwrite another file through a pre-existing predictable temp link.
+Two cases reproduced both write defects before this correction.
+
+Legacy timer dispatch checkpoint.
+
+Old boot 122276–122280 supplies gU to the scheduler. 108800–108834
+checks the sleep marker and saved owner chat/user. gU at
+111460–111475 sends the initial status and submits the timer prompt
+with isAutoTurn. kh/NB at 110140–110167 queues a normal text turn and
+shows the queued state when busy. The caller stamps lastRunAt after
+submission, before any model result. A failed initial status returns
+without admitting a model turn, and the old scheduler consumes the
+attempt. Old 110249–110297 merges ready text by chat, and 110649–110657
+requires every merged input to be automatic for the automatic model rule.
+55938–55954 preserves native OpenClaw. For automatic Claude Opus turns
+286–309, 643–652 and 55990–55995 choose Sonnet unless opted out.
+
+18259–18283 uses enabled, at and lastRunAt for once. Recurring timers
+match the exact minute and weekly weekday with a single run for the day.
+Old 108263–108265 uses the saved zone for hour/day/weekday while
+108811 reads the host minute. The UTC ISO prefix check at 18272 is
+inconsistent for local dates before UTC midnight. The restored code
+uses the same saved zone for every civil field and the dedup date.
+Persisted lastRunAt is still an ISO timestamp. The half-hour and date
+boundary fixtures document the observable correction. A missed recurring
+minute stays missed, while an eligible overdue once can run later.
+
+560401b reproduced five missing paths. main connects legacy-dispatch
+to the existing scheduler and createBot inbox. The owner adapter uses
+the saved chat only when its saved user matches the configured owner.
+It reserves a FIFO place without a fabricated Telegram message or
+sending text through the user forms. A locked compare against the
+captured file and record protects menu changes. The worker starts
+after atomic publication of the stamp. A failed write removes the
+reservation. Stop and shutdown cancel the queued/active worker
+through its ordinary lifecycle. Shutdown drains a pending stamp.
+Review reproduced a same-tick admission after /stop and an initial
+status request surviving stop. The current pass now checks the stop
+generation and the scheduled status is abortable. An unreserved
+timer remains eligible on a future pass.
+Pending legacy work and this scheduler's interval runner stay
+separate in time. Already queued auto-only work uses the old Claude
+policy, including the [1m] variant and opt-out. Mixed text, Codex
+and OpenClaw use their normal model policies. Tests use fake APIs,
+owned executable fixtures and disposable profile data.
+
+The scheduler stamps the admission attempt. Once the stamp is
+published, a process crash before the in-memory queue runs can lose
+the delivery, as in the old scheduler after enqueue. A model error
+or manual stop does not schedule a second run. The user profile's
+global legacy schedule adoption is outside this local checkpoint.
+24608/24644 and 26729–26748 route new SCHEDULE_TASK reminders to the
+separate action store. That conversation route is the next stage.
+
+Conversational one-shot reminder checkpoint.
+
+Old r$A/L7 at 19292–19295 and 24616–24644 asks for final SCHEDULE_TASK when
+enabled. 106557–106619 and 106646–106707 process it at final delivery,
+with engine/config/delivery gates. KB/WMA at 26602–26621, 26652–26677
+and 26703–26749 preserve adjacent prose, replace each full block in order,
+validate JSON and collect refusals. Ra at 25985–26018 corrects nearby success
+claims when registration fails. 27113–27125 uses actual turn chat and topic,
+not payload fields. Old qr/Dz at 22473–22497 and 22546–22588 normalize relative
+minutes/hours/days and absolute time. Pr/Or/_r at 22829–22851, 22934–22955
+and 23002–23064 define literal text, default name, narrow authority, once
+trigger and output. 23255–23319 checks the active limit and registers before
+confirming. 23203–23228 and 23372–23386 show the owner-local time and pause.
+11529–11546 defines the active limit and permits zero as unlimited.
+
+Local old registration 46174–46190 writes actions.json (UA/AL at
+55410–55415 and 55687–55689). Rl at 10670–10687 gives an explicit env
+flag precedence over per-bot config and remote auto-on, default off
+at 10778–10793. 10708–10712, 11221–11227 and 11494–11497 guard fleet
+and per-bot STOP. 3785–3795 and 3861 define the sleep marker. The due
+once predicate at 36114–36118 admits an overdue record with no run stamp.
+The old description at 23246–23253 says such an unstamped action will
+never run. The restored confirmation describes it as already due, in
+line with the runner. The pause response reports the state without a
+promise to resume via a marker outside this checkpoint.
+
+37373–37381 binds the CC port to the saved owner chat. 37005–37036
+and 34360–34365 send the literal reminder with no further model turn.
+24829–24893 and 24928–24948 record one attempt as spent, even on
+transport error, and append an old-schema row to autonomy/runs.jsonl.
+101871–101910 and 114962–115165 display the old list/card and use the
+same toggle/delete callbacks. An ordinary spent reminder is hidden
+from the active list and cannot be turned back into a runnable row.
+
+ec12492 parsed SCHEDULE_TASK in incoming Telegram text as a 24-hour
+interval task, never processed the model's final marker and did not
+run a local once/reminder action. cc99019 reproduces five cases through
+the ordinary worker and scheduler. The fix puts registration in the
+worker finalizer before other marker consumers, validates and commits
+one old-compatible record, and adds the direct sender to the existing
+scheduler without holding the timer/interval pass. The captured CC
+route and current policy are both checked, so an OpenClaw result
+cannot be adopted after switching engines. Registration refuses a
+missing owner route. Markdown/HTML code and quoted marker examples
+stay inert for this protocol. The task card and history use the
+existing navigation, and native mappings, migrated/OC records and
+follow-up actions are excluded from the local ordinary runner.
+
+The send is claimed atomically before I/O, with no HTTP retry after an
+ambiguous result. A process crash after the claim and before delivery
+can lose the notification. A failed persistence claim does not send.
+Old caps/gates at 24757–24821 (fleet cost/run/token, breaker, subscription
+and spend), conversation-wide stop/resume, native OC registration and
+outbox (45672–45681, 45865–45970, 46199–46235, 28236–28315), other
+action kinds, follow-ups and global migration require separate work.
+Only disposable profiles, synthetic CLI and fake Telegram were used.
+This checkpoint is not a JAR1 rollout or full autonomy acceptance.
+
+Conversational pause checkpoint.
+
+L7 24610–24617 distinguishes per-bot STOP_ALL and RESUME_ALL from
+deletion, per-task pause and quoted examples. WMA 26785–26811 uses
+Ga/uz at 25821–25867 and 26625–26651 to apply control to eligible
+marker text. Da at 25868–25884 chooses the first order and 26020–26021
+provides the two conflict responses. Da also counted quoted raw
+occurrences even though Ga skipped execution. The new finalizer
+chooses the first executable control, including when a preceding
+example contains the opposite marker. It removes duplicate commands
+from the result and applies the winner once.
+
+YM 11284–11307 writes the first reason/time to per-bot autonomy/STOP
+and cancels registered background controllers. q0/gZ 11221–11227 and
+11267–11276 use the local STOP, separate fleet flag (10708–10712),
+and per-action kill. XjA 11401–11406 removes the local stop and its
+notice. Native job fencing/resume at 11308–11381 and 11411–11444
+belongs to the native runner. A local pause only reports mapped armed
+native jobs. It does not list or cancel tasks on the gateway, touch
+its map, or perform a scan of neighboring bot profiles.
+
+qz/_7 24316–24426 give the stop/resume result and inspect timers.
+Ji 17128–17136 and Eg/Xg/Wg 21698–21702,21841–21843 show that old
+schedules keep running until the extra owner question is confirmed.
+113415–113446, 21826–21839 and 18094–18124 write disabledBy=stop on
+confirmation and resume only those rows. 113219–113225 keeps them.
+The question is associated with the current STOP file identity and
+the originating chat/message. This keeps the original callbacks
+while an earlier question cannot override Keep during a later
+pause. A failed timer write can be retried. Manual timer toggle
+clears stop provenance, so a later resume cannot re-enable a
+subsequently owner-disabled timer. The original menu otherwise
+keeps its actions and callbacks. The earlier old copy proposing a
+conversational resume after a paused reminder is restored for the
+owner's pause. The distinct fleet pause has an honest explanation.
+
+55e5839 displayed control markers verbatim, did not write STOP
+from Telegram and did not gate or cancel local interval work.
+ab75ce9 reproduces five failures in production ingress and scheduler.
+The worker checks owner, successful final response, captured CC
+rail and the current enable/engine flags. A fresh engine check
+inside the ordinary state queue follows policy I/O and serializes
+the STOP transition with in-process engine updates without writing
+state.json. The pause transaction serializes STOP and timer
+confirmation/resume with local
+reminder admission. A direct reminder already admitted can finish.
+The active in-process interval gets an abort signal and cancelled
+output is discarded before normal task/result publication. Its
+scheduled row stays pending. Stop and resume retain both action
+stores. The owner resume never edits the remote fleet flag and
+does not claim work resumed while it applies.
+
+Remaining scope: old periodic stop notices (27310–27435), old caps,
+native cron and outbox, and shared schedules migration require
+their own verification. All scenarios here use disposable profiles
+and simulated Telegram and CLI; this is a local release checkpoint.
+
+Ordinary reminder admission checkpoint.
+
+Rz 24743–24827 estimates $0.10 for an ordinary reminder. The local
+route evaluates saved stop/kill first, breaker at 13327–13341,
+fleet USD and then run/input-token caps, existing Claude quota,
+and owner/action spending. This checkpoint restores the read-side
+legacy breaker decision. The direct reminder result path is below.
+The old periodic frequency brake remains separate.
+
+VM/GM (11548–11669, 11740–11775, 11924–11961) use the UTC date and
+the last 500 parsed rows per own/root/bot journal (10837–10855,
+11044–11148). Defaults are $5, 200 runs and 10,000,000 input
+tokens. Zero disables the corresponding box gate. Money includes
+all finite recorded cost. Run/token totals exclude only skipped
+and stopped, so blocked counts as a run. Existing open-core
+interval rows prove a completed run except the known setup and
+engine_oc preflight refusals. Their schema lacks cost and input
+tokens. The adapter counts completed runs without deriving
+telemetry from the text. Linked paths to the same journal count
+once. The box remains a view of completed records, with the old
+race between independent in-flight runs, not a reservation system.
+
+mD/TNA (16616–16716 and 55653–55659) compares the estimate to the
+action's per-run/day ceilings before costPaused and the owner-day
+reserve. Rz passes no accumulated action-day cost. Explicit zero
+action ceilings therefore block the estimate while equality passes.
+10664–10691 defaults reserve to 30%, accepts an env override
+and clamps it to 0–90%. The owner's historical cost fields are
+consumed, with no invented new billing entries. Current ordinary
+turn costHistory accumulation still requires separate verification.
+
+WM/il (11798–11907) uses the saved Claude rateLimitInfo while its
+window remains open. Rejected/overage block before utilization.
+For five hours, the owner's reserve applies. Other windows block
+at 98%. Only the current Claude rail can use this snapshot. Codex,
+Cursor, Qwen and native OC never take Claude subscription data.
+The existing Codex collector in Pult has its own account reader
+and cache. This scheduler adds no Pult credential or account poll.
+
+A blocked or skipped ordinary once is spent (24797–24820,
+24928–24948 and 21086–21093). Its action uses lastStatus=skipped,
+lastOutcome=blocked; journal retains the actual status and reason
+with zero cost. Blocked sends one plain notice to the saved owner;
+breaker skip sends none. The new route commits before the notice
+so a failed Telegram request cannot make the action runnable
+again. History renders the old neutral skip/block state and
+details (10901–10923,10989–11015). Conversation cap controls and the original hints are covered below.
+
+The checkpoint is local and verified through the real scheduler
+with disposable paths and synthetic Telegram. Native cron/outbox,
+other action types, broader spend capture and live provider
+acceptance remain distinct work.
+
+Claude quota snapshot input.
+
+Old parser at 20020–20031 dispatched rate_limit_event.rate_limit_info
+with a numeric resetsAt. 55998–56011 wrote the ordinary Claude
+snapshot while the turn ran. QPA at 36705–36734 did the same on
+the background Claude route. WM at 11888–11907 reads that field.
+
+426b322 read old snapshots but could not obtain a new one from the
+runner. f5933b1 reproduced an active stream with a missing update
+and a rejected native turn without a session ID. runAgentTurn now
+consumes the real stream frame only from its pinned Claude route.
+The bot state queue checks the active engine, provider and saved
+auth mode before applying the legacy fields. A session reset and
+a quota update have separate ownership. Refused turns can provide
+valid quota, and missing/invalid telemetry never overwrites it.
+The scheduler and the existing Claude side of Pult use the same
+saved field. The Codex collector has its own account source.
+All tests here use owned executable fixtures and temporary profiles.
+
+Conversation limit control.
+
+Old prompt 24609, Pa/x7 26053–26075 and 26238–26274, Zw/Ta
+26163–26209 and final dispatch 27096–27109 establish the five keys,
+finite validation before rounding and zero confirmation. 106646–106703
+sends in the originating chat/topic. The keyboard uses lim0:<key> and
+ct-keep. 113219–113262 writes only on confirm, acknowledges the choice
+and edits the original message. Old 11532–11542 and 11766–11774 advise
+asking to increase action, run and token limits.
+
+e466325 reproduces the absent dispatch and absent Claude/Codex prompt.
+The restoration uses the existing per-bot env writer and does not copy
+Ta's global .env scope. A bot's threshold can change while sibling
+profiles retain their thresholds. The amount compared by the existing
+daily cap is still the server journal total. Saved owner costs and
+costPaused, native cron, account auth and other admission gates are
+independent of this write. Positive values are visible after the
+atomic .env rename and in-process environment update. The last engine
+and abort checks precede publication even when the write had to wait.
+
+The owner zero question is durable and bound to bot/chat/message/key
+before the buttons are shown. Keep consumes only that question. A
+rejected write keeps the question for retry. A process crash between
+consumption and publication may require the owner to ask again.
+Shared ct-keep still goes to the timer handler for a timer question.
+Copy for the zero question/result names the selected gate only. The
+old blanket unlimited-spending statements cannot describe the other
+active constraints. Tests use disposable profiles and synthetic
+Telegram/CLI events. No live confirmation or native OpenClaw write.
+
+Direct reminder breaker outcomes.
+
+In old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf the source
+is .iia/bot/index.js. Read the old blob above with git show and
+nl -ba. 37378–37382 wires the CC ports and owner chat. nwA
+36178–36188,36263–36268 sends due actions through Rz. Ai/YPA
+16977–16986 and 37005–37036 directly send ordinary reminders.
+Rz 24829–24843 maps delivery exceptions to error. Preflight
+24797–24827 and shutdown 24848–24870 return before AD.
+24871–24883 calls AD with XLA 24736–24742 (only error increments).
+
+NIA/AD 13249–13341,13388–13429 keeps one record per action in
+breakers.json, anchored at UA 55413–55415 and 55687–55689. The
+third error opens for 300 seconds, then an eligible failed attempt
+extends the delay exponentially up to 3600 seconds. Q2 at
+24656–24682 gives zero minimum for a once trigger. A successful
+attempt closes the breaker, clears the crash history and retains
+last failure metadata. d4 at 13358–13373 and 13048–13062 sends
+one notice at each transition. CC formats Moscow by default
+(13189–13217). The OC outbox at 34451–34527 and 34851–34858 is
+separate. gU legacy schedules (108800–108830,111460–111475)
+queue regular turns outside this state machine.
+
+05b7e44 reproduced five defects on bfa5c06. Restore the direct
+result only for the still-current claimed action. The shared
+profile lock keeps distinct records and follows physical paths.
+The breaker is read after usage I/O, inside the claim transaction.
+An admission refusal leaves the breaker untouched. An unreadable
+map is left intact. The action result and journal survive a
+breaker write failure or failed notice. A write alias to the
+already-locked action file is refused before nested locking.
+
+Once is still spent after the original attempt. The opening notice
+retains the old transition text without promising automatic recovery
+of an already spent reminder. Each synthetic run and journal uses
+its captured start time. The separate simplified interval runner,
+real old recurrent actions, crashstorm and native outbox require
+their own admission and completion routes. File locks do not turn
+Telegram and the files into one transaction. The existing window
+between claim and the external send remains. All proof here uses
+owned disposable profiles and synthetic Telegram.
+
+Saved recurring literal reminders.
+
+Old 36099–36139 picks active intervals from lastRunAt and tests
+cron in the owner's timezone. 22097–22174 implements numeric
+fields, wildcard, list, range and steps. All five fields match.
+The same wall-clock minute is suppressed, including the repeated
+minute after the autumn timezone change. nwA fixes V once before
+selecting all due actions (36228–36230,36263–36268), then each Rz
+captures its actual start (24757–24759). A preflight refusal still
+updates lastRunAt unless it is stopped (24797–24821). Only a once
+is disabled by the completion at 24883 and 24928–24948.
+
+Old He/spacing check at 35919–36086,24656–24682 and 24977–25000
+uses 60 minutes when its estimate recognizes the schedule. The
+stored Keep is `autonomy-cron:<id>:frequency`, `keep_as_is`, in
+UA(owner-decisions.json) (16566–16568,16608,25038–25113).
+Old Q2 makes the breaker pause at least two estimated intervals.
+Old YPA at 37005–37036 sends a literal reminder with no model.
+The list/card and toggle use the existing auto:task routes at
+114988–115165. U0/iqA at 23162–23241 format common schedules.
+
+7fc3ef6 reproduces six omissions on 973ed94. The direct dispatcher
+now preserves the old due snapshot and actual attempt time, and
+uses the existing claim, budget, breaker, and journal. Pending
+frequency rows initially waited with saved Keep recognized per
+profile. The separate frequency decision checkpoint below restores
+card creation and applies all three choices.
+The card distinguishes a spent once from a previously run recurring
+reminder. A pause during send preserves the new enabled state and
+still records that attempt. Replacement, removal and foreign native
+records remain fenced. Two workers for the same slot, a slow earlier
+send and the owner toggle have controlled regression tests. All
+profiles and Telegram traffic are synthetic.
+
+Separate old prompt-action boundary.
+
+Old 16974–16975 and 37091–37098 route prompt actions through
+kP/kgA. 3936–3950,3952–3988 and 23002–23063 derive posture from
+both authority and capability. The historical capability read
+maps to standard/green-yellow (file write/edit, no Bash), while
+scan maps to inspect/green-exec. 17159–17220 controls tools,
+helpers and Bash allowlists. 19475–19535,20443–20462 and
+20827–20853 implement the native tool/guard argv. 33315–33359
+uses this policy and selects optional per-action continuity.
+36776–36919,37125 and 41795–41805 isolate the workspace and
+resume only from that action's own cc-sessions store. Te/ke at
+36743–36750 uses a 30-minute CC ceiling and an earlier abort,
+with a shorter declared action timeout when present.
+
+The current simple tasks.json runner calls the shared owner turn
+and is already an explicit compatibility path. runAgentTurn reads
+owner ccSessionId/current project and writes the session result at
+turn.mjs 59–68,96–132,158–163. It cannot serve old stored prompt
+actions directly. Overlay shim/run-turn.mjs writes provider
+last-seen on success. The Codex adapter currently selects
+`danger-full-access`, can persist transport config and prepares
+native MCP. A fresh thread alone would not reproduce the old
+per-action tool boundary or isolate owner state. A separate
+provider launch and enforced policy are prerequisites for
+restoring that route. Saved prompt rows, native jobs, and
+follow-up reminders never fall through to the literal sender.
+
+Saved stateless Claude prompt checkpoint.
+
+f831ae3 reproduces the missing dispatch. The local scheduler now
+executes the old stateless green-only/green-yellow Claude profile
+when native subscription/OAuth is selected. 20560–20568 and
+20827–20853 provide the old native path deny and tools boundary.
+Use the current paths, the native Read/Edit rule forms and a strict
+empty MCP config. The historical interactive transport may load
+configured MCP; this isolated launch holds that feature for its own
+capability proof. Hooks from user/project sources stay disabled in
+this session. Managed organization settings remain a live profile
+acceptance dependency. 41813–41829,44249 and 19517–19525 remove
+raw API credentials and restore OAuth. Account quota/session writes
+from background turns remain separate from the owner state.
+
+24848–24870 journals a stopped turn before committing its action.
+The scheduler registers the background controller under the claim's
+pause lock and drains it on shutdown. Stop before delivery rolls
+back the still-current claim. Stop after a report part consumes the
+attempt and holds subsequent parts. A delayed result cannot restore
+a replaced or migrated row. 15992–16049 and 33415–33446 distinguish
+a quiet final line from a code sample. The current prior decisions
+for recurring frequency and the simple tasks.json route are retained.
+
+Use the existing saved task card for pause and delete. Codex, Bash,
+continuous memory, explicit teams, MCP, verification and stored
+report modes require their own policy and are outside this stage.
+The CLI test uses synthetic accounts; no JAR1 launch or live user data.
+
+Optional native proof: extract the official Linux CLI 2.1.154 for
+the Docker architecture into a temporary directory. With the release
+export at $stage and binary under $native, run:
+
+  docker run --rm --init --pull never --network none --read-only \
+    --tmpfs /tmp:rw,exec,mode=1777 \
+    --mount type=bind,src="$stage/checks/source",dst=/probe,readonly \
+    --mount type=bind,src="$native",dst=/native,readonly \
+    --entrypoint node msb-local-checks:node22-forms \
+    /probe/.msb/bot/tests/fixtures/claude-saved-prompt-loopback.mjs /native/claude
+
+The probe runs the production native adapter against a local mock
+Anthropic API using a synthetic OAuth token. It issues actual Read,
+Write and Bash tool requests, records denial and permitted output,
+and checks owner state, MCP startup and native session persistence.
+
+Saved Codex prompt transport, native CLI 0.166.0.
+
+3936–3988 and 17159–17220/17260–17285 define the old read and
+edit postures. The default prompt capability adds local edits
+without Bash. Dn at 20560–20568 excludes sensitive paths. JO at
+36776–36919 has a separate workspace, deadline and continuity
+store. The legacy route used Claude. These are the tool and
+session requirements when adapting that route to Codex.
+
+The ordinary Codex exec route uses a full-access sandbox and
+persists provider conversation metadata. In the native probe,
+turning off shell removes text-file tools even with workspace-write.
+Turning shell back on exposes general command execution. A
+trusted-project override wrote a new trust entry to config.toml
+with ignore-user-config and ephemeral enabled. An empty MCP
+table alone also left a built-in personal search startup attempt
+under synthetic ChatGPT auth.
+
+The closed Linux probe uses ignore-user-config, ignore-rules and
+ephemeral with the native auth profile. SQLite and logs go to a
+temporary directory. It disables shell, apps, remote plugins,
+hooks and the other unneeded native features shown in the script.
+The fixed stdio fixture demonstrates per-tool permission with
+approval policy never. The read profile reads its own fixture
+file and rejects an outside path. The edit profile writes the
+fixture file. The native auth, config and earlier rollout files
+match the snapshot. Neither configured user nor project MCP
+starts. request_user_input remains advertised in the tool list.
+
+Run the probe from the source root using the official
+@openai/codex@0.166.0-linux-arm64 vendor directory in $native
+and the local Node 22 image. The test HTTP server uses loopback
+inside network-none Docker and a synthetic ChatGPT login.
+
+  docker run --rm --init --pull never --network none --read-only \
+    --user "$(id -u):$(id -g)" --tmpfs /tmp:rw,exec,mode=1777 \
+    --mount type=bind,src="$native",dst=/native,readonly \
+    --mount type=bind,src="$PWD",dst=/probe,readonly \
+    msb-local-checks:node22-forms node \
+    /probe/.msb/bot/tests/reference/saved-prompt-codex-native-0.166.mjs \
+    /native/bin/codex
+
+See saved-prompt-codex-native-0.166.json for the actual tool lists.
+This checkpoint covers native transport and a fixed fixture.
+The saved action dispatcher still admits Claude. The production
+file policy, broader old tool set, cancellation, native OAuth
+refresh and scheduler integration remain separate checks.
+
+Saved Codex action integration for standard and narrow stateless turns.
+
+The scheduler uses the same saved action claim, pause controller,
+deadline, delivery and journal as the restored Claude path. The
+overlay registers the isolated Codex adapter before main starts.
+Only the installed 0.166.0 CLI and native ChatGPT file auth are
+admitted. The effective CODEX_HOME and auth mode are checked before
+exec and no direct API credentials are inherited. The official
+HTTP provider is specified in argv. Owner state and foreground
+session writers have no role in this path.
+
+The per-action bridge keeps the old eligible workspace, home and
+temp. Read/Glob/Grep and Write/Edit/NotebookEdit use one file
+policy, including protected paths, their temporary writer files
+and alias targets. Text file edits are atomic. WebSearch uses the
+native tool. The scoped run also has a private checklist. External
+MCP and unrestricted shell are unavailable. Native WebFetch,
+Codex helpers and the larger old action profiles need separate
+acceptance before this work represents full saved-prompt parity.
+
+Old Rz at 24848–24870 left stopped actions unstamped. This still
+applies before a scoped file commit or report delivery. If a Codex
+write reached the publication boundary, the stopped attempt keeps
+its slot so a once action cannot repeat a possibly published write.
+The adapter records that boundary in its disposable scratch area
+before the atomic link or rename. It signals the owned CLI process
+group and the file bridge stops accepting operations on that signal.
+
+Run the production adapter fixture under the same network-none
+Docker invocation above with the script path replaced by
+/probe/.msb/bot/tests/fixtures/codex-saved-prompt-loopback.mjs.
+The fake API asks real Linux Codex to call the owned read, glob,
+grep, write and edit tools and checks protected aliases and old
+rollout bytes. Live OAuth refresh, public search results and
+production Telegram acceptance are separate checks.
+
+The file bridge also excludes the temporary server profiles made by
+shared/codex-mcp-profile.mjs and core mcp/launch.mjs and the private
+OpenClaw, speech and other saved Codex scratch directories. The
+scheduler regression creates a real staged MCP file with synthetic
+headers during a saved turn. Read and write are rejected, and a
+normal temporary text file remains accessible.
+
+Opening a supplied web URL from a saved Codex prompt.
+
+Old lD at 17260–17285 provides WebSearch and WebFetch in both basic
+permission profiles. The current adapter passes the native hosted
+web_search tool with external_web_access true. The Responses
+contract supports an open_page action for reasoning models
+(https://developers.openai.com/api/docs/guides/tools-web-search).
+The native Linux 0.166.0 fixture sends a specified URL through the
+actual saved adapter, checks the advertised tool and completes a
+synthetic open_page result with the URL in the reply. The provider
+behavior is simulated in the closed test. Live page retrieval and
+account acceptance remain separate. This path has no server-side
+URL downloader or shell.
+
+
+Saved Codex native helpers for basic stateless prompts.
+
+I8 at 3929–3934 enables prompt helpers by default with an explicit
+false opt-out. zJ/WR at 17159–17184 give helpers the parent's tool
+posture. JO at 36829–36851 passes the tools and optional teams into
+the scoped launch. Named team definitions at 14462–14483 map a
+role description and prompt to the old CLI; this stage covers the
+ordinary built-in helper, not named teams.
+
+The saved Codex adapter maps the old Agent/Task grants to the V2
+collaboration tools on the pinned CLI. This tool receives a plain
+text task. It inherits the temporary run and the same owned file
+bridge. Explicit helpers:false suppresses both native delegation
+modes. The saved prompt communicates the grant only when present.
+Use codex-saved-helper-loopback.mjs in the same network-none Docker
+command above to check the real CLI's child scopes, attachment
+rejection, a custom role's scope and parent cancellation. The
+foreground provider, other grants and Telegram interface stay on
+their existing paths. The fixture uses a synthetic account.
+
+The old event parser adds each helper's usage.tokens at 19751 and
+exports helperTokens at 20322. JO adds that total to the saved run's
+tokensIn at 36950. Codex 0.166.0 exec JSON reports the parent turn
+only. In the probe, three parent responses contributed 21 input
+tokens and three helper responses another 87 input tokens. The
+reported input was 21. The observed ephemeral state database had
+no thread rows to use as a fallback. The full account and daily
+token limits still need verified coverage before rollout.
+
+A separate loopback trial on the same pinned CLI enabled the native
+OTLP JSON exporter only inside network-none Docker. Completed SSE
+events carried input and output counts under distinct conversation
+IDs for both parent and helper. The root had three events with
+7 input / 2 output each. The helper had three with 29 input /
+2 output each. Metadata-only events for the same completion also
+arrived. The launcher has no exporter or receiver in this stage.
+The usage writer needs completed-event correlation and deduplication
+before the old daily token guard can use the sum.
+
+
+Saved Codex helper usage in the daily input budget.
+
+The invocation now opens an authenticated OTLP JSON receiver on
+IPv4 loopback for the owned CLI. It discards message bodies and
+keeps scoped thread links and numeric counters in memory until the
+process exits. The launch supplies only this log endpoint and turns
+off prompt/answer logging and the metrics/trace exporters. Raw
+telemetry has no writer in the bot.
+
+The pinned 0.166.0 CLI emits codex.agent_communication spawn and
+result links. Its completed SSE events carry a metadata record and
+a numeric record. The observed OTLP timestamp distinguishes records
+with equal usage, and an exact retry retains that identity. The
+adapter compares successful /responses attempts, completion pairs,
+child results and the root exec usage. Only descendants of the
+owned root can contribute. It sums the helper input and output once,
+with cached input already included, and adds the helper total to
+tokensIn as old 36950 did. Root tokensOut stays separate.
+
+Tests cover equal-sized responses, duplicate receipts, conflicts,
+partial and unrelated events, request authentication and the exact
+daily budget boundary. Unknown usage remains absent or a lower bound
+with usageIncomplete. No refusal is synthesized solely from missing
+telemetry. XM at 11608–11627 excludes stopped/skipped attempts from
+daily tokens, and the existing journal reader preserves that rule.
+The native helper fixture checks actual CLI totals on loopback.
+
+
+Codex account reserve for saved actions.
+
+il/WM at 11798–11907 and Rz at 24763–24826 give the old Claude
+policy and admission order. The Codex adapter applies the owner's
+reserve to the measured 300-minute window and the old 98-percent
+threshold to the 10080-minute window. Both must be current. A
+confirmed block still writes the same notice and journal status,
+spends a once action and keeps recurring actions on their schedule.
+
+The overlay uses account/rateLimits/read from the pinned app-server
+with file auth in the effective CODEX_HOME. The scope reads only
+the common codex bucket, with the historical unlabelled bucket
+fallback. It discards another account's response, model-only
+buckets and unmeasured percentages. The provider's ordinary-use
+denial remains bound to the principal until authoritative true.
+Credits and individual display percentages do not grant access.
+A missing fresh window leaves the existing day and action budgets.
+
+The read is cancellable without counting as a model turn. Provider
+and credential checks precede the claim and the same credential is
+checked before launching Codex. Shared journal totals are sampled
+again after the read. The Claude/Pult routes are independent.
+The native app-server startup also reads account and reset-credit
+metadata. Plugins, hooks and exporters are disabled for this read.
+
+Use codex-saved-quota-loopback.mjs with the network-none Docker
+command above. The pinned CLI uses a synthetic Responses account
+backend, and the production reader checks 69/70/98 percent,
+the protected auth/config files and the absence of plugin and MCP
+effects. The scheduler and fake RPC fixtures cover unavailable,
+cross-account and explicit denial results and STOP races.
+
+
+Old local recurring frequency decisions.
+
+Reference master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Read the preserved bundle with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+Lz/zz/ng at 24656–24674, 22499–22545 and 24977–25000 estimate
+the spacing. The 60-minute floor (24537) holds only estimates
+strictly below 60. Unknown patterns and a one-off have no floor.
+
+nwA/He at 36178–36230 and 35919–36086 scan before due selection,
+only with local autonomy enabled, without STOP, on enabled rows
+without a kill switch. They set disabledReason=frequency without
+disabling or stamping a run. They append a skipped hold and ask
+the saved owner's chat once per subject. GLA and tg at 25038–25057
+and 25103–25167 define the original text, choices and decision
+key. PF/Ye at 33959–34131 render the HTML card, store its short
+ID and resolve dc:<shortId>:<choice>. 16534–16608 define the
+per-profile pending and decisions maps in owner-decisions.json.
+113101–113142 and 37373–37390 connect owner chat, tap and sender.
+The tap persists before editing the card. A duplicate answer
+displays the remembered label and a missing or invalid card is
+stale. Failed sends can retry without creating a decided choice.
+
+The next eligible tick applies the choice. Keep lifts a frequency
+hold and resumes the original schedule. Hourly writes
+{kind:"cron",cron:"0 * * * *"} (25368–25371), clears lastRunAt,
+lastStatus, lastOutcome, nextFireAt and pendingReschedule (RJ
+23757–23771), and retains an existing frequency hold until the
+next tick lifts it. Off saves enabled=false and reason owner,
+preserving the row. He records the resumed and held transitions.
+sg at 25058–25102 logs applied choices as skipped, retryable
+write errors as blocked and limits the failure notice using the
+last 60 parsed rows (J0, 10837–10855). These are zero-cost
+administrative entries. Decisions survive file/transport retries.
+
+The local open-core test boundary uses existing actions.json,
+owner-decisions.json, the normal scheduler and the Telegram
+callback router. New writes must preserve other decisions and
+avoid replacing a concurrent choice or action. A tap uses the
+original card message ID and saved owner chat. This does not
+extend the pass to OpenClaw native jobs or alternate workflows.
+
+The open-core brake saves the hold before offering the card.
+The decision lock spans a bounded send and binding so immediate
+taps wait for persistence and concurrent offers converge. The
+choice is stored before editing and remains after a failed edit.
+The first recorded subject decision is authoritative across
+older duplicate pending cards. The binding includes the actual
+chat for new cards and uses the saved owner chat for legacy
+pending entries without it. Other decision types stay untouched.
+A returned message whose binding cannot be saved has its buttons
+removed on a best-effort basis. A crash or unknown send outcome
+still has the usual Telegram/file boundary. This is not an
+exactly-once guarantee.
+
+A held action is excluded from due selection until the brake
+removes its hold. The action update shares the existing current
+row and local-route guards with admission. A saved prompt must
+have a supported plan for the selected route before it can be
+changed or offered. Unsupported and foreign records stay put.
+Usage, spend and breaker checks remain downstream for a due run.
+
+
+Register a recurring literal reminder from the conversation.
+
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Read the preserved bundle using
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+The owner prompt at 24616–24648 describes recurring cron and
+literal reminder text. applyTaskMarkers at 106646–106707 and
+detectTaskMarkers at 26729–26748 dispatch final SCHEDULE_TASK JSON.
+Dz/zz at 22546–22587 and 22499–22545 trim a five-field cron and
+reject a recognized spacing below 60 minutes. They store
+kind=cron with the explicit timezone or the owner's default.
+An interval is a stored trigger type, not the recurring marker
+shape. Pr/Or at 22822–22852 and 22934–22956 trim literal text and
+supply the name. _r at 23002–23064, Q9 at 3994–4006 and
+kr at 23425–23427 construct the local action and conv-reminder ID.
+
+yg at 23255–23386 checks active capacity (ZM at 11529–11547),
+registers and then confirms. y7 at 46174–46190 writes the local
+action before returning success. STOP still permits registration
+and adds the existing paused copy after persistence. iqA/U0 at
+23162–23241 show the schedule and next firing. D9 at 21242–21274
+searches from the following minute for up to 45 days (21361).
+Its forecast reads the trigger timezone. Old local lwA/nwA at
+36119–36140 and 36228–36268 actually use the owner's timezone.
+The current local due path uses that clock. A confirmation must
+show the effective clock; the recorded explicit zone is retained.
+
+Old yg adds three independent advisories after registration:
+same-time twins (xqA/Er 22032–22096), legacy timer overlap
+(ER 17055–17105) and load of five or more runs per day
+(Gr/vqA 22189–22273, sample 28 days at 22296, threshold 24538).
+Rr/gr at 22812–22821 and yg at 23321–23383 provide the copy.
+These advisories do not reject the task or modify the existing rows.
+
+New registration must reject cron fields that the direct matcher
+cannot parse or that use out-of-range values. The old field count
+alone could save a schedule with no executable slot. Likewise an
+invalid explicit zone could fail D9 after the action was saved.
+The new marker also rejects impossible month/day combinations and
+an observed sub-hour minute pair in valid ranges that zz could not
+estimate. The existing saved-record parser and frequency decisions
+remain compatible. The next-slot confirmation starts on the following
+minute, uses the actual local due matcher and omits a forecast past
+the legacy 45-day horizon. Irregular steps use the old literal-cron
+fallback so the caption agrees with the calculated time.
+
+After the action commit, pause is sampled again. If that read fails,
+the bot confirms the durable save and reports the pause state as
+unknown. The scheduler still checks the state before any run. The
+existing action cap, owner route, one-off behavior and independent
+legacy timer file are covered by the same fixture.
+Named follow-ups, prompt actions and native OpenClaw registration
+are separate.
+
+
+Register an ordinary scheduled prompt from the conversation.
+
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Read the preserved bundle with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+24626–24648 separates the instruction from its time and describes
+ordinary SCHEDULE_TASK prompts, explicit quiet and helpers. The
+final marker path is 106646–106707 / 26729–26748. yg 23255–23319
+normalizes the instruction, checks capacity and saves before
+the old confirmation, authority note, advisories and STOP notice
+at 23321–23386.
+
+Fg/Ug at 21531–21566 strip a scheduling prefix in at most three
+passes. A remaining body shorter than 12 falls back to the
+original. A nested marker or a request to schedule another
+task is refused. Old yg only ran this guard on a direct prompt
+string. Pr 22853–22889 reads prompt, text or topic in nullish
+order, trims, and keeps a nested boolean helpers flag. Empty
+explicit prompt does not fall through to an alias. The old
+marker does not carry per-action model/provider selection.
+
+Or/gg 22934–22956 supply a trimmed 40-character default title.
+_r 23002–23064, Q9 3994–4006 and 3907–3915 / 3952–3989 derive
+capability read, standard authority and the explicit ban on
+automatic publication. Quiet sets emptyIsValidOutcome. Rg
+22466–22471 normalizes a positive maxMinutes to 1–60 minutes.
+n1 15916–15922, Te/ke 36743–36750, 14618 and 37106 prove the
+actual local runtime's 30-minute ceiling and 15-second margin,
+including the 30-minute undeclared CC deadline. Preserve the
+existing runner's real behavior instead of inferring a 10-minute
+CC deadline from the generic default. kr 23425–23427 prefixes
+the per-bot record conv-prompt. rqA 23428–23436, q7 20595–20599
+(2.1.172 at 20957) and WR 17182–17196 describe permissions.
+Helpers are enabled by default unless explicitly false (I8,
+3929–3935). The old helper-cost note is for an explicit true.
+
+The reference boundary is the ordinary stateless prompt already
+supported by the isolated local Claude/Codex scheduler. Preserve
+the literal reminder path and owner/cap/pause checks. Advanced
+modes or an unavailable selected runner cannot be published as
+an ordinary successful collection. A prompt never launches in
+the owner conversation or in the other provider. Test normal
+Telegram ingress and the real saved runner with synthetic CLIs.
+
+The open-core parser runs the old work-body guard after selecting
+the text alias, so aliases cannot bypass it. It accepts only the
+ordinary action modes executable by the existing saved runner and
+refuses explicit marker options it cannot honor. The model advertises
+the collection route when its selected local provider is available.
+At commit the per-profile action lock and the same in-process
+state queue used by provider switches recheck that route and the
+owner binding. Codex registration and advertising also check the
+effective local ChatGPT file profile and executable through the
+adapter. Native version and service reachability remain launch
+checks. The transaction does not rewrite the owner state.
+The saved action does not bind to a provider session. It uses the
+selected supported provider at its due time, within the existing
+isolated tool plan and unchanged budget and breaker gates.
+
+
+Pause or resume one saved action from the conversation.
+
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Read the preserved bundle with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+24602–24614 distinguishes one named task from STOP_ALL. The
+detector at 27021–27039 resolves the final PAUSE_TASK/RESUME_TASK.
+z9/Hz at 23673–23691 and 22968–22973 try a case-sensitive
+exact ID first, then a case-insensitive substring of name,
+prompt or literal text. No match or multiple matches are
+reported without picking a row. An exact name has no extra
+priority. The ambiguity list follows the stored order.
+
+lg 24219–24257 makes an enabled row disabled with reason owner.
+An already disabled row is a successful no-op. cg 24258–24314
+enables a row on owner pause or with no disabled reason. A
+system-disabled row is refused, including spent_once. The
+old action, schedule and last-run fields are preserved by
+the patch and persisted via jz 23692–23703. The old card toggle
+at 115127–115149 is a separate explicit toggle, using the same
+enabled/disabledReason fields. The conversational operation is
+idempotent. lwA/nwA eligibility at 36099–36122 and 36228–36268
+still checks frequency and global STOP independently. A pause
+does not abort an already launched turn. An old spent one-off
+with a last-run stamp cannot fire again.
+
+The old paths can also call native pause/resume at 27115–27148
+and expose its failure via bg 23704–23709. The local checkpoint
+must recognize such targets and report the unavailable route,
+without editing their job map or choosing an overlapping local
+record. Migration copy comes from fg 23750–23755. Legacy timer
+controls are separate from actions.json (24608). Local confirmation
+reports an active STOP or frequency hold rather than promising
+that the task is firing. Keep the per-profile queue and file
+boundaries and the existing flags for adjacent tasks.
+
+The open-core task selector sees foreign and local rows together.
+It resolves and persists under the action-file lock and verifies
+the local route in the existing in-process state queue. No-op and
+refused actions do not rewrite the action file. The scheduler
+keeps its admitted attempt and completion rules, including an
+already started prompt turn. STOP and breaker state remain separate.
+
+Like the old detector, all pause markers are applied before any
+resume markers. Results replace their own marker in the original
+text. Quoted examples and nested control or scheduling markers
+have no effect. A direct success claim with a quoted task name is
+corrected when its own command fails. A neighboring success and
+a quoted example remain visible.
+
+
+Read the saved task list or one complete task from the conversation.
+
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Read the preserved bundle with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+The owner prompt at 24598–24608 advertises LIST_TASKS and SHOW_TASK.
+The final dispatcher at 26832–26869 reads only when the collector
+is enabled. xg 23512–23563 groups enabled active records, enabled
+historical spent one-offs, and owner-paused records. Other disabled
+rows are left out of the list. Normal once completion at 24883
+and 24928–24948 disables the row as spent_once. A historical
+enabled row with a once stamp can still appear in the spent group
+(G4 at 23243–23245). A global STOP adds its own header.
+
+Tg 23492–23510 displays the stored run date and outcome. Uz at
+21108–21133 and Zz/WqA at 21278–21280 / 21379–21391 supply the
+old labels. A mapped paused job contributes vr at 23458–23474.
+br/Ig at 23475–23491 and 21847–21958 add silence only after the
+grace window and process warm-up, with no newer action or journal
+attempt. It uses up to 500 records, a minimum one-hour margin,
+and twice the expected cadence. Bi/Yi/ER at 17035–17126 list
+enabled legacy schedules separately and flag overlaps. The
+normal actions.json report does not use the simplified tasks.json.
+
+mg 23913–23975 and z9 23673–23691 show one chosen action regardless
+of its enabled state, including legacy/native metadata. The old
+message includes schedule, owner pause, full prefixed text (mr at
+23908–23911), explicitly configured features, and last run or
+system hold. qJ/Kz at 22974–23000 define kind and body. nM/aM at
+15563–15567 / 15574–15588 describe conditional records. U0 at
+23203–23241 supplies schedule text. On the local route the
+forecast uses the same owner clock as dispatch. The show reply
+must preserve stored Markdown and commands as literal data.
+It does not fetch a native transcript or execute stored work.
+
+xg 23535–23542 can also offer a separate spent cleanup card.
+Its mutating callback at 113143–113178 and kg at 23565–23587
+are a distinct confirmation workflow. This checkpoint restores
+the read output and does not publish an inert cleanup button.
+Test through the normal Claude/Codex foreground path with
+disposable records and synthetic transports.
+
+Open-core implementation: Telegram final dispatch runs read markers
+after global pause and before one-task mutations. The saved-action
+store supplies raw per-bot rows to the same selector used by control.
+The list also reads the local journal tail, frequency decisions, saved
+timers and cron job map. It never turns a displayed native job into
+a local task. A local STOP is described separately when any mapped
+native job may still run, including a disabled or missing local row.
+The details render verbatim text as escaped Telegram preformatted
+content, inert for further autonomy, installation and plan processing.
+Unsupported event metadata remains readable. No event executor is
+claimed; a stored command is described as a configuration. For a
+still-unclaimed due one-off, the time is reported as due because the
+local scheduler can still pick it up. A claim stamp without a result
+is not reported as a success. The existing menu and native routes
+continue to own their current actions.
+
+Confirmed cleanup of historical one-offs
+---------------------------------------
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js, readable with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+The streaming dispatcher (106646–106707) injects a same-chat/topic
+askOwner callback into GMA (27113–27124). xg (23512–23542) offers
+«Убрать ✖» / «Оставить» only for enabled rows with G4 (23243–23245),
+an old once record with a run stamp and no pending confirmation.
+A routine disabled spent_once, a pending row, an unclaimed once,
+and a recurring row are outside that group. O7 (23148–23160) supplies
+the plural forms. Clicking ct-keep (113219–113226) only closes the card.
+
+ct-spent (113143–113178) calls kg (23565–23587), which reloads that
+group, unregisters each action and reports full or partial success.
+zw/X9 (46243–46257, 45980–46015) delete a mapped native job first and
+keep the action if native removal fails. With no native job, DG
+(4456–4465) only removes the action record. Timers and run history
+are independent. The old static button can select a later record
+because the group is reloaded without the displayed binding. For
+the new owner callback, restrict deletion to the reviewed records
+and verify each against the current per-bot store under its lock.
+
+Open-core binds the original ct-spent / ct-keep buttons to the
+configured owner, bot, chat, message, physical action file and row
+fingerprints. The question goes to the same topic. The shared owner
+transport persists the binding before exposing the keyboard. Keep
+retires only that question. Cleanup rechecks the local rail and the
+unchanged enabled historical rows before a single atomic action
+write. Failed writes retain the question. A successful write makes
+the same fingerprints harmless on retry when the rows are gone.
+Closing the exact message is a receipt, independent of a newer menu
+or callback render. The journal, timer and provider routes stay
+separate.
+
+Native removal remains a separate contract. The old z_ at
+45943–45965 did not store a Gateway identity and could use the first
+new ID from a cron-list diff. An old map alone cannot authorize a
+native removal on this installation. Do not offer a local cleanup
+for mapped or migrated tasks. Re-read the map before publishing
+the atomic local write and leave the question retryable if a binding
+appears. A concurrent future native map writer needs a shared lock
+and an ownership proof, since the local prepublish check does not
+serialize out-of-band file changes.
+
+Conversational saved run history
+--------------------------------
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Read stable lines with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+TASK_RUNS appears in the owner prompt at 24599/24619, the pattern at
+27230 and the final dispatch at 26842–26855. The collector gate at
+106668–106696 accepts CC or OC. GMA injects J0 at 27156–27164. Writer
+iQ at 10824–10836 appends the per-bot autonomy/runs.jsonl (11039);
+J0 at 10837–10856 takes the latest 1000 parsed file rows before
+sorting or selecting a task. Neither the interval file nor native
+transcripts nor sibling-bot history are part of this view.
+
+Gw at 26511–26582 uses Og/Hz at 22957–22973 to prefer the exact
+case-sensitive ID and otherwise match case-insensitive saved name
+or body. Disabled actions are searchable. Ambiguity and missing
+queries have distinct replies. ma at 26400–26510 sorts by time,
+counts seven days and 24 hours with inclusive lower limits, ranks
+up to eight task groups, and shows the latest selected run even if
+outside the window. Deleted actions retain their journal name or
+ID in the all-task view. k7 (26289–26322) uses the owner clock.
+Ww/Vw (26344–26399, quiet phrases 26588) separate silence, incomplete
+runs and other outcomes. The summary keeps paid cost and metered
+estimates distinct and reports only known token counts. A saturated
+tail gets the 1000-row notice. An unreadable file must reach the
+existing Gw read-failure reply, rather than look like a new journal.
+
+Open-core reuses the saved run tail and selector in its owner final
+marker route. The Telegram screen formats the projection with the
+owner clock. Claude and Codex use the same local prompt; ordinary
+OpenClaw gets only the history instruction on its captured native
+rail. The reader queries local per-bot storage after the model
+answer, even when background execution is paused. The stored run
+fields cannot turn into further control markers. Ordinary Markdown
+rendering follows the previous final renderer (106607 and 3132).
+
+Current Codex writers persist usageIncomplete when the measured
+input is partial. A positive observed amount is a lower bound and
+is shown without rounding it up. Missing numeric usage is stated
+as unknown. Paid cost and the separate metered estimate retain
+their old labels. Unusable numeric fields are excluded without
+discarding readable journal rows.
+
+Direct conversational cleanup
+-----------------------------
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js, readable with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+The owner prompt at 24596/24601 asks for CANCEL_SPENT on its own
+line for the historical group. PLA/Ga at 25821–25867 check the
+rest of the line and ignore examples. uz at 26625–26651 strips
+non-executing mentions, accepts leading prose with an empty suffix,
+and executes repeated valid markers in order. The dispatcher at
+26785–26857 handles STOP/RESUME first, then direct cleanup, then
+LIST_TASKS and SHOW_TASK regardless of their textual positions.
+
+CANCEL_SPENT at 26812–26821 calls kg without an additional question
+when the owner explicitly requests cleanup. The collector gate
+(106668–106696) permits CC and OC and is independent of STOP.
+kg at 23565–23587 re-reads enabled once rows with a run stamp and no
+pending confirmation (G4 at 23243–23245). Live, disabled and pending
+records are outside that group. It returns the original empty,
+removed or partial result. The prior ownership limitation for
+native unregistration (45943–45965 / 45980–46015) still applies.
+
+The open-core direct path runs only on a successful owner turn and
+rechecks the captured CC or OC rail when publishing. The foreground
+stop can abort the atomic write before its rename. Scheduler pause
+and the sleep marker do not revoke an explicit cleanup request.
+Keep the old position before list/detail. Closed and truncated
+structured payloads and multiline examples cannot become cleanup.
+The confirmed route still uses its own validated file and row
+snapshot. Missing snapshot fields cannot select the direct branch.
+
+Both entry points share the local writer, physical-path check,
+native-map recheck and result text. Old VY at 4008–4017 and y7
+at 46174–46218 route auto or unset to native on OC. An absent
+mapping is not proof of a local row because 45943–45965 can fail
+to identify a newly created job. Direct OC cleanup therefore needs
+an explicit cc runner and no native mapping. Rows whose ownership
+is ambiguous stay in the result's failed group. This does not
+unregister a native job or alter timers, journals or provider data.
+
+Named task cancellation
+-----------------------
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js, readable with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+CANCEL_TASK (prompt 24600, matcher 27218, dispatch 27006–27020)
+uses vg (23589–23672). Prefer a case-sensitive exact ID before
+case-insensitive name or body. Empty and missing queries are
+distinct. Mixed matches show names and schedules for clarification.
+One G4 row is cancelled directly. Several matches all satisfying G4
+are removed as a group, including disabled rows. G4 (23243–23245)
+means once with lastRunAt and no pendingConfirm. Unlike bulk
+CANCEL_SPENT, named selection does not require enabled.
+
+A single non-G4 match sends the old irreversible confirmation in
+the same Telegram topic. Labels are «Снести ✖» and «Оставить».
+xr/cqA (23098–23113) build/decode ct:<id>. The old handler
+(113311–113373) selected the first exact or prefix match at click
+time. Its unbound and character-truncated callback could delete a
+replacement or a different ID. Bind the adapted button to owner,
+profile, chat/message, file and task definition. Runtime progress
+is not a new task definition. Keep is single-use and non-mutating.
+Mapped native removal required confirmed X9 before deleting the
+row (45980–46015/46243–46257), an independent ownership contract.
+
+The new named route reuses matching and schedule formatting, the
+old ordered final dispatch, the spent cleanup writer and the same
+durable question file. A live question binds its exact byte-limited
+callback, owner, chat/message, physical file, captured rail and
+definition. The existing ct-spent records keep their layout and
+ct-keep resolves by the delivered binding. A normal completion or
+pause updates execution state and preserves the approved definition.
+Replacement and schedule changes need a new question. Local
+deletion keeps the native scope check before publication. On OC it
+still requires explicit local runner cc and no native mapping.
+
+Nested protocol selectors are invalid, including a command copied
+from a task body. A literal unmatched opening bracket still works
+as ordinary text. Quotation delimiters inside rendered verbatim
+data cannot extend a quote over a later real command. Both cases
+are exercised through the final Telegram worker.
+
+Confirmed removal of all saved tasks
+------------------------------------
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js, readable with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+The old prompt at 24612/24649 separates deletion from STOP.
+Dispatch 26822–26831 calls dg at 24438–24464 after direct spent
+cleanup and before the list. lr at 24429–24437 includes names for
+up to ten records. All saved rows count, including disabled,
+pending and spent. Empty at the prompt returns the old empty
+reply. Otherwise the same topic receives «Снести все ✖» (ct-all)
+and «Оставить» (ct-keep), with no write before a tap.
+
+ct-all 113180–113218 calls ULA/cr at 24465–24529, which re-read the
+current list and used the ordinary pause when it was already
+empty. DjA at 11733–11739 first engages YM at 11284–11381, then
+cl at 11680–11707 archives and unregisters before clearing the
+action file. GjA at 11709–11732 copies the full action array into
+actions.removed-<ISO>.json beside actions.json. Legacy timers and
+the run journal are separate. Native STOP attempted to cancel
+active runs and fence mapped jobs.
+
+The old static callback could include tasks not shown on the
+card. Archive failure did not prevent deletion, and even failed
+native unregisters were cleared locally. These are data-loss
+hazards. Preserve the old successful order with a bound question
+and a required private archive. Retain unproved native rows and
+report any native jobs that can still run. The only
+actions.removed- reference is the writer. _7 at 24373–24420
+resumes current tasks and separately paused timers. It does not
+load the archive, so the old reply's recovery promise is not a
+working restore route.
+
+New open-core binds the question to owner, bot, chat, message,
+rail and physical file, with a multiset of task definitions.
+Run status and pause metadata can advance. A replacement or
+addition invalidates the question before STOP. An empty subset
+can still engage the ordinary local pause. Cleanup of spent
+tasks runs before the bulk snapshot. Both commands are read
+from the same model output before inserting task names.
+
+The transaction uses question, STOP, actions and state locks
+in that order. It durably marks the question applying before
+engaging STOP, syncs the STOP record, and writes and syncs
+a private full archive before publishing action removal. A
+known failure can rearm the question for the same generation;
+resuming invalidates it. A repeated completed or interrupted
+tap cannot stop newly resumed work. Archive or action-write
+failure retains the tasks. Mapped and ambiguous OpenClaw rows
+remain, and a receipt identifies possible independent native
+jobs and legacy timers. No archive restore command is advertised.
+
+Read the flow in src/telegram/task-removal-markers.mjs and
+task-removal-confirmation.mjs, then src/autonomy/task-removal.mjs,
+owner-pause.mjs, reminder-store.mjs and task-removal-archive.mjs.
+The bulk-task-cancellation.test.mjs fixture exercises ingress,
+the confirmation, STOP, on-disk snapshots and failure boundaries.
+
+Reschedule an existing task from the owner conversation
+------------------------------------------------------
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Read the stable form with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+Prompt 24604/24650 and dispatch 26872–26885 split RESCHEDULE_TASK
+at the first pipe, after SHOW_TASK and before edit/cancel/pause.
+z9/Hz 23673–23691 and 22968–22973 prefer exact ID, then match
+case-insensitive name, work text or reminder text. Empty or
+ambiguous selectors are explicit. hr 23727–23749 distinguishes
+five numeric cron fields from a one-off date. Dz 22546–22587
+and $r/qr 22473–22498 accept relative minute/hour/day units,
+including a trailing phrase and zero, or a Date.parse instant.
+Past values become immediately due. Cron uses the owner zone
+and rejects known intervals below an hour. The current new
+registration validator also rejects malformed or unsafe cron
+forms which the old approximate zz 22499–22545 did not detect.
+
+hg 23773–23854 invokes RJ and live registration directly for
+disabled or already fired one-offs (G4 23243–23245). RJ at
+23757–23772 sets enabled, swaps trigger and drops lastRunAt,
+lastStatus, lastOutcome, nextFireAt and pendingReschedule.
+It clears owner and spent_once reasons and preserves other
+data, including lastError, gates and the task ID. The active
+branch shows «Было» and «Станет» in the originating topic with
+«Перенести ⏱» (rs:) and «Оставить» (ct-keep). Local registration
+y7 46174–46190 uses U4 4393–4409. It leaves separate run history
+and legacy schedules alone. Migrated actions get the explicit
+refusal at 23750–23756 and 23799–23805.
+
+oqA 23855–23886 and callbacks 113219–113226/113266–113310
+read the latest pending proposal from the first exact or
+prefix ID. Keep only edited Telegram. An older card could
+apply a newer time. Rz/ir 24881–24884 and 24928–24948 write
+the old whole record at completion, which can replace a
+new schedule. Preserve the workflow while binding the shown
+offer and keeping the current action-store claim fence.
+Native registration 46192–46235 is a separate Gateway write.
+An automatic/unset runner can resolve to OC (VY 4008–4017);
+a missing map is insufficient evidence of local ownership
+on OC. A mapped or migrated job must not be moved locally.
+
+New open-core reuses the registration trigger parser and the
+locked action writer. Scheduling an ordinary supported task
+changes the existing row and adds a fresh schedule revision.
+The scheduler compares that row against the previous claim.
+A late completed delivery keeps its journal without stamping
+the new schedule. A new revision also fences a duplicate
+confirmation for an identical cron even if card retirement fails.
+The bot-wide STOP and the original task gates stay in effect.
+
+The pending offer lives in a separate per-bot book, with owner,
+chat, message, physical action file, full ID, definition, rail
+and resolved trigger. Its buttons appear only after binding.
+A newer offer supersedes the earlier one after publication.
+A failed publication retains the earlier offer. A cron offer
+becomes stale when the owner changes timezone. A failed atomic
+action write keeps the current offer available to retry. The
+native map is checked again immediately before publication.
+
+The worker recognizes the original command before inserting
+task names from other actions, then executes it after inspection.
+A malformed reschedule cannot expose a nested pause or removal.
+See src/telegram/task-reschedule-markers.mjs and the confirmation,
+then src/autonomy/saved-task-reschedule.mjs and its question book.
+Tests task-reschedule.test.mjs and openclaw-turn.test.mjs cover
+the three synthetic provider routes and the real local dispatcher.
+
+Edit the work text of a saved task
+----------------------------------
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Read stable lines with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+The owner prompt 24607/24624 gives EDIT_TASK, APPEND_TASK and
+DROP_FROM_TASK with a closed multiline body. Grammar 27223–27228
+and dispatch 26886–27005 also accept the compact first-pipe
+form. Processing is edit, append, drop, each full form before
+compact. Body may contain a closing bracket or pipe. WMA
+26704–26705 and pa 26679–26701 compare resolved task IDs.
+A SHOW_TASK for the same task in the reply defers replacement
+with the copy at 27203. Append and drop are still available.
+
+Iz/Nz/$z 23977–24134 use z9/Hz selection and Kz 22990–23000
+for reminder text, prompt and draft bodies. pr/Fg 24138–24144
+and 21531–21565 strip redundant scheduling leads from prompt
+or draft only. Append joins the trimmed body with one LF
+(ALA 24542–24543). Kr/ur 24036–24064 match case and punctuation
+insensitively, removing all matching lines or sentences and
+refusing an empty remainder. QLA 24065–24073 quotes removed
+lines. Missing matches show the full existing body.
+
+pg 24145–24218 validates the entire candidate through Ug
+21555–21560, even a reminder, and replaces just the body.
+Spent rows are saved directly and report that their schedule
+has passed. Live local rows use y7/U4 at 46174–46190 and
+4393–4409. Disabled native rows also try to restore their
+pause after registration. The old receipts and errors are at
+24573–24593. Native registration and map ownership are
+separate. Old ir 24928–24948 writes a whole run snapshot.
+The restored route must preserve task settings and the run
+journal without letting the old snapshot replace the edit.
+
+New open-core applies the three operations through the
+existing actions lock and current engine state. Ownership
+is checked again just before the atomic write. Literal
+reminder, prompt and legacy draft bodies remain editable
+when they are local. Editing a stored draft does not add
+a draft runner. The same path preserves flags, recipient,
+budget, permissions, history, and the original schedule.
+Mapped and migrated native rows remain outside this writer.
+
+The parser reserves complete bodies from the original reply
+before registration, reschedule, other task actions and
+install processing. Paired nested tags stay in that body.
+Quotes inside it cannot shorten the range or change the
+next marker. Literal examples return only at final delivery,
+after plan parsing. A body in another structured payload
+stays in that payload. The show guard resolves original
+selectors against the same locked records as the edit.
+
+The action store compares all fields besides the sanctioned
+body revision when settling a matching run claim. A delayed
+completed attempt retains its last outcome and run journal
+while keeping the edited body. If pre-launch rejects the old
+prompt, restore the claim's prior runtime fields and preserve
+the new body. A new schedule, another definition, or a
+changed native map still fences a late completion.
+
+Follow src/telegram/task-text-markers.mjs and its syntax,
+then src/autonomy/saved-task-text-edit.mjs and the shared
+owner-task-update.mjs. task-text-edit.test.mjs exercises
+the worker, production record writes and local dispatcher.
+
+Manage legacy timers from the owner conversation
+------------------------------------------------
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Read stable lines with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+Prompt 24608 and dispatch 27041–27095 run LIST_TIMERS, OFF,
+ON and DELETE in that order after saved task control. The
+collector at 106668–106696 gates actions on autonomy and CC
+or OC. R7/rn/qqA at 21588–21623 use schedules.json, which
+is separate from actions.json and the interval task store.
+
+Xz 21653–21677 prefers a full case-sensitive ID, then a
+unique case-insensitive substring of the name only. sn/an
+21636–21697 list file order with the saved text and status.
+JF 17035–17054 uses a raw once timestamp and clamped daily
+or weekly clock. A weekly 7 is Sunday (uNA 17140). Old
+conversation assumes absent enabled means active, but the
+old menu and actual K$A dispatch at 18259–18282 require a
+truthy flag. Keep the existing dispatch gate and describe
+a timer with an absent flag as off until explicitly enabled.
+
+Dg/zg and W$A at 21727–21777 and 18070–18083 set an explicit
+state, not a toggle. OFF writes owner provenance even after
+a group STOP, so z$A 18110–18124 does not resume that timer.
+ON removes disabledBy. The once stamp stays, so it cannot
+fire again. Legacy dispatch at 108800–108830 is separate
+from the owner STOP for saved actions. The existing menu
+at 115253–115286 retains its old direct delete and toggle.
+
+Hg/on/tn at 21778–21803, 21678–21681 and 21704–21706 ask
+with the old two buttons and a 100-character prompt preview.
+wqA 21804–21825 and the tmr-del callback 113374–113414 use
+an unbound ID prefix. Restore the visible question, with
+an exact owner, message, physical file and definition
+binding. A timer stamp or explicit pause does not change
+the approved definition. A replacement, wrong callback,
+foreign owner and repeated tap cannot remove another row.
+
+Open-core routes Claude, Codex and OpenClaw to the same
+local schedules file. Direct selection and writing share
+the physical file lock with menu, due dispatch and group
+pause. The active flag follows the actual dispatch gate
+in lists, pause counts and warnings. Group STOP never
+marks an unarmed row as stopped, so RESUME does not arm
+it. Existing stop provenance is still honored.
+
+The confirmation stores the owner, chat, message, timer
+definition and physical file. The same approved timer
+can be removed after the engine changes. Its applying
+binding is durable before the atomic schedule write.
+A known pre-publication failure leaves the card retryable.
+The confirmed write is recorded before releasing the
+schedule lock, so even a later release error cannot
+rearm the deletion. Duplicate and old prefix callbacks
+cannot delete a newly restored timer.
+
+The worker reserves original timer commands before other
+actions change the output. Legacy multiline selectors and
+quotes in names remain data. Quoted examples and nested
+work or configuration bodies do not become commands.
+Read telegram/legacy-timer-markers.mjs and its confirmation,
+then autonomy/legacy-timer-actions.mjs, legacy-timer-delete.mjs
+and legacy-timers.mjs. legacy-timer-conversation.test.mjs
+checks the old menu, shared writer, owner and due race.
+
+Native protected-file conformance for saved collections
+------------------------------------------------------
+Old Dn in readable blob 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11
+at 20560–20567 emits Read, Write and Edit spellings for each
+protected path. The old Claude argv appends those at 20850.
+Current prompt-turn.mjs and agent/claude.mjs pass the native
+Read and Edit path rules and the isolated tool allowlist.
+Claude Code matches file mutation rules on Edit(path), which
+covers Write and NotebookEdit. A separate path-specific Write
+rule has no effect. Official permission reference:
+https://code.claude.com/docs/en/permissions#what-read-and-edit-rules-cover
+
+Run claude-saved-prompt-loopback.mjs with an official Linux
+2.1.154 or 2.1.316 binary in network-none Docker as described
+above. The synthetic API requests Read, Write, Edit and
+NotebookEdit. Creation and overwriting of protected files
+are denied, including a directory alias and its physical
+path with spaces. Text and notebook controls write successfully
+in the workspace. The actual tool results and file bytes are
+checked, including when NotebookEdit is absent from startup
+advertisement. The fixture uses a synthetic login and checks that hooks, MCP and saved sessions stay isolated.
+
+The Codex 0.166.0 fixture now enters the real scheduler and
+runSavedPrompt before the native adapter. It checks protected
+bot .env reads and writes through an alias and a direct path,
+notebook edits under the saved sessions path, and allowed
+text and notebook writes inside the workspace. It also checks
+the synthetic owner report, unchanged auth, config, rollout
+and bot profile bytes, and the no-shell and narrow tool gates.
+The model and profile are synthetic.
+
+The native probes confirm that the current rules enforce
+the old protected-file boundary in these ordinary saved runs.
+The evidence covers the parent tools. Helper inheritance and
+broader authority have separate checkpoints.
+
+Native Claude helpers for ordinary saved collections
+----------------------------------------------------
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Read stable lines with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+I8 at 3929–3935 enables helpers for a prompt unless
+task.helpers is false. zJ and KR 17159–17220 select
+Agent and Task within the parent tool posture. WR
+17182–17184 describes the inherited rights. rqA
+23428–23437 shows the hint only on explicit true and
+a supported CLI. kgA 33315–33359 tells an opted-out
+collector to work alone and passes the helper flag
+to JO. JO 36832–36851 passes tools and roles to IJ.
+
+q7 20595–20599 with the 2.1.172 cutoff at 20957 gates
+native role registration. xn 20827–20854 passes the
+default researcher and worker definitions (21058–21067)
+in --agents when helpers are allowed. An explicit named
+team can override those definitions on the old path.
+The default researcher prompt requests read-only work.
+Both roles are subject to the parent tool policy.
+
+At 4b60b33 a general-purpose helper on Claude 2.1.316
+read and wrote an ordinary file and received refusals
+for protected paths and Bash. The same CLI refused
+the old worker role because it was absent from the
+launch. The core grants Agent/Task but has no --agents
+binding in the isolated launcher. Test the exact argv,
+the old opt-out instruction, and a real child request
+against a local API. No production account is involved.
+
+The restored launcher uses the same version gate for the
+explicit owner receipt and native --agents registration.
+The isolated Claude options contain the two old roles
+only when Agent is allowed and the version is confirmed.
+An older CLI still has its native built-in helpers.
+The work-alone wording accompanies helpers:false.
+
+Use the same network-none command as the native file guard
+probe with script claude-saved-helper-loopback.mjs, followed
+by the native binary and scenario. On 2.1.316 run standard,
+narrow and disabled. On 2.1.154 run legacy. The standard
+worker reads and writes ordinary files. The narrow researcher
+and legacy built-in can read, with Write refused. The parent
+receives the real child result. Protected paths and Bash
+remain unavailable and the profile bytes match. The disabled
+scenario attempts Agent and observes zero child requests.
+Codex has a separate native helper fixture and file bridge.
+Explicit user-defined teams have a separate checkpoint.
+
+The old xR, _i and gi at 18618–18677 read usage.total_tokens
+from task_notification. IJ 19747–19759 counts each measured
+completion, including failure, under q7. JO 36943–36957 adds
+the helper total to parent input and caches. Parent output
+and measured cost remain separate.
+
+The isolated Claude runner now reports the first valid terminal
+measurement for each native task ID when the supported helper
+roles are enabled. Start/progress and malformed events do not
+charge the budget. The existing saved prompt dispatcher journals
+the combined input and applies the same daily limit. In the
+scheduler regression, 20 parent + 16 completed + 7 failed
+exhaust the 43-token budget and block a second action. In the
+native loopback, the terminal helper total of 16 raises input
+from 22 to 38. Disabled helpers and the 2.1.154 legacy role
+still record only 22. This is token accounting for saved Claude
+runs and does not change provider billing or foreground turns.
+
+Named roles in a saved collection
+---------------------------------
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Read the stable lines with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+_M 14386–14444 and prompt save 22853–22885 require names
+and briefs, collapse whitespace, keep up to four distinct
+case-insensitive names and bound each name/brief to 40/240.
+An empty list does not change default helpers. A nonempty
+team conflicts with helpers:false. Owner model guidance at
+24637 uses task.team for roles supplied by the owner.
+o4Q 101889–101908 and callback 115101–115114 show names in
+the menu card. mg 23952–23964 shows names and briefs in
+SHOW_TASK. The generic registration receipt stays unchanged.
+
+kgA 33315–33351 and JO 36832–36851 pass the old team to
+Claude. xn 20827–20854 registers named roles in place of
+defaults from CLI 2.1.172. Old yM 14471–14483 allocated
+suffixes for duplicate transliterations but bZ 14462–14468
+used the base ID in the prompt. The same roster now feeds
+both the instruction and argv, including e/e-2 for Е/Ё.
+An older CLI still accepts the saved team. Its built-in
+Agent/Task gets the name and brief as delegated text.
+
+Old OC SD/Ld 16061–16139 and cQA 45672–45682 put the
+team in the native job prompt with generic delegation.
+The existing Codex adapter receives the same named briefs
+in the saved action prompt. Its native spawn_agent message
+carries the name and brief, with no external role config.
+Native OpenClaw job provisioning remains a separate route.
+
+The Telegram, scheduler and CLI-shim regression covers old
+validation errors, persisted fields and matching role IDs.
+In network-none Docker run claude-saved-helper-loopback.mjs
+with the native binary and named (2.1.316) or legacy-named
+(2.1.154). The child request receives the selected brief and
+inherits file and shell scope. On Codex 0.166.0 run
+codex-saved-helper-loopback.mjs with the native binary and
+the optional named selector. This case uses the core saved runner.
+The selected brief reaches a distinct child thread in its native
+agent_message item. The parent's tool receives the child result.
+Native auth and session data are synthetic.

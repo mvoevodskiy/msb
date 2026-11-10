@@ -1,0 +1,56 @@
+/* Пульт — страницы входа и подключения второго фактора. Разметку отдаёт сервер (src/server/pages.ts),
+   классы договорные: body.auth-page, main.auth, .auth-title, .auth-sub, form.auth-form, .auth-label, .auth-input,
+   .auth-error, .auth-button, .auth-qr, .auth-hint, code.auth-secret. Та же тёмная спокойная тема, что у панели. */
+
+:root {
+  color-scheme: dark;
+  --page: #121212; --surface: #191918; --line: rgba(255, 255, 255, .08); --line2: rgba(255, 255, 255, .16);
+  --ink: #ecebe7; --ink2: #a9a8a1; --muted: #8a8982; --crit: #e2574f;
+}
+* { box-sizing: border-box; }
+body.auth-page {
+  margin: 0; min-height: 100vh; min-height: 100dvh; display: flex; align-items: center; justify-content: center;
+  background: var(--page); color: var(--ink); padding: 24px 16px;
+  font-family: "Liberation Sans", "DejaVu Sans", system-ui, sans-serif; font-size: 15px; line-height: 1.5;
+}
+main.auth {
+  width: 100%; max-width: 380px; background: var(--surface); border: 1px solid var(--line); border-radius: 14px;
+  padding: 28px 24px 24px;
+}
+.auth-title { font-size: 22px; font-weight: 700; margin: 0 0 6px; letter-spacing: -.01em; }
+.auth-sub { color: var(--ink2); font-size: 14px; margin: 0 0 20px; }
+.auth-sub a, .auth-hint a { color: var(--ink); }
+form.auth-form { display: grid; gap: 14px; margin: 0; }
+.auth-label { display: grid; gap: 6px; font-size: 13px; color: var(--ink2); }
+.auth-input {
+  width: 100%; font: inherit; font-size: 16px; /* 16 px — чтобы телефон не увеличивал страницу при вводе */
+  color: var(--ink); background: #121211; border: 1px solid var(--line2); border-radius: 8px; padding: 10px 12px; min-height: 44px;
+}
+.auth-input[inputmode="numeric"] { letter-spacing: .25em; font-variant-numeric: tabular-nums; }
+.auth-input:hover { border-color: rgba(255, 255, 255, .26); }
+.auth-input:focus { outline: none; border-color: var(--ink2); box-shadow: 0 0 0 2px rgba(236, 235, 231, .25); }
+.auth-error {
+  margin: 0; padding: 9px 12px; border-radius: 8px; font-size: 13.5px;
+  background: rgba(226, 87, 79, .09); border: 1px solid rgba(226, 87, 79, .42); color: #f0c6c2;
+}
+.auth-button {
+  font: inherit; font-weight: 700; min-height: 44px; border-radius: 8px; border: 1px solid var(--ink); cursor: pointer;
+  background: var(--ink); color: #121212; padding: 10px 14px; margin-top: 2px;
+}
+.auth-button:hover { background: #ffffff; }
+.auth-button:focus-visible { outline: 2px solid var(--ink); outline-offset: 3px; }
+/* QR: белое поле вокруг кода — камера читает только с «тихой зоной». */
+.auth-qr { background: #ffffff; border-radius: 10px; padding: 14px; width: min(240px, 100%); margin: 0 auto 16px; line-height: 0; }
+.auth-qr svg { display: block; width: 100%; height: auto; }
+.auth-hint { color: var(--muted); font-size: 13px; margin: 0 0 6px; }
+code.auth-secret {
+  display: block; font-family: "DejaVu Sans Mono", "Liberation Mono", ui-monospace, monospace; font-size: 14px; letter-spacing: .06em;
+  color: var(--ink); background: #121211; border: 1px solid var(--line); border-radius: 8px; padding: 10px 12px; margin: 0 0 18px;
+  overflow-wrap: anywhere; user-select: all;
+}
+@media (max-width: 420px) {
+  main.auth { padding: 22px 18px 18px; border-radius: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  * { transition: none !important; animation: none !important; }
+}

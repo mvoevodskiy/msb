@@ -1,0 +1,105 @@
+auto:history	🕓 История
+auto:home	« Назад
+auto:monitor	📡 Мониторинг
+auto:tasks	📋 Задачи
+auto:timers	⏳ Таймеры
+auto:what	❔ Что это
+connect:disconnect	⏹ Отключить
+eng:home	⚙️ Движки
+eng:mig	Перейти на 🦞
+mcp:add	➕ Добавить
+mcp:folder:workspace	« Назад
+mcp:setup:apify	Apify
+mcp:setup:supadata	Supadata
+menu:agent	« Назад
+menu:autonomy	🥷 Автономка
+menu:back	« Назад
+menu:mcp	🔌 Настроить
+menu:newproject	➕ Новый проект
+menu:newtask	🆕 Новая сессия
+menu:projects	📁 Проекты
+menu:sessions	💬 Сессии
+menu:settings	⚙️ Настройки
+menu:skills	🧩 Навыки
+mon:add-hint	+ Добавить источник
+mon:back	« Назад
+mon:balance	💰 Баланс и лимиты
+mon:balance:edit	Изменить порог
+mon:collection	🔄 Интервалы сбора
+mon:digest	📨 Дайджест
+mon:digest:count	🔢 Сколько материалов
+mon:digest:count:custom	Своё число
+mon:digest:target	📬 Куда присылать
+mon:digest:time	🕘 Время
+mon:help	❔ Что это
+mon:incident	Что случилось
+mon:model	🤖 Модель скоринга
+mon:model:custom	Своя модель
+mon:notif	🔔 Уведомления
+mon:poll:all	⚡ Собрать всё сейчас
+mon:reportstyle	🎨 Вид отчёта
+mon:reportstyle:preview	👁 Превью
+mon:reportstyle:reset	↩ Сбросить вид
+mon:reportstyle:template	🧩 Создать шаблон
+mon:scored	📊 Обработка
+mon:search	🔍 Ещё поиск
+mon:search:cancel	Отмена
+mon:settings	⚙️ Настройки
+mon:sources	🛰️ Источники
+mon:storage	💾 Хранилище
+plan:always	☑ Всегда
+plan:approve	✔ Вносить
+plan:comment	💬 Комментарий
+plan:reject	✕ Нет
+plan:skip	✖ Пропустить
+settings:auth	🔌 Подключения
+settings:auth:openrouter	🔀 Переподключить OpenRouter
+settings:back	« Назад
+settings:bots	🤖 Мои боты
+settings:bots:add	+ Добавить бота
+settings:bots:cancel	✖ Отмена
+settings:bots:refresh	🔄 Попробовать ещё раз
+settings:conn:noop	OpenAI ✓ включен
+settings:engine:set:oc	✔ Включить
+settings:env	🔑 Переменные окружения
+settings:env:cancel	✖ Отмена
+settings:env:delete:GITHUB_TOKEN	Удалить токен
+settings:env:quick:GITHUB_TOKEN	Заменить токен
+settings:env:quick:GITHUB_TOKEN_CLASSIC	➕ Classic
+settings:env:quick:GITHUB_TOKEN_FINE	➕ Fine-grained (рекомендуем)
+settings:env:quick:RAILWAY_PROJECT_ID	➕ Добавить Project ID
+settings:env:quick:TELEGRAM_BOT_2	➕ Добавить TELEGRAM_BOT_2
+settings:env:quick:VERCEL_PROJECT_ID	➕ Добавить Project ID
+settings:env:skip-comment	Пропустить →
+settings:env:vercel	Пропустить
+settings:extras	🔧 Системные
+settings:model	« Назад
+settings:model:catalog	📋 Все модели (каталог)
+settings:model:custom	✏️ Своя модель (OpenRouter)
+settings:monitor-storage	« Назад
+settings:restart	♻️ Перезапустить бота
+settings:restart:do	✔ Перезапустить
+settings:server-status	🖥️ Состояние сервера
+settings:ssh	« Назад
+settings:ssh:add-ip	🌐 Открыть IP
+settings:ssh:add-key	🔑 Добавить SSH ключ
+settings:ssh:cancel	✖️ Отмена
+settings:ssh:help	❓ Инструкция
+settings:ssh:list-ips	👁 Показать IP
+settings:ssh:list-keys	📋 Показать ключи
+settings:stt	« Назад
+settings:timers	« Назад
+settings:tz	🕐 Часовой пояс
+settings:tz:custom	✏️ Другой
+settings:tz:custom:cancel	✖ Отмена
+setup:back	« Назад
+setup:help	📋 Anthropic
+setup:openai-cancel	Отменить
+setup:openai-check	✔ Я подтвердил код
+setup:openai-start	Начать
+setup:openai-sub	📱 OpenAI (телефон)
+setup:openrouter	🔀 OpenRouter-ключ
+setup:subscription	Подписка Claude
+skills:back	« Назад
+skills:back-menu	« Назад
+skills:cancel-create	✖️ Отмена

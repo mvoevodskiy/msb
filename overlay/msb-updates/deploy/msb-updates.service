@@ -1,0 +1,16 @@
+[Unit]
+Description=MSB updates + installer hub
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/msb-updates/app
+EnvironmentFile=%h/msb-updates/env
+ExecStart=/usr/bin/node bin/serve.mjs
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=yes
+
+[Install]
+WantedBy=default.target

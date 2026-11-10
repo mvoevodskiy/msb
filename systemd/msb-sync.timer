@@ -1,0 +1,12 @@
+[Unit]
+Description=Run agent sync every 30 minutes
+
+[Timer]
+OnCalendar=*:0/30
+Persistent=true
+RandomizedDelaySec=1800
+FixedRandomDelay=true
+AccuracySec=1s
+
+[Install]
+WantedBy=timers.target

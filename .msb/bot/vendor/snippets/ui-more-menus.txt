@@ -1,0 +1,1001 @@
+112200|    callback_data: "project:__default__"
+112201|  }]);
+112202|  for (let G = 0; G < F.length; G += 3) {
+112203|    V.push(F.slice(G, G + 3).map(D => ({
+112204|      text: `${D === Q ? "✓ " : ""}${D}`,
+112205|      callback_data: `project:${D}`
+112206|    })));
+112207|  }
+112208|  if (J > 1) {
+112209|    let G = [];
+112210|    if (C > 0) {
+112211|      G.push({
+112212|        text: "◀️",
+112213|        callback_data: `projects:page:${C - 1}`
+112214|      });
+112215|    }
+112216|    G.push({
+112217|      text: `${C + 1}/${J}`,
+112218|      callback_data: "noop"
+112219|    });
+112220|    if (C < J - 1) {
+112221|      G.push({
+112222|        text: "▶️",
+112223|        callback_data: `projects:page:${C + 1}`
+112224|      });
+112225|    }
+112226|    V.push(G);
+112227|  }
+112228|  V.push([{
+112229|    text: "➕ Новый проект",
+112230|    callback_data: "menu:newproject"
+112231|  }]);
+112232|  if (Y) {
+112233|    V.push([{
+112234|      text: "« Назад",
+112235|      callback_data: "menu:back"
+112236|    }]);
+112237|  } else {
+112238|    V.push([{
+112239|      text: "✖ Закрыть",
+112240|      callback_data: "menu:close"
+112241|    }]);
+112242|  }
+112243|  return {
+112244|    text: X,
+112245|    keyboard: {
+112246|      inline_keyboard: V
+112247|    }
+112248|  };
+112249|}
+112250|R.command("projects", async A => {
+112251|  let Q = SA.join(SA.dirname(qA()), "projects");
+112252|  let B;
+112253|  try {
+112254|    B = await (await import("node:fs/promises")).readdir(Q, {
+112255|      withFileTypes: true
+112256|    });
+112257|  } catch {
+112258|    let {
+112259|      InlineKeyboard: U
+112260|    } = await import("grammy");
+112261|    await A.reply("📁 Проектов пока нет.", {
+112262|      parse_mode: "HTML",
+112263|      reply_markup: new U().text("➕ Новый проект", "menu:newproject")
+112264|    });
+112265|    return;
+112266|  }
+112267|  let Y = B.filter(U => U.isDirectory()).map(U => U.name).sort();
+112268|  if (Y.length === 0) {
+112269|    let {
+112270|      InlineKeyboard: U
+112271|    } = await import("grammy");
+112272|    await A.reply("📁 Проектов пока нет.", {
+112273|      parse_mode: "HTML",
+112274|      reply_markup: new U().text("➕ Новый проект", "menu:newproject")
+112275|    });
+112276|    return;
+112277|  }
+112278|  let J = await m();
+112279|  let {
+112280|    text: C,
+112281|    keyboard: F
+112282|  } = _h(Y, J?.activeProject, 0, false);
+112283|  await A.reply(C, {
+112284|    parse_mode: "HTML",
+112285|    reply_markup: F
+112286|  });
+112287|});
+112288|R.command("project", async A => {
+112289|  let Q = A.match?.trim();
+112290|  if (!Q) {
+112291|    let E = (await m())?.activeProject;
+112292|    let X = _A();
+112293|    await A.reply(E ? `\uD83D\uDCCD Активный проект: <code>${_(E)}</code>
+112294|\uD83D\uDCC2 <code>${_(X)}</code>` : `\uD83D\uDCCD Работаю в <code>~/workspace</code> (по умолчанию)
+112295|
+112296|Переключить: /project <i>название</i>`, {
+112297|      parse_mode: "HTML"
+112298|    });
+112299|    return;
+112300|  }
+112301|  let B = await import("node:fs/promises");
+112302|  let Y = SA.dirname(qA());
+112303|  let J = SA.join(Y, "projects");
+112304|  if (Q.startsWith("new ")) {
+112305|    let Z = Q.slice(4).trim().replace(/[^a-zA-Z0-9_-]/g, "");
+112306|    if (!Z) {
+112307|      await A.reply("❌ Название проекта — только латиница, цифры, - и _");
+112308|      return;
+112309|    }
+112310|    let E = SA.join(J, Z);
+112311|    try {
+112312|      await B.mkdir(SA.join(E, "memory"), {
+112313|        recursive: true
+112314|      });
+112315|      await B.mkdir(SA.join(E, "knowledge"), {
+112316|        recursive: true
+112317|      });
+112318|      let {
+112319|        exec: X
+112320|      } = await import("node:child_process");
+112321|      X(`git init "${E}"`, () => {});
+112322|      N1(E);
+112323|      let V = await m();
+112324|      if (V) {
+112325|        V.activeProject = Z;
+112326|        V.ccSessionId = undefined;
+112327|        if (V.engine === "oc") {
+112328|          pQ(V, "project new");
+112329|        }
+112330|        await e(V);
+112331|      }
+112332|      await A.reply(nq(_(Z), {
+112333|        dirHtml: _(E),
+112334|        adapter: V?.engine === "oc"
+112335|      }), {
+112336|        parse_mode: "HTML"
+112337|      });
+112338|    } catch (X) {
+112339|      await A.reply(`❌ Ошибка: ${_(X.message.slice(0, 200))}`);
+112340|    }
+112341|    return;
+112342|  }
+112343|  let C = Q.replace(/[^a-zA-Z0-9_-]/g, "");
+112344|  if (C === "home" || C === "default") {
+112345|    H4();
+112346|    let Z = await m();
+112347|    if (Z) {
+112348|      Z.activeProject = undefined;
+112349|      Z.ccSessionId = undefined;
+112350|      if (Z.engine === "oc") {
+112351|        pQ(Z, "/project home");
+112352|      }
+112353|      await e(Z);
+112354|    }
+112355|    await A.reply("📍 Переключился на <code>~/workspace</code>", {
+112356|      parse_mode: "HTML"
+112357|    });
+112358|    return;
+112359|  }
+112360|  let F = SA.join(J, C);
+112361|  try {
+112362|    await B.access(F);
+112363|  } catch {
+112364|    await A.reply(`❌ Проект <code>${_(C)}</code> не найден.
+112365|
+112366|Создать: /project new ${_(C)}`, {
+112367|      parse_mode: "HTML"
+112368|    });
+112369|    return;
+112370|  }
+112371|  N1(F);
+112372|  let U = await m();
+112373|  if (U) {
+112374|    U.activeProject = C;
+112375|    U.ccSessionId = undefined;
+112376|    if (U.engine === "oc") {
+112377|      pQ(U, "/project switch");
+112378|    }
+112379|    await e(U);
+112380|  }
+112381|  await A.reply(`\uD83D\uDCCD Переключился на проект <code>${_(C)}</code>
+112382|\uD83D\uDCC2 <code>${_(F)}</code>`, {
+112383|    parse_mode: "HTML"
+112384|  });
+112385|});
+112386|var JC = new Map();
+112387|function Lh(A) {
+112388|  let Q = Date.now() - new Date(A).getTime();
+112389|  let B = Math.floor(Q / 3600000);
+112390|  let Y = Math.floor(Q % 3600000 / 60000);
+112391|  let J = new Date(A);
+112392|  let C = J.toLocaleDateString("ru-RU", {
+112393|    day: "numeric",
+112394|    month: "short",
+112395|    timeZone: "UTC"
+112396|  });
+112397|  let F = J.toLocaleTimeString("ru-RU", {
+112398|    hour: "2-digit",
+112399|    minute: "2-digit",
+112400|    timeZone: "UTC"
+112401|  });
+112402|  let U = B > 0 ? `~${B}ч ${Y}м назад` : `~${Y}м назад`;
+112403|  return `${C}, ${F} UTC (${U})`;
+112404|}
+112405|async function b4(A, Q, B) {
+112406|  try {
+112407|    let Y = SA.join(IW.homedir(), ".msb");
+112408|    await PQ.mkdir(Y, {
+112409|      recursive: true
+112410|    });
+112411|    let J = {
+112412|      ts: new Date().toISOString(),
+112413|      kind: "tunnel_connect",
+112414|      stage: A,
+112415|      reason: B ?? null,
+112416|      tunnelName: Q
+112417|    };
+112418|    await PQ.appendFile(SA.join(Y, "errors.jsonl"), `${JSON.stringify(J)}
+112419|`);
+112420|  } catch {}
+112421|  try {
+112422|    let Y = process.env.SYNC_URL || process.env.MSB_SYNC_URL;
+112423|    let J = process.env.SYNC_KEY || process.env.MSB_SYNC_KEY;
+112424|    if (!Y || !J) {
+112425|      return;
+112426|    }
+112427|    await fetch(`${Y}/api/report/tunnel`, {
+112428|      method: "POST",
+112429|      headers: {
+112430|        Authorization: `Bearer ${J}`,
+112431|        "Content-Type": "application/json"
+112432|      },
+112433|      body: JSON.stringify({
+112434|        stage: A,
+112435|        reason: B ?? null,
+112436|        tunnel_name: Q,
+112437|        bot_id: process.env.MSB_BOT_ID || undefined
+112438|      }),
+112439|      signal: AbortSignal.timeout(5000)
+112440|    });
+112441|  } catch {}
+112442|}
+112443|async function h$(A, Q) {
+112444|  let B = await m().catch(() => null);
+112445|  await JB(A, Q, {
+112446|    engine: B?.engine,
+112447|    model: B?.engine === "oc" ? B?.ocModel : B?.ccModel
+112448|  }).catch(() => {});
+112449|}
+112450|async function JB(A, Q, B) {
+112451|  let Y = Q ? UY(Q).slice(0, 512) : null;
+112452|  try {
+112453|    let J = SA.join(IW.homedir(), ".msb");
+112454|    await PQ.mkdir(J, {
+112455|      recursive: true
+112456|    });
+112457|    let C = {
+112458|      ts: new Date().toISOString(),
+112459|      kind: "agent_error",
+112460|      error_kind: A,
+112461|      detail: Y,
+112462|      engine: B?.engine ?? null,
+112463|      model: B?.model ?? null,
+112464|      session_id: B?.sessionId ?? null
+112465|    };
+112466|    await PQ.appendFile(SA.join(J, "errors.jsonl"), `${JSON.stringify(C)}
+112467|`);
+112468|  } catch {}
+112469|  try {
+112470|    let J = process.env.SYNC_URL || process.env.MSB_SYNC_URL;
+112471|    let C = process.env.SYNC_KEY || process.env.MSB_SYNC_KEY;
+112472|    if (!J || !C) {
+112473|      return;
+112474|    }
+112475|    await fetch(`${J}/api/report/agent-error`, {
+112476|      method: "POST",
+112477|      headers: {
+112478|        Authorization: `Bearer ${C}`,
+112479|        "Content-Type": "application/json"
+112480|      },
+112481|      body: JSON.stringify({
+112482|        kind: A,
+112483|        detail: KC(Y),
+112484|        engine: B?.engine ?? undefined,
+112485|        model: B?.model ?? undefined,
+112486|        session_id: B?.sessionId ?? undefined,
+112487|        bot_id: process.env.MSB_BOT_ID || undefined
+112488|      }),
+112489|      signal: AbortSignal.timeout(5000)
+112490|    });
+112491|  } catch {}
+112492|}
+112493|V1A(A => {
+112494|  JB("oc_session_reset", A).catch(() => {});
+112495|});
+112496|sw(A => {
+112497|  JB("oc_mcp_timeout", A, {
+112498|    engine: "oc"
+112499|  });
+112500|});
+112501|tw(A => {
+112502|  JB("oc_gateway_wedged", A, {
+112503|    engine: "oc"
+112504|  });
+112505|});
+112506|jP((A, Q) => {
+112507|  JB(A, Q, {
+112508|    engine: "oc"
+112509|  });
+112510|});
+112511|G4A(A => {
+112512|  JB("telegram_flood_ban", A);
+112513|});
+112514|var TGA = Promise.resolve();
+112515|D4A(A => {
+112516|  TGA = TGA.then(async () => {
+112517|    let Q;
+112518|    try {
+112519|      Q = Mi(A, await m());
+112520|    } catch {}
+112521|    await EF(Q ? {
+112522|      ...A,
+112523|      sessionId: Q
+112524|    } : A);
+112525|  }).catch(() => {});
+112526|});
+112527|Di((A, Q) => {
+112528|  JB(A, Q);
+112529|});
+112530|async function i2Q(A) {
+112531|  try {
+112532|    let Q = SA.join(IW.homedir(), ".msb");
+112533|    await PQ.mkdir(Q, {
+112534|      recursive: true
+112535|    });
+112536|    let B = {
+112537|      ts: new Date().toISOString(),
+112538|      kind: "turn_started",
+112539|      engine: A?.engine ?? null,
+112540|      session_id: A?.sessionId ?? null
+112541|    };
+112542|    await PQ.appendFile(SA.join(Q, "errors.jsonl"), `${JSON.stringify(B)}
+112543|`);
+112544|  } catch {}
+112545|  try {
+112546|    let Q = process.env.SYNC_URL || process.env.MSB_SYNC_URL;
+112547|    let B = process.env.SYNC_KEY || process.env.MSB_SYNC_KEY;
+112548|    if (!Q || !B) {
+112549|      return;
+112550|    }
+112551|    await fetch(`${Q}/api/report/turn-started`, {
+112552|      method: "POST",
+112553|      headers: {
+112554|        Authorization: `Bearer ${B}`,
+112555|        "Content-Type": "application/json"
+112556|      },
+112557|      body: JSON.stringify({
+112558|        engine: A?.engine ?? undefined,
+112559|        session_id: A?.sessionId ?? undefined,
+112560|        bot_id: process.env.MSB_BOT_ID || undefined
+112561|      }),
+112562|      signal: AbortSignal.timeout(5000)
+112563|    });
+112564|  } catch {}
+112565|}
+112566|function xGA(A, Q) {
+112567|  let B = $m(A) ?? bW(Q) ?? undefined;
+112568|  if (!B || B === "unknown") {
+112569|    return null;
+112570|  }
+112571|  let Y = vW(B);
+112572|  return `${Y.title}
+112573|${Y.next}`;
+112574|}
+112575|function n2Q(A, Q) {
+112576|  let B = A.toLowerCase();
+112577|  if (A.startsWith("MESSAGE_TOO_LARGE:")) {
+112578|    return "message_too_large";
+112579|  }
+112580|  if (B.includes("контекст переполнен") || B.includes("context window") || B.includes("conversation too long") || B.includes("prompt is too long")) {
+112581|    return "context_overflow";
+112582|  }
+112583|  if (B.includes("лимит подписки") || B.includes("лимит провайдера") || B.includes("rate") && B.includes("limit")) {
+112584|    return "rate_limit";
+112585|  }
+112586|  if (B.includes("не авторизован") || B.includes("unauthorized") || B.includes("invalid_api_key") || B.includes("подключи ключ") || B.includes("ошибка авторизации подписки") || B.includes("authentication_failed") || B.includes("authentication error") || B.includes("oauth_org_not_allowed") || B.includes("organization has disabled") || B.includes("organization has been disabled") || B.includes("invalid x-api-key") || B.includes("oauth token has expired") || B.includes("\"type\":\"error\"") && B.includes("401") || /\b401\b/.test(B) && (B.includes("api") || B.includes("auth") || B.includes("anthropic"))) {
+112587|    return "provider_auth";
+112588|  }
+112589|  if (B.includes("read-only file system") || B.includes("erofs") || B.includes("nonewprivileges")) {
+112590|    return "sandbox_readonly_fs";
+112591|  }
+112592|  if (t0A(A)) {
+112593|    return "oc_device_approval_pending";
+112594|  }
+112595|  return "turn_failed";
+112596|}
+112597|R.command("connect", async A => {
+112598|  let Q = await m();
+112599|  let B = A.chat.id;
+112600|  let Y;
+112601|  let J = process.env.CLIENT_ID || process.env.VPS_CLIENT_ID || "";
+112602|  if (J && J.length > 8) {
+112603|    Y = J.replace(/-/g, "").slice(0, 8);
+112604|  }
+112605|  if (!Y) {
+112606|    try {
+112607|      let {
+112608|        execSync: U
+112609|      } = S("node:child_process");
+112610|      let E = U("cat /etc/systemd/system/code-tunnel.service 2>/dev/null", {
+112611|        encoding: "utf-8"
+112612|      }).match(/--name\s+jarvis-(\S+)/);
+112613|      if (E) {
+112614|        Y = E[1];
+112615|      }
+112616|    } catch {}
+112617|  }
+112618|  let C = `jarvis-${Y || "client"}`;
+112619|  if (Q?.tunnelReady) {
+112620|    if (await new Promise(Z => {
+112621|      let {
+112622|        exec: E
+112623|      } = S("node:child_process");
+112624|      E("systemctl is-active code-tunnel", (X, V) => {
+112625|        Z(V.trim() === "active");
+112626|      });
+112627|    })) {
+112628|      let {
+112629|        existsSync: Z
+112630|      } = await import("node:fs");
+112631|      if (!Z("/home/client/.vscode-tunnel/token.json")) {
+112632|        await e({
+112633|          ...Q,
+112634|          tunnelReady: false,
+112635|          tunnelConnectedAt: undefined
+112636|        });
+112637|        await A.reply("🔄 Туннель работает, но авторизация слетела. Переподключаю...");
+112638|      } else {
+112639|        let X = Q.tunnelConnectedAt ? `
+112640|Подключён: ${Lh(Q.tunnelConnectedAt)}` : "";
+112641|        let V = `https://vscode.dev/tunnel/${C}`;
+112642|        let W = new JA().text("⏹ Отключить", "connect:disconnect");
+112643|        await A.reply(`✔ <b>VS Code подключён</b>
+112644|
+112645|Имя туннеля: <code>${C}</code>${X}
+112646|
+112647|\uD83D\uDD17 <a href="${V}">Открыть в браузере</a>
+112648|
+112649|Или в VS Code: Cmd+Shift+P → Remote-Tunnels: Connect to Tunnel → <code>${C}</code>`, {
+112650|          parse_mode: "HTML",
+112651|          reply_markup: W
+112652|        });
+112653|        return;
+112654|      }
+112655|    }
+112656|    try {
+112657|      let {
+112658|        existsSync: Z
+112659|      } = await import("node:fs");
+112660|      if (Z("/home/client/.vscode-tunnel/token.json")) {
+112661|        await A.reply("🔄 Туннель остановился — пробую перезапустить (авторизация ещё активна)...");
+112662|        let {
+112663|          writeFileSync: X
+112664|        } = await import("node:fs");
+112665|        X("/home/client/.msb/.tunnel-start", "");
+112666|        await new Promise(W => setTimeout(W, 6000));
+112667|        if (await new Promise(W => {
+112668|          let {
+112669|            exec: G
+112670|          } = S("node:child_process");
+112671|          G("systemctl is-active code-tunnel", (D, z) => {
+112672|            W(z.trim() === "active");
+112673|          });
+112674|        })) {
+112675|          await b4("tunnel_active", C, "restart_reused_token");
+112676|          let W = new Date().toISOString();
+112677|          await e({
+112678|            ...Q,
+112679|            tunnelReady: true,
+112680|            tunnelConnectedAt: W
+112681|          });
+112682|          let G = `https://vscode.dev/tunnel/${C}`;
+112683|          let D = new JA().text("⏹ Отключить", "connect:disconnect");
+112684|          await A.reply(`✔ <b>VS Code подключён</b>
+112685|
+112686|Имя туннеля: <code>${C}</code>
+112687|Подключён: ${Lh(W)}
+112688|
+112689|\uD83D\uDD17 <a href="${G}">Открыть в браузере</a>
+112690|
+112691|Или в VS Code: Cmd+Shift+P → Remote-Tunnels: Connect to Tunnel → <code>${C}</code>`, {
+112692|            parse_mode: "HTML",
+112693|            reply_markup: D
+112694|          });
+112695|          return;
+112696|        }
+112697|        await b4("tunnel_inactive", C, "restart_with_token_failed");
+112698|      }
+112699|    } catch {}
+112700|    await e({
+112701|      ...Q,
+112702|      tunnelReady: false,
+112703|      tunnelConnectedAt: undefined
+112704|    });
+112705|    await A.reply(`\uD83D\uDD04 Туннель отключился — нужна повторная авторизация GitHub.
+112706|Это нормально — токен действует ~24 часа.
+112707|
+112708|Переподключаю...`);
+112709|  }
+112710|  let F = JC.get(B);
+112711|  if (F) {
+112712|    F.cancelled = true;
+112713|    F.proc.kill();
+112714|    JC.delete(B);
+112715|  }
+112716|  await A.reply("🔌 Запускаю VS Code подключение...");
+112717|  (async () => {
+112718|    let U;
+112719|    await b4("connect_started", C);
+112720|    try {
+112721|      try {
+112722|        let {
+112723|          writeFileSync: I,
+112724|          existsSync: q,
+112725|          unlinkSync: $
+112726|        } = await import("node:fs");
+112727|        let {
+112728|          exec: N
+112729|        } = S("node:child_process");
+112730|        if (await new Promise(M => {
+112731|          N("systemctl is-active code-tunnel", (g, w) => {
+112732|            M(w.trim() === "active");
+112733|          });
+112734|        })) {
+112735|          if (!q("/home/client/.vscode-tunnel/token.json")) {
+112736|            I("/home/client/.msb/.tunnel-stop", "");
+112737|            for (let g = 0; g < 6; g++) {
+112738|              await new Promise(O => setTimeout(O, 1000));
+112739|              if (!(await new Promise(O => {
+112740|                N("systemctl is-active code-tunnel", (h, f) => {
+112741|                  O(f.trim() === "active");
+112742|                });
+112743|              }))) {
+112744|                break;
+112745|              }
+112746|            }
+112747|          }
+112748|        }
+112749|        try {
+112750|          $("/home/client/.msb/.tunnel-start");
+112751|        } catch {}
+112752|        try {
+112753|          $("/home/client/.vscode-tunnel/tunnel-stable.lock");
+112754|        } catch {}
+112755|      } catch {}
+112756|      let {
+112757|        spawn: Z
+112758|      } = await import("node:child_process");
+112759|      let E = await Wh(30000, () => {
+112760|        b4("device_code_timeout", C, "no_device_code_30s");
+112761|        return Error("Timeout: device code не получен за 30 сек");
+112762|      }, (I, q) => {
+112763|        let $ = Z("/usr/local/bin/code", ["tunnel", "user", "login", "--provider", "github"], {
+112764|          env: {
+112765|            ...process.env,
+112766|            HOME: "/home/client",
+112767|            VSCODE_CLI_DATA_DIR: "/home/client/.vscode-tunnel"
+112768|          }
+112769|        });
+112770|        let N = "";
+112771|        let L = M => {
+112772|          N += M.toString();
+112773|          let g = N.match(/https:\/\/github\.com\/login\/device/);
+112774|          let w = N.match(/code[:\s]+([A-Z0-9]{4}-[A-Z0-9]{4})/i);
+112775|          if (g && w) {
+112776|            I({
+112777|              url: "https://github.com/login/device",
+112778|              code: w[1],
+112779|              proc: $
+112780|            });
+112781|          }
+112782|        };
+112783|        $.stdout?.on("data", L);
+112784|        $.stderr?.on("data", L);
+112785|        $.on("error", q);
+112786|      });
+112787|      let X = {
+112788|        proc: E.proc,
+112789|        cancelled: false
+112790|      };
+112791|      JC.set(B, X);
+112792|      await b4("device_code_shown", C);
+112793|      let V = new JA().text("🚫 Отменить", `connect:cancel:${B}`);
+112794|      U = (await R.api.sendMessage(B, `\uD83D\uDCF1 <b>Шаг 1 из 2 — авторизация GitHub</b>
+112795|
+112796|1️⃣ Открой ссылку: <a href="${E.url}">${E.url}</a>
+112797|2️⃣ Введи код:
+112798|
+112799|<code>${E.code}</code>
+112800|
+112801|3️⃣ Нажми <b>Continue</b> и подтверди доступ.
+112802|
+112803|⏳ Жду подтверждения (до 5 минут). Окно не закрывай.`, {
+112804|        parse_mode: "HTML",
+112805|        reply_markup: V
+112806|      })).message_id;
+112807|      await Wh(300000, () => {
+112808|        b4("auth_timeout", C, "auth_not_confirmed_300s");
+112809|        E.proc.kill();
+112810|        return Error("Timeout: авторизация не выполнена за 5 минут");
+112811|      }, (I, q, $) => {
+112812|        E.proc.on("close", N => {
+112813|          if (!$()) {
+112814|            return;
+112815|          }
+112816|          if (X.cancelled) {
+112817|            b4("auth_cancelled", C);
+112818|            q(Error("cancelled"));
+112819|          } else if (N === 0) {
+112820|            b4("auth_completed", C);
+112821|            I();
+112822|          } else {
+112823|            b4("auth_failed", C, `exit_code_${N}`);
+112824|            q(Error(`code tunnel exited with code ${N}`));
+112825|          }
+112826|        });
+112827|      });
+112828|      JC.delete(B);
+112829|      if (U) {
+112830|        try {
+112831|          await R.api.deleteMessage(B, U);
+112832|        } catch {}
+112833|      }
+112834|      let {
+112835|        writeFileSync: G
+112836|      } = await import("node:fs");
+112837|      G("/home/client/.msb/.tunnel-start", "");
+112838|      await new Promise(I => setTimeout(I, 6000));
+112839|      if (!(await new Promise(I => {
+112840|        let {
+112841|          exec: q
+112842|        } = S("node:child_process");
+112843|        q("systemctl is-active code-tunnel", ($, N) => {
+112844|          I(N.trim() === "active");
+112845|        });
+112846|      }))) {
+112847|        await b4("tunnel_inactive", C, "service_not_active_after_start");
+112848|        throw Error("code-tunnel.service не запустился. Попробуй /connect ещё раз.");
+112849|      }
+112850|      await b4("tunnel_active", C);
+112851|      let z = new Date().toISOString();
+112852|      await e({
+112853|        ...Q,
+112854|        tunnelReady: true,
+112855|        tunnelConnectedAt: z
+112856|      });
+112857|      let H = `https://vscode.dev/tunnel/${C}`;
+112858|      let j = new JA().text("⏹ Отключить", "connect:disconnect");
+112859|      await R.api.sendMessage(B, `✔ <b>VS Code подключение готово!</b>
+112860|
+112861|Имя туннеля: <code>${C}</code>
+112862|Подключён: ${Lh(z)}
+112863|
+112864|\uD83D\uDD17 <a href="${H}">Открыть в браузере</a>
+112865|
+112866|Или в VS Code на компьютере:
+112867|Cmd+Shift+P → "Remote-Tunnels: Connect to Tunnel" → <code>${C}</code>`, {
+112868|        parse_mode: "HTML",
+112869|        reply_markup: j
+112870|      });
+112871|    } catch (Z) {
+112872|      JC.delete(B);
+112873|      let E = Z.message;
+112874|      if (E === "cancelled") {
+112875|        return;
+112876|      }
+112877|      if (U) {
+112878|        try {
+112879|          await R.api.deleteMessage(B, U);
+112880|        } catch {}
+112881|      }
+112882|      await R.api.sendMessage(B, `❌ Ошибка: ${E}
+112883|
+112884|Попробуй снова /connect`);
+112885|    }
+112886|  })();
+112887|});
+112888|R.callbackQuery(/^connect:cancel:(\d+)$/, async A => {
+112889|  let Q = parseInt(A.match[1]);
+112890|  let B = JC.get(Q);
+112891|  if (B) {
+112892|    B.cancelled = true;
+112893|    B.proc.kill();
+112894|    JC.delete(Q);
+112895|  }
+112896|  await A.answerCallbackQuery();
+112897|  await A.editMessageText("🚫 Подключение отменено.");
+112898|});
+112899|R.callbackQuery(/^apr:[oad]:.+$/, async A => {
+112900|  let Q = Ec(A.callbackQuery.data ?? "");
+112901|  if (!Q) {
+112902|    await A.answerCallbackQuery({
+112903|      text: "Не разобрал кнопку"
+112904|    });
+112905|    return;
+112906|  }
+112907|  let B = await m().catch(() => null);
+112908|  if (B?.userId && A.from?.id !== B.userId) {
+112909|    await A.answerCallbackQuery({
+112910|      text: "Решение принимает только владелец бокса",
+112911|      show_alert: true
+112912|    });
+112913|    return;
+112914|  }
+112915|  await A.answerCallbackQuery({
+112916|    text: "Передаю решение…"
+112917|  });
+112918|  let Y = await Xc(Q.id, Q.decision);
+112919|  if (Y.ok) {
+112920|    rG(Q.id);
+112921|  }
+112922|  let J = Vc(Q.decision, Y);
+112923|  Gc(Q.id, J, Y.ok);
+112924|  await A.editMessageText(`${A.callbackQuery.message?.text ?? ""}
+112925|
+112926|${J}`.trim()).catch(async () => {
+112927|    await A.reply(J);
+112928|  });
+112929|});
+112930|R.callbackQuery(/^fup:.+$/, async A => {
+112931|  let Q = Cg(A.callbackQuery.data ?? "");
+112932|  if (!Q) {
+112933|    await A.answerCallbackQuery({
+112934|      text: "Не разобрал кнопку"
+112935|    });
+112936|    return;
+112937|  }
+112938|  let B = await m().catch(() => null);
+112939|  if (B?.userId && A.from?.id !== B.userId) {
+112940|    await A.answerCallbackQuery({
+112941|      text: "Отмечает только владелец бокса",
+112942|      show_alert: true
+112943|    });
+112944|    return;
+112945|  }
+112946|  try {
+112947|    let {
+112948|      loadActions: Y,
+112949|      upsertAction: J
+112950|    } = await Promise.resolve().then(() => {
+112951|      fA();
+112952|      return CB;
+112953|    });
+112954|    let {
+112955|      callbackMatches: C
+112956|    } = await Promise.resolve().then(() => cn);
+112957|    let U = (await Y()).find(Z => C(Q, Z.id, Z.pendingConfirm));
+112958|    if (!U) {
+112959|      await A.answerCallbackQuery({
+112960|        text: "Это напоминание уже закрыто"
+112961|      });
+112962|      return;
+112963|    }
+112964|    await J({
+112965|      ...U,
+112966|      pendingConfirm: undefined
+112967|    });
+112968|    await A.answerCallbackQuery({
+112969|      text: "Отметил, больше не напоминаю"
+112970|    });
+112971|    await A.editMessageText(`${A.callbackQuery.message?.text ?? ""}
+112972|
+112973|✔ Отмечено`.trim()).catch(() => {});
+112974|  } catch (Y) {
+112975|    console.error("[iia/bot] follow-up confirm failed:", Y.message);
+112976|    await A.answerCallbackQuery({
+112977|      text: "Не смог отметить, попробуй ещё раз",
+112978|      show_alert: true
+112979|    });
+112980|  }
+112981|});
+112982|R.callbackQuery(/^prop:[sr]:.+$/, async A => {
+112983|  if (!iY()) {
+112984|    await A.answerCallbackQuery().catch(() => {});
+112985|    return;
+112986|  }
+112987|  let Q = QS(A.callbackQuery.data ?? "");
+112988|  if (!Q) {
+112989|    await A.answerCallbackQuery({
+112990|      text: "Не разобрал кнопку"
+112991|    }).catch(() => {});
+112992|    return;
+112993|  }
+112994|  let B = await UX(A.from?.id);
+112995|  if (!B) {
+112996|    await A.answerCallbackQuery({
+112997|      text: "Решение принимает только владелец бокса",
+112998|      show_alert: true
+112999|    }).catch(() => {});
+113000|    return;
+113001|  }
+113002|  await A.answerCallbackQuery({
+113003|    text: Q.action === "send" ? QB.sendAck : QB.rejectAck
+113004|  }).catch(() => {});
+113005|  let Y = await n1A(Q, B);
+113006|  let J = A.callbackQuery.message;
+113007|  B.diary?.({
+113008|    ts: new Date().toISOString(),
+113009|    kind: "tap",
+113010|    chatId: A.chat?.id,
+113011|    msgId: J?.message_id,
+113012|    summary: Y.tail,
+113013|    meta: {
+113014|      prefix: "prop",
+113015|      action: Q.action,
+113016|      closed: String(Y.closed)
+113017|    }
+113018|  });
+113019|  if (Y.closed) {
+113020|    await A.editMessageReplyMarkup({
+113021|      reply_markup: undefined
+113022|    }).catch(() => {});
+113023|    await A.reply(Y.tail, {
+113024|      ...(J ? {
+113025|        reply_parameters: {
+113026|          message_id: J.message_id
+113027|        }
+113028|      } : {}),
+113029|      ...CQ(J?.message_thread_id)
+113030|    }).catch(() => {});
+113031|  } else {
+113032|    await A.reply(Y.tail, {
+113033|      ...CQ(J?.message_thread_id)
+113034|    }).catch(() => {});
+113035|  }
+113036|});
+113037|R.command("cards", async A => {
+113038|  let Q = iY() ? await UX(A.from?.id) : null;
+113039|  if (!Q) {
+113040|    await A.reply(QB.cardsDisabled, {
+113041|      ...CQ(A.message?.message_thread_id)
+113042|    });
+113043|    return;
+113044|  }
+113045|  let B = await o1A(Q);
+113046|  await A.reply(B.text, {
+113047|    ...(B.buttons ? {
+113048|      reply_markup: {
+113049|        inline_keyboard: B.buttons
+113050|      }
+113051|    } : {}),
+113052|    ...CQ(A.message?.message_thread_id)
+113053|  });
+113054|});
+113055|R.callbackQuery(/^cm:.+$/, async A => {
+113056|  if (!iY()) {
+113057|    await A.answerCallbackQuery().catch(() => {});
+113058|    return;
+113059|  }
+113060|  let Q = await UX(A.from?.id);
+113061|  if (!Q) {
+113062|    await A.answerCallbackQuery({
+113063|      text: "Решение принимает только владелец бокса",
+113064|      show_alert: true
+113065|    }).catch(() => {});
+113066|    return;
+113067|  }
+113068|  let B = a1A(A.callbackQuery.data ?? "", Q.now(), Q.timeZone);
+113069|  if (!B) {
+113070|    await A.answerCallbackQuery({
+113071|      text: "Не разобрал кнопку"
+113072|    }).catch(() => {});
+113073|    return;
+113074|  }
+113075|  await A.answerCallbackQuery({
+113076|    text: QB.cardsAck
+113077|  }).catch(() => {});
+113078|  let Y = await ZS(B, Q);
+113079|  let J = A.callbackQuery.message;
+113080|  if (Y === null) {
+113081|    await A.reply(QB.cardsPending, {
+113082|      ...CQ(J?.message_thread_id)
+113083|    }).catch(() => {});
+113084|    return;
+113085|  }
+113086|  if (J) {
+113087|    let C = {
+113088|      mode: B.mode,
+113089|      until: B.until ?? null,
+113090|      setBy: "owner-chat",
+113091|      setAt: Q.now().toISOString()
+113092|    };
+113093|    let F = ES(C, Q.now(), Q.timeZone);
+113094|    await A.editMessageText(F.text, {
+113095|      reply_markup: {
+113096|        inline_keyboard: F.buttons
+113097|      }
+113098|    }).catch(() => {});
+113099|  }
+113100|});
+113101|function rGA(A) {
+113102|  return {
+113103|    chatId: A,
+113104|    now: () => new Date(),
+113105|    send: (Q, B, Y) => R.api.sendMessage(Q, B, Y),
+113106|    edit: (Q, B, Y, J) => R.api.editMessageText(Q, B, Y, J).then(() => {
+113107|      return;
+113108|    }),
+113109|    diary: EF
+113110|  };
+113111|}
+113112|async function Z$Q(A) {
+113113|  let Q = await m().catch(() => null);
+113114|  if (!Q?.chatId) {
+113115|    return {
+113116|      status: "no_owner"
+113117|    };
+113118|  }
+113119|  return PF(A, rGA(Q.chatId));
+113120|}
+113121|R.callbackQuery(/^dc:.+$/, async A => {
+113122|  let Q = await m().catch(() => null);
+113123|  if (!Q?.chatId || !Q?.userId || A.from?.id !== Q.userId) {
+113124|    await A.answerCallbackQuery({
+113125|      text: "Решение принимает только владелец бокса",
+113126|      show_alert: true
+113127|    }).catch(() => {});
+113128|    return;
+113129|  }
+113130|  try {
+113131|    let B = await Ye(A.callbackQuery.data ?? "", rGA(Q.chatId));
+113132|    await A.answerCallbackQuery({
+113133|      text: B.ackText
+113134|    }).catch(() => {});
+113135|  } catch (B) {
+113136|    console.error("[iia/bot] decision tap failed:", B.message);
+113137|    await A.answerCallbackQuery({
+113138|      text: "Не смог записать решение, попробуй ещё раз",
+113139|      show_alert: true
+113140|    }).catch(() => {});
+113141|  }
+113142|});
+113143|R.callbackQuery("ct-spent", async A => {
+113144|  let Q = await m().catch(() => null);
+113145|  if (Q?.userId && A.from?.id !== Q.userId) {
+113146|    await A.answerCallbackQuery({
+113147|      text: "Убирает только владелец бокса",
+113148|      show_alert: true
+113149|    });
+113150|    return;
+113151|  }
+113152|  try {
+113153|    let {
+113154|      cancelSpentTasks: B
+113155|    } = await Promise.resolve().then(() => {
+113156|      uB();
+113157|      return A2;
+113158|    });
+113159|    let {
+113160|      buildTaskMarkerDeps: Y
+113161|    } = await Promise.resolve().then(() => {
+113162|      _J();
+113163|      return OJ;
+113164|    });
+113165|    let J = await B(Y(A.chat?.id ?? Q?.chatId ?? 0));
+113166|    await A.answerCallbackQuery({
+113167|      text: J.ok ? "Убрал" : "Убрал не всё"
+113168|    });
+113169|    await A.editMessageText(`${A.callbackQuery.message?.text ?? ""}
+113170|
+113171|${J.message}`.trim()).catch(() => {});
+113172|  } catch (B) {
+113173|    console.error("[iia/bot] spent cleanup failed:", B.message);
+113174|    await A.answerCallbackQuery({
+113175|      text: "Не смог убрать, попробуй ещё раз",
+113176|      show_alert: true
+113177|    });
+113178|  }
+113179|});
+113180|R.callbackQuery("ct-all", async A => {
+113181|  let Q = await m().catch(() => null);
+113182|  if (Q?.userId && A.from?.id !== Q.userId) {
+113183|    await A.answerCallbackQuery({
+113184|      text: "Сносит только владелец бокса",
+113185|      show_alert: true
+113186|    });
+113187|    return;
+113188|  }
+113189|  try {
+113190|    let {
+113191|      applyCancelAll: B
+113192|    } = await Promise.resolve().then(() => {
+113193|      uB();
+113194|      return A2;
+113195|    });
+113196|    let {
+113197|      buildTaskMarkerDeps: Y
+113198|    } = await Promise.resolve().then(() => {
+113199|      _J();
+113200|      return OJ;

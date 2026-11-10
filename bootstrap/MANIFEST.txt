@@ -1,0 +1,62 @@
+# Что ставит bootstrap (ядро оркестратора MSB).
+# Продуктовые проекты владельца и их секреты — НЕ входят.
+# Обвязка CLI (overlay/) — НЕ входит, пока не вызван overlay/install.sh / --with-ext.
+
+SOURCE → TARGET
+
+.msb/bot/                 → /home/client/.msb/bot/          # БЕЗ bot/ext/, bot/run.mjs
+.msb/puller.cjs           → /home/client/.msb/puller.cjs
+.msb/sync.cjs             → /home/client/.msb/sync.cjs
+.msb/guard/               → /home/client/.msb/guard/
+.msb/dialogue-mcp/        → /home/client/.msb/dialogue-mcp/
+.msb/agent-hooks/         → /home/client/.msb/agent-hooks/
+.msb/templates/           → /home/client/.msb/templates/
+.msb/engine-kit/          → /home/client/.msb/engine-kit/
+.msb/monitor/             → /home/client/.msb/monitor/      # пустой каркас
+.msb/pult/                → /home/client/.msb/pult/         # Пульт (веб+сборщик); службы выкл
+.msb/*.md                 → /home/client/.msb/
+
+bootstrap/workspace-seed/ → /home/client/workspace/   # ТОЛЬКО seed
+  CLAUDE.md, SOUL.md — без личности владельца и без продуктов
+  SERVICES.md, TELEGRAM-TOOLS.md, tools/, .claude/skills/_always/
+  ops/costs.md — пустой шаблон
+  НЕ копировать: memory содержимое
+
+Повторный install без --reset-workspace НЕ перезаписывает живой workspace.
+Политика: bootstrap/UPDATE-POLICY.md (system-блоки, не wholesale).
+
+usr-local-bin/*           → /usr/local/bin/   # bot-ctl + watchdog
+usr-local-sbin/msb-engine → /usr/local/sbin/ + /usr/local/lib/msb-engine/
+
+systemd/msb-bot@.service (+ drop-ins ядра)
+  ExecStart=/usr/bin/node …/bot/index.js     # штатное ядро
+systemd/msb-sync.* (+ drop-ins)
+systemd/msb-tick@.service + msb-tick-puller.timer
+systemd/msb-pull-now.*
+systemd/msb-engine.path/.service + msb-engine-tick.*
+systemd/pult-web.service + pult-collector.service + pult-notify-failure@.service
+  # юниты на диске, enable — только /settings → Пульт (нужен PULT_PASSWORD)
+systemd/drop-ins/system-msb-bot.slice.d/
+etc/msb-tick/puller.conf  → /etc/msb-tick/puller.conf
+etc/sudoers.d/{msb-admin,agent-client,msb-tick,msb-engine}
+  # НЕ ставятся: jarvis-*, msb-base-pulse*, msb-full-rights (opt-in), закрытый бандл
+  # Миграция живого бокса: bootstrap/migrate-from-jarvis.sh (purge)
+
+Создаётся на месте:
+  /home/client/projects/          # пусто — проекты бот заводит сам
+  /home/client/workspace/memory/  # пусто
+  /home/client/.msb/bots/<id>/    # cwd (bind), .env, sessions/…
+  fstab bind: workspace → bots/<id>/cwd
+
+НЕ копируется:
+  overlay/                        # только через overlay/install.sh
+  bots-runtime/, живой workspace/ из чужих снимков
+  *.env (значения), .puller-state.json, state.json живого сервера
+  msb-backup.* , msb-oc-install.*
+
+Секреты ядра (см. env/msb.env.example):
+  BOT_TOKEN (per-bot), ADMIN_ID, CLAUDE_CODE_OAUTH_TOKEN,
+  SYNC_URL, SYNC_KEY, PROXYAPI_KEY, DEEPGRAM_API_KEY,
+  AUTONOMY_DAILY_CAP_TOKENS, GITFLIC_TOKEN (опц.), APIFY/SUPADATA (опц.)
+
+Секреты продуктов — запрещены в чистой установке.

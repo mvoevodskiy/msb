@@ -1,0 +1,15 @@
+{
+ "state": "ok",
+ "last_ok": "2026-10-29T10:18:14.036Z",
+ "last_error": null,
+ "run": {
+  "fetched": 29,
+  "kept": 25,
+  "est_cost_usd": 0.00464
+ },
+ "last_run": "2026-10-29T10:18:14.036Z",
+ "month": {
+  "account_usage_usd": 0.0073839392022666,
+  "account_limit_usd": 5
+ }
+}

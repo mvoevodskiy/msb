@@ -1,0 +1,51 @@
+Existing open-core helper protocol; not an invented old-master OS control path.
+Accepted baseline e232629c5e93846316dfd6b7281b518590a67ce9:
+- bot engines/client.mjs submits {v:1,id,action,bot_id} to profile engine/request.
+- usr-local-lib/msb-engine/ipc.py take_request lstat-checks regular file/owner/size,
+  then open/read/unlink. cli.py cmd_run takes one file/source under root flock.
+- systemd/msb-engine.path PathExists watches the fixed path. The helper lock does
+  not lock producers. Results are keyed by id in state.requests (last32) or last.
+- rename(tmp,request) silently replaced unconsumed data, including the helper's
+  read→unlink interval. 1bf1e42 pins4RED through deterministic occupied slots and
+  independent publishers. No second helper protocol or OS migration is needed.
+Restoration invariant: successful publication must not destroy another pending
+ID. Publish a complete regular file atomically without replacement, wait a bounded
+period for the old slot, explicitly refuse if still occupied; clean only own tmp.
+Busy/refusal means this newly generated ID was never published. Publication does
+not prove execution. Do not silently retry an action whose result timed out.
+Existing helper/action list/root permissions/data stay unchanged. A writer that
+still replaces request can violate this invariant; no exactly-once claim is made.
+A filesystem that cannot provide no-replace publication must fail, never fall back
+to replacing rename. Status fixture consumers must actually unlink the request,
+just like the helper, while retaining their result keyed by id.
+
+Status UI/read lifecycle (existing eng:status, not a new OS action):
+1e54cdb reproduced4RED: helper wait holds the callback, late status overwrites
+new core/overlay navigation, shutdown leaves the UI observer. A later independent
+review reproduced accepted edit ordering after client abort (intermediate6PASS/1RED).
+The existing accepted progress fix b5a781d already establishes the bounded drain
+pattern: do not release newer delivery merely because a fetch was cancelled.
+Current callback view and transport delivery are distinct lifetimes. A new view
+aborts old status observation/retry pauses; accepted edit is awaited in the shared
+per-chat lane, physical attempts bounded15s. Original autoRetry remains for the
+still-current view. Scope follows detached overlay continuations, not whichever
+callback happens to be current later. Handler return does not end the selected
+provider view. Existing mutations still complete after navigation; only rendering
+and read observation are cancelled. Bot stop drains tasks and deliveries.
+This is not proof of server application after transport timeout or live native
+OS controls on JAR1; that profile deliberately keeps the native UI disabled.
+
+Pult existing Refresh: 9adfe15 pins8RED from accepted e232629. Live cause was
+missing /run state after reboot, not missing code: helper profile jar1 and its
+PathExists .iia/engine/request were correct, package/unit existed, services worked.
+Null/partial snapshot must render unknown. Confirmed installed=false means full
+installation (package+unit) not found, with the actual profile root, not hardcoded msb.
+Root/Back stays passive to avoid repeated25s waits and20/hour quota spend while
+helper is unavailable. The same visible Refresh gets an internal refresh callback;
+old settings:pult still opens/re-renders the section. No new button or daemon.
+Fresh status uses existing status action/common read operation; only complete
+three-boolean state after OK is success. Refused/timeout/incomplete must not dress
+cached healthy data as a new result. UI read is cancellable, no enable/reload.
+Review reproduced8PASS/1RED for stale Refresh paused in loadState→new Pult form:
+duplicate route-level cancellation erased the new input. Deferred cancellation is
+now admission-only, with another current-scope check after the async state read.

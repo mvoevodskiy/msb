@@ -1,0 +1,89 @@
+{
+  "version": "codex-cli 0.166.0",
+  "schema_files": 321,
+  "params": {
+    "cwds": {
+      "description": "When empty, defaults to the current session working directory.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "forceReload": {
+      "description": "When true, bypass the skills cache and re-scan skills from disk.",
+      "type": "boolean"
+    }
+  },
+  "metadata_required": [
+    "description",
+    "enabled",
+    "name",
+    "path",
+    "scope"
+  ],
+  "scope": [
+    "user",
+    "repo",
+    "system",
+    "admin"
+  ],
+  "owner_auth_config_used": false,
+  "native_turn_started": false,
+  "discovery": {
+    "version": "codex-cli 0.166.0",
+    "isolated_home": true,
+    "owner_auth_config_used": false,
+    "native_turn_started": false,
+    "listed": [
+      {
+        "cwd": "base",
+        "synthetic_skills": [
+          {
+            "name": "probe-base-agents",
+            "scope": "repo",
+            "enabled": true,
+            "path_matches_controlled_file": true
+          },
+          {
+            "name": "probe-user-agents",
+            "scope": "user",
+            "enabled": true,
+            "path_matches_controlled_file": true
+          },
+          {
+            "name": "probe-user-codex",
+            "scope": "user",
+            "enabled": true,
+            "path_matches_controlled_file": true
+          }
+        ],
+        "errors_count": 0
+      },
+      {
+        "cwd": "project",
+        "synthetic_skills": [
+          {
+            "name": "probe-project-agents",
+            "scope": "repo",
+            "enabled": true,
+            "path_matches_controlled_file": true
+          },
+          {
+            "name": "probe-user-agents",
+            "scope": "user",
+            "enabled": true,
+            "path_matches_controlled_file": true
+          },
+          {
+            "name": "probe-user-codex",
+            "scope": "user",
+            "enabled": true,
+            "path_matches_controlled_file": true
+          }
+        ],
+        "errors_count": 0
+      }
+    ]
+  },
+  "scope_note": "Installed JAR1 CLI, owned temporary HOME/repos/skills only. Offline schema and native initialize->skills/list; no login, thread/turn start, native owner conversations or configuration writes. Temporary HOME removed. First probe had only a missing PATH resolver and never launched Codex; not a product RED."
+}

@@ -1,0 +1,137 @@
+[
+ {
+  "id": "conv-prompt-dev",
+  "name": "Задача: Разработка демо…",
+  "enabled": true,
+  "trigger": {
+   "kind": "cron",
+   "cron": "0 * * * *",
+   "timezone": "Europe/Moscow"
+  },
+  "task": {
+   "kind": "prompt"
+  },
+  "requestedKind": "prompt",
+  "output": {
+   "format": "tg-message",
+   "store": false,
+   "silentIfEmpty": true,
+   "emptyIsValidOutcome": true
+  },
+  "createdAt": "2026-10-29T03:30:00.000Z",
+  "lastRunAt": "2026-10-29T10:00:30.000Z",
+  "lastStatus": "error",
+  "disabledReason": null
+ },
+ {
+  "id": "conv-reminder-offer",
+  "name": "Напоминание: оферта закончилась",
+  "enabled": true,
+  "trigger": {
+   "kind": "once",
+   "at": "2026-11-01T05:44:58.222Z"
+  },
+  "task": {
+   "kind": "reminder"
+  },
+  "requestedKind": "reminder",
+  "output": {
+   "format": "tg-message",
+   "store": false,
+   "silentIfEmpty": true
+  },
+  "createdAt": "2026-10-16T02:44:58.222Z",
+  "lastRunAt": null,
+  "lastStatus": null,
+  "disabledReason": null
+ },
+ {
+  "id": "conv-reminder-spent",
+  "name": "Напоминание: старое",
+  "enabled": false,
+  "trigger": {
+   "kind": "once",
+   "at": "2026-10-20T14:00:00.000Z"
+  },
+  "task": {
+   "kind": "reminder"
+  },
+  "output": {
+   "format": "tg-message",
+   "store": false,
+   "silentIfEmpty": true
+  },
+  "createdAt": "2026-10-19T11:20:42.544Z",
+  "lastRunAt": "2026-10-20T14:00:05.815Z",
+  "lastStatus": "ok",
+  "disabledReason": "spent_once"
+ },
+ {
+  "id": "conv-prompt-once-done",
+  "name": "Задача: Разовая, уже отработала…",
+  "trigger": {
+   "kind": "once",
+   "at": "2026-10-29T07:00:00.000Z"
+  },
+  "task": {
+   "kind": "prompt"
+  },
+  "output": {
+   "format": "tg-message",
+   "store": false,
+   "silentIfEmpty": true
+  },
+  "createdAt": "2026-10-29T06:00:00.000Z",
+  "lastRunAt": "2026-10-29T07:00:10.000Z",
+  "lastStatus": "ok"
+ },
+ {
+  "id": "conv-prompt-paused",
+  "name": "Задача: Наблюдение за номером…",
+  "enabled": false,
+  "trigger": {
+   "kind": "cron",
+   "cron": "5 */2 * * *",
+   "timezone": "Europe/Moscow"
+  },
+  "task": {
+   "kind": "prompt"
+  },
+  "output": {
+   "format": "tg-message",
+   "store": false,
+   "silentIfEmpty": true
+  },
+  "createdAt": "2026-10-17T21:28:10.497Z",
+  "lastRunAt": "2026-10-17T23:05:58.173Z",
+  "lastStatus": "ok",
+  "disabledReason": "owner"
+ },
+ {
+  "id": "conv-prompt-alarm",
+  "name": "Демо: тревога фона",
+  "enabled": true,
+  "trigger": {
+   "kind": "when",
+   "everyMinutes": 5,
+   "check": {
+    "kind": "path",
+    "path": "/home/client/.msb/alarm.json"
+   },
+   "fire": "ok"
+  },
+  "task": {
+   "kind": "prompt"
+  },
+  "output": {
+   "format": "tg-message",
+   "store": false,
+   "silentIfEmpty": true,
+   "emptyIsValidOutcome": true
+  },
+  "createdAt": "2026-10-26T06:20:34.657Z",
+  "lastRunAt": "2026-10-29T07:15:00.000Z",
+  "lastStatus": "ok",
+  "disabledReason": null
+ }
+]

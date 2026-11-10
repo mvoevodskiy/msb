@@ -1,0 +1,226 @@
+k_type ?? "")) {
+        this.holds = true;
+        return;
+      }
+      if (Q.tool_use_id) {
+        this.agentToolUses.delete(Q.tool_use_id);
+      }
+      if (Q.task_id) {
+        this.openAgentTasks.add(Q.task_id);
+      }
+    } else if (xR(A)) {
+      let Q = A;
+      if (Q.task_id) {
+        this.openAgentTasks.delete(Q.task_id);
+        this.openMonitorTasks.delete(Q.task_id);
+      }
+      if (Q.tool_use_id) {
+        this.agentToolUses.delete(Q.tool_use_id);
+        this.monitorToolUses.delete(Q.tool_use_id);
+      }
+    }
+  }
+  canCut() {
+    return this.holds && !this.agentUntracked && !this.monitorUntracked && this.agentToolUses.size === 0 && this.openAgentTasks.size === 0 && this.monitorToolUses.size === 0 && this.openMonitorTasks.size === 0;
+  }
+}
+function In(A) {
+  return A.waitsAfterResult && A.canCut && !A.aborted && !A.degenerate;
+}
+function UqA(A, Q) {
+  if (!A) {
+    return;
+  }
+  KJ.delete(A);
+  KJ.set(A, Q);
+  if (KJ.size > FqA) {
+    let B = KJ.keys().next().value;
+    if (B !== undefined) {
+      KJ.delete(B);
+    }
+  }
+}
+function $n(A) {
+  if (!A.totalsCarryOver || !A.resumedSessionId) {
+    return A.total;
+  }
+  if (A.previousTotal === undefined || A.total < A.previousTotal) {
+    return;
+  }
+  return A.total - A.previousTotal;
+}
+function qn(A) {
+  if (!A.clean || A.total === undefined) {
+    return;
+  }
+  if (A.baseline !== undefined && A.total < A.baseline) {
+    return;
+  }
+  return A.total;
+}
+function Sn(A) {
+  if (A > yn) {
+    return "file";
+  } else {
+    return "argv";
+  }
+}
+async function Tn(A) {
+  if (Sn(Buffer.byteLength(A, "utf-8")) === "argv") {
+    return null;
+  }
+  let Q = s4.join(N7.tmpdir(), `msb-cc-system-prompt-${process.pid}-${Date.now().toString(36)}.md`);
+  await W4.writeFile(Q, A, {
+    encoding: "utf-8",
+    mode: 384
+  });
+  return Q;
+}
+async function xn(A, Q, B, Y, J, C, F, U, Z, E, X, V, W = {}) {
+  let G = Cz(U, Z);
+  let D = G || W.autonomyRights === true && cR(U, V);
+  let z = W.rightsOn === true && D && typeof W.guardSettings === "string" && W.guardSettings.length > 0;
+  let H = (Z?.length ?? 0) > 0;
+  let j = U?.includes("Agent") ?? false;
+  let I = q7(F) && (!H || j);
+  let $ = (E ?? (await kn())).map(c => `mcp__${c}`).join(",");
+  let N = I ? `Bash,WebSearch,WebFetch,Agent,Task,Workflow,Monitor,Skill,${hR}` : `Bash,WebSearch,WebFetch,${hR}`;
+  let L = U && U.length > 0 ? U.join(",") : N;
+  let M = $ ? `${L},${$}` : L;
+  let g = ni(C, F);
+  let w = (U?.length ?? 0) > 0 && zn();
+  let O = ["-p", "--output-format", "stream-json", "--verbose", "--max-turns", G ? Yz : I ? ai : oi, "--permission-mode", g, ...(w ? ["--tools", ...U] : ["--allowedTools", M]), ...(() => {
+    if (!w) {
+      return [];
+    }
+    let n = [...U.filter(d => d === "WebSearch" || d === "WebFetch"), ...($ ? [$] : []), ...(V ?? [])];
+    if (n.length > 0) {
+      return ["--allowedTools", n.join(",")];
+    } else {
+      return [];
+    }
+  })(), ...(w ? ["--add-dir", N7.homedir(), "/tmp"] : []), "--disallowedTools", ...(w ? [] : Z ?? []), ...(z ? cD : zR), ...Dn(), ...(z ? ["--settings", W.guardSettings] : [])];
+  if (I) {
+    let c = X && Object.keys(X).length > 0 ? X : _n;
+    O.push("--agents", JSON.stringify(c));
+  }
+  if (Y) {
+    if (typeof Y === "string") {
+      O.push("--append-system-prompt", Y);
+    } else {
+      O.push("--append-system-prompt-file", Y.file);
+    }
+    if (OY(wn, F)) {
+      O.push("--system-prompt-snapshot", "off");
+    }
+  }
+  let h = B?.replace("[1m]", "");
+  if (h) {
+    O.push("--model", h);
+    if (h4(h)) {
+      let c = OY(Ln, F) ? Rn : Mn;
+      O.push("--fallback-model", c);
+    }
+  }
+  let f = nU(h, J, F ?? SB());
+  if (f) {
+    O.push("--effort", f);
+  }
+  let v = W.meteredAuth ?? nR({
+    env: {
+      ...HB(),
+      CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN
+    },
+    apiKeySource: iR()
+  });
+  if (Un({
+    metered: v
+  }) && OY(gn, F)) {
+    O.push("--max-budget-usd", Fz);
+  }
+  if (Q) {
+    O.push("--resume", Q);
+  }
+  return O;
+}
+function bi(A) {
+  try {
+    let Q = JSON.parse(A);
+    if (Q && typeof Q.type === "string") {
+      return Q;
+    }
+    console.error(`[iia/agent-cc] stream-json line without 'type' field: ${A.slice(0, 200)}`);
+    return null;
+  } catch (Q) {
+    console.error(`[iia/agent-cc] stream-json parse failed (${Q.message}): ${A.slice(0, 200)}`);
+    return null;
+  }
+}
+async function kn() {
+  let A = await a4();
+  return Object.keys(A.mcpServers || {});
+}
+async function oR(A) {
+  let Q = false;
+  let B = {
+    onCompactBoundary: () => {
+      Q = true;
+    }
+  };
+  let Y = {};
+  try {
+    let J = await IJ(Y, "/compact", A.ccSessionId, B, undefined, A.signal, A.model, A.permissionMode, A.effort, false);
+    return {
+      fired: Q,
+      usage: J
+    };
+  } catch (J) {
+    return {
+      fired: false,
+      usage: null,
+      error: J.message
+    };
+  }
+}
+var jJ;
+var t4;
+var p$A;
+var l$A = 40;
+var c$A = 400;
+var d$A;
+var i$A = `## Режим Контроль — ОБЯЗАТЕЛЬНО
+
+Перед каждым изменением или созданием файла (Write/Edit):
+1. Опиши намерение одной строкой: "✏️ Правка: {файл} — {кратко что и зачем}"
+2. Заверши сообщение ТОЧНО этой строкой (без изменений): [КНОПКИ: control]
+3. СТОП — не вызывай Write/Edit до получения ✔
+4. После ✔ — вноси изменение и продолжай к следующему шагу
+5. Несколько файлов — подтверждай каждый отдельно`;
+var n$A = `## Режим Планирование — ОБЯЗАТЕЛЬНО
+
+Перед ЛЮБОЙ задачей с 2+ шагами или изменениями файлов:
+1. Напиши пронумерованный план (шаги, файлы, команды)
+2. Заверши сообщение ТОЧНО этой строкой (без изменений): [КНОПКИ: plan]
+3. СТОП — не выполняй ничего до получения ✔
+4. ✔ → выполняй весь план без пауз
+5. ✖ или комментарий → скорректируй план и снова спроси`;
+var j7 = 15000;
+var bR = 30000;
+var ri = "2.1.172";
+var ai = "50";
+var Yz = "200";
+var oi = "25";
+var si = 14400000;
+var ti = 1800000;
+var ei = 3000;
+var Qz;
+var Jz = false;
+var An = 10;
+var Qn = 3;
+var fR = 5000;
+var Bn = 600000;
+var Yn = "BackgroundWait";
+var dR;
+var QqA;
+var En = 2000;
+var Vn = 900000

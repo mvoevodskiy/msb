@@ -1,0 +1,31 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
+import { setActive, setSession, loadStore } from '../store.mjs';
+import { buildModelMenu } from '../menu.mjs';
+import { applyProviderModel } from '../apply-model.mjs';
+import { buildCodexExecArgs } from '../adapters/codex.mjs';
+
+test('Codex model selection explains and preserves its existing session', async (t) => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-model-session-'));
+  t.after(() => fs.rm(home, { recursive: true, force: true }));
+  const env = { MSB_BOT_ID: 'default' };
+  const session = '0199a213-81c0-7800-8aa1-bbab2a035a53';
+  await setActive('codex', env, home);
+  await setSession('codex', session, env, home);
+  const statePath = path.join(home, '.msb/bots/default/state.json');
+  const state = JSON.stringify({ ccSessionId: `ext:codex:${session}`, fixtureUnrelated: 'preserve' });
+  await fs.writeFile(statePath, state);
+  const menu = await buildModelMenu(env, home);
+  assert.match(menu.text, /Смена модели сохраняет текущую сессию/);
+  assert.doesNotMatch(menu.text, /начнёт новую беседу/);
+  assert.equal((await applyProviderModel('codex', 'gpt-6.1-terra', env, home)).ok, true);
+  const saved = await loadStore(env, home);
+  assert.equal(saved.sessions.codex, session);
+  assert.equal(await fs.readFile(statePath, 'utf8'), state);
+  const args = buildCodexExecArgs({ model: saved.models.codex, resumeId: saved.sessions.codex });
+  assert.equal(args[args.indexOf('resume') + 1], session);
+  assert.equal(args[args.indexOf('-m') + 1], 'gpt-6.1-terra');
+});

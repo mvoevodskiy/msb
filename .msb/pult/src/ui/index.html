@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex, nofollow">
+<meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#121212">
+<title>Пульт</title>
+<link rel="stylesheet" href="/ui/app.css">
+<script src="/ui/tg-bridge.js" defer></script>
+<script type="module" src="/ui/app.js"></script>
+</head>
+<body>
+<a class="skip" id="skip" href="#/">К содержимому</a>
+<header class="top">
+  <div class="top-in">
+    <a class="logo" href="#/">Пульт</a>
+    <nav class="tabs" aria-label="Разделы">
+      <a href="#/" data-tab="overview">Обзор<span class="badge" data-badge="tab" hidden></span></a>
+      <a href="#/bots" data-tab="bots">Боты</a>
+      <a href="#/tasks" data-tab="tasks">Задачи</a>
+      <a href="#/projects" data-tab="projects">Проекты</a>
+      <a href="#/server" data-tab="server">Сервер</a>
+    </nav>
+    <div class="top-r">
+      <div class="status" id="status"><span class="dot d-off" aria-hidden="true"></span><span class="st-long">загружаю…</span></div>
+      <form class="logout" method="post" action="/logout"><button type="submit" class="btn btn-ghost">Выйти</button></form>
+    </div>
+  </div>
+</header>
+<div class="banners" id="banner" hidden></div>
+<main id="main" class="wrap" tabindex="-1">
+  <noscript><p>Пульту нужен JavaScript.</p></noscript>
+</main>
+<nav class="bottom" aria-label="Разделы">
+  <a href="#/" data-tab="overview"><span class="bl">Главная</span><span class="badge badge-dot" data-badge="dot" hidden></span></a>
+  <a href="#/bots" data-tab="bots"><span class="bl">Боты</span></a>
+  <a href="#/tasks" data-tab="tasks"><span class="bl">Задачи</span></a>
+  <a href="#/projects" data-tab="projects"><span class="bl">Проекты</span></a>
+  <a href="#/server" data-tab="server"><span class="bl">Сервер</span></a>
+</nav>
+<div id="tip" class="tip" role="tooltip" hidden></div>
+<div id="live" class="sr-only" aria-live="polite"></div>
+</body>
+</html>

@@ -1,0 +1,10 @@
+[Unit]
+Description=Constructor Agent Sync to Backend
+
+[Service]
+Type=oneshot
+User=client
+WorkingDirectory=/home/client
+ExecCondition=/bin/grep -q MSB_SHARE_DIALOGS_SINCE /home/client/.msb/sync.cjs
+ExecStart=/usr/bin/node /home/client/.msb/sync.cjs
+EnvironmentFile=/home/client/.msb/.env

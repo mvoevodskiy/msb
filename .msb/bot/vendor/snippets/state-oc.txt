@@ -1,0 +1,201 @@
+ 55400|  getDayOfWeek: () => Oy,
+ 55401|  getCurrentHour: () => Py,
+ 55402|  fenceAdapterSwitch: () => x0A,
+ 55403|  OC_PREV_SESSION_CAP: () => My,
+ 55404|  MSB_DIR: () => V4
+ 55405|});
+ 55406|import * as pY from "node:fs/promises";
+ 55407|import * as N2 from "node:path";
+ 55408|import * as Ly from "node:os";
+ 55409|import { readFileSync as y0A } from "node:fs";
+ 55410|function AL(A) {
+ 55411|  return N2.dirname(A || N2.join(Ly.homedir(), ".msb", "sessions"));
+ 55412|}
+ 55413|function UA(A) {
+ 55414|  return N2.join(V4, A);
+ 55415|}
+ 55416|function SP(A, Q) {
+ 55417|  let B = A.ocSessionId;
+ 55418|  if (B) {
+ 55419|    A.ocPrevSessionIds = [B, ...(A.ocPrevSessionIds ?? []).filter(Y => Y !== B)].slice(0, My);
+ 55420|  }
+ 55421|  A.ocSessionId = undefined;
+ 55422|  A.ocSessionName = undefined;
+ 55423|  A.ocContextTokens = undefined;
+ 55424|  A.ocContextSessionId = undefined;
+ 55425|  if (Q) {
+ 55426|    console.error(`[iia/state] OC session reset (${Q})${B ? " — id застэшен в ocPrevSessionIds" : ""}`);
+ 55427|  }
+ 55428|  return !!B;
+ 55429|}
+ 55430|function T0A(A) {
+ 55431|  let Q = Fq(A.ccModel);
+ 55432|  if (!Q) {
+ 55433|    return false;
+ 55434|  }
+ 55435|  A.ccModel = Q;
+ 55436|  return true;
+ 55437|}
+ 55438|async function m() {
+ 55439|  try {
+ 55440|    let A = await pY.readFile(eJ, "utf-8");
+ 55441|    let Q = JSON.parse(A);
+ 55442|    if (!Q.timezone) {
+ 55443|      Q.timezone = process.env.MSB_TIMEZONE || "Europe/Moscow";
+ 55444|    }
+ 55445|    if (!Q.lastPollAt) {
+ 55446|      Q.lastPollAt = {};
+ 55447|      if (Q.lastYtPoll) {
+ 55448|        Q.lastPollAt.youtube = Q.lastYtPoll;
+ 55449|      }
+ 55450|      if (Q.lastTwPoll) {
+ 55451|        Q.lastPollAt.twitter = Q.lastTwPoll;
+ 55452|      }
+ 55453|      if (Q.lastGhPoll) {
+ 55454|        Q.lastPollAt.github = Q.lastGhPoll;
+ 55455|      }
+ 55456|      if (Q.lastTgPoll) {
+ 55457|        Q.lastPollAt.telegram = Q.lastTgPoll;
+ 55458|      }
+ 55459|      if (Q.lastRssPoll) {
+ 55460|        Q.lastPollAt.rss = Q.lastRssPoll;
+ 55461|      }
+ 55462|      if (Object.keys(Q.lastPollAt).length > 0) {
+ 55463|        console.error("[state] Migrated legacy poll timestamps to lastPollAt");
+ 55464|      }
+ 55465|    }
+ 55466|    if (Q.clientApiKey) {
+ 55467|      try {
+ 55468|        let {
+ 55469|          setEnvVar: B
+ 55470|        } = await Promise.resolve().then(() => {
+ 55471|          E4();
+ 55472|          return DJ;
+ 55473|        });
+ 55474|        await B("ANTHROPIC_API_KEY", Q.clientApiKey, {
+ 55475|          internal: true
+ 55476|        });
+ 55477|        process.env.ANTHROPIC_API_KEY = Q.clientApiKey;
+ 55478|        console.error("[state] Migrated clientApiKey from state.json to .env");
+ 55479|      } catch (B) {
+ 55480|        console.error("[state] Migration failed, key stays in env:", B.message);
+ 55481|      }
+ 55482|      delete Q.clientApiKey;
+ 55483|      Q.hasApiKey = true;
+ 55484|      await e(Q);
+ 55485|    }
+ 55486|    T0A(Q);
+ 55487|    RW(Q);
+ 55488|    return Q;
+ 55489|  } catch {
+ 55490|    return null;
+ 55491|  }
+ 55492|}
+ 55493|function Ry() {
+ 55494|  try {
+ 55495|    let A = JSON.parse(y0A(eJ, "utf-8"));
+ 55496|    if (A && typeof A === "object" && !Array.isArray(A)) {
+ 55497|      return A;
+ 55498|    } else {
+ 55499|      return null;
+ 55500|    }
+ 55501|  } catch {
+ 55502|    return null;
+ 55503|  }
+ 55504|}
+ 55505|function gy(A, Q) {
+ 55506|  if (A.lastPollAt?.[Q]) {
+ 55507|    return A.lastPollAt[Q];
+ 55508|  }
+ 55509|  return {
+ 55510|    youtube: A.lastYtPoll,
+ 55511|    twitter: A.lastTwPoll,
+ 55512|    github: A.lastGhPoll,
+ 55513|    telegram: A.lastTgPoll,
+ 55514|    rss: A.lastRssPoll
+ 55515|  }[Q] || "2000-01-01T00:00:00Z";
+ 55516|}
+ 55517|function wy(A, Q, B) {
+ 55518|  if (!A.lastPollAt) {
+ 55519|    A.lastPollAt = {};
+ 55520|  }
+ 55521|  A.lastPollAt[Q] = B;
+ 55522|}
+ 55523|function x0A(A, Q) {
+ 55524|  if (!Q || typeof Q !== "object") {
+ 55525|    return false;
+ 55526|  }
+ 55527|  if ((Q.adapterGen ?? 0) === (A.adapterGen ?? 0)) {
+ 55528|    return false;
+ 55529|  }
+ 55530|  let B = A;
+ 55531|  let Y = Q;
+ 55532|  let J = C => C === "engine" || /^oc[A-Z]/.test(C) || C === "adapterArchive" || C === "adapterGen";
+ 55533|  for (let C of Object.keys(B)) {
+ 55534|    if (J(C)) {
+ 55535|      delete B[C];
+ 55536|    }
+ 55537|  }
+ 55538|  for (let C of Object.keys(Y)) {
+ 55539|    if (J(C)) {
+ 55540|      B[C] = Y[C];
+ 55541|    }
+ 55542|  }
+ 55543|  return true;
+ 55544|}
+ 55545|async function e(A) {
+ 55546|  try {
+ 55547|    if (x0A(A, JSON.parse(y0A(eJ, "utf-8")))) {
+ 55548|      console.error("[iia/state] stale snapshot: the engine switch on disk wins (П-8 adapterGen)");
+ 55549|    }
+ 55550|  } catch {}
+ 55551|  await pY.mkdir(N2.dirname(eJ), {
+ 55552|    recursive: true
+ 55553|  });
+ 55554|  let Q = eJ + ".tmp";
+ 55555|  await pY.writeFile(Q, JSON.stringify(A, null, 2), {
+ 55556|    mode: 384
+ 55557|  });
+ 55558|  await pY.rename(Q, eJ);
+ 55559|}
+ 55560|async function RB(A, Q = eJ) {
+ 55561|  let B = {};
+ 55562|  await oA(Q, Y => {
+ 55563|    let J;
+ 55564|    try {
+ 55565|      J = JSON.parse(Y || "{}");
+ 55566|    } catch {
+ 55567|      J = {};
+ 55568|    }
+ 55569|    A(J);
+ 55570|    B = J;
+ 55571|    return JSON.stringify(J, null, 2);
+ 55572|  }, {
+ 55573|    initialContent: "{}"
+ 55574|  });
+ 55575|  return B;
+ 55576|}
+ 55577|async function Q1(A, Q, B) {
+ 55578|  let Y = await m();
+ 55579|  if (Y) {
+ 55580|    let J = B !== undefined && Y.ownerUsername !== B;
+ 55581|    if (Y.chatId === A && Y.userId === Q && !J) {
+ 55582|      return Y;
+ 55583|    }
+ 55584|    Y.chatId = A;
+ 55585|    Y.userId = Q;
+ 55586|    if (B !== undefined) {
+ 55587|      Y.ownerUsername = B;
+ 55588|    }
+ 55589|  } else {
+ 55590|    Y = {
+ 55591|      chatId: A,
+ 55592|      userId: Q,
+ 55593|      timezone: process.env.MSB_TIMEZONE || "Europe/Moscow",
+ 55594|      briefingHour: parseInt(process.env.MSB_BRIEFING_HOUR || "8", 10),
+ 55595|      briefingEnabled: false,
+ 55596|      weeklyEnabled: false,
+ 55597|      autoMessagesOptIn: true,
+ 55598|      lastBriefingSent: "",
+ 55599|      lastWeeklySent: "",
+ 55600|      dailySpendLimit: 10,

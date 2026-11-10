@@ -1,0 +1,71 @@
+[Unit]
+Description=Constructor Agent Telegram Bot (%i)
+After=network-online.target
+Wants=network-online.target
+# Стойкость к ребуту: рабочий каталог юнита это bind-mount workspace, который
+# персистится в fstab с опцией nofail (маунт не валит local-fs.target). Раз
+# маунт может тихо не подняться, юнит должен явно ждать именно его, а не
+# стартовать против пустого несмонтированного cwd после холодной загрузки.
+RequiresMountsFor=/home/client/.msb/bots/%i/cwd
+StartLimitIntervalSec=300
+StartLimitBurst=5
+
+[Service]
+Type=simple
+User=client
+WorkingDirectory=/home/client/.msb/bots/%i/cwd
+ExecStartPre=/usr/local/bin/msb-bot-watchdog.sh
+ExecStart=/usr/bin/node /home/client/.msb/bot/index.js
+Restart=always
+RestartSec=10
+# KillMode=process: при перезапуске бота systemd снимает только сам процесс бота. Владелец очереди
+# acpx второго движка живёт в этой же cgroup и с control-group умирал на каждом обновлении, отсюда
+# «silent session reset» у каждого OC-клиента на каждой волне. Детей хода бот гасит сам по SIGTERM
+# (currentAbort.abort() в index.ts), сирот не остаётся. Проба на тестовом боксе (msb-bot@Test2):
+# владелец очереди пережил перезапуск. Существующим боксам то же даёт drop-in
+# /etc/systemd/system/msb-bot@.service.d/50-killmode.conf (fleet/tools/killmode-rollout.mjs, по «+»).
+KillMode=process
+EnvironmentFile=/home/client/.msb/bots/%i/.env
+Environment=HOME=/home/client
+Environment=MSB_BOT_ID=%i
+# Limits (owner decision, 09.10.2026). The bot, Claude Code, MCP servers and every command the
+# agent runs share THIS cgroup; 1024M / CPUQuota=80% / 256 tasks starved long turns and builds
+# (suspected source of Exit 137). Percentages are of the box's RAM (4 GB plan: MemoryHigh ~3.0G,
+# MemoryMax ~3.4G): MemoryHigh throttles and reclaims first, MemoryMax is the hard OOM line.
+# These are PER BOT. All bots together are capped lower by the slice drop-in written right after
+# this unit (system-msb\x2dbot.slice: MemoryHigh=70%, MemoryMax=80%), which binds first even for
+# a single bot. MemorySwapMax=512M: setup.sh makes 4 GB of swap, and without a swap cap a runaway
+# spills into it and thrashes the whole box (sshd, journald, the other bots) instead of being
+# OOM-killed inside its own cgroup.
+# No CPUQuota: the agent may use the whole CPU. OOMPolicy=continue: when the kernel OOM-kills
+# ONE process of this cgroup (a runaway build, an MCP server), systemd keeps the unit and the
+# bot running instead of stopping the whole service (default policy "stop"); if the bot's own
+# process is the one killed, Restart=always brings it back. Needs systemd >= 243 (OOMPolicy);
+# percent values for MemoryMax/MemoryHigh are older. Ubuntu 24.04 ships systemd 255.
+MemoryHigh=75%
+MemoryMax=85%
+MemorySwapMax=512M
+TasksMax=4096
+OOMPolicy=continue
+StandardOutput=journal
+StandardError=journal
+# Owner rights (owner decision, 09.10.2026): the person's agent has full rights on its own
+# server. The OS sandbox is off: it made everything outside a short write list read-only (no
+# package installs, no ~/.config, EROFS on the rest of the home), hid /tmp, and NoNewPrivileges
+# made sudo dead for the agent. What the agent may run as root is still decided by
+# /etc/sudoers.d (unchanged by this unit). The one exception, the agent stopping or killing its
+# own bot (now reachable, e.g. `sudo bot-ctl.sh stop default`), is NOT guarded here: the self-stop
+# guard lives in the bot (agent PreToolUse hook in the bot release). Root-side actions the bot
+# itself needs keep their trigger-file units (tunnel-ctl.path, msb-pull-now.path). /tmp is shared
+# now; old files are aged out by /etc/tmpfiles.d/tmp.conf (setup.sh).
+NoNewPrivileges=false
+ProtectSystem=false
+ProtectHome=false
+PrivateTmp=false
+ProtectKernelTunables=false
+ProtectKernelModules=false
+ProtectControlGroups=false
+RestrictSUIDSGID=false
+
+[Install]
+WantedBy=multi-user.target

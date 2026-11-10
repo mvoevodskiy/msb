@@ -1,0 +1,35 @@
+# /etc/systemd/system/pult-collector.service — сборщик Пульта: раз в минуту снимок сервера ботов → веб-сервис.
+# Только чтение: журналы ботов, systemd, /proc, git, реестры ~/workspace/ops/pult. Без ИИ.
+# Секреты — /home/client/pult-secrets/collector.env (PULT_URL, PULT_INGEST_TOKEN, DEEPGRAM_API_KEY).
+# Nice=10: сбор не мешает ботам. Падает больше 5 раз за 10 мин — тревога через pult-notify-failure@;
+# если сборщик молчит, веб-сервис сам пришлёт «сборщик молчит» через 5 мин.
+[Unit]
+Description=Пульт: сборщик состояния сервера ботов
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
+OnFailure=pult-notify-failure@%n.service
+
+[Service]
+Type=simple
+User=client
+Group=client
+WorkingDirectory=/home/client/pult-deploy
+EnvironmentFile=/home/client/pult-secrets/collector.env
+ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning --disallow-code-generation-from-strings /home/client/pult-deploy/src/collector/main.ts run
+Restart=on-failure
+RestartSec=10
+Nice=10
+# Чтение журнала systemd — ходы таймеров за 30 дней; только этой службе, без изменения групп пользователя.
+SupplementaryGroups=systemd-journal
+KillSignal=SIGTERM
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=yes
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pult-collector
+
+[Install]
+WantedBy=multi-user.target

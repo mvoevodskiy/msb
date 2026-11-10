@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>MSB — установщик</title>
+  <link rel="stylesheet" href="/app.css" />
+</head>
+<body>
+  <main>
+    <h1>MSB установщик</h1>
+    <p class="lead">Доступ только по одноразовой ссылке из Telegram-бота.</p>
+    <pre id="instruction" class="box hidden"></pre>
+    <section id="form" class="hidden">
+      <label>Хост сервера
+        <input id="host" placeholder="203.0.113.10 или bot.example.com" />
+      </label>
+      <label>Порт SSH
+        <input id="port" type="number" value="22" />
+      </label>
+      <div class="row">
+        <button id="btn-ext" type="button">Подключить обвязку</button>
+        <button id="btn-empty" type="button" class="secondary">Новый сервер</button>
+      </div>
+    </section>
+    <section id="status" class="box hidden"></section>
+    <p id="err" class="err"></p>
+  </main>
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

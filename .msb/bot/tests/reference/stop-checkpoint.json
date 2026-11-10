@@ -1,0 +1,47 @@
+{
+  "stage": "long-turn-and-stop",
+  "base_commit": "a2500e0bb3304c62e3ef5af670f9cb8b753f931a",
+  "platform": "macOS",
+  "core": {
+    "passed": 30,
+    "failed": 0
+  },
+  "overlay": {
+    "passed": 55,
+    "failed": 0
+  },
+  "reference": {
+    "passed": 2,
+    "failed": 5,
+    "skipped": 0,
+    "todo": 0,
+    "stop": "passed"
+  },
+  "additional_cases": [
+    "early stop and status-send failure",
+    "late progress edit cannot replace terminal stop",
+    "lock retained through close and next turn admitted",
+    "aborted session cannot replace saved session",
+    "newtask during first turn rejects late session",
+    "reset/save transactions serialized in both orders",
+    "failed state update releases queue",
+    "real isolated process-group INT/TERM/KILL",
+    "cooperative close clears escalation timers",
+    "success unchanged and already-aborted request avoids spawn"
+  ],
+  "unchanged_reference_assertions": true,
+  "remaining_reference_failures": [
+    "voice",
+    "progress/footer",
+    "invalid login",
+    "overlay owner guard",
+    "Codex error/replay"
+  ],
+  "jar1_touched": false,
+  "real_credentials_used": false,
+  "limitations": [
+    "Process-group test ran on macOS, not Linux/JAR1.",
+    "Descendants that leave the group or close inherited pipes are not independently supervised.",
+    "Overlay state writes and provider-switch races belong to the later provider stage."
+  ]
+}

@@ -1,0 +1,671 @@
+ 19480|  if (H > 9437184) {
+ 19481|    let h = (H / 1024 / 1024).toFixed(1);
+ 19482|    throw Error(`MESSAGE_TOO_LARGE:${h}`);
+ 19483|  }
+ 19484|  let I = await Jn({
+ 19485|    ourToolsOverride: X,
+ 19486|    ourToolsDenied: V,
+ 19487|    ourBashAllow: G
+ 19488|  });
+ 19489|  let q = I.background;
+ 19490|  let $ = _A();
+ 19491|  let N = await r$A($, U, B, I.on);
+ 19492|  let L = await Tn(N);
+ 19493|  let M = SB();
+ 19494|  let g = Cz(X, V);
+ 19495|  let w = nR({
+ 19496|    env: {
+ 19497|      ...HB(),
+ 19498|      CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN
+ 19499|    },
+ 19500|    apiKeySource: iR()
+ 19501|  });
+ 19502|  let O = await xn(z, B, F, L ? {
+ 19503|    file: L
+ 19504|  } : N, Z, U, M, X, V, undefined, W, G, {
+ 19505|    meteredAuth: w,
+ 19506|    rightsOn: I.on,
+ 19507|    guardSettings: I.guardSettings,
+ 19508|    autonomyRights: q
+ 19509|  });
+ 19510|  console.error(`[iia/agent-cc] Spawning: claude ${O.slice(0, 3).join(" ")}... (cli=${M}, session=${B?.slice(0, 8) || "new"}, model=${F || "default"}, sysPrompt=${N.length}ch via ${L ? "file" : "argv"}, prompt=${H}B via stdin, rights=${I.on ? "on" : "off"}${q ? "(autonomy)" : ""}, guard=${I.guardSettings ? "on" : "off"})`);
+ 19511|  return new Promise((h, f) => {
+ 19512|    let v;
+ 19513|    try {
+ 19514|      let cA = _A();
+ 19515|      let f1 = ["RAILWAY_PROJECT_TOKEN", "RAILWAY_ACCOUNT_TOKEN", "GITHUB_TOKEN", "OPENROUTER_API_KEY", "DEEPGRAM_API_KEY"].map(gA => `${gA}=${process.env[gA] ? process.env[gA].length + "ch" : "MISSING"}`).join(", ");
+ 19516|      console.error(`[iia/agent-cc] cwd=${cA}, OAUTH=${process.env.CLAUDE_CODE_OAUTH_TOKEN ? "set" : "MISSING"}, env=[${f1}]`);
+ 19517|      let a2 = HB();
+ 19518|      v = m$A("claude", O, {
+ 19519|        cwd: cA,
+ 19520|        env: {
+ 19521|          ...a2,
+ 19522|          CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
+ 19523|          CI: "1",
+ 19524|          CLAUDE_CODE_AUTO_COMPACT_WINDOW: String(h1(F).contextWindow),
+ 19525|          CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: E ? "1" : "90",
+ 19526|          BASH_DEFAULT_TIMEOUT_MS: String(Vn),
+ 19527|          BASH_MAX_TIMEOUT_MS: String(g ? Wn : Gn),
+ 19528|          ...(g ? {
+ 19529|            CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS: String(Bn)
+ 19530|          } : {})
+ 19531|        },
+ 19532|        stdio: ["pipe", "pipe", "pipe"],
+ 19533|        detached: true,
+ 19534|        timeout: g ? si : ti
+ 19535|      });
+ 19536|    } catch (cA) {
+ 19537|      let sQ = cA;
+ 19538|      if (sQ.code === "ENOENT") {
+ 19539|        return f(Error("Claude Code CLI не установлен. Обратись в поддержку для переустановки."));
+ 19540|      }
+ 19541|      return f(Error(`Не удалось запустить claude: ${sQ.message}`));
+ 19542|    }
+ 19543|    v.stdin?.on("error", () => {});
+ 19544|    v.stdin?.end(z);
+ 19545|    if (L) {
+ 19546|      v.on("close", () => {
+ 19547|        W4.unlink(L).catch(() => {});
+ 19548|      });
+ 19549|    }
+ 19550|    o$A(v);
+ 19551|    let c = false;
+ 19552|    if (C) {
+ 19553|      let cA = () => {
+ 19554|        c = true;
+ 19555|        let sQ = () => v.exitCode === null && v.signalCode === null;
+ 19556|        try {
+ 19557|          v.kill("SIGINT");
+ 19558|        } catch {}
+ 19559|        setTimeout(() => {
+ 19560|          try {
+ 19561|            process.kill(-v.pid, "SIGTERM");
+ 19562|          } catch {
+ 19563|            try {
+ 19564|              if (sQ()) {
+ 19565|                v.kill("SIGTERM");
+ 19566|              }
+ 19567|            } catch {}
+ 19568|          }
+ 19569|          setTimeout(() => {
+ 19570|            try {
+ 19571|              process.kill(-v.pid, "SIGKILL");
+ 19572|            } catch {
+ 19573|              try {
+ 19574|                if (sQ()) {
+ 19575|                  v.kill("SIGKILL");
+ 19576|                }
+ 19577|              } catch {}
+ 19578|            }
+ 19579|          }, 5000).unref?.();
+ 19580|        }, ei);
+ 19581|      };
+ 19582|      C.addEventListener("abort", cA, {
+ 19583|        once: true
+ 19584|      });
+ 19585|      v.on("close", () => C.removeEventListener("abort", cA));
+ 19586|    }
+ 19587|    let n = "";
+ 19588|    let d = "";
+ 19589|    let r = B || "";
+ 19590|    let o = "";
+ 19591|    let EA = 0;
+ 19592|    let a = 0;
+ 19593|    let CA = 0;
+ 19594|    let OQ = 0;
+ 19595|    let lA = 0;
+ 19596|    let tA;
+ 19597|    let HA;
+ 19598|    let JQ;
+ 19599|    let t;
+ 19600|    let kA;
+ 19601|    let oQ = OY(Nn, M);
+ 19602|    let v1 = B ? KJ.get(B) : undefined;
+ 19603|    let yB;
+ 19604|    let GB;
+ 19605|    let j0;
+ 19606|    let b1;
+ 19607|    let i2;
+ 19608|    let WA;
+ 19609|    let vA = 0;
+ 19610|    let xQ = 0;
+ 19611|    let LQ;
+ 19612|    let fQ = [];
+ 19613|    let kB = "text";
+ 19614|    let $B = false;
+ 19615|    let p0 = "";
+ 19616|    let XA = false;
+ 19617|    let eA = "";
+ 19618|    let oB = false;
+ 19619|    let DB = false;
+ 19620|    let x5 = 0;
+ 19621|    let NW;
+ 19622|    let a$ = 0;
+ 19623|    let WC = 0;
+ 19624|    let n2 = null;
+ 19625|    let $W = "";
+ 19626|    let o$ = OY(rR, M);
+ 19627|    let qW = new aR();
+ 19628|    let LW = false;
+ 19629|    let xU;
+ 19630|    let kU;
+ 19631|    let s$ = () => {
+ 19632|      if (xU) {
+ 19633|        clearTimeout(xU);
+ 19634|        xU = undefined;
+ 19635|      }
+ 19636|      if (kU) {
+ 19637|        clearTimeout(kU);
+ 19638|        kU = undefined;
+ 19639|      }
+ 19640|    };
+ 19641|    let MW = 0;
+ 19642|    let r2 = 0;
+ 19643|    let ih = false;
+ 19644|    let t$ = "";
+ 19645|    let nh = cA => {
+ 19646|      if (n2) {
+ 19647|        return;
+ 19648|      }
+ 19649|      let sQ = o.slice(0, MW);
+ 19650|      let f1 = cA.result ? cA.result : o.slice(MW);
+ 19651|      t$ = f1;
+ 19652|      o = Cn(sQ, f1);
+ 19653|      MW = o.length;
+ 19654|    };
+ 19655|    let rh = cA => {
+ 19656|      if (cA.subtype !== "error_max_budget_usd" || ih) {
+ 19657|        return;
+ 19658|      }
+ 19659|      ih = true;
+ 19660|      let sQ = Fn();
+ 19661|      J?.pushText(sQ);
+ 19662|      o += sQ;
+ 19663|      MW = o.length;
+ 19664|      console.error(`[iia/agent-cc] result.subtype=error_max_budget_usd: потолок $${Fz} на запуск, без авто-продолжения`);
+ 19665|    };
+ 19666|    v.stdout?.on("data", cA => {
+ 19667|      n += cA.toString();
+ 19668|      let sQ = n.split(`
+ 19669|`);
+ 19670|      n = sQ.pop() || "";
+ 19671|      for (let f1 of sQ) {
+ 19672|        let a2 = f1.trim();
+ 19673|        if (!a2) {
+ 19674|          continue;
+ 19675|        }
+ 19676|        let gA = bi(a2);
+ 19677|        if (!gA) {
+ 19678|          continue;
+ 19679|        }
+ 19680|        switch (gA.type) {
+ 19681|          case "system":
+ 19682|            {
+ 19683|              if (wi(gA)) {
+ 19684|                r = gA.session_id;
+ 19685|                Zn(gA.apiKeySource);
+ 19686|                if (gA.model) {
+ 19687|                  tA = gA.model;
+ 19688|                }
+ 19689|                if (Array.isArray(gA.tools)) {
+ 19690|                  i2 = gA.tools.filter(FA => typeof FA === "string");
+ 19691|                }
+ 19692|                if (Array.isArray(gA.plugin_errors) && gA.plugin_errors.length > 0) {
+ 19693|                  console.error(`[iia/agent-cc] plugin_errors: ${JSON.stringify(gA.plugin_errors)}`);
+ 19694|                  Y?.onPluginErrors?.(gA.plugin_errors);
+ 19695|                }
+ 19696|                if (Array.isArray(gA.mcp_servers)) {
+ 19697|                  let FA = li(gA.mcp_servers);
+ 19698|                  if (FA.length > 0) {
+ 19699|                    console.error(`[iia/agent-cc] mcp_server failures: ${JSON.stringify(FA)}`);
+ 19700|                    Y?.onMcpServerStatus?.(FA);
+ 19701|                  }
+ 19702|                }
+ 19703|              } else if (Pi(gA)) {
+ 19704|                console.error(`[iia/agent-cc] api_retry: error=${gA.error} status=${gA.error_status} attempt=${gA.attempt}/${gA.max_retries} delay_ms=${gA.retry_delay_ms}`);
+ 19705|                Y?.onApiRetry?.({
+ 19706|                  attempt: gA.attempt,
+ 19707|                  max_retries: gA.max_retries,
+ 19708|                  retry_delay_ms: gA.retry_delay_ms,
+ 19709|                  error_status: gA.error_status,
+ 19710|                  error: gA.error
+ 19711|                });
+ 19712|                let FA = mi(gA);
+ 19713|                if (FA === "rate_limit") {
+ 19714|                  $B = true;
+ 19715|                  p0 = `api_retry final (attempt=${gA.attempt}/${gA.max_retries}, delay_ms=${gA.retry_delay_ms})`;
+ 19716|                  console.error(`[iia/agent-cc] pre-emptive fatal rate-limit: ${p0}`);
+ 19717|                } else if (FA === "overloaded") {
+ 19718|                  XA = true;
+ 19719|                  eA = `api_retry final non-429 (status=${gA.error_status}, attempt=${gA.attempt}/${gA.max_retries}, delay_ms=${gA.retry_delay_ms})`;
+ 19720|                  console.error(`[iia/agent-cc] pre-emptive fatal overload (NOT a client limit): ${eA}`);
+ 19721|                }
+ 19722|                if (FA) {
+ 19723|                  setImmediate(() => {
+ 19724|                    if (v.killed || c) {
+ 19725|                      return;
+ 19726|                    }
+ 19727|                    try {
+ 19728|                      process.kill(-v.pid, "SIGTERM");
+ 19729|                    } catch {
+ 19730|                      try {
+ 19731|                        v.kill("SIGTERM");
+ 19732|                      } catch {}
+ 19733|                    }
+ 19734|                  });
+ 19735|                }
+ 19736|              } else if (Oi(gA)) {
+ 19737|                console.error(`[iia/agent-cc] compact_boundary at session=${r.slice(0, 8)}`);
+ 19738|                Y?.onCompactBoundary?.();
+ 19739|                if (!E) {
+ 19740|                  J?.pushText(`
+ 19741|
+ 19742|\uD83D\uDDDC️ _Сжал старый контекст — продолжаю с резюме_
+ 19743|
+ 19744|`);
+ 19745|                }
+ 19746|              } else {
+ 19747|                qW.onSystemEvent(gA);
+ 19748|                let FA = q7(M) ? _i(gA) : null;
+ 19749|                if (FA) {
+ 19750|                  if (FA.phase === "done" && typeof FA.usage?.tokens === "number") {
+ 19751|                    vA += FA.usage.tokens;
+ 19752|                  }
+ 19753|                  if (FA.phase === "done" && FA.status !== "failed") {
+ 19754|                    xQ += 1;
+ 19755|                  }
+ 19756|                  if (FA.phase === "done" && FA.status === "failed") {
+ 19757|                    console.error(`[iia/agent-cc] subagent FAILED task=${FA.taskId.slice(0, 8)} summary=${(FA.summary || "").slice(0, 120)}`);
+ 19758|                  } else {
+ 19759|                    console.error(`[iia/agent-cc] subagent ${FA.phase} task=${FA.taskId.slice(0, 8)} type=${FA.subagentType || "?"}`);
+ 19760|                  }
+ 19761|                  Y?.onSubagentEvent?.(FA);
+ 19762|                  if (!Y?.onSubagentEvent) {
+ 19763|                    J?.pushSubagentEvent(FA);
+ 19764|                  }
+ 19765|                } else {
+ 19766|                  let $A = gA.subtype;
+ 19767|                  console.error(`[iia/agent-cc] system/${$A} (ignored)`);
+ 19768|                }
+ 19769|              }
+ 19770|              break;
+ 19771|            }
+ 19772|          case "assistant":
+ 19773|            {
+ 19774|              let FA = gA.message;
+ 19775|              s$();
+ 19776|              if (FA.usage) {
+ 19777|                if (typeof FA.usage.input_tokens === "number") {
+ 19778|                  EA = FA.usage.input_tokens;
+ 19779|                }
+ 19780|                if (typeof FA.usage.output_tokens === "number") {
+ 19781|                  a = FA.usage.output_tokens;
+ 19782|                }
+ 19783|                if (typeof FA.usage.cache_read_input_tokens === "number") {
+ 19784|                  CA = FA.usage.cache_read_input_tokens;
+ 19785|                }
+ 19786|                if (typeof FA.usage.cache_creation_input_tokens === "number") {
+ 19787|                  OQ = FA.usage.cache_creation_input_tokens;
+ 19788|                }
+ 19789|              }
+ 19790|              if (FA.stop_reason === "refusal" && !oB) {
+ 19791|                oB = true;
+ 19792|                console.error(`[iia/agent-cc] api_refusal: assistant stop_reason=refusal session=${r.slice(0, 8)}`);
+ 19793|                Y?.onRefusal?.({
+ 19794|                  stopReason: "refusal",
+ 19795|                  engine: "cc",
+ 19796|                  silent: false
+ 19797|                });
+ 19798|              }
+ 19799|              for (let $A of FA.content) {
+ 19800|                if (n2) {
+ 19801|                  continue;
+ 19802|                }
+ 19803|                if ($A.type === "text" && $A.text) {
+ 19804|                  let tQ = Eq($A.text);
+ 19805|                  if (tQ) {
+ 19806|                    console.error(`[iia/agent-cc] model_fallback: ${tQ.original} → ${tQ.fallback}`);
+ 19807|                    Y?.onModelFallback?.(tQ);
+ 19808|                  }
+ 19809|                  let X1 = Xq($A.text);
+ 19810|                  let vU = X1 ? null : Vq($A.text);
+ 19811|                  if (X1 || vU) {
+ 19812|                    n2 = X1 ? "token_repetition" : "tool_call_leaked_as_text";
+ 19813|                    let EQ = $A.text.slice(0, 300);
+ 19814|                    $W = X1 ? `token="${X1.token}" count=${X1.count}` : `pattern=${vU.pattern}`;
+ 19815|                    console.error(`[iia/agent-cc] ${n2}: session=${r.slice(0, 8)} ${$W}`);
+ 19816|                    Y?.onDegenerateTurn?.({
+ 19817|                      sessionId: r,
+ 19818|                      kind: n2,
+ 19819|                      sample: EQ,
+ 19820|                      detail: $W
+ 19821|                    });
+ 19822|                    let XQ = X1 ? X1.prefix : $A.text.slice(0, vU.index).trimEnd();
+ 19823|                    if (XQ) {
+ 19824|                      J?.pushText(XQ);
+ 19825|                      o += XQ;
+ 19826|                    }
+ 19827|                    let o2 = X1 ? `
+ 19828|
+ 19829|⚠️ _Модель зациклилась на повторе токена, прерываю честно, ответ не сформирован. Напиши «Продолжи»._` : `
+ 19830|
+ 19831|⚠️ _Похоже, вызов инструмента не выполнился, прерываю честно вместо того чтобы выдать технический текст за ответ. Напиши «Продолжи»._`;
+ 19832|                    J?.pushText(o2);
+ 19833|                    o += o2;
+ 19834|                    kB = "text";
+ 19835|                    setImmediate(() => {
+ 19836|                      if (v.killed || c) {
+ 19837|                        return;
+ 19838|                      }
+ 19839|                      try {
+ 19840|                        process.kill(-v.pid, "SIGTERM");
+ 19841|                      } catch {
+ 19842|                        try {
+ 19843|                          v.kill("SIGTERM");
+ 19844|                        } catch {}
+ 19845|                      }
+ 19846|                    });
+ 19847|                    continue;
+ 19848|                  }
+ 19849|                  if ($A.text.includes("<synthetic>")) {
+ 19850|                    let EQ = $A.text.slice(0, 300);
+ 19851|                    console.error(`[iia/agent-cc] parser_bug #49821 (<synthetic>): session=${r.slice(0, 8)} text=${EQ}`);
+ 19852|                    Y?.onParserBug?.({
+ 19853|                      sessionId: r,
+ 19854|                      sample: EQ,
+ 19855|                      pattern: "<synthetic>"
+ 19856|                    });
+ 19857|                  } else if ($A.text.includes("Cannot read properties of undefined (reading 'input_tokens')")) {
+ 19858|                    let EQ = $A.text.slice(0, 300);
+ 19859|                    console.error(`[iia/agent-cc] parser_bug #49821 (input_tokens crash): session=${r.slice(0, 8)} text=${EQ}`);
+ 19860|                    Y?.onParserBug?.({
+ 19861|                      sessionId: r,
+ 19862|                      sample: EQ,
+ 19863|                      pattern: "input_tokens-crash"
+ 19864|                    });
+ 19865|                  }
+ 19866|                  J?.pushText($A.text);
+ 19867|                  o += $A.text;
+ 19868|                  x5++;
+ 19869|                  kB = "text";
+ 19870|                } else if ($A.type === "thinking") {
+ 19871|                  NW = (NW ?? 0) + 1;
+ 19872|                } else if ($A.type === "tool_use" && $A.name) {
+ 19873|                  lA++;
+ 19874|                  if (!fQ.includes($A.name)) {
+ 19875|                    fQ.push($A.name);
+ 19876|                  }
+ 19877|                  qW.onToolUse({
+ 19878|                    parentToolUseId: gA.parent_tool_use_id,
+ 19879|                    id: $A.id,
+ 19880|                    name: $A.name,
+ 19881|                    input: $A.input
+ 19882|                  });
+ 19883|                  kB = "tool";
+ 19884|                  Y?.onToolCall?.($A.name, $A.input || {});
+ 19885|                  J?.pushToolStart($A.name, $A.input || {});
+ 19886|                }
+ 19887|              }
+ 19888|              break;
+ 19889|            }
+ 19890|          case "tool":
+ 19891|            kB = "tool";
+ 19892|            J?.pushToolEnd("");
+ 19893|            Y?.onThinking?.();
+ 19894|            break;
+ 19895|          case "result":
+ 19896|            {
+ 19897|              let FA = gA;
+ 19898|              r2++;
+ 19899|              nh(FA);
+ 19900|              if (FA.session_id) {
+ 19901|                r = FA.session_id;
+ 19902|              }
+ 19903|              if (FA.subtype) {
+ 19904|                HA = FA.subtype;
+ 19905|              }
+ 19906|              if (typeof FA.is_error === "boolean") {
+ 19907|                JQ = FA.is_error;
+ 19908|              }
+ 19909|              {
+ 19910|                let $A = FA.api_error_status;
+ 19911|                if (typeof $A === "number" && Number.isFinite($A)) {
+ 19912|                  t = $A;
+ 19913|                }
+ 19914|              }
+ 19915|              if (typeof FA.total_cost_usd === "number" && Number.isFinite(FA.total_cost_usd)) {
+ 19916|                kA = $n({
+ 19917|                  total: FA.total_cost_usd,
+ 19918|                  resumedSessionId: B,
+ 19919|                  totalsCarryOver: oQ,
+ 19920|                  previousTotal: v1
+ 19921|                });
+ 19922|                yB = FA.total_cost_usd;
+ 19923|              }
+ 19924|              if (FA.modelUsage && typeof FA.modelUsage === "object") {
+ 19925|                GB = FA.modelUsage;
+ 19926|              }
+ 19927|              if (Array.isArray(FA.permission_denials)) {
+ 19928|                j0 = FA.permission_denials.length;
+ 19929|                let $A = FA.permission_denials.map(tQ => tQ?.tool_name ?? tQ?.name).filter(tQ => typeof tQ === "string" && tQ.length > 0);
+ 19930|                b1 = $A.length > 0 ? $A : undefined;
+ 19931|              }
+ 19932|              if (typeof FA.terminal_reason === "string") {
+ 19933|                LQ = FA.terminal_reason;
+ 19934|              }
+ 19935|              if (FA.stop_reason === "refusal" && !oB) {
+ 19936|                oB = true;
+ 19937|                console.error(`[iia/agent-cc] api_refusal: result stop_reason=refusal session=${r.slice(0, 8)}`);
+ 19938|                Y?.onRefusal?.({
+ 19939|                  stopReason: "refusal",
+ 19940|                  engine: "cc",
+ 19941|                  silent: false
+ 19942|                });
+ 19943|              }
+ 19944|              if (FA.is_error === true && typeof FA.result === "string" && hi(FA.result)) {
+ 19945|                $B = true;
+ 19946|                p0 = `result.is_error: ${FA.result.slice(0, 120)}`;
+ 19947|                console.error(`[iia/agent-cc] fatal rate-limit via result.is_error: ${FA.result.slice(0, 120)}`);
+ 19948|              }
+ 19949|              if (FA.usage) {
+ 19950|                WA = {
+ 19951|                  inputTokens: FA.usage.input_tokens || 0,
+ 19952|                  outputTokens: FA.usage.output_tokens || 0,
+ 19953|                  cacheReadTokens: FA.usage.cache_read_input_tokens || 0,
+ 19954|                  cacheCreationTokens: FA.usage.cache_creation_input_tokens || 0
+ 19955|                };
+ 19956|              }
+ 19957|              if (FA.usage && EA === 0 && CA === 0 && OQ === 0) {
+ 19958|                EA = FA.usage.input_tokens || 0;
+ 19959|                a = FA.usage.output_tokens || 0;
+ 19960|                CA = FA.usage.cache_read_input_tokens || 0;
+ 19961|                OQ = FA.usage.cache_creation_input_tokens || 0;
+ 19962|              } else if (FA.usage && typeof FA.usage.output_tokens === "number") {
+ 19963|                a = FA.usage.output_tokens;
+ 19964|              }
+ 19965|              rh(FA);
+ 19966|              if (g && o$) {
+ 19967|                J?.pushToolEnd("");
+ 19968|              }
+ 19969|              s$();
+ 19970|              if (g && o$ && !c && n2 === null && J) {
+ 19971|                let $A = setTimeout(() => {
+ 19972|                  kU = undefined;
+ 19973|                  if (v.exitCode !== null || v.signalCode !== null || c) {
+ 19974|                    return;
+ 19975|                  }
+ 19976|                  console.error(`[iia/agent-cc] after-result wait: CLI open ${fR}мс после result, жду фоновую работу хода (без отсечки)`);
+ 19977|                  J.pushToolStart(Yn, {});
+ 19978|                }, fR);
+ 19979|                $A.unref?.();
+ 19980|                kU = $A;
+ 19981|              }
+ 19982|              if (!g && In({
+ 19983|                waitsAfterResult: o$,
+ 19984|                canCut: qW.canCut(),
+ 19985|                aborted: c,
+ 19986|                degenerate: n2 !== null
+ 19987|              })) {
+ 19988|                let $A = setTimeout(() => {
+ 19989|                  xU = undefined;
+ 19990|                  if (v.exitCode !== null || v.signalCode !== null || c) {
+ 19991|                    return;
+ 19992|                  }
+ 19993|                  LW = true;
+ 19994|                  console.error(`[iia/agent-cc] after-result wait: CLI still open ${mR}мс после result (фоновая команда/пробуждение), закрываю прогон, ответ уже готов`);
+ 19995|                  try {
+ 19996|                    process.kill(-v.pid, "SIGTERM");
+ 19997|                  } catch {
+ 19998|                    try {
+ 19999|                      v.kill("SIGTERM");
+ 20000|                    } catch {}
+ 20001|                  }
+ 20002|                  setTimeout(() => {
+ 20003|                    if (v.exitCode !== null || v.signalCode !== null) {
+ 20004|                      return;
+ 20005|                    }
+ 20006|                    try {
+ 20007|                      process.kill(-v.pid, "SIGKILL");
+ 20008|                    } catch {
+ 20009|                      try {
+ 20010|                        v.kill("SIGKILL");
+ 20011|                      } catch {}
+ 20012|                    }
+ 20013|                  }, 5000).unref?.();
+ 20014|                }, mR);
+ 20015|                $A.unref?.();
+ 20016|                xU = $A;
+ 20017|              }
+ 20018|              break;
+ 20019|            }
+ 20020|          case "rate_limit_event":
+ 20021|            {
+ 20022|              let $A = gA.rate_limit_info;
+ 20023|              if ($A && typeof $A.resetsAt === "number") {
+ 20024|                try {
+ 20025|                  Y?.onRateLimitEvent?.($A);
+ 20026|                } catch (tQ) {
+ 20027|                  console.error(`[iia/agent-cc] onRateLimitEvent callback threw: ${tQ.message}`);
+ 20028|                }
+ 20029|              }
+ 20030|              break;
+ 20031|            }
+ 20032|          default:
+ 20033|            {
+ 20034|              let FA = gA.type;
+ 20035|              if (FA === "user") {
+ 20036|                if (yi(gA)) {
+ 20037|                  let $A = Ti(gA);
+ 20038|                  a$ += $A.ok;
+ 20039|                  WC += $A.failed;
+ 20040|                  qW.onUserEvent(gA);
+ 20041|                  if (!DB) {
+ 20042|                    let tQ = Si(gA);
+ 20043|                    if (tQ.length > 0) {
+ 20044|                      DB = true;
+ 20045|                      console.error(`[iia/agent-cc] tool_error: ${tQ.length} failed tool result(s)`);
+ 20046|                      Y?.onToolError?.({
+ 20047|                        errorTypes: tQ,
+ 20048|                        engine: "cc"
+ 20049|                      });
+ 20050|                    }
+ 20051|                  }
+ 20052|                }
+ 20053|              } else {
+ 20054|                console.error(`[iia/agent-cc] Unknown event type: ${FA} — ${a2.slice(0, 200)}`);
+ 20055|              }
+ 20056|              break;
+ 20057|            }
+ 20058|        }
+ 20059|      }
+ 20060|    });
+ 20061|    v.stderr?.on("data", cA => {
+ 20062|      d += cA.toString();
+ 20063|    });
+ 20064|    Xn(v, (cA, sQ = null) => {
+ 20065|      s$();
+ 20066|      {
+ 20067|        let EQ = [r, B].filter(o2 => typeof o2 === "string" && o2.length > 0);
+ 20068|        let XQ = qn({
+ 20069|          clean: cA === 0 && !LW && !c && JQ !== true,
+ 20070|          total: yB,
+ 20071|          baseline: v1
+ 20072|        });
+ 20073|        for (let o2 of new Set(EQ)) {
+ 20074|          if (XQ === undefined) {
+ 20075|            KJ.delete(o2);
+ 20076|          }
+ 20077|        }
+ 20078|        if (XQ !== undefined && r) {
+ 20079|          UqA(r, XQ);
+ 20080|        }
+ 20081|      }
+ 20082|      if (LW) {
+ 20083|        console.error(`[iia/agent-cc] after-result cut: code=${cA} signal=${sQ ?? "-"} → считаю ход завершённым штатно`);
+ 20084|        cA = 0;
+ 20085|        sQ = null;
+ 20086|      }
+ 20087|      console.error(`[iia/agent-cc] Process closed: code=${cA}, signal=${sQ ?? "-"}, aborted=${c}, tools=${lA}, stderr=${d.slice(0, 200)}`);
+ 20088|      if ($B) {
+ 20089|        console.error(`[iia/agent-cc] reject with RateLimitError: ${p0}`);
+ 20090|        return f(m4(new jJ("Лимит подписки исчерпан"), "structured", t));
+ 20091|      }
+ 20092|      if (JQ === true && typeof t === "number") {
+ 20093|        let EQ = fi(t);
+ 20094|        if (EQ) {
+ 20095|          let XQ = o.trimStart().slice(0, 120).replace(/\s+/g, " ");
+ 20096|          console.error(`[iia/agent-cc] провайдер ответил HTTP ${t} (${EQ}): ${XQ}`);
+ 20097|          switch (EQ) {
+ 20098|            case "rate_limit":
+ 20099|              return f(m4(new jJ("Лимит подписки исчерпан"), "structured", t));
+ 20100|            case "auth":
+ 20101|              return f(m4(Error(`Ошибка авторизации подписки. Обнови токен в /settings — HTTP ${t}`), "structured", t));
+ 20102|            case "billing":
+ 20103|              return f(m4(Error(`Ошибка авторизации подписки. Обнови токен в /settings — billing HTTP ${t}`), "structured", t));
+ 20104|            case "overloaded":
+ 20105|              return f(m4(Error(`Anthropic перегружен (overloaded, HTTP ${t}). Попробуй через пару минут.`), "structured", t));
+ 20106|            case "rejected":
+ 20107|              return f(m4(Error(`Провайдер отклонил запрос (HTTP ${t}): модель недоступна или запрос не принят.`), "structured", t));
+ 20108|          }
+ 20109|        }
+ 20110|      }
+ 20111|      if (XA) {
+ 20112|        console.error(`[iia/agent-cc] reject with overload error (not client quota): ${eA}`);
+ 20113|        return f(Error("Anthropic перегружен (overloaded). Попробуй через пару минут."));
+ 20114|      }
+ 20115|      if (n2) {
+ 20116|        console.error(`[iia/agent-cc] closing after ${n2} guard: ${$W}`);
+ 20117|        return h({
+ 20118|          text: o.trim(),
+ 20119|          sessionId: r,
+ 20120|          elapsedMs: Date.now() - D,
+ 20121|          totalInputTokens: EA,
+ 20122|          totalOutputTokens: a,
+ 20123|          cacheReadTokens: CA,
+ 20124|          cacheCreationTokens: OQ,
+ 20125|          costUsd: 0,
+ 20126|          toolCalls: lA,
+ 20127|          toolsUsed: fQ,
+ 20128|          model: tA ? `claude-code-subscription:${tA}` : "claude-code-subscription",
+ 20129|          interrupted: false,
+ 20130|          resultSubtype: HA,
+ 20131|          toolsFailed: WC,
+ 20132|          exitCode: cA,
+ 20133|          exitSignal: sQ,
+ 20134|          abortedByUser: c,
+ 20135|          ...(r2 > 1 ? {
+ 20136|            resultCount: r2
+ 20137|          } : {})
+ 20138|        });
+ 20139|      }
+ 20140|      if (n.trim()) {
+ 20141|        let EQ = bi(n.trim());
+ 20142|        if (EQ?.type === "result") {
+ 20143|          let XQ = EQ;
+ 20144|          r2++;
+ 20145|          nh(XQ);
+ 20146|          rh(XQ);
+ 20147|          if (XQ.session_id) {
+ 20148|            r = XQ.session_id;
+ 20149|          }
+ 20150|          if (XQ.subtype) {
