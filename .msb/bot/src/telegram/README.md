@@ -74,7 +74,7 @@ FIFO-элемент через createBot. Модель запускается п
 |---|---|---|
 | Текст, клавиатура, callback кнопки | [Семейство экранов](#семейства-экранов) → нужный `*Screen`; [`screens.mjs`](screens.mjs) сохраняет прежние экспорты | [ui-screens](../../tests/ui-screens.test.mjs) |
 | Действие callback и переход назад | [`handleCallback`](router.mjs) → [семейство маршрутов](#callback-маршруты) | Для «Движков»: [core engine-menu](../../tests/engine-menu.test.mjs), [core + overlay](../../../../overlay/bot/ext/tests/reference/engine-menu.test.mjs) |
-| Команды `/settings`, `/stop`, `/newtask` | [`bot.mjs`](bot.mjs): регистрации `bot.command`; [`commands.mjs`](commands.mjs): каталог и help | [turn-lifecycle](../../tests/turn-lifecycle.test.mjs), [stop-polling](../../tests/reference/stop-polling.test.mjs) |
+| Команды `/settings`, `/stop`, `/newtask` | [`bot.mjs`](bot.mjs): регистрации `bot.command`; [`commands.mjs`](commands.mjs): каталог и help | [start/help](../../tests/start-help.test.mjs), [turn-lifecycle](../../tests/turn-lifecycle.test.mjs), [stop-polling](../../tests/reference/stop-polling.test.mjs) |
 | Последующее текстовое значение формы | [`forms.mjs`](forms.mjs): dispatcher к auth/env/Pult inputs; `createBot` хранит pending и приоритет reply-stop/timezone; форму открывает нужный обработчик `routes/` | [menu-handlers](../../tests/menu-handlers.test.mjs) проверяет переходы и отмену форм |
 | Значение `.env` | [`envScreen`](screens/settings.mjs) → [`handleSettingsRoute`](routes/settings.mjs) / pending → [`setEnvKey`](../env/store.mjs) | [monitor-env](../../tests/monitor-env.test.mjs) проверяет хранилище; [menu-handlers](../../tests/menu-handlers.test.mjs) — ввод |
 

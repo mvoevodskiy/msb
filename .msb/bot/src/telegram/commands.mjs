@@ -1,4 +1,8 @@
-/** Slash-команды как в закрытом ядре (sBA). */
+/**
+ * Telegram slash catalogue derived from old sBA and help for the CLI routes.
+ * [Handlers](./bot.mjs) own command execution and fallback text.
+ * [Active Codex checks](../../tests/start-help.test.mjs).
+ */
 export const BOT_COMMANDS = [
   { command: 'start', description: 'Меню' },
   { command: 'newtask', description: 'Новая сессия' },
@@ -52,7 +56,7 @@ export const HELP_CC = `<b>Как работать</b>
 <b>Подключение и доступ:</b>
 /pult — панель ботов и сервера (Mini App + ссылка)
 /connect — VS Code через туннель (инструкция)
-/recovery — аварийный доступ к серверу
+/recovery — аварийный доступ к серверу (инструкция)
 /settings — подключения, ключи, SSH, лимиты
 
 <b>Фоновая работа:</b>
@@ -68,7 +72,7 @@ export const HELP_CC = `<b>Как работать</b>
 /status — текущий проект и рабочая директория
 /cost — сохранённые данные расходов
 /skills — навыки агента
-/feedback — отправить отзыв`;
+/feedback — сохранить отзыв (можно сразу с текстом)`;
 
 export const HELP_OC = `<b>Как работать</b>
 

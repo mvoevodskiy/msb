@@ -75,3 +75,17 @@ test('input admission control: an unrelated command still reaches core when no f
   await f.send(202, '/status');
   assert.deepEqual(f.forwarded, ['/status']);assert.deepEqual(f.notices, []);
 });
+
+
+for (const kind of ['auth', 'ip']) test('a slash command in another chat keeps expired ' + kind + ' input scoped to its origin', async t => {
+  const f = await fixture(t);
+  if (kind === 'auth') setPendingAuth(42, 'cursor', 101);
+  else setPendingLocalIp(42, { chatId: 101 });
+  f.advance(600_001);
+  await f.send(202, '/help');
+  const pending = kind === 'auth' ? getPendingAuth : getPendingLocalIp;
+  assert.equal(pending(42, { includeExpired: true })?.chatId, 101);
+  await f.send(101, 'SYNTHETIC_LATE_INPUT_NEVER_FOR_MODEL');
+  assert.deepEqual(f.forwarded, ['/help']);
+  assert.equal(f.notices.length, 1);
+});

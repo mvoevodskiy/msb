@@ -342,6 +342,11 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   });
 
   bot.command('feedback', async (ctx) => {
+    const text = ctx.match?.trim();
+    if (text) {
+      await handleFormInput({ kind: 'feedback', ctx, text, pending });
+      return;
+    }
     pending.set(ctx.chat.id, 'feedback');
     await ctx.reply('Напиши отзыв следующим сообщением — сохраню в workspace/ops/feedback.md.');
   });

@@ -38,6 +38,10 @@ test('active Codex start opens the old hub and publishes only commands with hand
     assert.ok(published.includes(command), command);
   }
   assert.equal(published.includes('openclaw'), false);
+  await f.callback('menu:agent');
+  assert.match(f.edits.at(-1), /Codex/);
+  await f.message('/claude');
+  assert.match(f.messages.at(-1), /^<b>Режим Claude<\/b>/);
   const {state: after} = await loadState();
   assert.equal(after.ccSessionId, before.ccSessionId);
   assert.equal(after.extAuthBypass, 'codex');
