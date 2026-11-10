@@ -40,6 +40,15 @@ if (name === 'claude') {
   await new Promise(resolve => process.stdout.write(started.slice(9) + '\r\n', resolve));
   await fs.writeFile(path.join(process.env.HOME, 'reference-native-started'), 'yes');
   setInterval(() => {}, 60_000);
+} else if (name === 'codex' && argv[0] === 'exec' && scenario === 'codex-recovery-missing') {
+  if (argv.includes('resume')) {
+    process.stderr.write('Error: thread/resume: thread/resume failed: no rollout found for thread id ' + thread + ' (code -32600)\n');
+    process.exitCode = 1;
+  } else {
+    emit({ type: 'thread.started', thread_id: otherThread });
+    emit({ type: 'item.completed', item: { type: 'agent_message', text: 'Новая тестовая беседа' } });
+    emit({ type: 'turn.completed', usage: { input_tokens: 10, output_tokens: 2 } });
+  }
 } else if (name === 'codex' && argv[0] === 'exec' && scenario.startsWith('codex-partial-')) {
   emit({ type: 'thread.started', thread_id: scenario.endsWith('-mismatch') ? otherThread : thread });
   const message = text => emit({ type: 'item.completed', item: { type: 'agent_message', text } });

@@ -7,7 +7,8 @@ import { Bot } from 'grammy';
 
 const scenario = process.argv[2];
 const home = process.env.HOME;
-if (!scenario?.startsWith('codex-partial-') || !home || home !== process.env.REFERENCE_HOME ||
+const missing = scenario === 'codex-recovery-missing';
+if (!(missing || scenario?.startsWith('codex-partial-')) || !home || home !== process.env.REFERENCE_HOME ||
     home !== os.homedir() || !globalThis[Symbol.for('msb.reference.networkBlocked')]) {
   throw Error('Codex partial fixture requires its isolated HOME and network guard');
 }
@@ -27,10 +28,14 @@ const fake = (await fs.readFile(new URL('./fake-provider-cli.mjs', import.meta.u
   .replace(/^#![^\n]+/, '#!' + process.execPath);
 await fs.writeFile(path.join(bin, 'codex'), fake, { mode: 0o700 });
 await fs.writeFile(path.join(native, 'auth.json'), '{"tokens":{"access_token":"synthetic-only"}}', { mode: 0o600 });
+const history = missing ? [{ id: session, engine: 'cc', providerId: 'codex', messageCount: 1,
+  firstPrompt: 'existing saved history', startedAt: '2024-01-01T00:00:00.000Z',
+  lastActivity: '2024-01-01T00:00:00.000Z' }] : undefined;
 await fs.writeFile(stateFile, JSON.stringify({ engine: 'cc', extAuthBypass: 'codex', authMode: 'subscription',
-  hasSubscriptionAuth: true, userId: 42, chatId: 42, ...(resumed ? { ccSessionId: session, lastCcUsage: priorUsage } : {}) }));
+  hasSubscriptionAuth: true, userId: 42, chatId: 42, sessionHistory: history,
+  ...(resumed ? { ccSessionId: session, lastCcUsage: priorUsage } : {}) }));
 await fs.writeFile(storeFile, JSON.stringify({ version: 1, active: 'codex', sessions: resumed ? { codex: thread } : {} }));
-if (resumed) {
+if (resumed && !missing) {
   const sample = { type: 'event_msg', timestamp: '2024-01-01T00:00:00.000Z', payload: { type: 'token_count',
     info: { model_context_window: 1000, last_token_usage: { total_tokens: 980 } } } };
   await fs.writeFile(path.join(native, 'sessions', 'rollout-fixture-' + thread + '.jsonl'), JSON.stringify(sample) + '\n');
@@ -54,13 +59,40 @@ bot.api.config.use(async (_previous, method, payload) => {
 });
 createBot(readConfig(), { bot });
 const diaryFile = path.join(root, 'chat-diary.jsonl');
-try {
-  await bot.handleUpdate({ update_id: 1, message: { message_id: 1, date: 1, text: 'fixture partial request',
-    from: { id: 42, is_bot: false, first_name: 'Owner' }, chat: { id: 42, type: 'private' } } });
+const readJson = async file => JSON.parse(await fs.readFile(file, 'utf8'));
+let updateId = 0;
+const send = text => bot.handleUpdate({ update_id: ++updateId, message: {
+  message_id: updateId, date: 1, text,
+  ...(text === '/newtask' ? { entities: [{ type: 'bot_command', offset: 0, length: text.length }] } : {}),
+  from: { id: 42, is_bot: false, first_name: 'Owner' }, chat: { id: 42, type: 'private' },
+} });
+async function waitForReplies(count) {
   const deadline = Date.now() + 7000;
-  while (!await fs.access(diaryFile).then(() => true, () => false)) {
+  for (;;) {
+    const text = await fs.readFile(diaryFile, 'utf8').catch(error => {
+      if (error.code === 'ENOENT') return '';
+      throw error;
+    });
+    if (text.trim().split('\n').filter(Boolean).length >= count) return;
     if (Date.now() > deadline) throw Error('Turn did not finish and record its reply');
     await new Promise(resolve => setTimeout(resolve, 10));
+  }
+}
+try {
+  await send(missing ? 'first recovery request' : 'fixture partial request');
+  await waitForReplies(1);
+  let recovery;
+  if (missing) {
+    const afterRefusal = await readJson(stateFile);
+    const storeAfterRefusal = await readJson(storeFile);
+    await send('second ordinary request');
+    await waitForReplies(2);
+    const afterSecondRefusal = await readJson(stateFile);
+    await send('/newtask');
+    const afterReset = await readJson(stateFile);
+    await send('request after explicit reset');
+    await waitForReplies(3);
+    recovery = { afterRefusal, afterSecondRefusal, storeAfterRefusal, afterReset };
   }
   await bot.stop();
   const state = JSON.parse(await fs.readFile(stateFile, 'utf8'));
@@ -70,7 +102,7 @@ try {
   const diary = (await fs.readFile(diaryFile, 'utf8')).trim().split('\n').map(JSON.parse);
   const written = await fs.readdir(home, { recursive: true });
   process.stdout.write(JSON.stringify({
-    calls, executions: executions.map(call => call.argv),
+    calls, executions: executions.map(call => call.argv), recovery,
     active: state.ccSessionId ?? null, usage: state.lastCcUsage ?? null, priorUsage,
     parked: state.parkedCcSessions?.codex ?? null, pending: state.pendingCcSessionStarts ?? null,
     history: (state.sessionHistory ?? []).map(({id, providerId, messageCount}) => ({id, providerId, messageCount})),

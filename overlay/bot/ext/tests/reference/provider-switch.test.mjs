@@ -210,6 +210,33 @@ test('reference: Codex partial failure keeps long Unicode text with a footer onl
   assert.ok(text === '🧠'.repeat(40_001), 'The complete Unicode draft must reach Telegram');
 });
 
+test('reference: Codex resume refusal guides explicit recovery and preserves the selected thread until /newtask', async t => {
+  const r = await scenario(t, 'codex-recovery-missing', partialHarness);
+  const notices = r.calls.filter(call => call.mode === 'HTML').map(call => call.text);
+  assert.equal(notices.length, 3);
+  const resumeIds = r.executions.map(argv => argv.includes('resume') ? argv[argv.indexOf('resume') + 1] : null);
+  assert.deepEqual(resumeIds, [thread, thread, null], 'One CLI invocation for each distinct user message');
+  assert.deepEqual(r.diary.map(row => row.status), ['error', 'error', 'ok']);
+  const { afterRefusal, afterSecondRefusal, storeAfterRefusal, afterReset } = r.recovery;
+  assert.equal(afterRefusal.ccSessionId, session);
+  assert.equal(afterSecondRefusal.ccSessionId, session);
+  assert.deepEqual(afterRefusal.lastCcUsage, r.priorUsage);
+  assert.deepEqual(afterSecondRefusal.lastCcUsage, r.priorUsage);
+  assert.equal(storeAfterRefusal.sessions.codex, thread);
+  assert.equal(afterReset.ccSessionId, undefined);
+  assert.ok(afterReset.sessionHistory.some(row => row.id === session));
+  assert.notEqual(r.active, session);
+  assert.ok(r.history.some(row => row.id === session));
+  assert.ok(r.calls.some(call => call.text === '🆕 Новая сессия. Предыдущий контекст сброшен.'));
+  assert.match(notices[2], /^Новая тестовая беседа\n\n<blockquote>⏱/);
+  for (const notice of notices.slice(0, 2)) {
+    assert.match(notice, /^⚠️ Codex не смог продолжить выбранную сессию\./);
+    assert.match(notice, /\/sessions/);
+    assert.match(notice, /\/newtask/);
+    assert.doesNotMatch(notice, /напиши ещё раз|blockquote/i);
+  }
+});
+
 test('reference: a turn stays with its original provider if selection changes before shim starts', async (t) => {
   const r = await scenario(t, 'pinned-route');
   assert.equal(r.codexCalls, 1);
