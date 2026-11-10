@@ -145,7 +145,10 @@ export async function codexLoginStatus(env = process.env, home = env.HOME || os.
   });
   const text = (res.out || '').trim();
   const loggedIn = /logged in/i.test(text) && !/not logged|logged out/i.test(text);
-  if (res.code === 0 && loggedIn) return { ok: true, mode: 'cli-status', detail: text.slice(0, 120) };
+  const apiKeyConfigured = /^API key configured(?: - [^\r\n]+)?\r?$/m.test(text);
+  if (res.code === 0 && (loggedIn || apiKeyConfigured)) {
+    return { ok: true, mode: 'cli-status', detail: apiKeyConfigured ? 'API key configured' : text.slice(0, 120) };
+  }
   return { ok: false, error: text.slice(0, 200) || 'Codex не авторизован' };
 }
 
