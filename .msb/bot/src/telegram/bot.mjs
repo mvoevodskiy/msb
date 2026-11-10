@@ -7,7 +7,8 @@ import {resetCliConversation} from '../sessions/selection.mjs';
  * UI read/delivery lifecycle → [shared callbacks](../../shared/callback-renders.mjs).
  * Кнопки → [router](./router.mjs) → routes/; вид → [screens](./screens.mjs).
  * Формы → [dispatcher](./forms.mjs); pending в этом процессе; записи → [state](../state.mjs) / [env](../env/store.mjs).
- * Индикация → [progress](./progress.mjs), итог → [response](./response.mjs),
+ * Индикация → [progress](./progress.mjs), итог → [response](./response.mjs).
+ * Диагностика Codex добавляется после обработки подлинного текста модели.
  * План/комментарий → [plan actions](./plan-actions.mjs) → тот же inbox; final marker → [plan](./plan.mjs).
  * Лимиты автономки из ответа → [limit markers](./limit-markers.mjs) → [подтверждение](./limit-confirmation.mjs).
  * журнал Пульта → [history](./history.mjs), STT → [voice](./voice.mjs).
@@ -42,6 +43,7 @@ import { processTaskInspectionMarkers } from './task-inspection-markers.mjs';
 import { processLimitMarkers } from './limit-markers.mjs';
 import { processReminderMarkers } from './reminder-markers.mjs';
 import { processInstallMarkers } from './install-markers.mjs';
+import { stripMcpMarkerPayloads } from '../mcp/response-markers.mjs';
 import { registerProjectCommands } from './project-commands.mjs';
 import {prepareSkillRead,skillReadOptions} from './skills-read.mjs';
 import {readOpenClawSkills as nativeOpenClawSkills} from '../skills/openclaw.mjs';
@@ -560,13 +562,21 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       outcome = paused ? 'blocked' : out.ok ? 'ok' : 'error';
       await progress.stop();
       if (signal.aborted || out.error === 'aborted') { await stopped(); return; }
+      if (!out.ok && result?.providerId === 'codex' && result.subtype === 'error_notice') {
+        turn.completed = true;
+        responseReady = true;
+        const notice = stripMcpMarkerPayloads(out.text);
+        await deliverTurnResponse(ctx, status.message_id, notice, {}, { allowPlan: false });
+        deliveredText = notice; delivered = true;
+        return;
+      }
       const autonomy = {
         ownerId: reminderOwner, rail: out.reminderRail, ok: out.ok, chatId, threadId: thread,
         messageId: (ctx.message || ctx.callbackQuery?.message)?.message_id, openClawProfile: out.openClawProfile,
         timezone: cfg.timezone, now: now(), signal,
         codexAvailable, checkSavedCodex,
       };
-      const textEdits = prepareTaskTextMarkers(out.text);
+      const textEdits = prepareTaskTextMarkers(out.modelText ?? out.text);
       const reschedule = prepareTaskRescheduleMarkers(textEdits.text);
       const legacyTimers = prepareLegacyTimerMarkers(reschedule.text);
       const reminders = await processReminderMarkers(legacyTimers.text, autonomy);
@@ -583,9 +593,13 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       signal.throwIfAborted();
       turn.completed = true;
       responseReady = true;
-      const restoreText = value => restoreLegacyTimerLiterals(restoreTaskTextLiterals(value, textEdits), legacyTimers);
-      await deliverTurnResponse(ctx, status.message_id, replyText, out.ok ? {
-        elapsedMs: performance.now() - startedAt, costUsd: out.result?.costUsd, context: out.result?.context,
+      const errorDisplay = result?.errorDisplay;
+      const before = errorDisplay ? stripMcpMarkerPayloads(errorDisplay.before) : '';
+      const after = errorDisplay ? stripMcpMarkerPayloads(errorDisplay.after) : '';
+      const restoreText = value => before + restoreLegacyTimerLiterals(restoreTaskTextLiterals(value, textEdits), legacyTimers) + after;
+      await deliverTurnResponse(ctx, status.message_id, replyText, out.ok || out.partialReply ? {
+        elapsedMs: performance.now() - startedAt, costUsd: result?.costUsd,
+        context: out.partialReply ? out.partialReply.context : result?.context,
       } : {}, { restoreText });
       deliveredText = restoreText(parsePlanResponse(replyText)?.cleanText ?? replyText); delivered = true;
     } catch (err) {

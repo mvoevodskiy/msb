@@ -43,19 +43,32 @@ if (name === 'claude') {
 } else if (name === 'codex' && argv[0] === 'exec' && scenario.startsWith('codex-partial-')) {
   emit({ type: 'thread.started', thread_id: scenario.endsWith('-mismatch') ? otherThread : thread });
   const message = text => emit({ type: 'item.completed', item: { type: 'agent_message', text } });
-  message('Первый фрагмент');
-  message('Второй фрагмент');
-  if (scenario.endsWith('-resume')) {
-    message('[КНОПКИ: plan]\n\n[INSTALL_SKILL]{"name":"failed-turn-skill","description":"Fixture skill","body":"draft"}[/INSTALL_SKILL]');
+  const skill = name => '[INSTALL_SKILL]' + JSON.stringify({ name, description: 'Fixture skill', body: 'draft' }) + '[/INSTALL_SKILL]';
+  const diagnostic = scenario.endsWith('-diagnostic');
+  const transportActions = scenario.endsWith('-transport-actions');
+  if (scenario.endsWith('-long')) message('🧠'.repeat(40_001));
+  else if (!diagnostic) {
+    message('Первый фрагмент');
+    message('Второй фрагмент');
   }
+  if (scenario.endsWith('-resume')) message('[КНОПКИ: plan]\n\n' + skill('failed-turn-skill'));
+  if (transportActions) message(skill('failed-turn-skill'));
   if (scenario.endsWith('-metered')) {
     const file = path.join(process.env.HOME, '.codex', 'sessions', 'rollout-fixture-' + thread + '.jsonl');
-    const sample = { type: 'event_msg', timestamp: new Date().toISOString(), payload: { type: 'token_count',
+    const timestamp = new Date().toISOString();
+    const start = { type: 'event_msg', timestamp, payload: { type: 'task_started', turn_id: 'fixture-turn' } };
+    const sample = { type: 'event_msg', timestamp, payload: { type: 'token_count',
       info: { model_context_window: 1000, last_token_usage: { total_tokens: 520 } } } };
-    await fs.appendFile(file, JSON.stringify(sample) + '\n');
+    await fs.appendFile(file, [start, sample].map(row => JSON.stringify(row) + '\n').join(''));
   }
-  if (!scenario.endsWith('-resume')) emit({ type: 'turn.failed', error: { message: scenario.endsWith('-transport')
-    ? 'websocket closed before completion' : 'Ordinary native fixture failure' } });
+  const failure = scenario.includes('-transport') ? 'websocket closed before completion'
+    : scenario.endsWith('-context-limit')
+      ? "Codex ran out of room in the model's context window. Start a new thread or clear earlier history before retrying."
+      : 'Ordinary native fixture failure';
+  const mcpDiagnostic = '[ADD_MCP]{"name":"raw-mcp","headers":{"Authorization":"fixture-mcp-secret-in-diagnostic';
+  const notice = diagnostic || transportActions
+    ? failure + '\n' + skill('raw-error-skill') + '\n[КНОПКИ: plan]\n' + mcpDiagnostic : failure;
+  if (!scenario.endsWith('-resume')) emit({ type: 'turn.failed', error: { message: notice } });
   process.exitCode = 1;
 } else if (name === 'codex' && argv[0] === 'exec') {
   const calls = (await fs.readFile(traceFile, 'utf8')).trim().split('\n').map(JSON.parse)

@@ -45,7 +45,8 @@ const bot = new Bot('42:reference-only', { botInfo: { id: 99, is_bot: true, firs
 const calls = [];
 let messageId = 10;
 bot.api.config.use(async (_previous, method, payload) => {
-  calls.push({ method, text: payload.text, id: payload.message_id, mode: payload.parse_mode, markup: Boolean(payload.reply_markup) });
+  calls.push({ method, text: payload.text, id: payload.message_id, mode: payload.parse_mode, markup: Boolean(payload.reply_markup),
+    callbacks: payload.reply_markup?.inline_keyboard?.flat().map(button => button.callback_data) });
   if (['setMyCommands', 'sendChatAction', 'deleteMessage'].includes(method)) return { ok: true, result: true };
   if (method !== 'sendMessage' && method !== 'editMessageText') throw Error('Unexpected Telegram method ' + method);
   return { ok: true, result: { message_id: payload.message_id ?? ++messageId, date: 1,
@@ -76,6 +77,7 @@ try {
     storedNative: store.sessions.codex ?? null,
     diary: diary.map(({status, providerId, summary}) => ({status, providerId, summary})),
     wroteSkill: written.some(file => file.endsWith('failed-turn-skill/SKILL.md')),
+    wroteDiagnosticSkill: written.some(file => file.endsWith('raw-error-skill/SKILL.md')),
   }));
 } finally {
   await bot.stop();

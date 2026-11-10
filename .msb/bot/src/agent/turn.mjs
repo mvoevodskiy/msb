@@ -120,6 +120,7 @@ export async function runAgentTurn({
 
   let lastTool = '';
   let streamProvider = providerId, quotaWrite;
+  const turnStartedAt = Date.now();
   const result = await runClaudeTurn({
     prompt,
     sessionId: state.ccSessionId || undefined,
@@ -159,8 +160,12 @@ export async function runAgentTurn({
     },
   });
 
+  const partial = providerId === 'codex' && result.providerId === 'codex' &&
+    result.isError && result.subtype === 'error_partial' && Boolean(result.text);
+  const turnWindow = partial ? { start: turnStartedAt, end: Date.now() } : undefined;
   if (quotaWrite) await quotaWrite;
-  result.context = signal?.aborted || result.aborted ? null : await readSessionContext(result.sessionId, env);
+  const context = signal?.aborted || result.aborted ? null : await readSessionContext(result.sessionId, env, turnWindow);
+  result.context = partial ? null : context;
   if (result.sessionId) {
     await updateState(s=>applySessionResult(s,{snapshot:state,reservation:firstSession,result,prompt,signal}),env);
   }
@@ -180,7 +185,10 @@ export async function runAgentTurn({
   // Error diagnostics can contain arbitrary text. A partial error is eligible
   // only when the CLI returned actual assistant text.
   const canInstallMcp=result.text && (!result.isError || (providerId==='claude' && result.assistantTextObserved));
-  return { ok: !result.isError, text, result, skillInstall,
+  const display = result.errorDisplay;
+  return { ok: !result.isError, text: display ? display.before + text + display.after : text, result, skillInstall,
+    ...(display ? { modelText: text } : {}),
+    ...(partial ? { partialReply: { context } } : {}),
     mcpInstall:canInstallMcp && mcpInstall?{...mcpInstall,cwd,nativeScope:installScope}:null,
     ...(reminderRail ? { reminderRail: 'cc' } : {}),
   };

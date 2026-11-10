@@ -228,6 +228,7 @@ export async function runClaudeTurn(opts) {
     let model;
     let providerId = null;
     let subtype;
+    let errorDisplay;
     let isError = false;
     let inputTokens = 0;
     let outputTokens = 0;
@@ -243,8 +244,10 @@ export async function runClaudeTurn(opts) {
       stderr += chunk.toString('utf8');
     });
 
+    // One JSONL record can span chunks, including a split UTF-8 character.
+    child.stdout?.setEncoding?.('utf8');
     child.stdout?.on('data', (chunk) => {
-      stdoutBuf += chunk.toString('utf8');
+      stdoutBuf += chunk;
       let nl;
       while ((nl = stdoutBuf.indexOf('\n')) !== -1) {
         const line = stdoutBuf.slice(0, nl);
@@ -296,6 +299,10 @@ export async function runClaudeTurn(opts) {
             if (Number.isFinite(ev.total_cost_usd) && ev.total_cost_usd >= 0) reportedCostUsd = ev.total_cost_usd;
             if (ev.session_id) { sessionId = ev.session_id; sessionIdObserved = true; }
             if (ev.subtype) subtype = ev.subtype;
+            if (opts.providerId === 'codex' && providerId === 'codex' && ev.subtype === 'error_draft' &&
+                typeof ev.error_display?.before === 'string' && typeof ev.error_display?.after === 'string') {
+              errorDisplay = ev.error_display;
+            }
             if (typeof ev.is_error === 'boolean') isError = ev.is_error;
             if (typeof ev.result === 'string' && ev.result && !text) text = ev.result;
             if (ev.usage) {
@@ -337,6 +344,7 @@ export async function runClaudeTurn(opts) {
         model,
         providerId,
         subtype,
+        ...(errorDisplay ? { errorDisplay } : {}),
         isError: isError || code !== 0,
         exitCode: code,
         signal,

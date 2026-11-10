@@ -26,6 +26,22 @@ async function inheritedScope(name,target,{env,signal,readProvider}) {
   }
 }
 
+function replaceMcpPayloads(text,ranges,message) {
+  let end=0;
+  const parts=[];
+  for(const range of ranges){
+    parts.push(text.slice(end,range.start),message);
+    message='';
+    end=range.end;
+  }
+  return parts.join('')+text.slice(end);
+}
+
+/** Preserve diagnostic prose while keeping complete and truncated credential payloads private. */
+export function stripMcpMarkerPayloads(text) {
+  return replaceMcpPayloads(text,mcpMarkerRanges(text),'');
+}
+
 export async function processMcpMarkers(text,target,{env=process.env,signal,readProvider}={}) {
   if(typeof text!=='string' || !text.includes(MCP_OPEN))return text;
   signal?.throwIfAborted();
@@ -45,12 +61,5 @@ export async function processMcpMarkers(text,target,{env=process.env,signal,read
       message=MCP_WRITE_FAILED;
     }
   }
-  let end=0;
-  const parts=[];
-  for(const range of ranges){
-    parts.push(text.slice(end,range.start),message);
-    message='';
-    end=range.end;
-  }
-  return (parts.join('')+text.slice(end)).trim();
+  return replaceMcpPayloads(text,ranges,message).trim();
 }

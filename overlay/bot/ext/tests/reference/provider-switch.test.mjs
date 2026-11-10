@@ -101,7 +101,7 @@ test('reference: a native first-error without a result does not promote a provis
   assert.deepEqual(r.history, []);
 });
 
-async function partialTurn(t, variant) {
+async function partialTurn(t, variant, plan = false) {
   const r = await scenario(t, 'codex-partial-' + variant, partialHarness);
   assert.equal(r.executions.length, 1);
   assert.equal(r.pending, null);
@@ -109,9 +109,10 @@ async function partialTurn(t, variant) {
   assert.deepEqual(r.diary.map(({status, providerId}) => ({status, providerId})), [{ status: 'error', providerId: 'codex' }]);
   const finals = r.calls.filter(call => call.mode === 'HTML');
   assert.equal(finals.length, 1);
-  assert.equal(finals[0].method, 'editMessageText');
-  assert.equal(finals[0].id, 11);
-  assert.equal(finals[0].markup, false);
+  assert.equal(finals[0].method, plan ? 'sendMessage' : 'editMessageText');
+  assert.equal(finals[0].markup, plan);
+  if (plan) assert.ok(finals[0].callbacks.includes('plan:approve'));
+  else assert.equal(finals[0].id, 11);
   return { ...r, final: finals[0].text };
 }
 
@@ -128,16 +129,15 @@ test('reference: Codex partial failure keeps completed text, elapsed footer and 
   assert.deepEqual(r.history, partialHistory);
 });
 
-test('reference: Codex partial failure with ordinary exit preserves the existing state and treats draft actions as text', async t => {
-  const r = await partialTurn(t, 'resume');
+test('reference: Codex partial failure with ordinary exit preserves completed skill and plan actions', async t => {
+  const r = await partialTurn(t, 'resume', true);
   assert.equal(r.active, session);
   assert.equal(r.storedNative, thread);
   assert.deepEqual(r.usage, r.priorUsage);
   assert.equal(r.executions[0][r.executions[0].indexOf('resume') + 1], thread);
-  assert.equal(r.wroteSkill, false);
-  assert.match(r.final, /^Первый фрагмент\n\nВторой фрагмент[\s\S]*<blockquote>⏱ \d+\.\ds<\/blockquote>$/);
-  assert.doesNotMatch(r.final, /98%|Поставил навык|⚠️/);
-  assert.ok(!r.calls.some(call => call.markup));
+  assert.equal(r.wroteSkill, true);
+  assert.match(r.final, /^Первый фрагмент\n\nВторой фрагмент[\s\S]*Поставил навык[\s\S]*<blockquote>⏱ \d+\.\ds<\/blockquote>$/);
+  assert.doesNotMatch(r.final, /98%|INSTALL_SKILL|⚠️/);
   assert.deepEqual(r.history, partialHistory);
 });
 
@@ -166,6 +166,48 @@ test('reference: Codex partial failure from websocket keeps the explicit interru
   assert.match(r.final, /Черновик до обрыва:\nВторой фрагмент/);
   assert.doesNotMatch(r.final, /blockquote/);
   assert.deepEqual(r.history, partialHistory);
+});
+
+test('reference: Codex partial failure keeps the native context limit guidance', async t => {
+  const r = await partialTurn(t, 'context-limit');
+  assert.match(r.final, /Start a new thread or clear earlier history/);
+  assert.doesNotMatch(r.final, /фрагмент|blockquote/);
+  assert.equal(r.active, session);
+  assert.deepEqual(r.usage, r.priorUsage);
+});
+
+test('reference: Codex partial failure on websocket processes only the genuine model draft', async t => {
+  const r = await partialTurn(t, 'transport-actions');
+  assert.match(r.final, /Черновик до обрыва:\nПоставил навык «failed-turn-skill»/);
+  assert.match(r.final, /websocket closed before completion/);
+  assert.doesNotMatch(r.final, /blockquote/);
+  assert.equal(r.wroteSkill, true);
+  assert.equal(r.wroteDiagnosticSkill, false);
+  assert.doesNotMatch(r.final, /ADD_MCP|fixture-mcp-secret-in-diagnostic/);
+  assert.doesNotMatch(r.diary[0].summary, /ADD_MCP|fixture-mcp-secret-in-diagnostic/);
+});
+
+test('reference: Codex partial failure guard treats a diagnostic without model text as inert', async t => {
+  const r = await partialTurn(t, 'diagnostic');
+  assert.match(r.final, /^⚠️ Codex: Ordinary native fixture failure/);
+  assert.doesNotMatch(r.final, /Поставил навык|blockquote/);
+  assert.equal(r.wroteDiagnosticSkill, false);
+  assert.doesNotMatch(r.final, /ADD_MCP|fixture-mcp-secret-in-diagnostic/);
+  assert.doesNotMatch(r.diary[0].summary, /ADD_MCP|fixture-mcp-secret-in-diagnostic/);
+});
+
+test('reference: Codex partial failure keeps long Unicode text with a footer only on the final chunk', async t => {
+  const r = await scenario(t, 'codex-partial-long', partialHarness);
+  assert.equal(r.executions.length, 1);
+  assert.deepEqual(r.diary.map(row => row.status), ['error']);
+  const finals = r.calls.filter(call => call.mode === 'HTML');
+  assert.ok(finals.length > 1);
+  assert.ok(finals.every(call => call.method === 'sendMessage' && !call.markup && call.text.length <= 4000));
+  assert.equal(finals.filter(call => call.text.includes('<blockquote>')).length, 1);
+  assert.match(finals.at(-1).text, /\n\n<blockquote>⏱ \d+\.\ds<\/blockquote>$/);
+  const text = finals.map(call => call.text.replace(/\n\n<blockquote>.*<\/blockquote>$/, '')).join('');
+  assert.equal(text.length, 80_002);
+  assert.ok(text === '🧠'.repeat(40_001), 'The complete Unicode draft must reach Telegram');
 });
 
 test('reference: a turn stays with its original provider if selection changes before shim starts', async (t) => {

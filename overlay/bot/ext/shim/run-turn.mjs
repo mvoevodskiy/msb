@@ -59,6 +59,10 @@ function acceptNativeSession(providerId, nativeId) {
   return nativeId;
 }
 
+function emitCodexNotice(text, sessionId, model) {
+  emitResult({ sessionId, text: '⚠️ ' + text, isError: true, subtype: 'error_notice', model, providerId: 'codex' });
+}
+
 async function runAlternate(providerId, argv) {
   const parsed = parseClaudeArgv(argv);
   const userText = await readStdin();
@@ -96,7 +100,8 @@ async function runAlternate(providerId, argv) {
       ? `CLI провайдера «${providerId}» не найден в PATH`
       : String(err.message || err);
     const fallbackId = encodeExtSession(providerId, 'error');
-    emitError(msg, fallbackId);
+    if (providerId === 'codex') emitCodexNotice(msg, fallbackId);
+    else emitError(msg, fallbackId);
     process.exit(1);
     return;
   }
@@ -109,11 +114,19 @@ async function runAlternate(providerId, argv) {
   // Sentinel norestart адаптеры должны игнорировать (новый тред), а не отвечать «повреждённый ID».
   if (!result.ok) {
     if (providerId === 'codex') {
-      // A transport/model error does not invalidate an existing conversation.
-      const errId = parsed.resume || '';
+      // An observed partial thread is returned for the ledger. Only a successful turn updates the store.
+      const errId = result.partial && nativeId ? encodeExtSession(providerId, nativeId) : parsed.resume || '';
       emitInit({ sessionId: errId, model: modelLabel, providerId });
-      emitError(result.text || 'ход не завершён', errId, { model: modelLabel });
-      process.exit(1);
+      if (result.partial) {
+        emitResult({ sessionId: errId, text: result.text, isError: true, subtype: 'error_partial',
+          usage: result.usage, model: modelLabel, providerId });
+      } else if (result.draft) {
+        emitResult({ sessionId: errId, text: result.draft.text, isError: true, subtype: 'error_draft',
+          errorDisplay: { before: '⚠️ ' + result.draft.before, after: result.draft.after },
+          model: modelLabel, providerId });
+      } else emitCodexNotice(result.text || 'ход не завершён', errId, modelLabel);
+      // Let the stdout pipe drain before exiting with a failed turn.
+      process.exitCode = 1;
       return;
     }
     try {

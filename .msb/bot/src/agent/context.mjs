@@ -4,8 +4,11 @@ import { createInterface } from 'node:readline';
 import path from 'node:path';
 import { homeDir } from '../paths.mjs';
 
-/** Native last request size, NOT accumulated billing usage across tool calls. */
-export async function readSessionContext(sessionId, env = process.env) {
+/** Native last request size from the session rollout.
+ * [Turn](./turn.mjs) can bound the read to one native task for a partial response.
+ * [Context checks](../../tests/codex-context.test.mjs).
+ */
+export async function readSessionContext(sessionId, env = process.env, turnWindow) {
   const match = /^ext:codex:([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i.exec(sessionId || '');
   if (!match) return null;
   const root = path.join(env.CODEX_HOME || path.join(homeDir(env), '.codex'), 'sessions');
@@ -18,10 +21,20 @@ export async function readSessionContext(sessionId, env = process.env) {
     const lines = createInterface({ input: stream, crlfDelay: Infinity });
     let context = null;
     let model;
+    let inTurn = !turnWindow;
     try {
       for await (const line of lines) {
         let event;
         try { event = JSON.parse(line); } catch { continue; }
+        if (turnWindow) {
+          const timestamp = Date.parse(event.timestamp);
+          if (!(timestamp >= turnWindow.start && timestamp <= turnWindow.end)) continue;
+          if (event.type === 'event_msg' && event.payload?.type === 'task_started') {
+            if (inTurn) return null;
+            inTurn = true;
+          }
+          if (!inTurn) continue;
+        }
         if (event.type === 'turn_context') model = event.payload?.model;
         // A compaction changes the context. Wait for the next measured count.
         if (event.type === 'compacted' || event.payload?.type === 'context_compacted') context = null;

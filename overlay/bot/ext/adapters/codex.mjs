@@ -1,6 +1,7 @@
 /**
- * Codex exec/resume и разбор ответа; transport error не запускает повтор в новом thread.
- * Навигация: [CLI-провайдеры](../README.md#исполнение-cli) → [native config](../codex-native.mjs).
+ * Codex exec/resume и разбор ответа. При обычном сбое сохраняет завершённые фрагменты.
+ * [Обвязка](../shim/run-turn.mjs) передаёт результат, [проверки](../tests/reference/provider-switch.test.mjs)
+ * проходят от Telegram до CLI. Transport error не запускает повтор в новом thread.
  */
 import os from 'node:os';
 import profile from '../../shared/profile.cjs';
@@ -33,6 +34,7 @@ export function parseCodexStdout(stdout) {
     .map((l) => l.trim())
     .filter(Boolean);
   let last = '';
+  const assistantMessages = [];
   let threadId = null;
   let usage = null;
   let turnCompleted = false;
@@ -42,9 +44,10 @@ export function parseCodexStdout(stdout) {
     try {
       const ev = JSON.parse(line);
       if (ev.type === 'thread.started' && ev.thread_id) threadId = ev.thread_id;
-      if (ev.type === 'item.completed' && ev.item?.type === 'agent_message' && ev.item.text) {
+      if (ev.type === 'item.completed' && ev.item?.type === 'agent_message' && typeof ev.item.text === 'string' && ev.item.text) {
         last = ev.item.text;
         if (isCodexStreamCutMessage(last)) streamCutSeen = true;
+        else if (last.trim()) assistantMessages.push(last.trim());
       }
       if (ev.type === 'turn.completed') {
         turnCompleted = true;
@@ -71,6 +74,8 @@ export function parseCodexStdout(stdout) {
   }
   return {
     text: last,
+    assistantText: assistantMessages.join('\n\n'),
+    lastAssistantText: assistantMessages.at(-1) || '',
     threadId,
     usage,
     turnCompleted,
@@ -125,13 +130,15 @@ function resolveResumeId(parsed) {
   return { resumeId: null, dropped: null };
 }
 
-function streamCutUserText(raw, partial) {
-  const bits = [
-    'Codex: связь с моделью оборвалась (websocket). Если повтор не помог — напиши ещё раз.',
-  ];
-  if (partial) bits.push('', 'Черновик до обрыва:', partial);
-  if (raw && raw !== partial) bits.push('', String(raw).slice(0, 500));
-  return bits.join('\n');
+function failureWithDraft(before, text, after = '') {
+  return { text: before + text + after, ...(text ? { draft: { text, before, after } } : {}) };
+}
+
+function streamCutFailure(raw, partial) {
+  const notice = 'Codex: связь с моделью оборвалась (websocket). Если повтор не помог — напиши ещё раз.';
+  const before = notice + (partial ? '\n\nЧерновик до обрыва:\n' : '');
+  const after = raw && raw !== partial ? '\n\n' + String(raw).slice(0, 500) : '';
+  return failureWithDraft(before, partial, after);
 }
 
 async function execOnce({
@@ -170,9 +177,13 @@ async function execOnce({
     parsedOut.turnFailed = parsedOut.turnFailed || errTail.slice(-500);
   }
   if (res.timedOut) {
+    const text = resumeId && parsedOut.threadId && parsedOut.threadId !== resumeId ? '' : parsedOut.text;
+    const before = 'Codex: таймаут ожидания ответа' + (text ? '\n\nЧерновик:\n' : '');
+    const failure = text && text.trim() === parsedOut.lastAssistantText
+      ? failureWithDraft(before, text) : { text: before + text };
     return {
       ok: false,
-      text: `Codex: таймаут ожидания ответа${parsedOut.text ? `\n\nЧерновик:\n${parsedOut.text}` : ''}`,
+      ...failure,
       model: model || undefined,
       streamCut: true,
       nativeSessionId: isValidCodexThreadId(parsedOut.threadId) ? parsedOut.threadId : undefined,
@@ -182,22 +193,32 @@ async function execOnce({
 }
 
 export function finalizeParsed({ res, parsedOut, model, resumeRequested }) {
+  const text = (parsedOut.text || '').trim();
+  let threadId = parsedOut.threadId;
+  const foreignThread = resumeRequested && threadId && threadId !== resumeRequested;
+  const interrupted = parsedOut.streamCut || isCodexStreamCutMessage(parsedOut.turnFailed) || isCodexStreamCutMessage(text);
+  const contextLimit = /ran out of room in the model's context window/i.test(parsedOut.turnFailed || '');
+  if (parsedOut.assistantText && (parsedOut.turnFailed || res.code !== 0) && !foreignThread && !interrupted && !contextLimit) {
+    return {
+      ok: false,
+      text: parsedOut.assistantText,
+      partial: true,
+      nativeSessionId: isValidCodexThreadId(threadId) ? threadId : undefined,
+      model: model || undefined,
+      usage: parsedOut.usage || undefined,
+    };
+  }
   if (parsedOut.turnFailed) {
     const raw = String(parsedOut.turnFailed);
     const streamCut = parsedOut.streamCut || isCodexStreamCutMessage(raw);
-    const partial = (parsedOut.text || '').trim();
-    const draft = partial && !isCodexStreamCutMessage(partial) ? partial : '';
+    const draft = !foreignThread && parsedOut.lastAssistantText === text ? text : '';
     return {
       ok: false,
-      text: streamCut ? streamCutUserText(raw, draft) : `Codex: ${raw}`,
+      ...(streamCut ? streamCutFailure(raw, draft) : { text: 'Codex: ' + raw }),
       model: model || undefined,
       streamCut,
-      partialText: draft || undefined,
     };
   }
-
-  const text = (parsedOut.text || '').trim();
-  let threadId = parsedOut.threadId;
 
   if (resumeRequested && !threadId) {
     if (!(res.code === 0 && parsedOut.turnCompleted && text)) {
@@ -208,7 +229,7 @@ export function finalizeParsed({ res, parsedOut, model, resumeRequested }) {
       };
     }
     threadId = resumeRequested;
-  } else if (resumeRequested && threadId && threadId !== resumeRequested) {
+  } else if (foreignThread) {
     return { ok: false, text: 'Codex вернул другую сессию. Исходная беседа сохранена.', model };
   }
 
@@ -228,9 +249,7 @@ export function finalizeParsed({ res, parsedOut, model, resumeRequested }) {
     const streamCut = parsedOut.streamCut || isCodexStreamCutMessage(text);
     return {
       ok: false,
-      text: streamCut
-        ? streamCutUserText(text, '')
-        : text || `Codex не завершил ход (${why.join(', ')})`,
+      ...(streamCut ? streamCutFailure(text, '') : { text: text || 'Codex не завершил ход (' + why.join(', ') + ')' }),
       model: model || undefined,
       usage: parsedOut.usage || undefined,
       streamCut,
