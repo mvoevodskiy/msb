@@ -10,8 +10,8 @@ import { withAutonomyPauseLock } from './owner-pause.mjs';
 import { readReminderPolicy, reminderOwnerChat } from './reminder-policy.mjs';
 import { withActions } from './reminder-store.mjs';
 import { readNativeJobMap, writeNativeJobMap } from './native-job-map.mjs';
-import { isNativeReminderEntry, readNativeReminderFinish, removeNativeReminder,
-  setNativeReminderEnabled } from './openclaw-reminder-cron.mjs';
+import { isNativeReminderEntry, readNativeReminderFinish, removeNativeReminder } from './openclaw-reminder-cron.mjs';
+import { applyNativeReminderArming, nativeReminderPauseCause } from './openclaw-reminder-arming.mjs';
 import { nativeReminderDelivery, sendNativeReminder, recordNativeReminder } from './openclaw-reminder-delivery.mjs';
 
 async function reconcileJob(gateway, id, jobs, records, save, { api, adminId, now, signal, env }) {
@@ -37,15 +37,11 @@ async function reconcileJob(gateway, id, jobs, records, save, { api, adminId, no
   const { state } = await loadState(env);
   const policy = await readReminderPolicy(state, env);
   const ownerChat = Number(entry.ownerId) === Number(adminId) && reminderOwnerChat(state, adminId);
-  const mayDeliver = ownerChat && state.engine === 'oc' && policy.enabled && !policy.asleep &&
-    !policy.stopped && !action.budget?.killSwitch;
-  if (!entry.delivery && (!mayDeliver || action.enabled === false)) {
-    const pause = policy.stopped ? 'stop' : 'inactive';
-    if (entry.pausedBy !== pause && await setNativeReminderEnabled(gateway, entry, false)) {
-      entry.enabled = false;
-      entry.pausedBy = pause;
-      await persist();
-    }
+  const canRun = ownerChat && state.engine === 'oc' && policy.enabled && !policy.asleep;
+  const mayDeliver = canRun && !policy.stopped && !action.budget?.killSwitch;
+  const pause = nativeReminderPauseCause(action, policy, canRun);
+  if (!entry.delivery && pause) {
+    if ((entry.pausedBy !== pause || entry.enabled) && (await applyNativeReminderArming(gateway, entry, pause)).ok) await persist();
     return;
   }
   if (signal.aborted) return;
@@ -57,11 +53,7 @@ async function reconcileJob(gateway, id, jobs, records, save, { api, adminId, no
     }
   }
   if (!entry.delivery) {
-    if (!entry.enabled && !signal.aborted && await setNativeReminderEnabled(gateway, entry, true)) {
-      entry.enabled = true;
-      delete entry.pausedBy;
-      await persist();
-    }
+    if (!entry.enabled && !signal.aborted && (await applyNativeReminderArming(gateway, entry)).ok) await persist();
     return;
   }
   await recordNativeReminder(entry, action, async next => {

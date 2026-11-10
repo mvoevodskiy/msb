@@ -10,8 +10,8 @@ import { openOwnedLocalGateway } from '../agent/openclaw-gateway.mjs';
 import { withAutonomyPauseLock } from './owner-pause.mjs';
 import { prepareSavedAction, withActions } from './reminder-store.mjs';
 import { readNativeJobMap, writeNativeJobMap } from './native-job-map.mjs';
-import { addDisabledNativeReminder, nativeReminderEntry, removeNativeReminder,
-  setNativeReminderEnabled } from './openclaw-reminder-cron.mjs';
+import { addDisabledNativeReminder, nativeReminderEntry, removeNativeReminder } from './openclaw-reminder-cron.mjs';
+import { applyNativeReminderArming, nativeReminderPauseCause } from './openclaw-reminder-arming.mjs';
 
 const failed = { error: 'Не удалось поставить задачу: движок OpenClaw не подтвердил расписание.' };
 
@@ -66,18 +66,14 @@ export async function registerOpenClawReminder(action, {
       const policy = current && await validate();
       signal?.throwIfAborted();
       if (!policy) throw new Error('OpenClaw route changed');
-      if (policy.stopped) entry.pausedBy = 'stop';
-      else {
-        if (!await setNativeReminderEnabled(current, entry, true)) throw new Error('Unconfirmed OpenClaw activation');
-        entry.enabled = true;
-      }
+      if (policy.stopped) entry.pausedBy = nativeReminderPauseCause(saved, policy, true);
+      else if (!(await applyNativeReminderArming(current, entry)).ok) throw new Error('Unconfirmed OpenClaw activation');
       signal?.throwIfAborted();
       const settled = await validate();
       if (!settled) throw new Error('OpenClaw route changed');
       if (settled.stopped && entry.enabled) {
-        if (!await setNativeReminderEnabled(current, entry, false)) throw new Error('Unconfirmed OpenClaw pause');
-        entry.enabled = false;
-        entry.pausedBy = 'stop';
+        const pause = nativeReminderPauseCause(saved, settled, true);
+        if (!(await applyNativeReminderArming(current, entry, pause)).ok) throw new Error('Unconfirmed OpenClaw pause');
       }
       await writeNativeJobMap(jobs, env);
       return { action: saved, previous, timezone: policy.timezone, provider: 'openclaw' };

@@ -41,12 +41,17 @@ export async function addDisabledNativeReminder(gateway, action, entry) {
 }
 
 export async function setNativeReminderEnabled(gateway, entry, enabled) {
+  if (!gateway) return { ok: false };
   const job = await findNativeJob(gateway, entry);
-  if (!job) return false;
-  if (job.enabled === enabled) return true;
+  if (job === undefined) return { ok: !enabled, gone: true };
+  if (!job) return { ok: false };
+  if (job.enabled === enabled) return { ok: true, changed: false };
   const result = await gateway.run(['cron', enabled ? 'enable' : 'disable', job.id, '--json']);
-  if (ownsJob(result, entry) && result.enabled === enabled) return true;
-  return (await findNativeJob(gateway, entry))?.enabled === enabled;
+  if (ownsJob(result, entry) && result.enabled === enabled) return { ok: true, changed: true };
+  const current = await findNativeJob(gateway, entry);
+  if (current === undefined) return { ok: !enabled, gone: true };
+  const ok = current?.enabled === enabled;
+  return { ok, changed: ok };
 }
 
 export async function removeNativeReminder(gateway, entry) {

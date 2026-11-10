@@ -1595,3 +1595,36 @@ snapshot and dependencies read-only, without external network:
       node /source/.msb/bot/tests/fixtures/openclaw-once-native-loopback.mjs \
         /tmp/native/openclaw/2026.9.5/lib/node_modules/openclaw/openclaw.mjs
     '
+
+Pause and resume of owned native one-shots
+-----------------------------------------
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Inspect stable lines with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+lg/cg 24219–24314 use z9 23673–23702 for exact ID or
+unique text and store the requested enabled/owner state
+even if the native change failed. bg 23704–23709 appends
+the failure. YM/JM/XjA 11284–11444 and qz/_7 24316–24426
+use one per-bot STOP, count verified fences and restore
+the stop-marked group. gJ/wJ 46016–46117 change the job
+by ID. kwA 35528–35575 treats fleet pause separately.
+
+The new Telegram handlers reuse the local STOP store and
+the saved-action selector. Both native operations acquire
+pause then action locks. Action ID, unique native tag,
+owner and captured Gateway must agree. A failed native
+command leaves the owner's local intent and an explicit
+warning. The shared arming code records confirmed effects
+only. General resume touches the stop group and rechecks
+personal and fleet holds. Unbound legacy jobs still make
+a general stop partial. An absent job does not increase
+the fence count, and its mapped ID survives for completed
+run delivery. A failed enable is not listed as resumed.
+
+Run openclaw-once-native-loopback.mjs as above with the
+additional pause argument. It pauses one job individually,
+stops the other through the same final owner marker,
+waits past its deadline, resumes the general group and
+observes one literal delivery. The personal job remains
+disabled. Live Telegram and cancellation of already
+running native work are separate checks.

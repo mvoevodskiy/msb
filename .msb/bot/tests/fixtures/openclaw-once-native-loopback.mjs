@@ -13,13 +13,15 @@ import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { promisify } from 'node:util';
 import { processReminderMarkers } from '../../src/telegram/reminder-markers.mjs';
+import { processPauseMarkers } from '../../src/telegram/pause-markers.mjs';
+import { processTaskControlMarkers } from '../../src/telegram/task-control-markers.mjs';
 import { startScheduler } from '../../src/autonomy/scheduler.mjs';
 import { readNativeJobMap, readSavedActionRecords } from '../../src/autonomy/reminder-store.mjs';
 import { readSavedActionRunTail } from '../../src/autonomy/reminder-runs.mjs';
 import { saveState } from '../../src/state.mjs';
 
-const cli = process.argv[2];
-assert.ok(path.isAbsolute(cli));
+const [cli, mode] = process.argv.slice(2);
+assert.ok(path.isAbsolute(cli) && (mode === undefined || mode === 'pause'));
 const execute = promisify(execFile);
 const root = await fs.mkdtemp('/tmp/oc-once-product-');
 const bin = path.join(root, 'bin');
@@ -112,12 +114,12 @@ try {
   Object.assign(process.env, primary.env);
 
   const now = Date.now();
-  const at = new Date(now + 25_000).toISOString();
-  const input = { trigger: { kind: 'once', at }, task: { kind: 'reminder', text: reminder } };
-  const response = await processReminderMarkers('[SCHEDULE_TASK]' + JSON.stringify(input) + '[/SCHEDULE_TASK]', {
-    ownerId: 42, rail: 'oc', ok: true, chatId: origin, threadId: 17, messageId: 43,
-    now, timezone: 'Europe/Moscow', openClawProfile: primary.config,
-  });
+  const at = new Date(now + (mode === 'pause' ? 40_000 : 25_000)).toISOString();
+  const input = { name: 'Проверяемая', trigger: { kind: 'once', at }, task: { kind: 'reminder', text: reminder } };
+  const context = () => ({ ownerId: 42, rail: 'oc', ok: true, chatId: origin, threadId: 17, messageId: 43,
+    now: Date.now(), timezone: 'Europe/Moscow', openClawProfile: primary.config });
+  const schedule = value => processReminderMarkers('[SCHEDULE_TASK]' + JSON.stringify(value) + '[/SCHEDULE_TASK]', context());
+  const response = await schedule(input);
   assert.match(response, /Ок, поставил/);
   const { records: [action] } = await readSavedActionRecords();
   const entry = (await readNativeJobMap())[action.id];
@@ -125,6 +127,27 @@ try {
   assert.equal(action.runner, 'oc');
   assert.equal(modelCalls, 0);
   assert.deepEqual(await list(other), before[1]);
+
+  let personalEntry;
+  if (mode === 'pause') {
+    const personal = { ...input, name: 'Личная', trigger: { kind: 'once', at: new Date(now + 120_000).toISOString() } };
+    assert.match(await schedule(personal), /Ок, поставил/);
+    const personalAction = (await readSavedActionRecords()).records.find(row => row.name === personal.name);
+    personalEntry = (await readNativeJobMap())[personalAction.id];
+    const paused = await processTaskControlMarkers('[PAUSE_TASK: ' + personalAction.id + ']', context());
+    assert.match(paused, /«Личная» на паузе/);
+    assert.match(await processPauseMarkers('[STOP_ALL]', context(), {}), /снято с расписания задач: 1/);
+    let jobs = await list(primary);
+    assert.equal(jobs.find(row => row.id === entry.jobId)?.enabled, false);
+    assert.equal(jobs.find(row => row.id === personalEntry.jobId)?.enabled, false);
+    await delay(Math.max(0, Date.parse(at) - Date.now()) + 1000);
+    assert.equal(modelCalls, 0);
+    const resumed = await processPauseMarkers('[RESUME_ALL]', context(), {});
+    assert.match(resumed, /задачи снова в работе \(1\)[\s\S]*Проверяемая/);
+    assert.doesNotMatch(resumed, /Личная/);
+    jobs = await list(primary);
+    assert.equal(jobs.find(row => row.id === personalEntry.jobId)?.enabled, false);
+  }
 
   const telegram = [];
   const start = () => startScheduler({ adminId: 42, timezone: 'Europe/Moscow', log() {},
@@ -152,6 +175,10 @@ try {
   assert.equal(entries[0].status, 'ok');
   assert.equal(entries[0].delivered, false);
   assert.equal(modelCalls, 1);
+  if (personalEntry) {
+    assert.equal((await list(primary)).find(row => row.id === personalEntry.jobId)?.enabled, false);
+    await primary.run('cron', 'rm', personalEntry.jobId, '--json');
+  }
   assert.deepEqual(await list(primary), before[0]);
   assert.deepEqual(await list(other), before[1]);
   assert.deepEqual(await protectedBytes(), snapshot);
@@ -162,6 +189,8 @@ try {
   console.log(JSON.stringify({ nativeModelCalls: modelCalls, nativeTerminalRun: true, exactOriginTopicAndReply: true,
     literalTelegramDeliveries: telegram.length, repeatedAfterRestart: false, noNativeDelivery: true,
     autoDeletedNativeJob: true, bothGatewaysPreexistingJobsUnchanged: true, protectedProfileBytesMatch: true,
+    ...(mode === 'pause' ? { pausedThroughOwnerMarkers: true, resumedAfterDeadline: true,
+      personalJobStillPaused: true, noModelCallUnderStop: true } : {}),
     network: 'loopback-only' }));
 } finally {
   await scheduler?.stop();

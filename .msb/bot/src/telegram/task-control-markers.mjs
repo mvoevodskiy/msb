@@ -7,6 +7,7 @@
 import { loadState, NO_STATE_WRITE, updateState } from '../state.mjs';
 import { readAutonomyPause } from '../autonomy/owner-pause.mjs';
 import { readReminderPolicy } from '../autonomy/reminder-policy.mjs';
+import { setOwnedNativeReminderEnabled } from '../autonomy/openclaw-reminder-control.mjs';
 import { setNamedSavedActionEnabled } from '../autonomy/reminder-store.mjs';
 import { describeReminderScheduleWithNext } from '../autonomy/reminder-time.mjs';
 import { readReminderFrequencyDecisions } from '../autonomy/frequency-decisions.mjs';
@@ -59,29 +60,40 @@ async function resumeNote(action, state, context) {
   return '';
 }
 
-async function describeControl({ action, changed, state }, enabled, context) {
+async function describeControl({ action, changed, state, nativeUnconfirmed, nativeHeld }, enabled, context) {
   const name = '«' + action.name + '»';
   const global = globalPauseNote(await readAutonomyPause().catch(() => null));
+  const warning = nativeUnconfirmed
+    ? '\n⚠ Не удалось ' + (enabled ? 'вернуть в расписание движка.' : 'снять с расписания движка — если сработает вопреки паузе, скажи мне.')
+    : '';
   if (!enabled) {
     const intro = changed ? '⏸ ' + name + ' на паузе.' : name + ' и так на паузе.';
     const others = changed && !global ? ' Остальные задачи работают.' : '';
-    return intro + others + ' Скажи «верни в работу ' + action.name + '», когда понадобится.' + (global ? '\n' + global : '');
+    return intro + others + ' Скажи «верни в работу ' + action.name + '», когда понадобится.' + (global ? '\n' + global : '') + warning;
   }
-  const note = global || await resumeNote(action, state, context);
-  if (!changed) return name + (note ? ' уже включена. ' + note : ' и так в работе.');
+  const note = global || await resumeNote(action, state, context) ||
+    (nativeHeld && !nativeUnconfirmed ? '🔴 Запуск этой задачи на выбранном движке пока недоступен.' : '');
+  const confirmed = !note && !nativeUnconfirmed;
+  if (!changed) return name + (confirmed ? ' и так в работе.' : ' уже включена.') + (note ? ' ' + note : '') + warning;
   const when = describeReminderScheduleWithNext(action.trigger, context.now, state.timezone || context.timezone, action.lastRunAt);
-  return '▶ ' + name + (note ? ' включена' : ' снова в работе') + ' — ' + when + '.' + (note ? '\n' + note : '');
+  return '▶ ' + name + (confirmed ? ' снова в работе' : ' включена') + ' — ' + when + '.' +
+    (note ? '\n' + note : '') + warning;
 }
 
 async function changeControl(query, enabled, context) {
   let result;
   try {
     const { state } = await loadState();
-    const error = await routeError(state, context);
-    if (error) return { error };
-    result = await setNamedSavedActionEnabled(query, enabled, {
-      signal: context.signal, commit: publish => commitControl(context, publish),
-    });
+    if (state.engine === 'oc' && context.rail === 'oc') {
+      if (!(await readReminderPolicy(state)).enabled) return { error: 'Автономные задачи сейчас выключены.' };
+      result = await setOwnedNativeReminderEnabled(query, enabled, context);
+    } else {
+      const error = await routeError(state, context);
+      if (error) return { error };
+      result = await setNamedSavedActionEnabled(query, enabled, {
+        signal: context.signal, commit: publish => commitControl(context, publish),
+      });
+    }
   } catch {
     context.signal?.throwIfAborted();
     return { error: enabled ? 'Не удалось вернуть в работу.' : 'Не удалось поставить на паузу.' };

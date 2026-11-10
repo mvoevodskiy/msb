@@ -35,7 +35,7 @@ export async function readReminderPolicy(state, env = process.env) {
     readAutonomyPause(env),
     exists(path.join(msbRoot(env), 'engine', 'sleep.' + botId(env))),
   ]);
-  const { remote, stopped, fleetStopped } = pause;
+  const { remote, stopped, ownerStopped, fleetStopped } = pause;
   const local = isLocalReminderEngine(state.engine);
   const autoFlag = state.engine === 'oc' ? remote?.autonomyAutoOnOc : remote?.autonomyAutoOnCc;
   const enabled = env.AUTONOMY_ENABLED === undefined
@@ -44,5 +44,5 @@ export async function readReminderPolicy(state, env = process.env) {
   const rawReserve = env.AUTONOMY_RESERVE_FRACTION === undefined
     ? config?.reserveFraction : Number(env.AUTONOMY_RESERVE_FRACTION);
   const reserveFraction = Number.isFinite(rawReserve) ? Math.min(0.9, Math.max(0, rawReserve)) : 0.3;
-  return { enabled, local, stopped, fleetStopped, asleep, reserveFraction };
+  return { enabled, local, stopped, ownerStopped, fleetStopped, asleep, reserveFraction };
 }

@@ -1,12 +1,13 @@
 /**
- * Old local STOP_ALL / RESUME_ALL from a successful owner turn. [Worker](./bot.mjs)
+ * Old STOP_ALL / RESUME_ALL from a successful owner turn. [Worker](./bot.mjs)
  * passes the captured route; [owner pause](../autonomy/owner-pause.mjs) is the writer.
  * [Legacy confirmation](./pause-confirmation.mjs) is a separate owner action.
  * [Ingress and dispatch checks](../../tests/autonomy-pause.test.mjs).
  */
 import { setOwnerPause, readAutonomyPause } from '../autonomy/owner-pause.mjs';
 import { listLegacyTimers } from '../autonomy/legacy-timers.mjs';
-import { isLocalReminderEngine, readReminderPolicy } from '../autonomy/reminder-policy.mjs';
+import { isLocalReminderEngine, readReminderPolicy, reminderOwnerChat } from '../autonomy/reminder-policy.mjs';
+import { openClawControlProfile, syncOwnedNativeReminderPause } from '../autonomy/openclaw-reminder-control.mjs';
 import { savedActionSnapshot, readNativeJobMap } from '../autonomy/reminder-store.mjs';
 import { describeReminderSchedule, describeReminderTime } from '../autonomy/reminder-time.mjs';
 import { reminderIsActive } from '../autonomy/reminder-frequency.mjs';
@@ -27,9 +28,10 @@ async function checkPolicy(context) {
   const { state } = await loadState();
   const policy = await readReminderPolicy(state);
   if (!policy.enabled) return 'Автономные задачи сейчас выключены.';
-  if (!policy.local || policy.asleep || context.rail !== 'cc') {
-    return unavailableEngine;
-  }
+  if (policy.asleep) return unavailableEngine;
+  if (policy.local && context.rail === 'cc') return;
+  if (state.engine === 'oc' && reminderOwnerChat(state, context.ownerId) && await openClawControlProfile(context)) return;
+  return unavailableEngine;
 }
 
 async function localActiveTasks(now, codexAvailable) {
@@ -55,13 +57,17 @@ async function localActiveTasks(now, codexAvailable) {
 async function describeStop(result, tasks, ctx, context) {
   const [timers, native] = await Promise.all([
     listLegacyTimers(),
-    readNativeJobMap().then(jobs => Object.values(jobs).filter(job => job?.jobId && !job.pausedBy).length, () => null),
+    readNativeJobMap().then(jobs => Object.values(jobs).filter(job => job?.jobId && !job.pausedBy &&
+      (context.rail !== 'oc' || job.enabled !== false)).length, () => null),
   ]);
   const count = timers.filter(timer => timer.enabled).length;
   const summary = result.aborted ? 'оборвано идущих ходов: ' + result.aborted + ', ' : '';
-  const lines = ['⛔ Автономка остановлена. ' + summary + 'снято с расписания задач: 0.'];
-  if (native === null) lines.push('🔴 Расписание OpenClaw не удалось проверить.');
-  else if (native) lines.push('🔴 Остановка неполная: в профиле остались активные записи OpenClaw (' + native + ').');
+  const lines = ['⛔ Автономка остановлена. ' + summary + 'снято с расписания задач: ' + (result.native?.fenced ?? 0) + '.'];
+  if (native === null || result.native?.unavailable) lines.push('🔴 Расписание OpenClaw не удалось проверить.');
+  else if (native || result.native?.unconfirmed) {
+    const left = Math.max(native, result.native?.unconfirmed ?? 0);
+    lines.push('🔴 Остановка неполная: в профиле остались активные записи OpenClaw (' + left + ').');
+  }
   else lines.push('Новые прогоны не начнутся, пока вы не включите обратно.');
   lines.push(tasks.length
     ? 'Задач сохранено: ' + tasks.length + ', они никуда не делись. Чтобы вернуть их в работу, скажи «верни задачи в работу» — «продолжай» я тоже пойму.'
@@ -76,18 +82,21 @@ async function describeStop(result, tasks, ctx, context) {
 
 async function describeResume(result, tasks, { now, timezone }) {
   const pause = await readAutonomyPause().catch(() => null);
+  const nativeNote = result.native?.unconfirmed || result.native?.unavailable
+    ? '\n⚠ Не удалось вернуть в расписание движка ' + (result.native.unconfirmed || 'задачи OpenClaw') + '.'
+    : '';
   const timerNote = result.timerResumeFailed
     ? '\n⚠ Таймеры поднять не удалось — включи их в настройках, раздел Таймеры.'
     : result.resumedTimers ? '\nТаймеры, остановленные вместе со всеми, снова работают (' + result.resumedTimers + ').' : '';
-  if (!pause) return 'Снял паузу этого бота. Общую паузу сервера не удалось проверить.' + timerNote;
+  if (!pause) return 'Снял паузу этого бота. Общую паузу сервера не удалось проверить.' + timerNote + nativeNote;
   if (pause.fleetStopped) return 'Снял паузу этого бота. Общая пауза сервера остаётся.' + timerNote;
   if (pause.ownerStopped) return 'Пауза этого бота снова включена.' + timerNote;
-  if (!tasks.length) return 'Снял стоп. Активных задач сейчас нет.' + timerNote;
+  if (!tasks.length) return (nativeNote ? 'Снял паузу этого бота.' : 'Снял стоп. Активных задач сейчас нет.') + timerNote + nativeNote;
   const { state } = await loadState();
   const zone = state.timezone || timezone;
   const names = tasks.map(task => '• ' + task.name + ' — ' + (task.trigger
     ? describeReminderSchedule(task.trigger, now, zone) : describeReminderTime(task.at, now, zone)));
-  return 'Снял паузу, задачи снова в работе (' + tasks.length + '):\n' + names.join('\n') + timerNote;
+  return 'Снял паузу, задачи снова в работе (' + tasks.length + '):\n' + names.join('\n') + timerNote + nativeNote;
 }
 
 async function changePause(command, context, ctx) {
@@ -98,14 +107,21 @@ async function changePause(command, context, ctx) {
     if (unavailable) return { error: unavailable };
     result = await setOwnerPause(stop, {
       now: context.now, signal: context.signal, check: () => checkPolicy(context),
-      checkEngine: state => isLocalReminderEngine(state.engine) ? undefined : unavailableEngine,
+      checkEngine: state => {
+        const matches = context.rail === 'oc' ? state.engine === 'oc' && reminderOwnerChat(state, context.ownerId)
+          : isLocalReminderEngine(state.engine);
+        return matches ? undefined : unavailableEngine;
+      },
     });
   } catch {
     context.signal?.throwIfAborted();
     return { error: stop ? 'Не удалось остановить фоновые задачи.' : 'Не удалось снять стоп.' };
   }
   if (result.error) return result;
-  const tasks = await localActiveTasks(context.now, context.codexAvailable);
+  if (context.rail === 'oc') {
+    result.native = await syncOwnedNativeReminderPause(stop, context).catch(() => ({ unavailable: true, tasks: [] }));
+  }
+  const tasks = result.native?.tasks ?? await localActiveTasks(context.now, context.codexAvailable);
   const text = stop ? await describeStop(result, tasks, ctx, context) : await describeResume(result, tasks, context);
   return { text };
 }

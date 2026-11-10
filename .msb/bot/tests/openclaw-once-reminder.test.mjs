@@ -88,7 +88,7 @@ async function profile(t, { rejectAdd = false, foreign = false, rejectEnable = f
     await until(() => f.edits.slice(before).some(edit => edit.includes('⏱')), 'OpenClaw command did not finish', 12_000);
     return f.edits.slice(before).find(edit => edit.includes('⏱'));
   }
-  return { ...f, config, other, jobs: () => read(jobs), calls, command,
+  return { ...f, config, other, jobs: () => read(jobs), writeJobs: rows => fs.writeFile(jobs, json(rows)), calls, command,
     failToggles: commands => fs.writeFile(toggleFailures, json(commands)),
     mapping: () => read(nativeMap), writeMapping: entries => fs.writeFile(nativeMap, json(entries)), runEntries: entries => fs.writeFile(runs, json(entries)),
     stopFile: path.join(f.directory, 'autonomy', 'STOP') };
@@ -257,7 +257,7 @@ test('a fleet pause arriving during native activation fences the job before conf
   assert.match(await f.final(), /Поставил:.*общая пауза сервера/s);
   const [action] = await f.records();
   const entry = (await f.mapping())[action.id];
-  assert.equal(entry.pausedBy, 'stop');
+  assert.equal(entry.pausedBy, 'fleet-stop');
   assert.equal(entry.enabled, false);
   assert.equal((await f.jobs()).find(job => job.id === entry.jobId).enabled, false);
   assert.deepEqual(f.delivered(), []);
@@ -370,4 +370,41 @@ test('personal pause preserves the old local intent and warns if native disable 
   await f.scheduler().tickNow();
   assert.equal(await jobEnabled(f, jobId), false);
   assert.equal((await f.mapping())[action.id].pausedBy, 'owner');
+});
+
+test('a missing native job does not inflate the STOP count or erase its terminal run', async t => {
+  const f = await profile(t);
+  const { action, jobId } = await addForPause(f, 'Уже запущенная');
+  await f.writeJobs([f.other]);
+  await f.runEntries([{ jobId, action: 'finished', status: 'ok', runAtMs: due }]);
+  f.setTime(due);
+  const stop = await f.command('[STOP_ALL]');
+  assert.match(stop, /снято с расписания задач: 0/);
+  assert.doesNotMatch(stop, /Остановка неполная/i);
+  assert.equal((await f.mapping())[action.id].jobId, jobId);
+  const scheduler = f.scheduler();
+  await scheduler.tickNow();
+  assert.deepEqual(f.delivered(), []);
+  const resume = await f.command('[RESUME_ALL]');
+  assert.doesNotMatch(resume, /задачи снова в работе/);
+  await scheduler.tickNow();
+  assert.equal(f.delivered().length, 1);
+  assert.equal((await f.calls()).filter(args => args[1] === 'enable' && args[2] === jobId).length, 1);
+});
+
+test('unbound legacy OpenClaw mappings stay untouched and make STOP partial', async t => {
+  const f = await profile(t);
+  await addForPause(f, 'С привязкой');
+  const legacy = { id: 'legacy-unbound', name: 'Прежняя нативная', enabled: true, runner: 'oc',
+    trigger: { kind: 'once', at: scheduledAt }, task: { kind: 'reminder', text: 'Старая' } };
+  const mapping = { jobId: f.other.id, enabled: true };
+  await fs.writeFile(f.actionFile, json([...(await f.records()), legacy]));
+  await f.writeMapping({ ...(await f.mapping()), [legacy.id]: mapping });
+  assert.match(await f.command('[PAUSE_TASK: ' + legacy.id + ']'), /в этом маршруте пока не подключено/);
+  const stop = await f.command('[STOP_ALL]');
+  assert.match(stop, /снято с расписания задач: 1/);
+  assert.match(stop, /Остановка неполная/i);
+  assert.deepEqual((await f.mapping())[legacy.id], mapping);
+  assert.deepEqual((await f.records()).find(row => row.id === legacy.id), legacy);
+  assert.deepEqual((await f.jobs()).find(job => job.id === f.other.id), f.other);
 });

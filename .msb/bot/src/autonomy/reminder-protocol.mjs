@@ -36,6 +36,11 @@ const literalMarkerInstruction = 'В цитате, примере, вложен�
 const taskMaintenanceInstruction = [taskRunHistoryInstruction, spentCleanupInstruction, namedCancellationInstruction,
   bulkCancellationInstruction, rescheduleInstruction, taskTextInstruction, legacyTimerInstruction, literalMarkerInstruction].join(' ');
 
+const pauseInstructions = 'Если владелец явно просит поставить все фоновые задачи этого бота на паузу, ' +
+  'добавь [STOP_ALL] в итоговый ответ отдельной строкой. Если он просит вернуть их в работу, ' +
+  'добавь [RESUME_ALL] отдельной строкой. Выбери только одно действие для общей паузы. ' +
+  'Для одной сохранённой задачи используй [PAUSE_TASK: имя или ID] или [RESUME_TASK: имя или ID]. ';
+
 const onceReminderInstruction = 'Для буквального напоминания используй [SCHEDULE_TASK] в итоговом ответе. Разовый пример:\n' +
   '[SCHEDULE_TASK]{"trigger":{"kind":"once","at":"+10m"},"task":{"kind":"reminder","text":"Позвонить маме"}}[/SCHEDULE_TASK]\n' +
   'Время задавай относительным (+10m, +2h, +1d) или ISO с часовым поясом.';
@@ -45,7 +50,7 @@ export async function openClawTaskMaintenancePrompt(state, env, adminId) {
     const { enabled, asleep } = await readReminderPolicy(state, env);
     if (!enabled) return '';
     const native = !asleep && reminderOwnerChat(state, adminId) && await ownedOpenClawProfile(env);
-    return native ? taskMaintenanceInstruction + '\n\n' + onceReminderInstruction +
+    return native ? pauseInstructions + taskMaintenanceInstruction + '\n\n' + onceReminderInstruction +
       ' На OpenClaw этот маркер ставит разовое буквальное напоминание. Не обещай успех до подтверждения бота.'
       : taskMaintenanceInstruction;
   } catch {
@@ -61,10 +66,7 @@ export async function reminderPrompt(state, adminId, env, checkSavedCodex) {
   } catch {
     return '';
   }
-  const controls = 'Если владелец явно просит поставить все фоновые задачи этого бота на паузу, ' +
-    'добавь [STOP_ALL] в итоговый ответ отдельной строкой. Если он просит вернуть их в работу, ' +
-    'добавь [RESUME_ALL] отдельной строкой. Выбери только одно действие для общей паузы. ' +
-    'Для одной сохранённой задачи используй [PAUSE_TASK: имя или ID] или [RESUME_TASK: имя или ID]. ' +
+  const controls = pauseInstructions +
     'Чтобы показать список фоновых задач, добавь [LIST_TASKS] в итоговый ответ. ' +
     'Чтобы показать расписание и точный текст одной задачи, добавь [SHOW_TASK: имя или ID]. ' +
     taskRunHistoryInstruction + ' ' + spentCleanupInstruction + ' ' + namedCancellationInstruction + ' ' +
