@@ -160,7 +160,7 @@ export async function runAgentTurn({
   });
 
   if (quotaWrite) await quotaWrite;
-  result.context = await readSessionContext(result.sessionId, env);
+  result.context = signal?.aborted || result.aborted ? null : await readSessionContext(result.sessionId, env);
   if (result.sessionId) {
     await updateState(s=>applySessionResult(s,{snapshot:state,reservation:firstSession,result,prompt,signal}),env);
   }

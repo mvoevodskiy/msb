@@ -75,8 +75,16 @@ async function runAlternate(providerId, argv) {
   let result;
   try {
     if (providerId === 'cursor') result = await runCursorTurn(ctx);
-    else if (providerId === 'codex') result = await runCodexTurn(ctx);
-    else if (providerId === 'qwen') result = await runQwenTurn(ctx);
+    else if (providerId === 'codex') {
+      result = await runCodexTurn({
+        ...ctx,
+        onThreadStarted(id) {
+          // Core uses this provisional ID only for the history of a stopped first turn.
+          emit({ type: 'system', subtype: 'codex_thread_started',
+            provider_id: providerId, session_id: encodeExtSession(providerId, id) });
+        },
+      });
+    } else if (providerId === 'qwen') result = await runQwenTurn(ctx);
     else {
       const fallbackId = encodeExtSession(providerId, 'unknown');
       emitError(`Неизвестный провайдер: ${providerId}`, fallbackId);

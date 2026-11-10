@@ -6,7 +6,9 @@
  * Native total_cost_usd is CLI metering; paid spend belongs to a verified billing source.
  * Terminal helper usage feeds [saved prompt accounting](../autonomy/prompt-turn.mjs).
  * Result provenance (spawned/sessionIdObserved) lets [session-result](./session-result.mjs)
- * count actual returned attempts without inventing history for a pre-spawn abort.
+ * count returned attempts separately from pre-spawn aborts. The Codex shim can
+ * supply a provisional thread before the process group is stopped.
+ * [Native-shim regression](../../../../overlay/bot/ext/tests/reference/provider-switch.test.mjs).
  */
 import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
@@ -14,6 +16,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { workspaceDir } from '../paths.mjs';
 import { canonicalMcpPath, claudeMcpPath } from '../../shared/mcp-native-scope.mjs';
+import { isProviderSession } from '../../shared/session-starts.mjs';
 
 const DEFAULT_MAX_TURNS = 200;
 const DEFAULT_ALLOWED_TOOLS = 'Bash,WebSearch,WebFetch,Agent,Task,Workflow,Monitor,Skill,Read,Edit,Write,Glob,Grep';
@@ -219,6 +222,7 @@ export async function runClaudeTurn(opts) {
     let stderr = '';
     let sessionId = opts.sessionId || '';
     let sessionIdObserved = false;
+    let startedCodexSessionId = '';
     let text = '';
     let assistantTextObserved = false;
     let model;
@@ -255,6 +259,9 @@ export async function runClaudeTurn(opts) {
               if (!providerId && ev.apiKeySource !== 'ext') providerId = 'claude';
               if (ev.session_id) { sessionId = ev.session_id; sessionIdObserved = true; }
               if (ev.model) model = ev.model;
+            } else if (ev.subtype === 'codex_thread_started' && opts.providerId === 'codex' &&
+                ev.provider_id === 'codex' && isProviderSession(ev.session_id, 'codex')) {
+              startedCodexSessionId ||= ev.session_id;
             } else if (helperTasks && ev.subtype === 'task_notification') {
               const taskId = ev.task_id;
               const tokens = ev.usage?.total_tokens;
@@ -316,6 +323,11 @@ export async function runClaudeTurn(opts) {
       console.error(
         `[msb/agent-cc] Process closed: code=${code}, signal=${signal ?? '-'}, tools=${toolCount}, stderr=${opts.isolated ? '[background]' : stderr.slice(0, 200)}`,
       );
+      const aborted = Boolean(opts.signal?.aborted);
+      if (aborted && !sessionId && startedCodexSessionId) {
+        sessionId = startedCodexSessionId;
+        sessionIdObserved = true;
+      }
       resolve({
         sessionId,
         spawned: true,
@@ -328,7 +340,7 @@ export async function runClaudeTurn(opts) {
         isError: isError || code !== 0,
         exitCode: code,
         signal,
-        aborted: Boolean(opts.signal?.aborted),
+        aborted,
         usage: { inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens },
         ...(helperTasks?.size ? { helperTokens } : {}),
         // Alternate stream adapters supply a compatibility zero, not a meter.

@@ -145,13 +145,22 @@ async function execOnce({
   forceHttp,
   httpProviderId,
   mcpArgs,
+  onThreadStarted,
 }) {
   const args = buildCodexExecArgs({ model, effort, resumeId, forceHttp, httpProviderId, mcpArgs });
+  let threadAnnounced = false;
   const res = await runCli(bin, args, {
     cwd,
     env: childEnv,
     input: prompt,
     forwardStderr: false,
+    onStdoutLine: onThreadStarted && (line => {
+      if (threadAnnounced) return;
+      const { threadId } = parseCodexStdout(line);
+      if (!isValidCodexThreadId(threadId)) return;
+      threadAnnounced = true;
+      onThreadStarted(threadId);
+    }),
   });
   const parsedOut = parseCodexStdout(res.stdout);
   // Иногда reconnect пишет только в stderr
@@ -237,7 +246,7 @@ export function finalizeParsed({ res, parsedOut, model, resumeRequested }) {
   };
 }
 
-export async function runCodexTurn({ prompt, parsed, cwd, env, home = os.homedir() }) {
+export async function runCodexTurn({ prompt, parsed, cwd, env, home = os.homedir(), onThreadStarted }) {
   const envPath = { ...env, PATH: enrichPath(env, home) };
   let bin = findBin('codex', envPath);
   if (!bin) {
@@ -294,6 +303,7 @@ export async function runCodexTurn({ prompt, parsed, cwd, env, home = os.homedir
       forceHttp,
       httpProviderId,
       mcpArgs,
+      onThreadStarted: parsed?.resume ? undefined : onThreadStarted,
     });
 
   const raw = await run(resumeRequested);

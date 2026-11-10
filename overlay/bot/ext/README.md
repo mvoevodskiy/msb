@@ -76,6 +76,12 @@ shim; поздняя смена меню не направляет начаты�
 не повторяется в новом thread. Это проверяют [codex-session](tests/codex-session.test.mjs)
 и [provider-switch](tests/reference/provider-switch.test.mjs).
 
+При первом ходе Codex сообщает thread ID по событию thread.started до
+завершения процесса. Обвязка передаёт его [парсеру ядра](../../../.msb/bot/src/agent/claude.mjs)
+отдельным системным событием. Если ход остановлен, ID доступен в /sessions
+для явного выбора. Существующий обработчик завершения хранит active ID
+и счётчики отдельно от истории.
+
 Codex — CLI-провайдер внутри канала `cc`, а не действие OS helper.
 OpenClaw/service actions находятся в [core engines](../../../.msb/bot/src/engines/README.md).
 Эталон, состав покрытия и результаты этапов описаны в
