@@ -253,11 +253,16 @@ test('existing open-core Codex conversations bypass introduction even after rese
   assert.equal((await loadState()).state.codexBootstrap, undefined);
 });
 
-test('Telegram delivers a bootstrap reply without the ordinary footer and then opens the ready hub', async t => {
+test('Telegram delivers the introduction, offers services once, and then opens the ready hub', async t => {
   const f = await nativeFixture(t);
   await f.message('fixture finish the introduction');
   await waitFor(() => f.edits.some(text => text === 'fixture finished'));
   assert.doesNotMatch(f.edits.find(text => text.includes('fixture finished')), /⏱|blockquote/);
+  await waitFor(async () => (await loadState()).state.servicesSetupShown === true);
+  const card = f.messages.findIndex(text => text.startsWith('<b>Какие сервисы подключить?</b>'));
+  assert.ok(card >= 0);
+  assert.equal(f.messageOptions[card].reply_markup.inline_keyboard.at(-1)[0].callback_data, 'svc_setup:skip');
   await f.message('/start');
   assert.match(f.messages.at(-1), hub);
+  assert.equal(f.messages.filter(text => text.startsWith('<b>Какие сервисы подключить?</b>')).length, 1);
 });
