@@ -147,8 +147,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   });
 
   bot.command('start', async (ctx) => {
-    const { state } = await loadState();
-    await updateState((s, { exists }) => {
+    const state = await updateState((s, { exists }) => {
       // Old Q1 initializes xhigh only when the profile file is absent.
       const newProfile = !exists;
       s.chatId = ctx.chat.id;

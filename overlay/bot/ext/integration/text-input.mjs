@@ -67,6 +67,14 @@ export async function handleAuthMessage(bot, msg) {
   const chatId = msg.chat?.id;
   if (!userId || !chatId) return false;
 
+  // Slash commands cancel only this chat's forms and reach the core even when
+  // an expired form still owns late ordinary text.
+  if (msg.text?.startsWith('/')) {
+    clearPendingAuth(userId, { chatId });
+    clearPendingLocalIp(userId, { chatId });
+    return false;
+  }
+
   if (await handleLocalSshIpMessage(bot, msg)) return true;
 
   const pending = getPendingAuth(userId, { chatId, includeExpired: true });
