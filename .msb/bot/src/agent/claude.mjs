@@ -10,6 +10,7 @@
  * supply a provisional thread before the process group is stopped.
  * Pre-execution Claude resume refusal is consumed by [turn](./turn.mjs).
  * [Resume recovery checks](../../tests/claude-resume-recovery.test.mjs).
+ * Native context input and compact threshold → [Claude context](./claude-context.mjs).
  * [Native-shim regression](../../../../overlay/bot/ext/tests/reference/provider-switch.test.mjs).
  */
 import { spawn } from 'node:child_process';
@@ -19,6 +20,7 @@ import path from 'node:path';
 import { workspaceDir } from '../paths.mjs';
 import { canonicalMcpPath, claudeMcpPath } from '../../shared/mcp-native-scope.mjs';
 import { isProviderSession } from '../../shared/session-starts.mjs';
+import { claudeCompactSettings, claudeTurnContext, updateClaudeInputSample } from './claude-context.mjs';
 
 const DEFAULT_MAX_TURNS = 200;
 const DEFAULT_ALLOWED_TOOLS = 'Bash,WebSearch,WebFetch,Agent,Task,Workflow,Monitor,Skill,Read,Edit,Write,Glob,Grep';
@@ -128,6 +130,7 @@ export async function runClaudeTurn(opts) {
   if (opts.sessionId) args.push('--resume', opts.sessionId);
 
   const claudeResume = opts.providerId === 'claude' && isProviderSession(opts.sessionId, 'claude');
+  const compact = opts.providerId === 'claude' && !opts.isolated ? claudeCompactSettings(opts.model, process.env) : null;
   const promptBytes = Buffer.byteLength(opts.prompt || '', 'utf8');
   if (promptBytes > 9 * 1024 * 1024) {
     throw new Error(`MESSAGE_TOO_LARGE:${(promptBytes / 1024 / 1024).toFixed(1)}`);
@@ -173,8 +176,8 @@ export async function runClaudeTurn(opts) {
           MSB_CODEX_BOOTSTRAP: opts.codexBootstrap ? '1' : undefined,
           CI: '1',
           CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
-          CLAUDE_CODE_AUTO_COMPACT_WINDOW: process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW || '200000',
-          CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE || '90',
+          CLAUDE_CODE_AUTO_COMPACT_WINDOW: compact?.window ?? (process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW || '200000'),
+          CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: compact?.percent ?? (process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE || '90'),
         },
         stdio: ['pipe', 'pipe', 'pipe'],
         detached: true,
@@ -244,6 +247,8 @@ export async function runClaudeTurn(opts) {
     let cacheReadTokens = 0;
     let cacheCreationTokens = 0;
     let reportedCostUsd;
+    const latestInput = {};
+    let terminalUsage;
     const helperTasks = opts.isolated?.agents ? new Set() : null;
     let helperTokens = 0;
     const toolsUsed = [];
@@ -288,6 +293,7 @@ export async function runClaudeTurn(opts) {
             assistantObserved = true;
             const msg = ev.message;
             if (msg?.usage) {
+              if (compact) updateClaudeInputSample(latestInput, msg.usage);
               if (typeof msg.usage.input_tokens === 'number') inputTokens = msg.usage.input_tokens;
               if (typeof msg.usage.output_tokens === 'number') outputTokens = msg.usage.output_tokens;
               cacheReadTokens = msg.usage.cache_read_input_tokens || 0;
@@ -319,6 +325,7 @@ export async function runClaudeTurn(opts) {
             }
             if (typeof ev.result === 'string' && ev.result && !text) text = ev.result;
             if (ev.usage) {
+              if (compact) terminalUsage = ev.usage;
               if (typeof ev.usage.input_tokens === 'number') inputTokens = ev.usage.input_tokens;
               if (typeof ev.usage.output_tokens === 'number') outputTokens = ev.usage.output_tokens;
               cacheReadTokens = ev.usage.cache_read_input_tokens || 0;
@@ -354,8 +361,11 @@ export async function runClaudeTurn(opts) {
         sessionId = startedCodexSessionId;
         sessionIdObserved = true;
       }
+      const context = compact && (!providerId || providerId === 'claude')
+        ? claudeTurnContext(compact.threshold, latestInput, terminalUsage) : null;
       resolve({
         sessionId,
+        ...(context ? { context } : {}),
         spawned: true,
         sessionIdObserved,
         text: text.trim(),

@@ -35,7 +35,8 @@ import {nativeMcpScope} from '../../shared/mcp-native-scope.mjs';
  * Аргументы/stream/abort → [runClaudeTurn](./claude.mjs) → существующий PATH shim;
  * native dispatch → [provider runner](../../../../overlay/bot/ext/shim/run-turn.mjs).
  * Captured project cwd → [projects](../projects/paths.mjs); base context stays global.
- * Контекст → [system prompt](./system-prompt.mjs), [metadata](./context.mjs).
+ * Контекст → [system prompt](./system-prompt.mjs), [Codex rollout](./context.mjs),
+ * [Claude input and compact threshold](./claude-context.mjs).
  * Native Claude quota event → [account snapshot](./claude-quota.mjs), independent of the session result.
  * Ordinary owner turn → [reminder protocol](../autonomy/reminder-protocol.mjs) when enabled.
  * Skill install [target](../skills/install-target.mjs)/[protocol](../skills/install-protocol.mjs) captured with provider snapshot, final execution belongs to Telegram.
@@ -187,8 +188,11 @@ export async function runAgentTurn({
     result.isError && result.subtype === 'error_partial' && Boolean(result.text);
   const turnWindow = partial ? { start: turnStartedAt, end: Date.now() } : undefined;
   if (quotaWrite) await quotaWrite;
-  const context = signal?.aborted || result.aborted ? null
-    : await readSessionContext(result.sessionId, codexProfile ?? env, { cwd, turnWindow });
+  let context = null;
+  if (!signal?.aborted && !result.aborted) {
+    context = providerId === 'claude' ? result.context ?? null
+      : await readSessionContext(result.sessionId, codexProfile ?? env, { cwd, turnWindow });
+  }
   result.context = partial ? null : context;
   if (result.sessionId && !result.resumeRejected) {
     await updateState(s=>applySessionResult(s,{snapshot:state,reservation:firstSession,result,prompt,signal}),env);

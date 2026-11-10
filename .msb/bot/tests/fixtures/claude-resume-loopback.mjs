@@ -1,5 +1,5 @@
 /**
- * Native Claude resume conformance. Run in an offline disposable Linux container:
+ * Native Claude resume and last-input context conformance. Run in an offline disposable Linux container:
  * node .msb/bot/tests/fixtures/claude-resume-loopback.mjs /absolute/native/claude
  * [Runner](../../src/agent/turn.mjs) uses the actual PATH shim and a loopback model.
  */
@@ -29,6 +29,11 @@ const oldRow = { id: expired, providerId: 'claude', engine: 'cc', messageCount: 
 const first = 'fixture exact request after missing session';
 const second = 'fixture continue the recovered session';
 const requests = [];
+const samples = [
+  { input_tokens: 10000, cache_read_input_tokens: 60000, cache_creation_input_tokens: 20000, output_tokens: 5 },
+  { input_tokens: 25000, cache_read_input_tokens: 130000, cache_creation_input_tokens: 25000, output_tokens: 5 },
+];
+const expectedContext = [90000, 180000].map(contextTokens => ({ contextTokens, contextWindow: 900000 }));
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -47,7 +52,7 @@ const server = http.createServer(async (req, res) => {
     });
     requests.push(current.filter(text => text === first || text === second));
     return sendClaudeFixtureReply(res, body, 'msg_fixture_' + requests.length,
-      { type: 'text', text: 'fixture native answer' }, 'end_turn');
+      { type: 'text', text: 'fixture native answer' }, 'end_turn', samples[requests.length - 1]);
   } catch {
     res.writeHead(500);
     res.end('{}');
@@ -64,7 +69,7 @@ try {
     '    if [ "$resume" = __next__ ]; then resume="$arg"; break; fi',
     '    if [ "$arg" = --resume ]; then resume=__next__; fi',
     '  done',
-    '  printf "%s\\t%s\\n" "$resume" "$PWD" >> "$FIXTURE_TRACE"',
+    '  printf "%s\\t%s\\t%s\\t%s\\n" "$resume" "$PWD" "$CLAUDE_CODE_AUTO_COMPACT_WINDOW" "$CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" >> "$FIXTURE_TRACE"',
     'fi',
     'exec "$FIXTURE_NATIVE" "$@"',
     '',
@@ -89,6 +94,7 @@ try {
   const output = await runAgentTurn({ prompt: first, signal: AbortSignal.timeout(20000) });
   assert.equal(output.ok, true);
   assert.equal(output.text, 'fixture native answer');
+  assert.deepEqual(output.result.context, expectedContext[0]);
   const id = output.result.sessionId;
   assert.ok(id && id !== expired);
   assert.equal((await loadState()).state.ccSessionId, id);
@@ -96,19 +102,23 @@ try {
   const next = await runAgentTurn({ prompt: second, signal: AbortSignal.timeout(20000) });
   assert.equal(next.ok, true);
   assert.equal(next.result.sessionId, id);
+  assert.deepEqual(next.result.context, expectedContext[1]);
   assert.deepEqual(requests, [[first], [first, second]]);
   const launches = (await fs.readFile(trace, 'utf8')).trimEnd().split('\n').map(line => line.split('\t'));
-  assert.deepEqual(launches, [[expired, project], ['-', project], [id, project]]);
+  assert.deepEqual(launches, [expired, '-', id].map(resume => [resume, project, '1000000', '90']));
   const { state } = await loadState();
   assert.deepEqual(state.sessionHistory[0], oldRow);
   assert.equal(state.sessionHistory[1].messageCount, 2);
   assert.equal(state.lastCcUsage.sessionId, id);
+  assert.equal(state.lastCcUsage.contextTokens, expectedContext[1].contextTokens);
+  assert.equal(state.lastCcUsage.contextWindow, expectedContext[1].contextWindow);
   assert.deepEqual(state.parkedCcSessions, { codex: parkedCodex });
   assert.equal(state.pendingCcSessionStarts, undefined);
   console.log(JSON.stringify({
     version, native_launches: launches.length, model_requests: requests.length,
     missing_resume_model_requests: 0, retry_same_project: true, resumed_same_new_id: true,
     original_input_and_context_preserved: true, expired_history_unchanged: true, codex_slot_unchanged: true,
+    measured_context: expectedContext, launch_window: 1000000, launch_percent: 90,
   }));
 } finally {
   if (server.listening) await new Promise(resolve => server.close(resolve));

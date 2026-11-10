@@ -95,6 +95,11 @@ ID остаётся доступной, счётчик не растёт от о
 [Локальные проверки](../../tests/claude-resume-recovery.test.mjs) и
 [проверка нативного CLI](../../tests/fixtures/claude-resume-loopback.mjs).
 
+[Контекст Claude](claude-context.mjs) берёт счётчики последнего входа и кэша
+из потока CLI. Порог берётся из параметров того же запуска. [Ход](turn.mjs)
+передаёт измерение в общий футер и запись текущей сессии.
+[Проверки](../../tests/claude-context-footer.test.mjs).
+
 
 Claude control/plan uses the old conversational instructions in [mode-prompt](mode-prompt.mjs)
 from the same provider/mode snapshot as its CLI options. Both map to acceptEdits;
