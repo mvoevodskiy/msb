@@ -116,3 +116,22 @@ test('status reads the selected relative profile after compact and keeps the CLI
   process.chdir(home);
   assert.match((await statusScreen({ ...state, activeProject: undefined }, cfg, env)).text, /Контекст: 98%/);
 });
+
+test('status uses preferences from the selected project for relative CODEX_HOME', async (t) => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-native-display-project-'));
+  t.after(() => fs.rm(home, { recursive: true, force: true }));
+  const workspace = path.join(home, 'workspace');
+  const env = { HOME: home, MSB_WORKSPACE_DIR: workspace, CODEX_HOME: 'native-profile' };
+  const project = path.join(home, 'projects', 'alpha');
+  for (const [cwd, model, effort] of [[workspace, 'gpt-5.4', 'low'], [project, 'gpt-5.4-mini', 'high']]) {
+    const profile = path.join(cwd, env.CODEX_HOME);
+    await fs.mkdir(profile, { recursive: true });
+    await fs.writeFile(path.join(profile, 'config.toml'), 'model = "' + model + '" # root\n'
+      + "model_reasoning_effort = '" + effort + "' # root\n[profiles.other]\nmodel = 'other'\n");
+  }
+  const state = { engine: 'cc', extAuthBypass: 'codex', ccModel: 'opus', activeProject: 'alpha' };
+  const { text } = await statusScreen(state, { botId: 'default', workspace }, env);
+  assert.match(text, /gpt-5\.4-mini/);
+  assert.match(text, /high/);
+  assert.doesNotMatch(text, /opus|low|other/);
+});
