@@ -141,9 +141,12 @@ export async function handleBootstrapServiceRoute({ ctx, chatId, msgId, data, pe
 export async function handleBootstrapServiceInput({ ctx, text, pending, chatId }) {
   const { key } = pending.payload(chatId);
   pending.delete(chatId);
+  // Only the claimed service value is removed, as in the old one-step card.
+  await ctx.api.deleteMessage(chatId, ctx.message.message_id,
+    presentationSignal(AbortSignal.timeout(15_000))).catch(() => {});
   const value = text.trim();
   if (value.length < 5) {
-    await reply(ctx, { text: 'Ключ слишком короткий. Повтори через ' + settingsHint + '.' });
+    await reply(ctx, { text: 'Ключ слишком короткий. Попробуй снова через ' + settingsHint });
     return;
   }
   try {

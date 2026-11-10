@@ -58,6 +58,7 @@ test('the old card keeps its service order, accepts only listed keys and writes 
   assert.match(f.edits.at(-1), /Вставь ключ <code>GITHUB_TOKEN<\/code>:/);
   assert.deepEqual(callbacks(f.editOptions.at(-1)), [['svc_setup:back']]);
   await f.message('  fixture-own-github  ');
+  assert.ok(f.deleted.includes(99));
   assert.equal((await readEnvMap()).map.get('GITHUB_TOKEN'), 'fixture-own-github');
   assert.equal(await fs.readFile(otherEnv, 'utf8'), 'GITHUB_TOKEN=fixture-other-bot\n');
   assert.equal((await loadState()).state.ccSessionId, before.ccSessionId);
@@ -113,6 +114,8 @@ test('an older card and unrelated Telegram topic cannot consume an open service 
     message_id: 98, text: 'fixture-topic-token', from: { id: 42 }, chat: { id: 42 }, message_thread_id: 17,
   } });
   assert.equal((await readEnvMap()).map.get('VERCEL_TOKEN'), 'fixture-topic-token');
+  assert.ok(f.deleted.includes(98));
+  assert.ok(!f.deleted.includes(99));
   assert.equal(f.messageOptions.at(-1)?.message_thread_id, 17);
   assert.equal(prompts.length, 1);
 });
@@ -149,11 +152,15 @@ test('the service form owns input before the prompt edit is acknowledged', async
     editing.resolve();
     await acknowledge.promise;
   });
+  const remove = t.mock.method(f.bot.api, 'deleteMessage', async () => {
+    throw new Error('fixture lacks permission to delete the submitted key');
+  });
   const selection = f.callback('svc_setup:VOYAGE_API_KEY');
   try {
     await editing.promise;
     await f.message('fixture-early-key');
     assert.equal((await readEnvMap()).map.get('VOYAGE_API_KEY'), 'fixture-early-key');
+    assert.equal(remove.mock.callCount(), 1);
   } finally {
     acknowledge.resolve();
     await selection;
