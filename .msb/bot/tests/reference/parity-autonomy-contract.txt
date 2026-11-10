@@ -1468,5 +1468,22 @@ receives the real child result. Protected paths and Bash
 remain unavailable and the profile bytes match. The disabled
 scenario attempts Agent and observes zero child requests.
 Codex has a separate native helper fixture and file bridge.
-Explicit user-defined teams and token accounting are separate
-from this verification of the inherited tool boundary.
+Explicit user-defined teams have a separate checkpoint.
+
+The old xR, _i and gi at 18618–18677 read usage.total_tokens
+from task_notification. IJ 19747–19759 counts each measured
+completion, including failure, under q7. JO 36943–36957 adds
+the helper total to parent input and caches. Parent output
+and measured cost remain separate.
+
+The isolated Claude runner now reports the first valid terminal
+measurement for each native task ID when the supported helper
+roles are enabled. Start/progress and malformed events do not
+charge the budget. The existing saved prompt dispatcher journals
+the combined input and applies the same daily limit. In the
+scheduler regression, 20 parent + 16 completed + 7 failed
+exhaust the 43-token budget and block a second action. In the
+native loopback, the terminal helper total of 16 raises input
+from 22 to 38. Disabled helpers and the 2.1.154 legacy role
+still record only 22. This is token accounting for saved Claude
+runs and does not change provider billing or foreground turns.

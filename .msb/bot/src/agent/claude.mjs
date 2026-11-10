@@ -4,6 +4,7 @@
  * Навигация: [Исполнение](./README.md), [provider shim](../../../../overlay/bot/ext/shim/run-turn.mjs).
  * Managed MCP launch metadata comes from [turn preparation](../mcp/launch.mjs).
  * Native total_cost_usd is CLI metering; paid spend belongs to a verified billing source.
+ * Terminal helper usage feeds [saved prompt accounting](../autonomy/prompt-turn.mjs).
  * Result provenance (spawned/sessionIdObserved) lets [session-result](./session-result.mjs)
  * count actual returned attempts without inventing history for a pre-spawn abort.
  */
@@ -229,6 +230,8 @@ export async function runClaudeTurn(opts) {
     let cacheReadTokens = 0;
     let cacheCreationTokens = 0;
     let reportedCostUsd;
+    const helperTasks = opts.isolated?.agents ? new Set() : null;
+    let helperTokens = 0;
     const toolsUsed = [];
     let toolCount = 0;
 
@@ -252,6 +255,14 @@ export async function runClaudeTurn(opts) {
               if (!providerId && ev.apiKeySource !== 'ext') providerId = 'claude';
               if (ev.session_id) { sessionId = ev.session_id; sessionIdObserved = true; }
               if (ev.model) model = ev.model;
+            } else if (helperTasks && ev.subtype === 'task_notification') {
+              const taskId = ev.task_id;
+              const tokens = ev.usage?.total_tokens;
+              if (typeof taskId === 'string' && taskId && !helperTasks.has(taskId) &&
+                  Number.isSafeInteger(tokens) && tokens >= 0) {
+                helperTasks.add(taskId);
+                helperTokens += tokens;
+              }
             }
             break;
           case 'assistant': {
@@ -319,6 +330,7 @@ export async function runClaudeTurn(opts) {
         signal,
         aborted: Boolean(opts.signal?.aborted),
         usage: { inputTokens, outputTokens, cacheReadTokens, cacheCreationTokens },
+        ...(helperTasks?.size ? { helperTokens } : {}),
         // Alternate stream adapters supply a compatibility zero, not a meter.
         meteredCostUsd: (!opts.providerId || opts.providerId === 'claude') &&
           (!providerId || providerId === 'claude') ? reportedCostUsd : undefined,

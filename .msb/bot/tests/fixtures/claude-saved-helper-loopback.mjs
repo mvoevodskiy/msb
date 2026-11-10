@@ -116,6 +116,9 @@ try {
   const agentResult = results.get('toolu_parent_agent');
   assert.ok(agentResult, 'No Agent result');
   const enabled = helpers !== false;
+  // Native 2.1.316 reports 22 parent input tokens and a terminal helper total of 16.
+  const expectedTokensIn = enabled && name !== 'legacy' ? 38 : 22;
+  assert.equal(result.tokensIn, expectedTokensIn);
   if (enabled) {
     assert.notEqual(agentResult.is_error, true, JSON.stringify(agentResult.content));
     assert.ok(childRequests >= calls.length + 1);
@@ -140,7 +143,7 @@ try {
   else await assert.rejects(fs.stat(childWrite), { code: 'ENOENT' });
   console.log(JSON.stringify({ passed: true, scenario: name, role, enabled, childRequests, parentRequests,
     childReadAllowed: enabled, childWriteAllowed: allowWrite, protectedProfileByteExact: true,
-    shellUnavailable: true, observedTokensIn: result.tokensIn,
+    shellUnavailable: true, expectedTokensIn, observedTokensIn: result.tokensIn,
     tools: Object.fromEntries(Object.entries(inventory).map(([side, tools]) => [side, [...tools].sort()])) }));
 } finally {
   server.closeAllConnections();
