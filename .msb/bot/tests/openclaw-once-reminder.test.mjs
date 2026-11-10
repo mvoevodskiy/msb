@@ -408,3 +408,62 @@ test('unbound legacy OpenClaw mappings stay untouched and make STOP partial', as
   assert.deepEqual((await f.records()).find(row => row.id === legacy.id), legacy);
   assert.deepEqual((await f.jobs()).find(job => job.id === f.other.id), f.other);
 });
+
+const disabledRun = jobId => ({ jobId, action: 'finished', status: 'error', completionStatus: 'failed',
+  error: 'Cron job disabled by operator.', runAtMs: due, ts: due + 20 });
+
+test('an operator-disabled one-shot is spent and never sent after owner RESUME', async t => {
+  const f = await profile(t);
+  const { action, jobId } = await addForPause(f, 'Прерванная');
+  f.setTime(due);
+  assert.match(await f.command('[STOP_ALL]'), /снято с расписания задач: 1/);
+  await f.runEntries([disabledRun(jobId), disabledRun(jobId)]);
+  const reply = await f.command('[RESUME_ALL]');
+  assert.doesNotMatch(reply, /задачи снова в работе/);
+  await f.scheduler().tickNow();
+  await f.scheduler().tickNow();
+  assert.deepEqual(f.delivered(), []);
+  assert.equal((await f.calls()).filter(args => args[1] === 'enable' && args[2] === jobId).length, 1);
+  assert.deepEqual(await f.jobs(), [f.other]);
+  assert.equal((await f.records()).find(row => row.id === action.id).lastOutcome, 'stopped');
+  const journal = (await fs.readFile(path.join(f.directory, 'autonomy', 'runs.jsonl'), 'utf8')).trim().split('\n').map(JSON.parse);
+  assert.deepEqual(journal.map(row => [row.nativeJobId, row.status]), [[jobId, 'stopped']]);
+  assert.match(await f.command('[TASK_RUNS: ' + action.id + ']'), /снят стопом/);
+});
+
+test('resume waits for a running-at-disable one-shot even while its terminal record is missing', async t => {
+  const f = await profile(t);
+  const { action, jobId } = await addForPause(f, 'Запись ещё пишется');
+  const owned = (await f.jobs()).find(job => job.id === jobId);
+  await f.writeJobs([f.other, { ...owned, state: { runningAtMs: due } }]);
+  f.setTime(due);
+  assert.match(await f.command('[STOP_ALL]'), /снято с расписания задач: 1/);
+  // OpenClaw can clear runningAt before its asynchronous cron log append.
+  await f.writeJobs([f.other, { ...owned, enabled: false, state: {} }]);
+  assert.doesNotMatch(await f.command('[RESUME_ALL]'), /задачи снова в работе/);
+  const scheduler = f.scheduler();
+  await scheduler.tickNow();
+  assert.equal(await jobEnabled(f, jobId), false);
+  assert.deepEqual(f.delivered(), []);
+  assert.equal((await f.records()).find(row => row.id === action.id).lastRunAt, undefined);
+  await f.runEntries([disabledRun(jobId)]);
+  await scheduler.tickNow();
+  assert.equal((await f.records()).find(row => row.id === action.id).lastOutcome, 'stopped');
+  assert.equal((await f.calls()).filter(args => args[1] === 'enable' && args[2] === jobId).length, 1);
+  assert.deepEqual(f.delivered(), []);
+});
+
+test('a completed ordinary model error after STOP is delivered once without rearming the one-shot', async t => {
+  const f = await profile(t);
+  const { action, jobId } = await addForPause(f, 'Обычная ошибка');
+  f.setTime(due);
+  await f.command('[STOP_ALL]');
+  await f.runEntries([{ ...disabledRun(jobId), error: 'Fixture model unavailable' }]);
+  assert.doesNotMatch(await f.command('[RESUME_ALL]'), /задачи снова в работе/);
+  const scheduler = f.scheduler();
+  await scheduler.tickNow();
+  await scheduler.tickNow();
+  assert.equal((await f.calls()).filter(args => args[1] === 'enable' && args[2] === jobId).length, 1);
+  assert.equal((await f.records()).find(row => row.id === action.id).lastOutcome, 'ok');
+  assert.deepEqual(f.delivered().map(item => item.text), ['⏰ Текст Обычная ошибка']);
+});
