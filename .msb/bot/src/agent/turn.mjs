@@ -19,7 +19,7 @@ import { openClawTaskMaintenancePrompt, reminderPrompt } from '../autonomy/remin
 import { buildSystemPrompt } from './system-prompt.mjs';
 import { captureCodexProfile, readSessionContext } from './context.mjs';
 import { claimFirstSession, releaseFirstSession } from '../../shared/session-starts.mjs';
-import {applySessionResult} from './session-result.mjs';
+import {applySessionResult,beginClaudeResumeRecovery} from './session-result.mjs';
 import {captureSkillInstallTarget} from '../skills/install-target.mjs';
 import {skillInstallPrompt} from '../skills/install-protocol.mjs';
 import {prepareMcpLaunch} from '../mcp/launch.mjs';
@@ -43,6 +43,7 @@ import {nativeMcpScope} from '../../shared/mcp-native-scope.mjs';
  * target → [Telegram installation](../telegram/install-markers.mjs).
  * владелец записи сессии → [result transaction](./session-result.mjs) / [state](../state.mjs),
  * [first-start token](../../shared/session-starts.mjs), [description ledger](../sessions/ledger.mjs).
+ * Native Claude rejected resume uses the same launch and one new reservation.
  * Проверки: [polling/session fences](../../tests/turn-lifecycle.test.mjs),
  * [provider isolation](../../../../overlay/bot/ext/tests/reference/provider-switch.test.mjs),
  * [project cwd](../../tests/project-execution.test.mjs), [project races](../../tests/project-races.test.mjs).
@@ -132,9 +133,9 @@ export async function runAgentTurn({
   let lastTool = '';
   let streamProvider = providerId, quotaWrite;
   const turnStartedAt = Date.now();
-  const result = await runClaudeTurn({
+  const launch = sessionId => runClaudeTurn({
     prompt,
-    sessionId: state.ccSessionId || undefined,
+    sessionId,
     // Bind this turn to the provider observed with the session, even if the
     // menu changes the selected provider before the child process starts.
     providerId,
@@ -172,6 +173,16 @@ export async function runAgentTurn({
     },
   });
 
+  let result = await launch(state.ccSessionId || undefined);
+  if (result.resumeRejected) {
+    const recovery = await beginClaudeResumeRecovery(state, env, signal);
+    if (recovery) {
+      state = recovery.state;
+      firstSession = recovery.reservation;
+      result = await launch(undefined);
+    }
+  }
+
   const partial = providerId === 'codex' && result.providerId === 'codex' &&
     result.isError && result.subtype === 'error_partial' && Boolean(result.text);
   const turnWindow = partial ? { start: turnStartedAt, end: Date.now() } : undefined;
@@ -179,7 +190,7 @@ export async function runAgentTurn({
   const context = signal?.aborted || result.aborted ? null
     : await readSessionContext(result.sessionId, codexProfile ?? env, { cwd, turnWindow });
   result.context = partial ? null : context;
-  if (result.sessionId) {
+  if (result.sessionId && !result.resumeRejected) {
     await updateState(s=>applySessionResult(s,{snapshot:state,reservation:firstSession,result,prompt,signal}),env);
   }
 

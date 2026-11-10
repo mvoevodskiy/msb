@@ -8,6 +8,8 @@
  * Result provenance (spawned/sessionIdObserved) lets [session-result](./session-result.mjs)
  * count returned attempts separately from pre-spawn aborts. The Codex shim can
  * supply a provisional thread before the process group is stopped.
+ * Pre-execution Claude resume refusal is consumed by [turn](./turn.mjs).
+ * [Resume recovery checks](../../tests/claude-resume-recovery.test.mjs).
  * [Native-shim regression](../../../../overlay/bot/ext/tests/reference/provider-switch.test.mjs).
  */
 import { spawn } from 'node:child_process';
@@ -125,6 +127,7 @@ export async function runClaudeTurn(opts) {
   if (opts.effort) args.push('--effort', opts.effort);
   if (opts.sessionId) args.push('--resume', opts.sessionId);
 
+  const claudeResume = opts.providerId === 'claude' && isProviderSession(opts.sessionId, 'claude');
   const promptBytes = Buffer.byteLength(opts.prompt || '', 'utf8');
   if (promptBytes > 9 * 1024 * 1024) {
     throw new Error(`MESSAGE_TOO_LARGE:${(promptBytes / 1024 / 1024).toFixed(1)}`);
@@ -228,7 +231,9 @@ export async function runClaudeTurn(opts) {
     let sessionIdObserved = false;
     let startedCodexSessionId = '';
     let text = '';
+    let assistantObserved = false;
     let assistantTextObserved = false;
+    let structuredResumeRefusal = false;
     let model;
     let providerId = null;
     let subtype;
@@ -280,6 +285,7 @@ export async function runClaudeTurn(opts) {
             }
             break;
           case 'assistant': {
+            assistantObserved = true;
             const msg = ev.message;
             if (msg?.usage) {
               if (typeof msg.usage.input_tokens === 'number') inputTokens = msg.usage.input_tokens;
@@ -308,6 +314,9 @@ export async function runClaudeTurn(opts) {
               errorDisplay = ev.error_display;
             }
             if (typeof ev.is_error === 'boolean') isError = ev.is_error;
+            if (claudeResume && ev.is_error === true && Array.isArray(ev.errors)) {
+              structuredResumeRefusal ||= ev.errors.some(isClaudeResumeRefusal);
+            }
             if (typeof ev.result === 'string' && ev.result && !text) text = ev.result;
             if (ev.usage) {
               if (typeof ev.usage.input_tokens === 'number') inputTokens = ev.usage.input_tokens;
@@ -335,6 +344,12 @@ export async function runClaudeTurn(opts) {
         `[msb/agent-cc] Process closed: code=${code}, signal=${signal ?? '-'}, tools=${toolCount}, stderr=${opts.isolated ? '[background]' : stderr.slice(0, 200)}`,
       );
       const aborted = Boolean(opts.signal?.aborted);
+      // The native rejection can echo the requested ID as its result session.
+      // Only an error before assistant/model activity can retry the input.
+      const resumeRejected = claudeResume && !aborted && code !== null && (isError || code !== 0) &&
+        (!providerId || providerId === 'claude') && !assistantObserved &&
+        inputTokens === 0 && outputTokens === 0 && cacheReadTokens === 0 && cacheCreationTokens === 0 &&
+        (structuredResumeRefusal || stderr.split(/\r?\n/).some(isClaudeResumeRefusal));
       if (aborted && !sessionId && startedCodexSessionId) {
         sessionId = startedCodexSessionId;
         sessionIdObserved = true;
@@ -345,6 +360,7 @@ export async function runClaudeTurn(opts) {
         sessionIdObserved,
         text: text.trim(),
         assistantTextObserved,
+        ...(resumeRejected ? { resumeRejected } : {}),
         model,
         providerId,
         subtype,
@@ -379,6 +395,14 @@ export async function runClaudeTurn(opts) {
       if (sysPromptFile) fs.unlink(sysPromptFile).catch(() => {});
     }
   });
+}
+
+// Old qTA, blob 73aa9e7e at 55986–55988. Only terminal diagnostics call this.
+function isClaudeResumeRefusal(message) {
+  if (typeof message !== 'string') return false;
+  const text = message.toLowerCase();
+  return text.includes('no conversation found') || text.includes('cannot resume') ||
+    (text.includes('session') && (text.includes('not found') || text.includes('incompatible')));
 }
 
 function parseStreamLine(line) {

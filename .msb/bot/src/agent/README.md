@@ -88,6 +88,13 @@ Codex не требует значения `state.engine = codex`: это выб
 stream-контракт и guard записи сессии. Эталон поведения и пределы проверки —
 [reference README](../../tests/reference/README.md), [контракт Claude CLI](../../vendor/CONTRACT-agent-cc.md).
 
+Отказ открыть сохранённую сессию Claude распознаёт [разбор CLI](claude.mjs).
+[Ход](turn.mjs) повторяет исходный запрос с теми же аргументами без resume
+после [проверки и замены активной записи](session-result.mjs). История прежнего
+ID остаётся доступной, счётчик не растёт от отказа до работы модели.
+[Локальные проверки](../../tests/claude-resume-recovery.test.mjs) и
+[проверка нативного CLI](../../tests/fixtures/claude-resume-loopback.mjs).
+
 
 Claude control/plan uses the old conversational instructions in [mode-prompt](mode-prompt.mjs)
 from the same provider/mode snapshot as its CLI options. Both map to acceptEdits;
