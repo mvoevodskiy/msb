@@ -240,6 +240,35 @@ if (engineMenuScenario) {
     claudeAuthUnchanged: process.env.CLAUDE_CODE_OAUTH_TOKEN === originalClaudeAuth,
     foreignCode: foreign.code, ownCode: own.code,
     forwarded: claudeCalls.map(({ argv, stdin }) => ({ argv, stdin })) };
+} else if (scenario.startsWith('codex-own-preferences-')) {
+  const field = scenario.endsWith('-legacy') ? 'model' : 'ccModel';
+  const claudeModel = 'custom-native-model';
+  const original = { ...initialState, [field]: claudeModel, ccEffort: 'max', ocModel: 'openrouter/fixture/model' };
+  await writeJSON(stateFile, original);
+  const f = await hookedBot();
+  await f.callback('ext:conn:set:codex');
+  const shimBin = fileURLToPath(new URL('../../../shim/bin/', import.meta.url));
+  process.env.PATH = [shimBin, binDir, path.dirname(process.execPath), '/usr/bin', '/bin'].join(':');
+  const { runAgentTurn } = await import('../../../../../../.msb/bot/src/agent/turn.mjs');
+  const first = await runAgentTurn({ prompt: 'reference Codex fallback preferences' });
+  const direct = await runShim(['-p', '--resume', session, '--model', 'gpt-5.4-mini']);
+  const { setSelectedModel, setSelectedEffort } = await import('../../../store.mjs');
+  await setSelectedModel('codex', 'gpt-6.1-terra');
+  await setSelectedEffort('codex', 'max');
+  const explicit = await runAgentTurn({ prompt: 'reference explicit Codex preferences' });
+  await f.callback('ext:conn:set:claude');
+  const claude = await runAgentTurn({ prompt: 'reference restored Claude preference' });
+  const calls = await trace();
+  const codexArgs = calls.filter(x => x.name === 'codex' && x.argv[0] === 'exec').map(x => x.argv);
+  const lastClaude = calls.filter(x => x.name === 'claude' && x.argv[0] === '-p').at(-1)?.argv || [];
+  const after = await readJSON(stateFile);
+  result = {
+    firstOk: first.ok, firstModel: first.result?.model, directOk: direct.code === 0,
+    explicitOk: explicit.ok, explicitModel: explicit.result?.model, claudeOk: claude.ok,
+    codexArgs, claudeArgs: lastClaude,
+    sameCodexSession: first.result?.sessionId === session && explicit.result?.sessionId === session,
+    claudeSession: after.ccSessionId, oldModel: after[field], oldEffort: after.ccEffort, oldOcModel: after.ocModel,
+  };
 } else if (scenario === 'pinned-route') {
   // The user changes the selected provider after an earlier turn took its snapshot.
   await writeJSON(storeFile, { ...initialStore, active:'claude', sessions:{codex:thread} });

@@ -247,3 +247,27 @@ test('reference: a turn stays with its original provider if selection changes be
   assert.notEqual(r.restrictedTurnCode, 0);
   assert.equal(r.invalidLaunchedCli, false);
 });
+
+
+for (const kind of ['current', 'legacy']) {
+  test('reference: Codex uses its own settings after switching from ' + kind + ' Claude model state', async (t) => {
+    const r = await scenario(t, 'codex-own-preferences-' + kind);
+    assert.equal(r.firstOk, true);
+    assert.equal(r.firstModel, 'gpt-6.1-sol');
+    assert.equal(r.directOk, true);
+    assert.equal(r.explicitOk, true);
+    assert.equal(r.explicitModel, 'gpt-6.1-terra');
+    assert.equal(r.codexArgs.length, 3);
+    const model = argv => argv[argv.indexOf('-m') + 1];
+    assert.deepEqual(r.codexArgs.map(model), ['gpt-6.1-sol', 'gpt-5.4-mini', 'gpt-6.1-terra']);
+    assert.ok(r.codexArgs[0].includes('model_reasoning_effort="high"'));
+    assert.ok(r.codexArgs[2].includes('model_reasoning_effort="max"'));
+    assert.equal(r.sameCodexSession, true);
+    assert.equal(r.claudeOk, true);
+    assert.equal(r.claudeArgs[r.claudeArgs.indexOf('--model') + 1], 'custom-native-model');
+    assert.equal(r.claudeSession, 'reference-claude-session');
+    assert.equal(r.oldModel, 'custom-native-model');
+    assert.equal(r.oldEffort, 'max');
+    assert.equal(r.oldOcModel, 'openrouter/fixture/model');
+  });
+}
