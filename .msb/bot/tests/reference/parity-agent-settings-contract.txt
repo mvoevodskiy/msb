@@ -84,7 +84,7 @@ low/medium/high/max, но не xhigh. K0A52558–52615 показывает raw 
 На baseline c76d8a3 aliases resolveModel были закреплены на Opus4.6/Sonnet4.6/Haiku4.5/Fable5;
 этот узкий этап не заменяет каталог и не заявляет перенос CLI-version locks.
 Нормализовать только фактический flag, не переписывать сохранённый preference,
-не трогать Codex provider effort/native config и выбранный владельцем low.
+не менять отдельный provider effort и native config Codex из обработчика Claude.
 
 Последующий этап каталога (контракт parity-model-catalog-contract.txt) возвращает
 native aliases и весь V1 metadata/CLI locks. Прежний текст о concrete aliases

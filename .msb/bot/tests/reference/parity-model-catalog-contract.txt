@@ -57,7 +57,7 @@ async subprocess сам по себе не доказывает, что Telegram
 Codex/Cursor/Qwen используют свои модели, store и native settings. Старые Claude
 buttons aliases/pinned/native IDs не должны попасть в модель другого provider.
 New overlay guard покрывал opus/sonnet как слова, но не opus46/claude-opus-4-6.
-Сохранить native Codex full access, separate sessions и выбранный владельцем low.
+Сохранить native Codex full access и отдельные сессии.
 CLI effort/UI должны пользоваться тем же catalogue metadata: old FY250–274,
 DC275–287,yW792–807,nU809–817; не перезаписывать raw effort или native session.
 Модули/заголовки/README ведут по imports к ответственности и проверке, без
