@@ -83,8 +83,8 @@ test('a persisted owner spend pause survives the day boundary and blocks a model
   }, { overlay: false, now: () => now });
   const saved = await putState({ costHistory: { '2026-02-08': 25 }, dailySpendLimit: 25, costPaused: true });
   await f.message('Обычный вопрос при паузе');
-  const first = await until(() => f.edits.at(-1), 'The blocked turn must settle');
-  assert.equal(first, pauseText);
+  // A progress frame can arrive before the worker reads the saved pause.
+  await until(() => f.edits.at(-1) === pauseText, 'The blocked turn must show the daily-limit warning');
   assert.equal(modelCalls, 0);
   assert.deepEqual((await loadState()).state, saved);
   await f.callback('settings:cost:resume', 99);
