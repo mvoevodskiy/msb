@@ -51,6 +51,7 @@ for (const provider of ['claude', 'codex']) {
     const foreground = (await native.trace()).at(-1);
     const system = provider === 'claude' ? foreground.argv[foreground.argv.indexOf('--append-system-prompt') + 1] : foreground.prompt;
     assert.match(system, /\[SCHEDULE_TASK\].*"kind":"prompt"/);
+    assert.match(system, /task\.team/);
     const root = actionRoot();
     const file = path.join(root, 'actions.json');
     const [entry] = JSON.parse(await fs.readFile(file, 'utf8'));
@@ -135,12 +136,52 @@ test('the old prefix guard and nullish text aliases keep only the work instructi
   assert.ok(rows.every(row => !row.budget));
 });
 
+test('a named team is normalized at registration and shown in the saved task card', async t => {
+  const team = [{ name: '  Автор  <А>  ', brief: '  Сверяет\n  факты.  ' },
+    { name: '  Редактор\t текста  ', brief: '  Проверяет форму.  ' },
+    { name: 'Д'.repeat(41), brief: 'Б'.repeat(241) }, { name: 'Сборщик', brief: 'Сводит итоги.' }];
+  const f = await reminderFixture(t, { output: marker(promptAction(once, { team })) });
+  await setClaude();
+  await f.request('Создай сбор с заданными ролями');
+  assert.match(await f.final(), /Ок, поставил/);
+  const [entry] = await f.records();
+  assert.deepEqual(entry.task.team, [
+    { name: 'Автор <А>', brief: 'Сверяет факты.' },
+    { name: 'Редактор текста', brief: 'Проверяет форму.' },
+    { name: 'Д'.repeat(40), brief: 'Б'.repeat(240) },
+    { name: 'Сборщик', brief: 'Сводит итоги.' },
+  ]);
+  assert.equal(entry.task.helpers, undefined);
+  await f.callback('auto:task:' + entry.id);
+  assert.match(f.edits.at(-1), /Команда: Автор &lt;А&gt;, Редактор текста, Д{40}, Сборщик/);
+  assert.doesNotMatch(f.edits.at(-1), /Сверяет факты/);
+});
+
+test('invalid team input receives the old specific errors without saving a task', async t => {
+  const role = { name: 'Проверяющий', brief: 'Сверяет цифры' };
+  const cases = [
+    [{ team: role }, 'команда должна быть списком ролей'],
+    [{ team: [{ ...role, name: 7 }] }, 'имя роли должно быть строкой'],
+    [{ team: [{ ...role, brief: 7 }] }, 'описание роли должно быть строкой'],
+    [{ team: [{ brief: role.brief }] }, 'у каждой роли должно быть имя'],
+    [{ team: ['Проверяющий'] }, 'у роли «Проверяющий» не сказано, что она делает'],
+    [{ team: [role, { ...role, name: '  проверяющий ' }] }, 'роль «проверяющий» названа дважды'],
+    [{ team: Array.from({ length: 5 }, (_, index) => ({ ...role, name: 'Роль ' + index })) }, 'ролей не больше 4'],
+    [{ team: [role], helpers: false }, 'роли и «без помощников» вместе не бывают: либо команда, либо без помощников'],
+  ];
+  const f = await reminderFixture(t, { output: cases.map(([task]) => marker(promptAction(once, task))).join('\n') });
+  await setClaude();
+  await f.request('Проверь эти роли для сборов');
+  const final = await f.final();
+  for (const [, error] of cases) assert.ok(final.includes('Не получилось: ' + error), error);
+  assert.doesNotMatch(final, /Поставил:/i);
+  await assert.rejects(fs.stat(f.actionFile), { code: 'ENOENT' });
+});
+
 test('advanced and explicitly routed requests are refused instead of being saved as an ordinary collection', async t => {
   const output = [
     promptAction(once, { shell: true }),
     promptAction(once, {}, { memory: 'continuous' }),
-    promptAction(once, { team: [{ name: 'fixture', brief: 'собирает' }] }),
-    promptAction(once, { team: { name: 'fixture' } }),
     promptAction(once, { bashAllow: { command: 'fixture' } }),
     promptAction(once, { sources: { path: 'fixture' } }),
     promptAction(once, { freshness: { paths: ['/fixture'], maxAgeHours: 2 } }),

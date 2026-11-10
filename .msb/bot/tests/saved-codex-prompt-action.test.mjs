@@ -220,6 +220,24 @@ test('a saved Codex turn cannot read or edit a concurrently staged foreground MC
   assert.equal(await bridge.call('read_file', { path: note }), 'ordinary temporary work');
 });
 
+test('a saved Codex team reaches the existing native helper route with its briefs', async t => {
+  const task = { ...original.task, team: [{ name: 'Проверяющий', brief: 'Сверяет выводы' }] };
+  const f = await profile(t, { action: { ...original, task } });
+  const before = await Promise.all(f.files.map(file => fs.readFile(file)));
+  await f.scheduler.tickNow();
+  const call = await f.call();
+  assert.ok(call, 'The due action with saved roles must launch Codex');
+  assert.match(call.input, /Команда задачи\.[\s\S]*- Проверяющий: Сверяет выводы/);
+  assert.match(call.input, /spawn_agent/);
+  assert.doesNotMatch(call.input, /subagent_type/);
+  assert.ok(call.argv.includes('features.multi_agent_v2=true'));
+  assert.ok(call.argv.includes('--ignore-user-config'));
+  assert.ok(call.argv.includes('features.shell_tool=false'));
+  assert.deepEqual((await f.actions())[0].task.team, task.team);
+  assert.equal((await f.runs())[0].status, 'ok');
+  assert.deepEqual(await Promise.all(f.files.map(file => fs.readFile(file))), before);
+});
+
 test('observed helper tokens consume the same daily budget as the parent', async t => {
   const next = { ...original, id: 'second-action', name: 'После лимита' };
   let calls = 0;

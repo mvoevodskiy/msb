@@ -151,6 +151,38 @@ for (const helpers of [undefined, true]) {
   });
 }
 
+test('the named Claude team replaces default roles and uses the same unique IDs in the prompt', async t => {
+  const task = { kind: 'prompt', prompt: 'Собери итог', team: [
+    { name: 'Е', brief: 'Читает заметки' }, { name: 'Ё', brief: 'Сверяет выводы' },
+  ] };
+  const f = await profile(t, [action('named-team', { task })], { version: '2.1.316' });
+  await f.scheduler.tickNow();
+  const [call] = await f.calls();
+  assert.ok(call, 'The due action with saved roles must launch Claude');
+  assert.ok(call.argv.includes('--agents'));
+  const roles = JSON.parse(value(call, '--agents'));
+  assert.deepEqual(Object.keys(roles), ['e', 'e-2']);
+  assert.equal(roles.e.description, 'Е: Читает заметки');
+  assert.match(roles['e-2'].prompt, /Твоя роль: Сверяет выводы/);
+  assert.match(call.input, /Команда задачи\.[\s\S]*- Е \(e\): Читает заметки\n- Ё \(e-2\): Сверяет выводы/);
+  assert.match(call.input, /subagent_type/);
+  assert.ok(!value(call, '--tools').split(',').includes('Bash'));
+  assert.deepEqual((await f.actions())[0].task.team, task.team);
+  assert.equal((await f.runs())[0].status, 'ok');
+});
+
+test('a named Claude team keeps its brief on the older CLI native helper route', async t => {
+  const task = { kind: 'prompt', prompt: 'Собери итог', team: [{ name: 'Проверяющий', brief: 'Сверяет выводы' }] };
+  const f = await profile(t, [action('legacy-team', { task })]);
+  await f.scheduler.tickNow();
+  const [call] = await f.calls();
+  assert.ok(call);
+  assert.ok(!call.argv.includes('--agents'));
+  assert.ok(value(call, '--tools').split(',').includes('Agent'));
+  assert.match(call.input, /- Проверяющий: Сверяет выводы/);
+  assert.doesNotMatch(call.input, /subagent_type/);
+});
+
 test('saved Claude helper opt-out carries the old work instruction on a supported CLI', async t => {
   const task = { kind: 'prompt', prompt: 'Проверь источники', helpers: false };
   const f = await profile(t, [action('no-helpers', { task })], { version: '2.1.316' });
