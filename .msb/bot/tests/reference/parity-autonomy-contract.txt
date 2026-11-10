@@ -1450,3 +1450,23 @@ launch. The core grants Agent/Task but has no --agents
 binding in the isolated launcher. Test the exact argv,
 the old opt-out instruction, and a real child request
 against a local API. No production account is involved.
+
+The restored launcher uses the same version gate for the
+explicit owner receipt and native --agents registration.
+The isolated Claude options contain the two old roles
+only when Agent is allowed and the version is confirmed.
+An older CLI still has its native built-in helpers.
+The work-alone wording accompanies helpers:false.
+
+Use the same network-none command as the native file guard
+probe with script claude-saved-helper-loopback.mjs, followed
+by the native binary and scenario. On 2.1.316 run standard,
+narrow and disabled. On 2.1.154 run legacy. The standard
+worker reads and writes ordinary files. The narrow researcher
+and legacy built-in can read, with Write refused. The parent
+receives the real child result. Protected paths and Bash
+remain unavailable and the profile bytes match. The disabled
+scenario attempts Agent and observes zero child requests.
+Codex has a separate native helper fixture and file bridge.
+Explicit user-defined teams and token accounting are separate
+from this verification of the inherited tool boundary.

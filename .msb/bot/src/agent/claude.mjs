@@ -45,7 +45,7 @@ function isolatedEnvironment() {
  * @property {(ev: object) => void} [onEvent]
  * @property {boolean} [autonomy]
  * @property {number} [maxTurns]
- * @property {{tools: string[], directories: string[]}} [isolated]
+ * @property {{tools: string[], directories: string[], agents?: Record<string, {description: string, prompt: string}>}} [isolated]
  */
 
 /**
@@ -84,6 +84,7 @@ export async function runClaudeTurn(opts) {
       '--setting-sources', '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}',
       '--settings', JSON.stringify({ disableAllHooks: true, disableClaudeAiConnectors: true }),
       '--add-dir', ...opts.isolated.directories);
+    if (opts.isolated.agents) args.push('--agents', JSON.stringify(opts.isolated.agents));
   }
 
   const denied = [

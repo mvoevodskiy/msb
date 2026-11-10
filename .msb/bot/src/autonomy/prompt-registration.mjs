@@ -4,8 +4,7 @@
  * [Telegram](../telegram/reminder-markers.mjs) publishes the action and reports its permissions.
  * [Checks](../../tests/saved-prompt-registration.test.mjs).
  */
-import { readClaudeVersion } from '../agent/claude-version.mjs';
-import { compareCliVersion } from '../agent/models.mjs';
+import { savedClaudeHelpersSupported } from './saved-claude-helpers.mjs';
 import { ordinarySavedPrompt } from './prompt-policy.mjs';
 
 const prefixes = [
@@ -80,8 +79,7 @@ export async function promptRegistrationPermissions(action, provider) {
   if (action.task.kind !== 'prompt') return '';
   const base = ' Она сможет читать и сохранять файлы у тебя на сервере. Команды запускать не будет, наружу ничего не публикуется.';
   if (action.task.helpers !== true) return base;
-  const canDescribeHelpers = provider === 'codex' ||
-    (compareCliVersion(await readClaudeVersion().catch(() => undefined), '2.1.172') ?? -1) >= 0;
+  const canDescribeHelpers = provider === 'codex' || await savedClaudeHelpersSupported();
   return canDescribeHelpers ? base +
     ' Ей можно звать помощников: их права те же, что у неё самой, но ход выходит длиннее и дороже.' : base;
 }

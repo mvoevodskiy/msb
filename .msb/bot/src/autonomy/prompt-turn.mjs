@@ -11,6 +11,7 @@ import { runClaudeTurn } from '../agent/claude.mjs';
 import { actionRoot, botRoot, homeDir, msbRoot, sessionDir } from '../paths.mjs';
 import { loadState } from '../state.mjs';
 import { savedPromptPlan } from './prompt-policy.mjs';
+import { savedClaudeHelperRoles, savedClaudeHelpersSupported } from './saved-claude-helpers.mjs';
 import { physicalRecordPath } from './record-file.mjs';
 
 const quietMarker = '[NOTHING_TO_REPORT]';
@@ -54,6 +55,9 @@ function taskInstructions(action, { quiet, provider, tools }) {
   }
   lines.push('', action.task.prompt);
   if (quiet) lines.push('', 'Если сообщать нечего — ответь одной строкой ' + quietMarker + '.');
+  if (provider === 'claude' && action.task.helpers === false) {
+    lines.push('', 'Помощников не зови, всю работу делай сам: так попросил владелец.');
+  }
   return lines.join('\n');
 }
 
@@ -77,7 +81,10 @@ export async function runSavedPrompt(action, plan, { signal, isCurrent, runCodex
   await fs.mkdir(logical, { recursive: true, mode: 0o700 });
   const cwd = await fs.realpath(logical);
   if (cwd !== expected) return deferred;
-  const denied = await protectedPaths(env, plan.provider);
+  const [denied, claudeHelpersSupported] = await Promise.all([
+    protectedPaths(env, plan.provider),
+    plan.provider === 'claude' && plan.tools.includes('Agent') && savedClaudeHelpersSupported(env),
+  ]);
   const directories = [homeDir(env), os.tmpdir()];
   const canLaunch = async () => {
     if (signal.aborted || await fs.realpath(logical) !== cwd || !await isCurrent()) return false;
@@ -98,7 +105,8 @@ export async function runSavedPrompt(action, plan, { signal, isCurrent, runCodex
         ...denied.flatMap(value => ['Read', 'Edit'].map(tool => tool + '(/' + value + ')'))];
       result = await runClaudeTurn({ prompt, cwd, providerId: 'claude',
         permissionMode: 'acceptEdits', model: plan.model, autonomy: true, allowedTools: plan.tools,
-        disallowedTools, isolated: { tools: plan.tools, directories }, signal: turnSignal });
+        disallowedTools, isolated: { tools: plan.tools, directories,
+          ...(claudeHelpersSupported ? { agents: savedClaudeHelperRoles } : {}) }, signal: turnSignal });
     }
   } catch {
     if (signal.aborted) return stopped;
