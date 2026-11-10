@@ -100,12 +100,15 @@ export async function runAgentTurn({
   const cwd = await resolveProjectCwd(state, env, baseWorkspace);
   if (signal?.aborted) return aborted();
   const providerId = state.extAuthBypass || 'claude';
+  const isCodex = providerId === 'codex';
   const cliVersion = providerId === 'claude' ? await readClaudeVersion(env) : undefined;
-  const selectedModel = resolveModel(state);
+  // The Codex adapter owns its preferences. The shared CLI envelope must not
+  // turn an old Claude model into an explicit Codex override.
+  const selectedModel = isCodex ? undefined : resolveModel(state);
   const model = isAutoTurn && providerId === 'claude'
     ? claudeAutoTurnModel(selectedModel, state.ccModel || state.model, env)
     : selectedModel;
-  const effort = resolveEffort(model === selectedModel ? state : { ...state, ccModel: model }, cliVersion);
+  const effort = isCodex ? undefined : resolveEffort(model === selectedModel ? state : { ...state, ccModel: model }, cliVersion);
   const permissionMode = resolvePermMode(state, cliVersion);
   const extra = [conversationalModePrompt(state), skillInstallPrompt(skillInstall), mcpInstallPrompt(mcpInstall)];
   const reminderRail = reminderOwner && !autonomy && !isAutoTurn && isLocalReminderEngine(state.engine);
@@ -118,7 +121,7 @@ export async function runAgentTurn({
   const installScope=mcpInstall?await nativeMcpScope(mcpInstall.provider,cwd,env):undefined;
   if (signal?.aborted) return aborted();
 
-  const codexProfile = providerId === 'codex' ? captureCodexProfile(env) : undefined;
+  const codexProfile = isCodex ? captureCodexProfile(env) : undefined;
   let lastTool = '';
   let streamProvider = providerId, quotaWrite;
   const turnStartedAt = Date.now();
