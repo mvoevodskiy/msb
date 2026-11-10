@@ -1,6 +1,7 @@
 /**
  * The [saved Codex adapter](../../../../overlay/bot/ext/adapters/saved-codex.mjs)
- * with real Linux Codex and a synthetic Responses service. Run in network-none
+ * with real Linux Codex and a synthetic Responses service. The named case starts in
+ * the [core runner](../../src/autonomy/prompt-turn.mjs). Run in network-none
  * Docker as described by [the saved task contract](../reference/parity-autonomy-contract.txt).
  */
 import assert from 'node:assert/strict';
@@ -10,11 +11,15 @@ import os from 'node:os';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
 import { runSavedCodexPrompt } from '../../../../overlay/bot/ext/adapters/saved-codex.mjs';
+import { savedPromptPlan } from '../../src/autonomy/prompt-policy.mjs';
+import { runSavedPrompt } from '../../src/autonomy/prompt-turn.mjs';
+import { saveState } from '../../src/state.mjs';
 
 const binary = process.argv[2];
 assert.ok(path.isAbsolute(binary));
 const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'msb-native-helper-check-')));
-const home = path.join(root, 'home'), native = path.join(root, 'native'), cwd = path.join(home, 'autonomy');
+const home = path.join(root, 'home'), native = path.join(root, 'native');
+const cwd = path.join(home, '.iia', 'bots', 'default', 'autonomy', 'cc-workspace');
 const bin = path.join(root, 'bin'), auth = path.join(native, 'auth.json');
 const role = path.join(native, 'agents', 'fixture_override.toml');
 const rollout = path.join(native, 'sessions', 'old-rollout.jsonl');
@@ -29,7 +34,9 @@ const png = 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwM
 const helperReply = 'fixture helper completed';
 const parentReply = 'fixture parent completed';
 const scope = ['Read', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'Agent', 'Task'];
-const cases = ['reader', 'writer', 'attachment', 'role', 'disabled', 'cancel'];
+const namedRole = { name: 'Проверяющий', brief: 'Сверяет заметки и сообщает факт.' };
+const namedBrief = namedRole.name + ': ' + namedRole.brief;
+const cases = ['reader', 'writer', 'attachment', 'role', 'disabled', 'cancel', 'named'];
 const counts = {};
 let state, failure, accounting, sequence = 0;
 
@@ -50,6 +57,12 @@ function parentItem(input, tools, call, step) {
     assert.equal(tool?.namespace, 'collaboration');
     assert.equal(Object.hasOwn(tool.parameters.properties, 'items'), false);
     const args = { task_name: 'fixture_helper', message: 'Carry out the scoped fixture work.', fork_turns: 'none' };
+    if (state.kind === 'named') {
+      const prompt = JSON.stringify(input.input);
+      assert.ok(prompt.includes('- ' + namedBrief));
+      assert.ok(prompt.includes('spawn_agent') && prompt.includes('wait_agent'));
+      args.message = namedBrief + ' Прочитай visible.txt.';
+    }
     if (state.kind === 'attachment') args.items = [{ type: 'local_image', path: image }];
     if (state.kind === 'role') args.agent_type = 'fixture_override';
     return call('spawn_agent', args);
@@ -114,6 +127,11 @@ const service = http.createServer(async (req, res) => {
       assert.equal(names.includes('write_file'), state.kind === 'writer');
       assert.ok(names.includes('read_file'));
       assert.equal(input.model, 'gpt-5.4');
+      if (state.kind === 'named' && step === 0) {
+        assert.ok(input.input.some(item => item.role === 'user' && JSON.stringify(item).includes(namedBrief)),
+          'The saved role brief reaches the isolated native child');
+        state.namedBriefReceived = true;
+      }
       if (state.kind === 'cancel') {
         res.once('close', () => { state.childClosed = true; });
         state.activeChild = true;
@@ -162,17 +180,34 @@ try {
     id_token: idToken, access_token: access, refresh_token: 'fixture-refresh', account_id: 'fixture-account',
   }, last_refresh: new Date().toISOString() }), { mode: 0o600 });
   await fs.writeFile(config, 'model = "gpt-5.4"\n[features]\nmulti_agent = true\nmulti_agent_v2 = true\n');
-  const protectedFiles = [auth, role, rollout, image, config];
+  const env = { HOME: home, CODEX_HOME: native, PATH: bin + path.delimiter + process.env.PATH,
+    MSB_RUNTIME_PROFILE: 'jar1', MSB_RUNTIME_ROOT: path.join(home, '.iia'), MSB_BOT_ID: 'default' };
+  const savedState = { engine: 'cc', authMode: 'subscription', hasSubscriptionAuth: true, extAuthBypass: 'codex' };
+  const stateFile = await saveState(savedState, env);
+  const protectedFiles = [auth, role, rollout, image, config, stateFile];
   const before = await Promise.all(protectedFiles.map(file => fs.readFile(file)));
   await new Promise((resolve, reject) => { service.once('error', reject); service.listen(0, '127.0.0.1', resolve); });
   const baseUrl = 'http://127.0.0.1:' + service.address().port + '/v1';
-  const env = { HOME: home, CODEX_HOME: native, PATH: bin + path.delimiter + process.env.PATH };
   for (const kind of cases) {
     state = { kind, requests: new Map(), stop: new AbortController() };
     let tools = scope;
     if (kind === 'writer') tools = [...scope, 'Write', 'Edit'];
     if (kind === 'disabled') tools = scope.filter(tool => tool !== 'Agent' && tool !== 'Task');
     const signal = AbortSignal.any([state.stop.signal, AbortSignal.timeout(85_000)]);
+    if (kind === 'named') {
+      const action = { id: 'named', task: { kind: 'prompt', prompt: 'Run the saved team fixture.',
+        model: 'gpt-5.4', team: [namedRole] }, capability: 'none', authority: { profile: 'narrow' } };
+      const plan = savedPromptPlan(action, savedState, env, true);
+      const result = await runSavedPrompt(action, plan, { signal, isCurrent: async () => true,
+        runCodexPrompt: (options, env) => runSavedCodexPrompt(options, env, { baseUrl }) }, env);
+      if (failure) throw failure;
+      assert.equal(result.status, 'ok', JSON.stringify(result));
+      assert.equal(result.text, parentReply);
+      assert.equal(state.namedBriefReceived, true);
+      assert.equal(state.requests.size, 2);
+      counts[kind] = state.requests.size;
+      continue;
+    }
     const result = await runSavedCodexPrompt({ cwd, prompt: 'Run the saved helper fixture.', model: 'gpt-5.4',
       tools, directories: [home, os.tmpdir()], denied: [], signal, canLaunch: async () => true }, env, { baseUrl });
     if (failure) throw failure;
@@ -206,7 +241,8 @@ try {
   console.log(JSON.stringify({ version: '0.166.0', parent_and_helper_threads: counts,
     narrow_read_and_protected_denial: true, standard_child_write: true, local_attachment_rejected: true,
     custom_role_scope_widening_rejected: true, active_child_closed_on_abort: true, native_profile_files_byte_exact: true,
-    native_sessions_unchanged: true, explicit_disable_native_tools: true, input_token_accounting: accounting,
+    native_sessions_unchanged: true, explicit_disable_native_tools: true, named_brief_reached_native_child: true,
+    input_token_accounting: accounting,
     production_auth: false, network: 'loopback-only' }, null, 2));
 } finally {
   service.closeAllConnections();

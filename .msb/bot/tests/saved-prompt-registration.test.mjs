@@ -33,6 +33,7 @@ for (const provider of ['claude', 'codex']) {
     const f = await mcpFixture(t, provider, { runTurn: runAgentTurn });
     const native = await nativeFixtures(f);
     const quiet = provider === 'claude';
+    const requested = quiet ? { helpers: false } : { team: [{ name: 'Проверяющий', brief: 'Сверяет заметки' }] };
     process.env.AUTONOMY_ENABLED = '1';
     for (const key of ['AUTONOMY_MAX_ACTIONS', 'AUTONOMY_DAILY_CAP_USD', 'AUTONOMY_DAILY_CAP_RUNS',
       'AUTONOMY_DAILY_CAP_TOKENS', 'AUTONOMY_RESERVE_FRACTION']) delete process.env[key];
@@ -43,7 +44,7 @@ for (const provider of ['claude', 'codex']) {
     if (provider === 'codex') await fs.writeFile(auth, JSON.stringify({
       auth_mode: 'chatgpt', tokens: { access_token: 'fixture-saved-native' },
     }));
-    await native.respond(marker(promptAction(quiet ? once : daily, quiet ? { helpers: false } : {}, {
+    await native.respond(marker(promptAction(quiet ? once : daily, requested, {
       quiet, maxMinutes: quiet ? 1.2 : 42.4,
     })));
     await f.message(quiet ? 'Через пятнадцать минут сверь заметки' : 'Каждый вечер в восемь собирай заметки');
@@ -57,7 +58,7 @@ for (const provider of ['claude', 'codex']) {
     const [entry] = JSON.parse(await fs.readFile(file, 'utf8'));
     assert.match(entry.id, /^conv-prompt-/);
     assert.equal(entry.name, 'Задача: Прочитай заметки проекта и собери…');
-    assert.deepEqual(entry.task, { kind: 'prompt', prompt: clause, ...(quiet ? { helpers: false } : {}) });
+    assert.deepEqual(entry.task, { kind: 'prompt', prompt: clause, ...requested });
     assert.equal(entry.enabled, true);
     assert.equal(entry.capability, 'read');
     assert.deepEqual(entry.authority, standard);
@@ -99,6 +100,7 @@ for (const provider of ['claude', 'codex']) {
     } else {
       assert.ok(run.argv.includes('--ephemeral') && !run.argv.includes('resume'));
       assert.ok(run.argv.includes('features.multi_agent_v2=true'));
+      assert.match(run.prompt, /- Проверяющий: Сверяет заметки/);
       assert.ok(f.messages.slice(sentBefore).some(text => text.includes('Итог сбора &lt;данные&gt;')));
     }
     assert.deepEqual(await snapshot(), before);

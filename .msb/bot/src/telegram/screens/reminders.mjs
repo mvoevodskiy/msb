@@ -9,6 +9,7 @@ import { loadState } from '../../state.mjs';
 import { isLocalReminderEngine, readReminderPolicy } from '../../autonomy/reminder-policy.mjs';
 import { savedActionSnapshot } from '../../autonomy/reminder-store.mjs';
 import { savedPromptPlan } from '../../autonomy/prompt-policy.mjs';
+import { savedPromptTeam } from '../../autonomy/prompt-team.mjs';
 import { describeReminderSchedule } from '../../autonomy/reminder-time.mjs';
 import { reminderIsActive } from '../../autonomy/reminder-frequency.mjs';
 import { readReminderFrequencyDecisions } from '../../autonomy/frequency-decisions.mjs';
@@ -72,6 +73,9 @@ export function savedActionCard(action, view) {
     'Статус: ' + status, 'Когда: ' + when(action, view)];
   if (view.stopped && action.enabled) lines.push('⏸ Всё на паузе.');
   const body = action.task.kind === 'reminder' ? action.task.text : action.task.prompt;
-  lines.push('', 'Что делает: <i>' + escapeHtml(body.slice(0, 400).toWellFormed()) + '</i>', BLANK);
+  lines.push('', 'Что делает: <i>' + escapeHtml(body.slice(0, 400).toWellFormed()) + '</i>');
+  const team = savedPromptTeam(action);
+  if (team.length) lines.push('Команда: ' + escapeHtml(team.map(role => role.name).join(', ')));
+  lines.push(BLANK);
   return { text: lines.join('\n'), keyboard };
 }

@@ -1487,3 +1487,44 @@ native loopback, the terminal helper total of 16 raises input
 from 22 to 38. Disabled helpers and the 2.1.154 legacy role
 still record only 22. This is token accounting for saved Claude
 runs and does not change provider billing or foreground turns.
+
+Named roles in a saved collection
+---------------------------------
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Read the stable lines with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+_M 14386–14444 and prompt save 22853–22885 require names
+and briefs, collapse whitespace, keep up to four distinct
+case-insensitive names and bound each name/brief to 40/240.
+An empty list does not change default helpers. A nonempty
+team conflicts with helpers:false. Owner model guidance at
+24637 uses task.team for roles supplied by the owner.
+o4Q 101889–101908 and callback 115101–115114 show names in
+the menu card. mg 23952–23964 shows names and briefs in
+SHOW_TASK. The generic registration receipt stays unchanged.
+
+kgA 33315–33351 and JO 36832–36851 pass the old team to
+Claude. xn 20827–20854 registers named roles in place of
+defaults from CLI 2.1.172. Old yM 14471–14483 allocated
+suffixes for duplicate transliterations but bZ 14462–14468
+used the base ID in the prompt. The same roster now feeds
+both the instruction and argv, including e/e-2 for Е/Ё.
+An older CLI still accepts the saved team. Its built-in
+Agent/Task gets the name and brief as delegated text.
+
+Old OC SD/Ld 16061–16139 and cQA 45672–45682 put the
+team in the native job prompt with generic delegation.
+The existing Codex adapter receives the same named briefs
+in the saved action prompt. Its native spawn_agent message
+carries the name and brief, with no external role config.
+Native OpenClaw job provisioning remains a separate route.
+
+The Telegram, scheduler and CLI-shim regression covers old
+validation errors, persisted fields and matching role IDs.
+In network-none Docker run claude-saved-helper-loopback.mjs
+with the native binary and named (2.1.316) or legacy-named
+(2.1.154). The child request receives the selected brief and
+inherits file and shell scope. codex-saved-helper-loopback.mjs
+on 0.166.0 also uses the core saved runner for the named case.
+The selected brief reaches a distinct native child thread and
+returns to the parent. Native auth and session data are synthetic.

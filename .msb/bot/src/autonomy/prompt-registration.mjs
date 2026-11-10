@@ -6,6 +6,7 @@
  */
 import { savedClaudeHelpersSupported } from './saved-claude-helpers.mjs';
 import { ordinarySavedPrompt } from './prompt-policy.mjs';
+import { normalizePromptTeam } from './prompt-team.mjs';
 
 const prefixes = [
   /^\s*(?:поставь|заведи|создай|сделай|добавь)\s+(?:мне\s+)?(?:пожалуйста\s+)?(?:фоновую\s+|новую\s+)?задачу(?![а-яё])[^.:;!?\n]*[.:;!?]?\s*/i,
@@ -23,7 +24,8 @@ export const scheduledPromptInstruction = 'Для обычного сбора п
   '[SCHEDULE_TASK]{"trigger":{"kind":"recurring","cron":"0 20 * * *"},"task":{"kind":"prompt","prompt":"Собери краткую сводку по заметкам за день."}}[/SCHEDULE_TASK]\n' +
   'Для разового сбора используй trigger.kind="once". При явной просьбе можно указать quiet:true в корне ' +
   'для тишины, task.helpers:false для работы без помощников и maxMinutes в минутах. ' +
-  'Этот маршрут выполняет обычный сбор без команд и без памяти между запусками.\n';
+  'Роли словами владельца передай в task.team, до четырёх, например [{"name":"исследователь","brief":"ищет факты"}]. ' +
+  'Этот маршрут выполняет обычный сбор без команд оболочки и без памяти между запусками.\n';
 
 export function savedWorkBody(value) {
   let body = value;
@@ -44,7 +46,7 @@ export function parsePromptRegistration(marker) {
   const { task } = marker;
   // The original marker derives authority and delivery itself. Refuse explicit
   // modes the ordinary runner cannot honor instead of saving a weaker substitute.
-  const malformedLists = [task.team, task.bashAllow, task.sources].some(value => value != null && !Array.isArray(value));
+  const malformedLists = [task.bashAllow, task.sources].some(value => value != null && !Array.isArray(value));
   if (!ordinarySavedPrompt(marker) || malformedLists || task.followUp || task.provider != null || task.model != null ||
       marker.authority != null || (marker.capability != null && marker.capability !== 'read') ||
       marker.budget != null || marker.output?.deliverTo || marker.output?.emptyIsValidOutcome ||
@@ -57,10 +59,16 @@ export function parsePromptRegistration(marker) {
   if (!raw) return { error: 'Не получилось: для задачи-запроса нужен текст инструкции' };
   const prompt = savedWorkBody(raw);
   if (asksToScheduleAnotherTask(prompt)) return { error: nested };
+  const { team, error } = normalizePromptTeam(task.team);
+  if (error) return { error: 'Не получилось: ' + error };
+  if (team.length && task.helpers === false) {
+    return { error: 'Не получилось: роли и «без помощников» вместе не бывают: либо команда, либо без помощников' };
+  }
   const rawMinutes = marker.maxMinutes;
   const minutes = typeof rawMinutes === 'number' || typeof rawMinutes === 'string' ? Number(rawMinutes) : NaN;
   return {
-    task: { kind: 'prompt', prompt, ...(typeof task.helpers === 'boolean' ? { helpers: task.helpers } : {}) },
+    task: { kind: 'prompt', prompt, ...(typeof task.helpers === 'boolean' ? { helpers: task.helpers } : {}),
+      ...(team.length ? { team } : {}) },
     authority: { profile: 'standard', whatNotToDo: ['не публиковать ничего автоматически'] },
     capability: 'read',
     ...(marker.quiet === true ? { output: { emptyIsValidOutcome: true } } : {}),

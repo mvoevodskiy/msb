@@ -25,7 +25,7 @@ export function ordinarySavedPrompt(action) {
   return task?.kind === 'prompt' && ['narrow', 'standard'].includes(authority?.profile ?? 'narrow') &&
     ['none', 'read'].includes(capability ?? 'read') && !task.shell && !task.bashAllow?.length &&
     !action.requiresApproval && action.run?.memory !== 'continuous' && action.memory !== 'continuous' &&
-    !action.handoff && !task.team?.length && !task.sources?.length && !task.freshness && !action.verify?.enabled &&
+    !action.handoff && !task.sources?.length && !task.freshness && !action.verify?.enabled &&
     !output?.store && (!output?.format || output.format === 'tg-message');
 }
 

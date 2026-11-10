@@ -1,6 +1,7 @@
 /**
  * Execute a stateless saved prompt in the old autonomy workspace. [Policy](./prompt-policy.mjs)
  * supplies the tools for [Claude](../agent/claude.mjs) or the registered Codex adapter.
+ * [Saved roles](./prompt-team.mjs) use the same tool boundary and claimed action.
  * [Dispatcher](./reminder-dispatch.mjs) owns cancellation, delivery and history.
  */
 import fs from 'node:fs/promises';
@@ -11,7 +12,8 @@ import { runClaudeTurn } from '../agent/claude.mjs';
 import { actionRoot, botRoot, homeDir, msbRoot, sessionDir } from '../paths.mjs';
 import { loadState } from '../state.mjs';
 import { savedPromptPlan } from './prompt-policy.mjs';
-import { savedClaudeHelperRoles, savedClaudeHelpersSupported } from './saved-claude-helpers.mjs';
+import { savedClaudeHelperRoles, savedClaudeHelpersSupported, savedClaudeTeamRoster } from './saved-claude-helpers.mjs';
+import { promptTeamInstructions, savedPromptTeam } from './prompt-team.mjs';
 import { physicalRecordPath } from './record-file.mjs';
 
 const quietMarker = '[NOTHING_TO_REPORT]';
@@ -40,7 +42,7 @@ async function protectedPaths(env, provider) {
   return [...new Set([...paths.map(value => path.resolve(value)), ...physical])];
 }
 
-function taskInstructions(action, { quiet, provider, tools }) {
+function taskInstructions(action, { quiet, provider, tools }, teamPrompt) {
   const fields = ['canWithoutApproval', 'needsApproval', 'escalateWhen', 'whatNotToDo'];
   const saved = action.authority ?? {};
   const lines = ['Твои полномочия на этом ходу (владелец записал их заранее, спросить его сейчас нельзя).',
@@ -55,6 +57,7 @@ function taskInstructions(action, { quiet, provider, tools }) {
   }
   lines.push('', action.task.prompt);
   if (quiet) lines.push('', 'Если сообщать нечего — ответь одной строкой ' + quietMarker + '.');
+  if (teamPrompt) lines.push('', teamPrompt);
   if (provider === 'claude' && action.task.helpers === false) {
     lines.push('', 'Помощников не зови, всю работу делай сам: так попросил владелец.');
   }
@@ -94,7 +97,10 @@ export async function runSavedPrompt(action, plan, { signal, isCurrent, runCodex
 
   const timeout = AbortSignal.timeout(plan.timeoutMs);
   const turnSignal = AbortSignal.any([signal, timeout]);
-  const prompt = taskInstructions(action, plan);
+  const team = savedPromptTeam(action);
+  const roster = claudeHelpersSupported && team.length ? savedClaudeTeamRoster(team) : undefined;
+  const teamPrompt = promptTeamInstructions(team, plan.provider, roster && [...roster.keys()]);
+  const prompt = taskInstructions(action, plan, teamPrompt);
   let result;
   try {
     if (plan.provider === 'codex') {
@@ -103,10 +109,11 @@ export async function runSavedPrompt(action, plan, { signal, isCurrent, runCodex
     } else if (await canLaunch()) {
       const disallowedTools = ['mcp__*', 'Bash', 'Monitor', 'Skill', 'Workflow',
         ...denied.flatMap(value => ['Read', 'Edit'].map(tool => tool + '(/' + value + ')'))];
+      const agents = roster ? Object.fromEntries(roster) : savedClaudeHelperRoles;
       result = await runClaudeTurn({ prompt, cwd, providerId: 'claude',
         permissionMode: 'acceptEdits', model: plan.model, autonomy: true, allowedTools: plan.tools,
         disallowedTools, isolated: { tools: plan.tools, directories,
-          ...(claudeHelpersSupported ? { agents: savedClaudeHelperRoles } : {}) }, signal: turnSignal });
+          ...(claudeHelpersSupported ? { agents } : {}) }, signal: turnSignal });
     }
   } catch {
     if (signal.aborted) return stopped;

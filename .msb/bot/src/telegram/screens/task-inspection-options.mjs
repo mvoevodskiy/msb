@@ -3,6 +3,7 @@
  * Reading an event record never performs its check or its configured action.
  */
 import { reminderDateClock } from '../../autonomy/reminder-time.mjs';
+import { savedPromptTeam } from '../../autonomy/prompt-team.mjs';
 
 const quantity = (value, one, many) => value + ' ' + (value % 10 === 1 && value % 100 !== 11 ? one : many);
 const conditionKinds = {
@@ -83,9 +84,7 @@ export function taskInspectionOptions(action, now, timezone) {
     options.push('Длительность хода: до ' + quantity(Math.round(budget.maxRunSeconds / 60), 'минуты', 'минут') + '.');
   }
   if (task.kind === 'prompt') {
-    const team = task.helpers !== false && Array.isArray(task.team)
-      ? task.team.filter(row => typeof row?.name === 'string' && row.name.trim() && typeof row.brief === 'string' && row.brief.trim())
-      : [];
+    const team = savedPromptTeam(action);
     if (team.length) options.push('Команда: ' + team.map(row => row.name + ' (' + row.brief + ')').join('; ') + '.');
     if (action.run?.memory === 'continuous') {
       options.push('Память: помнит прошлые ходы, в конце каждого хода пишет «Сделано» и «Дальше».' +

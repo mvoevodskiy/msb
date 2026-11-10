@@ -1,7 +1,8 @@
 /**
  * [Saved runner](../../src/autonomy/prompt-turn.mjs) with a real Linux Claude CLI
  * and local synthetic API. Run in network-none Docker. Pass the native
- * executable and standard, narrow, disabled or legacy. [Proof](../reference/parity-autonomy-contract.txt).
+ * executable and standard, narrow, disabled, legacy, named or legacy-named.
+ * [Proof](../reference/parity-autonomy-contract.txt).
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -14,14 +15,20 @@ import { saveState } from '../../src/state.mjs';
 import { sendClaudeFixtureReply } from './claude-loopback-reply.mjs';
 
 const [binary, name] = process.argv.slice(2);
+const namedTeam = [
+  { name: 'Е', brief: 'Читает заметки' }, { name: 'Ё', brief: 'Сверяет выводы' },
+];
+const namedBrief = namedTeam[1].name + ': ' + namedTeam[1].brief;
 const scenarios = {
   standard: { role: 'worker', profile: 'standard', capability: 'read', allowWrite: true },
   narrow: { role: 'researcher', profile: 'narrow', capability: 'none', helpers: true, allowWrite: false },
   disabled: { role: 'worker', profile: 'standard', capability: 'read', helpers: false, allowWrite: false },
-  legacy: { role: 'general-purpose', profile: 'narrow', capability: 'none', allowWrite: false },
+  legacy: { role: 'general-purpose', profile: 'narrow', capability: 'none', allowWrite: false, legacy: true },
+  named: { role: 'e-2', profile: 'narrow', capability: 'none', allowWrite: false, team: namedTeam },
+  'legacy-named': { role: 'general-purpose', profile: 'narrow', capability: 'none', allowWrite: false, legacy: true, team: namedTeam },
 };
 assert.ok(path.isAbsolute(binary || '') && Object.hasOwn(scenarios, name), 'Pass a native binary and scenario');
-const { role, profile: posture, capability, helpers, allowWrite } = scenarios[name];
+const { role, profile: posture, capability, helpers, allowWrite, legacy, team } = scenarios[name];
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'claude-helper-proof-'));
 const home = path.join(root, 'home');
 const profile = path.join(home, '.iia', 'bots', 'default');
@@ -71,6 +78,10 @@ const server = http.createServer(async (req, res) => {
       for (const part of bodyParts(message)) if (part.type === 'tool_result') results.set(part.tool_use_id, part);
     }
     if (child) {
+      if (team && childRequests === 0) {
+        if (legacy) assert.ok(JSON.stringify(body.messages).includes(namedBrief), 'The built-in helper receives the brief');
+        else assert.ok(JSON.stringify(body.system).includes('Твоя роль: ' + namedTeam[1].brief), 'The native named role receives the brief');
+      }
       childRequests++;
       const index = calls.findIndex((_, position) => !results.has('toolu_child_' + position));
       if (index < 0) return reply(res, body, { type: 'text', text: childDone }, 'end_turn');
@@ -79,7 +90,12 @@ const server = http.createServer(async (req, res) => {
     }
     parentRequests++;
     if (results.has('toolu_parent_agent')) return reply(res, body, { type: 'text', text: parentDone }, 'end_turn');
-    const input = { description: 'Fixture child work', prompt: childPrompt, subagent_type: role };
+    if (team) {
+      const line = legacy ? '- ' + namedBrief : '- Ё (e-2): ' + namedTeam[1].brief;
+      assert.ok(JSON.stringify(body.messages).includes(line), 'The parent receives the selected brief');
+    }
+    const input = { description: 'Fixture child work',
+      prompt: team && legacy ? childPrompt + ' ' + namedBrief : childPrompt, subagent_type: role };
     const agent = body.tools.find(tool => tool.name === 'Agent' || tool.name === 'Task');
     if (agent?.input_schema?.properties?.run_in_background) input.run_in_background = false;
     return reply(res, body, { type: 'tool_use', id: 'toolu_parent_agent', name: agent?.name ?? 'Agent', input }, 'tool_use');
@@ -104,7 +120,7 @@ try {
   const stateFile = await saveState(state);
   const stateBefore = await fs.readFile(stateFile);
   const action = { id: 'fixture', task: { kind: 'prompt', prompt: 'fixture parent work',
-    ...(helpers === undefined ? {} : { helpers }) }, capability,
+    ...(helpers === undefined ? {} : { helpers }), ...(team ? { team } : {}) }, capability,
   authority: { profile: posture }, budget: { maxRunSeconds: 75 } };
   const result = await runSavedPrompt(action, savedPromptPlan(action, state), {
     signal: AbortSignal.timeout(50_000), isCurrent: async () => true,
@@ -117,7 +133,7 @@ try {
   assert.ok(agentResult, 'No Agent result');
   const enabled = helpers !== false;
   // Native 2.1.316 reports 22 parent input tokens and a terminal helper total of 16.
-  const expectedTokensIn = enabled && name !== 'legacy' ? 38 : 22;
+  const expectedTokensIn = enabled && !legacy ? 38 : 22;
   assert.equal(result.tokensIn, expectedTokensIn);
   if (enabled) {
     assert.notEqual(agentResult.is_error, true, JSON.stringify(agentResult.content));
@@ -143,6 +159,7 @@ try {
   else await assert.rejects(fs.stat(childWrite), { code: 'ENOENT' });
   console.log(JSON.stringify({ passed: true, scenario: name, role, enabled, childRequests, parentRequests,
     childReadAllowed: enabled, childWriteAllowed: allowWrite, protectedProfileByteExact: true,
+    namedBriefReachedHelper: Boolean(team),
     shellUnavailable: true, expectedTokensIn, observedTokensIn: result.tokensIn,
     tools: Object.fromEntries(Object.entries(inventory).map(([side, tools]) => [side, [...tools].sort()])) }));
 } finally {
