@@ -60,8 +60,12 @@ Owner-check выполняется в [`installUpdateHook`](integration/update-h
 CODEX_HOME относительный, [разрешение профиля](../shared/codex-profile.mjs)
 использует каталог активного проекта. Модель, глубина и кэш в меню относятся к
 этому профилю. Явный выбор записывает значение в store и config.toml этого
-профиля. Обычный ход читает внешний профиль без записи HTTP-настроек в него
-или в неактивный HOME/.codex. [Проверки](tests/codex-profile-preferences.test.mjs).
+профиля. [Запись настроек](codex-config-write.mjs) берёт общий lock нативного
+файла, затем lock store бота. Публикация store завершает операцию, а при её
+отказе восстанавливается прежний config.toml. Transport использует тот же
+нативный lock. Обычный ход читает внешний профиль без записи HTTP-настроек
+в него или в неактивный HOME/.codex. [Профиль](tests/codex-profile-preferences.test.mjs),
+[проверки сохранения](tests/apply-model.test.mjs).
 
 ## Исполнение CLI
 

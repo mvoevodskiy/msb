@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createRequire } from 'node:module';
 import { fixture } from './helpers/menu-fixture.mjs';
 import { saveState, loadState } from '../src/state.mjs';
 import { readEnvMap, setEnvKey, maskValue } from '../src/env/store.mjs';
@@ -735,4 +736,41 @@ test('Codex failed setting callbacks show the previous choice and keep the activ
   assert.equal(await fs.readFile(f.storeFile, 'utf8'), before);
   assert.equal(await fs.readFile(configFile, 'utf8'), config);
   assert.deepEqual((await loadState()).state, state);
+});
+
+
+test('Codex preference remains successful when lock cleanup reports an error after publication', async (t) => {
+  const f = await fixture(t);
+  process.env.CODEX_HOME = path.join(f.home, '.codex');
+  await fs.mkdir(process.env.CODEX_HOME, { recursive: true });
+  const configFile = path.join(process.env.CODEX_HOME, 'config.toml');
+  await fs.writeFile(configFile, 'model = "gpt-6.1-terra"\n');
+  const Database = createRequire(import.meta.url)('better-sqlite3');
+  const { DatabaseSync } = await import('node:sqlite').catch(error => {
+    if (error.code !== 'ERR_UNKNOWN_BUILTIN_MODULE') throw error;
+    return {};
+  });
+  const drivers = [[Database.prototype, db => db.name]];
+  if (DatabaseSync) drivers.push([DatabaseSync.prototype, db => db.location?.('main')]);
+  const targets = new Set(['ext-providers.json.lock.sqlite', 'config.toml.lock.sqlite']);
+  const injected = new Set();
+  for (const [prototype, fileName] of drivers) {
+    const exec = prototype.exec;
+    t.mock.method(prototype, 'exec', function (sql, ...rest) {
+      const result = exec.call(this, sql, ...rest);
+      const file = path.basename(fileName(this) ?? '');
+      if (sql === 'ROLLBACK;' && targets.has(file) && !injected.has(file)) {
+        injected.add(file);
+        throw new Error('fixture cleanup after publication');
+      }
+      return result;
+    });
+  }
+  await f.callback('ext:model:set:gpt-5.4-mini');
+  assert.deepEqual(injected, targets);
+  assert.match(f.edits.at(-1), /^✔ .*модель <b>GPT-5\.4 Mini<\/b>/);
+  assert.equal(JSON.parse(await fs.readFile(f.storeFile, 'utf8')).models.codex, 'gpt-5.4-mini');
+  assert.match(await fs.readFile(configFile, 'utf8'), /^model = "gpt-5\.4-mini"$/m);
+  await f.callback('ext:effort:set:high');
+  assert.match(f.edits.at(-1), /^✔ Глубина: <b>high<\/b>/);
 });

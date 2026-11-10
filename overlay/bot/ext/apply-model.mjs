@@ -5,19 +5,15 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { setSelectedModel, setSelectedEffort } from './store.mjs';
+import { setSelectedModel, setSelectedEffort, storePath } from './store.mjs';
+import { withCodexConfig } from './codex-config-write.mjs';
+import { physicalFilePath } from '../shared/physical-file-path.mjs';
 import { resolveSelectedCodexProfileDir } from '../shared/codex-profile.mjs';
 import { readBotState } from './paths.mjs';
 import { wireQwenAuth } from './auth-wire.mjs';
 import { readEnvKey } from './env.mjs';
 
-export async function upsertTomlScalar(file, key, value) {
-  let text = '';
-  try {
-    text = await fs.readFile(file, 'utf8');
-  } catch (err) {
-    if (err?.code !== 'ENOENT') throw err;
-  }
+function upsertTomlScalar(text, key, value) {
   const tableAt = text.search(/^\s*\[/m);
   const tail = tableAt < 0 ? '' : text.slice(tableAt);
   text = tableAt < 0 ? text : text.slice(0, tableAt);
@@ -28,15 +24,28 @@ export async function upsertTomlScalar(file, key, value) {
     const body = text.trimEnd();
     text = body ? `${body}\n\n${line}\n` : `${line}\n`;
   }
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp.${process.pid}`;
-  await fs.writeFile(tmp, text + tail, { mode: 0o600 });
-  await fs.rename(tmp, file);
+  return text + tail;
 }
 
-async function selectedCodexConfigPath(env, home) {
+async function saveCodexPreference(setSelection, key, value, env, home) {
   const state = await readBotState(env, home);
-  return path.join(await resolveSelectedCodexProfileDir(state, env, home), 'config.toml');
+  const config = path.join(await resolveSelectedCodexProfileDir(state, env, home), 'config.toml');
+  // Both paths are locked in this order. Session updates only take the store lock.
+  let published = false;
+  try {
+    await withCodexConfig(config, async (text, save, file) => {
+      if (file === await physicalFilePath(storePath(env, home))) throw new Error('config.toml совпадает с файлом настроек бота.');
+      await setSelection('codex', value, env, home, {
+        commit: publishStore => save(upsertTomlScalar(text, key, value), async () => {
+          await publishStore();
+          published = true;
+        }),
+      });
+    });
+  } catch (error) {
+    if (!published) throw error;
+    console.error('[msb/ext/codex] preference committed, lock cleanup failed:', error.code || error.name);
+  }
 }
 
 async function upsertQwenModel(modelId, env, home) {
@@ -67,14 +76,12 @@ export async function applyProviderModel(providerId, modelId, env = process.env,
   if (!id) return { ok: false, error: 'пустой id модели' };
 
   try {
-    const config = providerId === 'codex' ? await selectedCodexConfigPath(env, home) : null;
-    await setSelectedModel(providerId, id, env, home);
-    if (config) {
-      await upsertTomlScalar(config, 'model', id);
-    } else if (providerId === 'qwen') {
-      await upsertQwenModel(id, env, home);
+    if (providerId === 'codex') {
+      await saveCodexPreference(setSelectedModel, 'model', id, env, home);
+    } else {
+      await setSelectedModel(providerId, id, env, home);
+      if (providerId === 'qwen') await upsertQwenModel(id, env, home);
     }
-    // Cursor: достаточно store + --model в адаптере
   } catch (err) {
     return { ok: false, error: String(err.message || err).slice(0, 200) };
   }
@@ -93,9 +100,7 @@ export async function applyProviderEffort(providerId, effort, env = process.env,
   }
   if (!CODEX_EFFORTS.has(id)) return { ok: false, error: `неизвестный уровень: ${id}` };
   try {
-    const config = await selectedCodexConfigPath(env, home);
-    await setSelectedEffort(providerId, id, env, home);
-    await upsertTomlScalar(config, 'model_reasoning_effort', id);
+    await saveCodexPreference(setSelectedEffort, 'model_reasoning_effort', id, env, home);
   } catch (err) {
     return { ok: false, error: String(err.message || err).slice(0, 200) };
   }

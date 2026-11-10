@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -43,7 +44,7 @@ export async function loadStore(env = process.env, home = env.HOME || os.homedir
   }
 }
 
-async function writeStore(store, env, home) {
+async function writeStore(store, env, home, commit = publish => publish()) {
   const file = storePath(env, home);
   await fs.mkdir(path.dirname(file), { recursive: true });
   const next = {
@@ -54,10 +55,16 @@ async function writeStore(store, env, home) {
     efforts: store.efforts && typeof store.efforts === 'object' ? store.efforts : {},
     updatedAt: new Date().toISOString(),
   };
-  const tmp = `${file}.tmp.${process.pid}`;
-  await fs.writeFile(tmp, `${JSON.stringify(next, null, 2)}\n`, { mode: 0o600 });
-  await fs.rename(tmp, file);
-  return next;
+  const tmp = file + '.tmp.' + randomUUID();
+  try {
+    await fs.writeFile(tmp, JSON.stringify(next, null, 2) + '\n', { flag: 'wx', mode: 0o600 });
+    await commit(() => fs.rename(tmp, file));
+    return next;
+  } finally {
+    await fs.unlink(tmp).catch(error => {
+      if (error?.code !== 'ENOENT') console.error('[msb/ext] could not clean staged store:', error.code || error.name);
+    });
+  }
 }
 
 /** Replace a complete snapshot; incremental callers must use the atomic setters. */
@@ -65,11 +72,11 @@ export async function saveStore(store, env = process.env, home = env.HOME || os.
   return withStoreLock(storePath(env, home), () => writeStore(store, env, home));
 }
 
-function updateStore(env, home, change) {
+function updateStore(env, home, change, commit) {
   return withStoreLock(storePath(env, home), async () => {
     const store = await loadStore(env, home);
     change(store);
-    return writeStore(store, env, home);
+    return writeStore(store, env, home, commit);
   });
 }
 
@@ -92,13 +99,13 @@ export async function getSelectedModel(providerId, env = process.env, home = env
   return typeof id === 'string' && id.trim() ? id.trim() : null;
 }
 
-export async function setSelectedModel(providerId, modelId, env = process.env, home = env.HOME || os.homedir()) {
+export async function setSelectedModel(providerId, modelId, env = process.env, home = env.HOME || os.homedir(), { commit } = {}) {
   if (!isProviderId(providerId)) throw new Error(`unknown provider: ${providerId}`);
   return updateStore(env, home, store => {
     if (!store.models || typeof store.models !== 'object') store.models = {};
     if (!modelId) delete store.models[providerId];
     else store.models[providerId] = String(modelId).trim();
-  });
+  }, commit);
 }
 
 export async function getSelectedEffort(providerId, env = process.env, home = env.HOME || os.homedir()) {
@@ -107,13 +114,13 @@ export async function getSelectedEffort(providerId, env = process.env, home = en
   return typeof id === 'string' && id.trim() ? id.trim() : null;
 }
 
-export async function setSelectedEffort(providerId, effort, env = process.env, home = env.HOME || os.homedir()) {
+export async function setSelectedEffort(providerId, effort, env = process.env, home = env.HOME || os.homedir(), { commit } = {}) {
   if (!isProviderId(providerId)) throw new Error(`unknown provider: ${providerId}`);
   return updateStore(env, home, store => {
     if (!store.efforts || typeof store.efforts !== 'object') store.efforts = {};
     if (!effort) delete store.efforts[providerId];
     else store.efforts[providerId] = String(effort).trim();
-  });
+  }, commit);
 }
 
 export function encodeExtSession(providerId, nativeId) {

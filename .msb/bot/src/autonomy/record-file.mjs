@@ -6,25 +6,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
-export async function physicalRecordPath(logical) {
-  try {
-    return await fs.realpath(logical);
-  } catch (error) {
-    if (error?.code !== 'ENOENT') throw error;
-    try {
-      await fs.lstat(logical);
-    } catch (missing) {
-      const parent = path.dirname(logical);
-      if (missing?.code !== 'ENOENT' || parent === logical) throw missing;
-      // The missing file will have the same lock name after it is created,
-      // even when a parent directory is reached through a symlink.
-      return path.join(await physicalRecordPath(parent), path.basename(logical));
-    }
-    // Another writer may have created the path after the first realpath.
-    // A still-dangling symlink continues to fail here.
-    return fs.realpath(logical);
-  }
-}
+export { physicalFilePath as physicalRecordPath } from '../../shared/physical-file-path.mjs';
 
 export async function readOptionalJson(file) {
   try {

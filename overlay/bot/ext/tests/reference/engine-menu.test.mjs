@@ -15,7 +15,8 @@ const session = `ext:codex:${thread}`;
 const allUnchanged = { state: true, store: true, config: true, auth: true };
 
 async function scenario(t, name) {
-  const fixtureHome = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-engine-reference-'));
+  // The native config lock uses physical paths, including macOS /var aliases.
+  const fixtureHome = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'msb-engine-reference-')));
   t.after(() => fs.rm(fixtureHome, { recursive: true, force: true }));
   const { stdout } = await execute(process.execPath, [harness, name], {
     env: { HOME: fixtureHome, REFERENCE_HOME: fixtureHome, NODE_OPTIONS: `--import=${networkGuard}` },

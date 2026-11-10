@@ -10,6 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { codexAuthPath, codexHome, parseCodexTomlScalars } from './codex-native.mjs';
 import profile from '../shared/profile.cjs';
+import { withCodexConfig } from './codex-config-write.mjs';
 
 export const MSB_HTTP_PROVIDER_ID = 'msb_http';
 
@@ -59,13 +60,10 @@ export async function ensureCodexStableTransport(home, env = process.env) {
   const authMode = await detectAuthMode(home);
   const baseUrl = authMode === 'api' ? API_BASE : CODEX_CHATGPT_BASE;
 
-  let text = '';
-  try {
-    text = await fs.readFile(file, 'utf8');
-  } catch (err) {
-    if (err?.code !== 'ENOENT') throw err;
-  }
+  return withCodexConfig(file, (text, save) => configureTransport(text, save, home, env, baseUrl));
+}
 
+async function configureTransport(text, save, home, env, baseUrl) {
   const scalars = parseCodexTomlScalars(text);
   const currentProvider = scalars.model_provider || 'openai';
   // Existing native provider identity is part of the session/config contract.
@@ -98,26 +96,10 @@ export async function ensureCodexStableTransport(home, env = process.env) {
     if (!/^stream_idle_timeout_ms\s*=/m.test(next)) {
       next = `${next.trimEnd()}\n\nstream_idle_timeout_ms = 600000\n`;
     }
-    await fs.mkdir(path.dirname(file), { recursive: true });
-    const tmp = `${file}.tmp.${process.pid}`;
-    await fs.writeFile(tmp, next, { mode: 0o600 });
-    await fs.rename(tmp, file);
-    return {
-      ok: true,
-      providerId: currentProvider,
-      baseUrl: null,
-      changed: next !== text,
-      skippedProviderSwitch: true,
-    };
   }
 
   const changed = next !== text;
-  if (changed) {
-    await fs.mkdir(path.dirname(file), { recursive: true });
-    const tmp = `${file}.tmp.${process.pid}`;
-    await fs.writeFile(tmp, next, { mode: 0o600 });
-    await fs.rename(tmp, file);
-  }
+  if (changed) await save(next);
 
   return {
     ok: true,
