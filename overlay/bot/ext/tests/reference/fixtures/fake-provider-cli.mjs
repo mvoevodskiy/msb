@@ -16,7 +16,11 @@ const chunks = [];
 for await (const chunk of process.stdin) chunks.push(chunk);
 const stdin = Buffer.concat(chunks).toString('utf8');
 const traceFile = process.env.REFERENCE_TRACE;
-await fs.appendFile(traceFile, `${JSON.stringify({ name, argv, stdin })}\n`);
+const checkProfile = process.env.REFERENCE_LOGIN === 'profile' && name === 'codex' &&
+  argv[0] === 'login' && argv[1] === 'status';
+const profileDir = checkProfile
+  ? path.resolve(process.cwd(), process.env.CODEX_HOME || path.join(process.env.HOME, '.codex')) : undefined;
+await fs.appendFile(traceFile, `${JSON.stringify({ name, argv, stdin, profileDir })}\n`);
 const emit = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
 const thread = '0199a213-81c0-7800-8aa1-bbab2a035a53';
 const otherThread = '0299a213-81c0-7800-8aa1-bbab2a035a53';
@@ -26,7 +30,10 @@ if (name === 'claude') {
   emit({ type: 'system', subtype: 'init', session_id: 'reference-claude-session' });
   emit({ type: 'result', subtype: 'success', result: 'CLAUDE_REFERENCE_OK' });
 } else if (name === 'codex' && argv[0] === 'login' && argv[1] === 'status') {
-  const valid = process.env.REFERENCE_LOGIN !== 'invalid';
+  const valid = checkProfile
+    ? await fs.readFile(path.join(profileDir, 'auth.json'), 'utf8')
+      .then(text => JSON.parse(text).auth_mode === 'chatgpt', () => false)
+    : process.env.REFERENCE_LOGIN !== 'invalid';
   process.stderr.write(valid ? 'Logged in using ChatGPT\n' : 'Not logged in\n');
   process.exitCode = valid ? 0 : 1;
 } else if (name === 'codex' && argv[0] === 'exec' && process.env.REFERENCE_SCENARIO === 'codex-first-stop') {

@@ -131,3 +131,31 @@ test('engines: rejected Codex login leaves the legacy oc profile byte for byte',
   assert.equal(result.store.active, 'claude');
   assert.equal(result.actionCalls.some((call) => String(call.payload.text || '').includes('Агент теперь на')), false);
 });
+
+
+for (const mode of ['absolute', 'relative', 'relative-login-button']) {
+  test('engines: Codex validates and selects the ' + mode + ' native profile without rewriting either one', async (t) => {
+    const r = await scenario(t, 'engine-profile-' + mode);
+    assertLoginChecks(r);
+    assert.equal(r.cli[0].profileDir, r.selectedProfile);
+    assert.equal(r.store.active, 'codex');
+    assert.equal(r.state.extAuthBypass, 'codex');
+    assert.equal(r.state.ccSessionId, undefined);
+    assert.equal(r.state.parkedCcSessions.claude, 'reference-claude-session');
+    assert.equal(r.unchanged.config, true);
+    assert.equal(r.unchanged.auth, true);
+    assert.equal(r.selectedAuthUnchanged, true);
+    assert.equal(r.selectedConfigUnchanged, true);
+    assert.ok(r.actionCalls.some(call => String(call.payload.text).includes('Агент теперь на')));
+  });
+}
+
+test('engines: missing selected project does not validate against the workspace or switch', async (t) => {
+  const r = await scenario(t, 'engine-profile-relative-missing');
+  assert.deepEqual(r.cli, []);
+  assert.deepEqual(r.unchanged, allUnchanged);
+  assert.equal(r.selectedAuthUnchanged, true);
+  assert.equal(r.selectedConfigUnchanged, true);
+  assert.equal(r.store.active, 'claude');
+  assert.equal(r.state.ccSessionId, 'reference-claude-session');
+});

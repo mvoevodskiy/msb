@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { wireQwenAuth, wireCodexAuth, codexLoginStatus } from '../auth-wire.mjs';
+import { wireQwenAuth, wireCodexAuth, codexLoginStatus, startCodexDeviceLogin, waitCodexNativeAuth } from '../auth-wire.mjs';
 
 test('wireQwenAuth writes settings.json and .env for sk-sp token plan', async () => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-qwen-'));
@@ -48,4 +48,33 @@ test('codexLoginStatus verifies the CLI even with an existing auth.json', async 
   const status = await codexLoginStatus(env, home);
   assert.equal(status.ok, true);
   assert.equal(status.mode, 'cli-status');
+});
+
+
+test('device completion and wait accept auth only from the selected Codex profile', async (t) => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-device-profile-'));
+  t.after(() => fs.rm(home, { recursive: true, force: true }));
+  const bin = path.join(home, 'bin');
+  const directory = path.join(home, 'selected');
+  const env = { HOME: home, CODEX_HOME: directory, PATH: bin, MSB_BOT_ID: 'default' };
+  await fs.mkdir(bin);
+  await fs.mkdir(directory);
+  const cli = '#!' + process.execPath + '\n' + [
+    'const fs = require("node:fs");',
+    'const file = require("node:path").join(process.env.CODEX_HOME, "auth.json");',
+    'if (process.argv[3] === "--device-auth") {',
+    '  fs.writeFileSync(file, JSON.stringify({auth_mode:"chatgpt"}));',
+    '  console.log("https://example.invalid/device FIXTURE-CODE");',
+    '} else if (process.argv[3] === "status" && fs.existsSync(file)) {',
+    '  console.log("Logged in using ChatGPT");',
+    '} else process.exitCode = 1;',
+  ].join('\n');
+  await fs.writeFile(path.join(bin, 'codex'), cli, { mode: 0o700 });
+  const device = startCodexDeviceLogin(env, home);
+  assert.equal(device.ok, true);
+  const completed = await device.promise;
+  assert.equal(completed.ok, true);
+  assert.equal(completed.code, 'FIXTURE-CODE');
+  assert.equal((await waitCodexNativeAuth({ env, home, timeoutMs: 1000, pollMs: 20 })).ok, true);
+  await assert.rejects(fs.stat(path.join(home, '.codex/auth.json')), { code: 'ENOENT' });
 });
