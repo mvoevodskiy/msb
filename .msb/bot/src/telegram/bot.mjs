@@ -9,6 +9,7 @@ import {resetCliConversation} from '../sessions/selection.mjs';
  * Карточка после знакомства Codex → [services](./bootstrap-services.mjs).
  * Формы → [dispatcher](./forms.mjs); pending в этом процессе; записи → [state](../state.mjs) / [env](../env/store.mjs).
  * Индикация → [progress](./progress.mjs), итог → [response](./response.mjs).
+ * Owner stop may deliver the frozen [Claude fragment](../agent/claude.mjs) without running response actions.
  * Диагностика Codex добавляется после обработки подлинного текста модели.
  * План/комментарий → [plan actions](./plan-actions.mjs) → тот же inbox; final marker → [plan](./plan.mjs).
  * Лимиты автономки из ответа → [limit markers](./limit-markers.mjs) → [подтверждение](./limit-confirmation.mjs).
@@ -237,7 +238,10 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
 
   function interruptActiveTurns() {
     const turns = [...running.values()].filter(turn => !turn.completed);
-    for (const turn of turns) turn.controller.abort();
+    for (const turn of turns) {
+      if (!turn.controller.signal.aborted) turn.interruptedByUser = true;
+      turn.controller.abort();
+    }
     return turns.length > 0;
   }
 
@@ -516,6 +520,14 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     let responseReady = false;
     const stopped = async () => {
       outcome = 'aborted';
+      const received = turn.interruptedByUser ? result?.assistantReply : null;
+      const partial = received && stripMcpMarkerPayloads(received.text).trim();
+      if (partial) {
+        await deliverTurnResponse(ctx, status?.message_id, partial,
+          { elapsedMs: performance.now() - startedAt, context: received.context }, { allowPlan: false })
+          .then(() => { deliveredText = partial; delivered = true; }).catch(() => {});
+        return;
+      }
       if (status) await ctx.api.editMessageText(chatId, status.message_id, 'Моя остановочка ✋🏽⛔️', {}, presentationSignal(AbortSignal.timeout(15_000)))
         .then(() => { deliveredText = 'Моя остановочка ✋🏽⛔️'; delivered = true; }).catch(() => {});
     };

@@ -1,5 +1,5 @@
 /**
- * Native Claude resume and last-input context conformance. Run in an offline disposable Linux container:
+ * Native Claude resume, last-input context and in-flight stop conformance. Run in an offline disposable Linux container:
  * node .msb/bot/tests/fixtures/claude-resume-loopback.mjs /absolute/native/claude
  * [Runner](../../src/agent/turn.mjs) uses the actual PATH shim and a loopback model.
  */
@@ -20,6 +20,7 @@ const root = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-native-claude-resume-'
 const home = path.join(root, 'home');
 const workspace = path.join(home, 'workspace');
 const project = path.join(home, 'projects', 'alpha');
+const ownedFile = path.join(project, 'probe-input.txt');
 const wrapper = path.join(root, 'trace-claude');
 const trace = path.join(root, 'native-trace');
 const shim = fileURLToPath(new URL('../../../../overlay/bot/ext/shim/bin/', import.meta.url));
@@ -29,6 +30,10 @@ const oldRow = { id: expired, providerId: 'claude', engine: 'cc', messageCount: 
 const first = 'fixture exact request after missing session';
 const second = 'fixture continue the recovered session';
 const requests = [];
+const stop = new AbortController();
+const stopPrompt = 'fixture cancel with the first fragment';
+const draft = 'fixture draft before SIGINT';
+let stopRequests = 0;
 const samples = [
   { input_tokens: 10000, cache_read_input_tokens: 60000, cache_creation_input_tokens: 20000, output_tokens: 5 },
   { input_tokens: 25000, cache_read_input_tokens: 130000, cache_creation_input_tokens: 25000, output_tokens: 5 },
@@ -50,6 +55,20 @@ const server = http.createServer(async (req, res) => {
       return typeof message.content === 'string' ? [message.content] :
         message.content.filter(block => block.type === 'text').map(block => block.text);
     });
+    if (current.includes(stopPrompt)) {
+      stopRequests++;
+      if (stopRequests === 1) {
+        return sendClaudeFixtureReply(res, body, 'msg_fixture_stop', [
+          { type: 'text', text: draft },
+          { type: 'tool_use', id: 'toolu_fixture_read', name: 'Read', input: { file_path: ownedFile } },
+        ], 'tool_use', { input_tokens: 12000, cache_read_input_tokens: 50000,
+          cache_creation_input_tokens: 10000, output_tokens: 5 });
+      }
+      // The follow-up request proves that the first assistant reply and tool
+      // result reached the native runner. Hold the second response until SIGINT.
+      stop.abort();
+      return;
+    }
     requests.push(current.filter(text => text === first || text === second));
     return sendClaudeFixtureReply(res, body, 'msg_fixture_' + requests.length,
       { type: 'text', text: 'fixture native answer' }, 'end_turn', samples[requests.length - 1]);
@@ -61,6 +80,7 @@ const server = http.createServer(async (req, res) => {
 try {
   await fs.mkdir(workspace, { recursive: true });
   await fs.mkdir(project, { recursive: true });
+  await fs.writeFile(ownedFile, 'synthetic read only\n');
   await fs.writeFile(wrapper, [
     '#!/bin/bash',
     'if [ "$1" != --version ]; then',
@@ -114,13 +134,28 @@ try {
   assert.equal(state.lastCcUsage.contextWindow, expectedContext[1].contextWindow);
   assert.deepEqual(state.parkedCcSessions, { codex: parkedCodex });
   assert.equal(state.pendingCcSessionStarts, undefined);
+
+  const stopped = await runAgentTurn({ prompt: stopPrompt, signal: AbortSignal.any([stop.signal, AbortSignal.timeout(20000)]) });
+  assert.equal(stopped.error, 'aborted');
+  assert.equal(stopRequests, 2);
+  assert.ok(stop.signal.aborted);
+  assert.deepEqual(stopped.result.assistantReply, {
+    text: draft, context: { contextTokens: 72000, contextWindow: 900000 },
+  });
+  const afterStop = (await loadState()).state;
+  assert.equal(afterStop.ccSessionId, id);
+  assert.deepEqual(afterStop.lastCcUsage, state.lastCcUsage);
+  assert.equal(afterStop.sessionHistory[1].messageCount, 3);
   console.log(JSON.stringify({
     version, native_launches: launches.length, model_requests: requests.length,
     missing_resume_model_requests: 0, retry_same_project: true, resumed_same_new_id: true,
     original_input_and_context_preserved: true, expired_history_unchanged: true, codex_slot_unchanged: true,
     measured_context: expectedContext, launch_window: 1000000, launch_percent: 90,
+    stop_case: { model_requests: stopRequests, draft_preserved: true, context: stopped.result.assistantReply.context,
+      active_id_and_previous_usage_unchanged: true },
   }));
 } finally {
+  server.closeAllConnections();
   if (server.listening) await new Promise(resolve => server.close(resolve));
   await fs.rm(root, { recursive: true, force: true });
 }

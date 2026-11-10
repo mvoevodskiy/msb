@@ -100,6 +100,10 @@ ID остаётся доступной, счётчик не растёт от о
 передаёт измерение в общий футер и запись текущей сессии.
 [Проверки](../../tests/claude-context-footer.test.mjs).
 
+При остановке [CLI runner](claude.mjs) сохраняет уже разобранный текст
+и его замер до отправки сигнала. [Telegram](../telegram/bot.mjs) завершает
+этим фрагментом ход, остановленный владельцем. [Проверки](../../tests/turn-lifecycle.test.mjs).
+
 
 Claude control/plan uses the old conversational instructions in [mode-prompt](mode-prompt.mjs)
 from the same provider/mode snapshot as its CLI options. Both map to acceptEdits;

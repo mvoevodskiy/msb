@@ -11,6 +11,8 @@
  * Pre-execution Claude resume refusal is consumed by [turn](./turn.mjs).
  * [Resume recovery checks](../../tests/claude-resume-recovery.test.mjs).
  * Native context input and compact threshold → [Claude context](./claude-context.mjs).
+ * The pre-abort assistant reply is frozen before signalling the CLI group.
+ * [Telegram stop checks](../../tests/turn-lifecycle.test.mjs).
  * [Native-shim regression](../../../../overlay/bot/ext/tests/reference/provider-switch.test.mjs).
  */
 import { spawn } from 'node:child_process';
@@ -216,6 +218,7 @@ export async function runClaudeTurn(opts) {
     function onAbort() {
       if (closed || abortStarted) return;
       abortStarted = true;
+      stoppedReply = captureClaudeReply(currentClaudeContext());
       if (!signalGroup('SIGINT') || closed) return;
       termTimer = setTimeout(() => {
         termTimer = null;
@@ -236,6 +239,8 @@ export async function runClaudeTurn(opts) {
     let text = '';
     let assistantObserved = false;
     let assistantTextObserved = false;
+    let assistantTextOffset = 0;
+    let stoppedReply;
     let structuredResumeRefusal = false;
     let model;
     let providerId = null;
@@ -253,6 +258,19 @@ export async function runClaudeTurn(opts) {
     let helperTokens = 0;
     const toolsUsed = [];
     let toolCount = 0;
+
+    function currentClaudeContext() {
+      return compact && (!providerId || providerId === 'claude')
+        ? claudeTurnContext(compact.threshold, latestInput, terminalUsage) : null;
+    }
+
+    function captureClaudeReply(context) {
+      if (!compact || (providerId && providerId !== 'claude') || !assistantTextObserved) return null;
+      // A terminal fallback may precede the first assistant block. Only the
+      // parsed assistant suffix belonged to the old streaming renderer.
+      const assistantText = text.slice(assistantTextOffset).trim();
+      return assistantText ? { text: assistantText, context } : null;
+    }
 
     child.stderr?.on('data', (chunk) => {
       stderr += chunk.toString('utf8');
@@ -301,6 +319,7 @@ export async function runClaudeTurn(opts) {
             }
             for (const part of msg?.content || []) {
               if (part.type === 'text' && part.text) {
+                if (!assistantTextObserved) assistantTextOffset = text.length;
                 text += part.text;
                 assistantTextObserved = true;
               }
@@ -361,11 +380,12 @@ export async function runClaudeTurn(opts) {
         sessionId = startedCodexSessionId;
         sessionIdObserved = true;
       }
-      const context = compact && (!providerId || providerId === 'claude')
-        ? claudeTurnContext(compact.threshold, latestInput, terminalUsage) : null;
+      const context = currentClaudeContext();
+      const assistantReply = aborted ? stoppedReply : captureClaudeReply(context);
       resolve({
         sessionId,
         ...(context ? { context } : {}),
+        ...(assistantReply ? { assistantReply } : {}),
         spawned: true,
         sessionIdObserved,
         text: text.trim(),
