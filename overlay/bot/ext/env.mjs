@@ -88,11 +88,12 @@ export async function writeEnvKey(key, value, env = process.env, home = env.HOME
   });
 }
 
-export async function providerConfigured(provider, env = process.env, home = env.HOME || os.homedir()) {
-  // Codex: штатный ChatGPT login в ~/.codex/auth.json — без копирования токенов в .env
+export async function providerConfigured(provider, env = process.env, home = env.HOME || os.homedir(), state) {
   if (provider.id === 'codex') {
-    const { hasNativeCodexAuth } = await import('./codex-native.mjs');
-    if (await hasNativeCodexAuth(home)) return true;
+    const { hasNativeCodexAuth, selectedCodexProfileDir } = await import('./codex-native.mjs');
+    const directory = await selectedCodexProfileDir(env, home, state).catch(() => null);
+    if (!directory) return false;
+    if (await hasNativeCodexAuth(home, directory)) return true;
   }
   const keys = [provider.envKey, ...(provider.altEnvKeys || [])];
   for (const key of keys) {

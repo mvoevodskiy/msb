@@ -24,10 +24,13 @@
 | Убедиться, что CLI установлен | [`ensure-cli.mjs`](ensure-cli.mjs): `ensureProviderCli` | [ensure-cli](tests/ensure-cli.test.mjs) |
 | Сохранить ключ Cursor/Qwen и настроить CLI | [`env.mjs`](env.mjs): `saveProviderSecret`; [`auth-wire.mjs`](auth-wire.mjs): `wireProviderAuth`; [`integration/text-input.mjs`](integration/text-input.mjs): `handleAuthMessage` | [env](tests/env.test.mjs), [auth-wire](tests/auth-wire.test.mjs) |
 
-Порядок Codex selection: готовность CLI → native login status → подготовка
-runtime → `setActive` → `syncExtAuthGate`. При отказе login-status активный профиль
-сохраняется; кнопка входа использует `ext:auth:codex`. Открытие «Движков» только читает
-store. Вход Codex хранится в native auth, секрет не запрашивается сообщением в Telegram.
+Выбор Codex: готовность CLI → проверка нативного входа → обновление
+[состояния](setup-bypass.mjs) → подготовка транспорта стандартного профиля.
+Относительный CODEX_HOME разрешается от выбранного проекта. Та же папка используется
+для проверки статуса и подтверждения device login через `ext:auth:codex`.
+Перед выбором профиль сверяется с текущим проектом внутри записи состояния.
+При отказе остаются предыдущий движок и его сессия. Открытие «Движков» только
+читает store. Вход хранится в native auth, секрет не запрашивается в Telegram.
 
 Owner-check выполняется в [`installUpdateHook`](integration/update-hook.mjs) до действий overlay;
 необработанное событие передаётся ядру. При разделении сохранять эту границу,

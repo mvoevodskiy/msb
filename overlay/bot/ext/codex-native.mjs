@@ -5,7 +5,8 @@
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { readCodexProfileConfig } from '../shared/codex-profile.mjs';
+import { readCodexProfileConfig, resolveSelectedCodexProfileDir } from '../shared/codex-profile.mjs';
+import { readBotState } from './paths.mjs';
 export { parseCodexTomlScalars } from '../shared/codex-profile.mjs';
 
 export const CODEX_CLI_VERSION = '0.166.0';
@@ -20,6 +21,11 @@ export function codexHome(home = os.homedir()) {
 
 export function codexAuthPath(home = os.homedir(), directory = codexHome(home)) {
   return path.join(directory, 'auth.json');
+}
+
+/** Same selected profile for the [login](./auth-wire.mjs) and [gate](./setup-bypass.mjs). */
+export async function selectedCodexProfileDir(env, home, state) {
+  return resolveSelectedCodexProfileDir(state ?? await readBotState(env, home), env, home);
 }
 
 /** Не логировать и не возвращать значения секретов. */

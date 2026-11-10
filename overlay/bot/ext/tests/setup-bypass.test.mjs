@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { setActive } from '../store.mjs';
+import { setActive, storePath } from '../store.mjs';
 import { writeEnvKey } from '../env.mjs';
 import { syncExtAuthGate, EXT_AUTH_FLAG } from '../setup-bypass.mjs';
 import { botStatePath } from '../paths.mjs';
@@ -83,4 +83,32 @@ test('setup-bypass: noop on OpenClaw engine', async () => {
   const r = await syncExtAuthGate(env, home);
   assert.equal(r.changed, false);
   assert.equal(r.reason, 'oc-engine');
+});
+
+
+test('setup-bypass: a completed Codex login cannot select after the relative profile changed', async (t) => {
+  const home = await tmpHome();
+  t.after(() => fs.rm(home, { recursive: true, force: true }));
+  const workspace = path.join(home, 'workspace');
+  const env = { HOME: home, MSB_BOT_ID: 'default', MSB_WORKSPACE_DIR: workspace, CODEX_HOME: 'native-profile' };
+  const alpha = path.join(home, 'projects', 'alpha', 'native-profile');
+  const beta = path.join(home, 'projects', 'beta', 'native-profile');
+  for (const directory of [alpha, beta]) {
+    await fs.mkdir(directory, { recursive: true });
+    await fs.writeFile(path.join(directory, 'auth.json'), '{"auth_mode":"chatgpt"}');
+  }
+  await setActive('claude', env, home);
+  const file = botStatePath(env, home);
+  const state = { engine: 'cc', authMode: 'subscription', hasSubscriptionAuth: true,
+    activeProject: 'beta', ccSessionId: 'fixture-claude-session' };
+  await fs.writeFile(file, JSON.stringify(state));
+  const before = await fs.readFile(storePath(env, home), 'utf8');
+  const stale = await syncExtAuthGate(env, home, { activateCli: true, verifiedCodexProfile: alpha });
+  assert.equal(stale.reason, 'codex-profile-not-ready');
+  assert.equal(await fs.readFile(storePath(env, home), 'utf8'), before);
+  assert.deepEqual(await readState(env, home), state);
+
+  const current = await syncExtAuthGate(env, home, { activateCli: true, verifiedCodexProfile: beta });
+  assert.equal(current.selected, true);
+  assert.equal((await readState(env, home))[EXT_AUTH_FLAG], 'codex');
 });
