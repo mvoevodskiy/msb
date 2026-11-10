@@ -54,7 +54,7 @@ if(argv.at(-1)==='app-server'){
   if(request.method==='initialize'){console.log(JSON.stringify({id:request.id,result:{}}));return;}
   if(request.method==='initialized')return;
   if(request.method==='thread/resume'){
-   record({kind:'codex-compact',argv});
+   record({kind:'codex-compact',argv,cwd:process.cwd(),requestedCwd:request.params.cwd});
    console.log(JSON.stringify({id:request.id,result:{thread:{id:request.params.threadId}}}));
    return;
   }
@@ -70,7 +70,7 @@ if(argv.at(-1)==='app-server'){
   const config={mcp_servers:occupied?{[occupied]:{url:'https://native.invalid',http_headers:{Authorization:'fixture-native-only'}}}:{}};
   const file=path.resolve(process.cwd(),process.env.CODEX_HOME || path.join(process.env.HOME,'.codex'),'config.toml');
   const user={name:{type:'user',file},config};
-  record({kind:'codex-read',layers:request.params.includeLayers,pid:process.pid,...presence()});
+  record({kind:'codex-read',layers:request.params.includeLayers,pid:process.pid,cwd:process.cwd(),requestedCwd:request.params.cwd,...presence()});
   if(!request.params.includeLayers && fs.existsSync(data.hold))return;
   if(fs.existsSync(data.readError)){console.log(JSON.stringify({id:request.id,error:{code:-32603,message:'fixture unreadable'}}));return;}
   console.log(JSON.stringify({id:request.id,result:{config,layers:[user]}}));

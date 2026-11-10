@@ -16,6 +16,7 @@ import {compactCodex} from '../../../overlay/bot/ext/compact-codex.mjs';
 import {prepareCodexMcp} from '../../../overlay/bot/ext/codex-mcp-launch.mjs';
 import {codexNativeRemoval} from '../shared/mcp-native-scope.mjs';
 import {loadState,saveState} from '../src/state.mjs';
+import {projectPath} from '../src/projects/paths.mjs';
 import {readEnvMap,setEnvKey} from '../src/env/store.mjs';
 import {codexManagedMcpName} from '../shared/codex-mcp-name.mjs';
 
@@ -170,18 +171,30 @@ test('Claude compact keeps the native MCP removal active',async t=>{
   assert.ok(!claudeAllowed(argv).includes('mcp__zulu'));
 });
 
-test('Codex compact uses the same native MCP removal before resuming the thread',async t=>{
+test('Codex compact keeps the selected project for native MCP lookup and thread resume',async t=>{
   const f=await mcpFixture(t,'codex'),native=await nativeFixtures(f);
   await fs.writeFile(native.collision,'native-shared');
   await f.callback(await removal(f,'native-shared'));
+  const project=projectPath('alpha');
+  await fs.mkdir(project,{recursive:true});
+  const realProject=await fs.realpath(project);
+  const {state:before}=await loadState();
+  await saveState({...before,activeProject:'alpha'});
   await turn(native);
+  const previous=(await native.trace()).length;
   const {state}=await loadState();
   const result=await compactSession(state,{compactProvider:compactCodex});
   assert.deepEqual(result,{ok:true});
-  const {argv,kind}=(await native.trace()).at(-1);
-  assert.equal(kind,'codex-compact');
-  assert.ok(argv.includes(codexMask('native-shared')));
-  assert.equal(argv.at(-1),'app-server');
+  const [read,compact]=(await native.trace()).slice(previous);
+  assert.equal(read.kind,'codex-read');
+  assert.equal(read.layers,true);
+  assert.equal(compact.kind,'codex-compact');
+  assert.ok(compact.argv.includes(codexMask('native-shared')));
+  assert.equal(compact.argv.at(-1),'app-server');
+  assert.equal(read.cwd,realProject);
+  assert.equal(read.requestedCwd,project);
+  assert.equal(compact.cwd,realProject);
+  assert.equal(compact.requestedCwd,project);
 });
 
 test('a Codex catalog reply cannot grant deletion after the file symlink moves during the read',async t=>{

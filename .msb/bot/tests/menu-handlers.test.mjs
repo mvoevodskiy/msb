@@ -10,6 +10,7 @@ import { saveMonitorConfig, defaultConfig } from '../src/monitor/config.mjs';
 import { appendItems } from '../src/monitor/store.mjs';
 import { maybeSendDigest } from '../src/monitor/digest.mjs';
 import { autonomyDir } from '../src/paths.mjs';
+import { projectPath } from '../src/projects/paths.mjs';
 import { trySessionOperation } from '../src/agent/session-operation.mjs';
 import { presentationAwareRetry } from '../src/telegram/presentation-api.mjs';
 import { installUpdateHook } from '../../../overlay/bot/ext/install.mjs';
@@ -97,12 +98,16 @@ test('/stop keeps current turn locked until it finishes and never reports succes
   assert.ok(!f.edits.includes('✅'));
 });
 
-test('/compact uses the selected Codex session and preserves the previous Telegram presentation', async (t) => {
+test('/compact uses the selected Codex project and session with the previous Telegram presentation', async (t) => {
   const f = await fixture(t, undefined, { overlay: false });
+  const project = projectPath('alpha');
+  await fs.mkdir(project, { recursive: true });
+  await saveState({ ...(await loadState()).state, activeProject: 'alpha' });
   const before = (await loadState()).state;
-  let called = false;
-  f.bot[Symbol.for('msb.compactProvider')] = async (snapshot, { isCurrent }) => {
+  let called = false, capturedCwd;
+  f.bot[Symbol.for('msb.compactProvider')] = async (snapshot, { isCurrent, cwd }) => {
     called = true;
+    capturedCwd = cwd;
     assert.equal(snapshot.ccSessionId, before.ccSessionId);
     assert.equal(snapshot.extAuthBypass, 'codex');
     assert.equal(await isCurrent(), true);
@@ -111,6 +116,7 @@ test('/compact uses the selected Codex session and preserves the previous Telegr
   await f.message('/compact');
   await until(() => f.edits.includes('🗜️ Контекст успешно сжат. Жду команду.'));
   assert.ok(called);
+  assert.equal(capturedCwd, project);
   assert.ok(f.messages.includes('🗜️ Сжимаю контекст...'));
   assert.equal(f.typingSignals.at(-1)?.aborted, true);
   for (const signal of [f.typingSignals.at(-1), f.editSignals.at(-1), f.replySignals[0]]) {

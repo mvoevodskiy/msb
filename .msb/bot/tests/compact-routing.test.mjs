@@ -46,6 +46,27 @@ test('only Codex is sent to its extension; unsupported providers and mismatched 
   assert.equal(calls, 1);
 });
 
+test('Codex compact uses the configured base workspace and fences unavailable or stale project snapshots', async t => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'compact-project-'));
+  t.after(() => fs.rm(home, { recursive: true, force: true }));
+  const workspace = path.join(home, 'workspace');
+  const env = { HOME: home, MSB_WORKSPACE_DIR: workspace };
+  const state = { engine: 'cc', extAuthBypass: 'codex', ccSessionId: 'ext:codex:0199a213-81c0-7800-8aa1-bbab2a035a53' };
+  const seen = [];
+  const compactProvider = async (_snapshot, { cwd }) => { seen.push(cwd); return { ok: true }; };
+  const missing = await compactSession({ ...state, activeProject: 'missing' }, { env, compactProvider });
+  assert.equal(missing.ok, false);
+  assert.equal(missing.error, 'Проект «missing» не найден.');
+  assert.deepEqual(seen, []);
+  const alpha = path.join(home, 'projects', 'alpha');
+  await fs.mkdir(alpha, { recursive: true });
+  assert.deepEqual(await compactSession({ ...state, activeProject: 'alpha' },
+    { env, compactProvider, isCurrent: async () => false }), { ok: false, aborted: true });
+  assert.deepEqual(seen, []);
+  assert.deepEqual(await compactSession(state, { env, compactProvider }), { ok: true });
+  assert.deepEqual(seen, [workspace]);
+});
+
 test('a stale session never starts Claude and a guard is scoped to one bot', async (t) => {
   let called = false;
   const result = await compactSession({ ccSessionId: 'claude-fixture' }, { isCurrent: async () => false, runClaude: async () => { called = true; } });
