@@ -11,7 +11,7 @@ import path from 'node:path';
 import { openClawTaskMaintenancePrompt } from '../src/autonomy/reminder-protocol.mjs';
 import { loadState } from '../src/state.mjs';
 import { statePath } from '../src/paths.mjs';
-import { chat, marker, reminderFixture, scheduledAt } from './helpers/reminder-registration-fixture.mjs';
+import { chat, marker, reminderFixture, scheduledAt, until } from './helpers/reminder-registration-fixture.mjs';
 
 const text = 'Проверить почту <входящие>';
 const due = Date.parse(scheduledAt);
@@ -19,12 +19,14 @@ const json = value => JSON.stringify(value);
 
 async function profile(t, { rejectAdd = false, foreign = false, rejectEnable = false,
   ambiguousAdd = false, switchAfterAdd = false, fleetStopOnEnable = false } = {}) {
-  const f = await reminderFixture(t, { engine: 'oc', output: () => ({ ok: true, text: marker(), reminderRail: 'oc' }) });
+  let reply = marker();
+  const f = await reminderFixture(t, { engine: 'oc', output: () => ({ ok: true, text: reply, reminderRail: 'oc' }) });
   const config = path.join(f.directory, 'openclaw', 'openclaw.json');
   const bin = path.join(f.home, 'fixture-oc-bin');
   const log = path.join(f.home, 'native-command.jsonl');
   const jobs = path.join(f.home, 'native-jobs.json');
   const runs = path.join(f.home, 'native-runs.json');
+  const toggleFailures = path.join(f.home, 'native-toggle-failures.json');
   const other = { id: 'fixture-unrelated', enabled: true, name: 'Другая задача' };
   const reportedPath = foreign ? path.join(f.home, 'unrelated-openclaw.json') : config;
   await Promise.all([path.dirname(config), bin].map(dir => fs.mkdir(dir, { recursive: true })));
@@ -32,6 +34,7 @@ async function profile(t, { rejectAdd = false, foreign = false, rejectEnable = f
   if (foreign) await fs.writeFile(reportedPath, '{}');
   await fs.writeFile(jobs, json([other]));
   await fs.writeFile(runs, '[]');
+  await fs.writeFile(toggleFailures, '[]');
   const argvLog = path.join(bin, 'openclaw');
   await fs.writeFile(argvLog, '#!' + process.execPath + '\n' + [
     'const fs = require("node:fs");',
@@ -61,6 +64,7 @@ async function profile(t, { rejectAdd = false, foreign = false, rejectEnable = f
     '  if (index < 0) process.exit(8);',
     '  if (args[1] === "rm") { jobs.splice(index, 1); save(); output({ok:true,removed:true}); }',
     '  else if (args[1] === "enable" || args[1] === "disable") {',
+    '    if (JSON.parse(fs.readFileSync(' + json(toggleFailures) + ')).includes(args[1]+":"+args[2])) process.exit(5);',
     '    if (args[1] === "enable" && ' + json(rejectEnable) + ') process.exit(6);',
     '    jobs[index].enabled = args[1] === "enable"; save(); output(jobs[index]);',
     ...(fleetStopOnEnable ? ['    if (jobs[index].enabled) fs.writeFileSync(' +
@@ -77,7 +81,15 @@ async function profile(t, { rejectAdd = false, foreign = false, rejectEnable = f
     if (error.code === 'ENOENT') return '';
     throw error;
   })).trim().split('\n').filter(Boolean).map(JSON.parse);
-  return { ...f, config, other, jobs: () => read(jobs), calls,
+  async function command(output, userText = 'Проверь мою задачу') {
+    reply = output;
+    const before = f.edits.length;
+    await f.request(userText);
+    await until(() => f.edits.slice(before).some(edit => edit.includes('⏱')), 'OpenClaw command did not finish', 12_000);
+    return f.edits.slice(before).find(edit => edit.includes('⏱'));
+  }
+  return { ...f, config, other, jobs: () => read(jobs), calls, command,
+    failToggles: commands => fs.writeFile(toggleFailures, json(commands)),
     mapping: () => read(nativeMap), writeMapping: entries => fs.writeFile(nativeMap, json(entries)), runEntries: entries => fs.writeFile(runs, json(entries)),
     stopFile: path.join(f.directory, 'autonomy', 'STOP') };
 }
@@ -249,4 +261,113 @@ test('a fleet pause arriving during native activation fences the job before conf
   assert.equal(entry.enabled, false);
   assert.equal((await f.jobs()).find(job => job.id === entry.jobId).enabled, false);
   assert.deepEqual(f.delivered(), []);
+});
+
+async function addForPause(f, name) {
+  const output = marker({ name, trigger: { kind: 'once', at: '+30m' }, task: { kind: 'reminder', text: 'Текст ' + name } });
+  assert.match(await f.command(output, 'Поставь ' + name), /Ок, поставил/);
+  const action = (await f.records()).find(row => row.name === name);
+  return { action, jobId: (await f.mapping())[action.id].jobId };
+}
+
+const jobEnabled = async (f, jobId) => (await f.jobs()).find(row => row.id === jobId).enabled;
+
+test('the owned OpenClaw prompt advertises both pause scopes', async t => {
+  await profile(t);
+  const guidance = await openClawTaskMaintenancePrompt((await loadState()).state, process.env, 42);
+  for (const word of ['[STOP_ALL]', '[RESUME_ALL]', '[PAUSE_TASK:', '[RESUME_TASK:']) assert.ok(guidance.includes(word), word);
+});
+
+test('OpenClaw STOP and RESUME leave personally paused and unrelated jobs intact', async t => {
+  const f = await profile(t);
+  const personal = await addForPause(f, 'Личная');
+  const general = await addForPause(f, 'Общая');
+  const pause = await f.command('[PAUSE_TASK: ' + personal.action.id + ']', 'Поставь личную на паузу');
+  assert.match(pause, /«Личная» на паузе/);
+  assert.equal(await jobEnabled(f, personal.jobId), false);
+  assert.equal(await jobEnabled(f, general.jobId), true);
+  assert.equal((await f.records()).find(row => row.id === personal.action.id).disabledReason, 'owner');
+
+  const stop = await f.command('[STOP_ALL]', 'Останови фоновые задачи');
+  assert.match(stop, /снято с расписания задач: 1/);
+  assert.ok((await fs.stat(f.stopFile)).isFile());
+  assert.equal(await jobEnabled(f, general.jobId), false);
+  const paused = await f.mapping();
+  assert.equal(paused[personal.action.id].pausedBy, 'owner');
+  assert.equal(paused[general.action.id].pausedBy, 'stop');
+
+  const resumed = await f.command('[RESUME_ALL]', 'Верни задачи в работу');
+  assert.match(resumed, /задачи снова в работе \(1\)[\s\S]*Общая/);
+  assert.doesNotMatch(resumed, /Личная/);
+  await assert.rejects(fs.stat(f.stopFile), { code: 'ENOENT' });
+  assert.equal(await jobEnabled(f, personal.jobId), false);
+  assert.equal(await jobEnabled(f, general.jobId), true);
+  assert.deepEqual((await f.jobs()).find(job => job.id === f.other.id), f.other);
+});
+
+test('native global pause reports refusal and leaves the owner STOP for reconciliation', async t => {
+  const f = await profile(t);
+  const failed = await addForPause(f, 'Неподтверждённая');
+  const successful = await addForPause(f, 'Останавливаемая');
+  await f.failToggles(['disable:' + failed.jobId]);
+  const stop = await f.command('[STOP_ALL]', 'Останови фоновые задачи');
+  assert.match(stop, /снято с расписания задач: 1/);
+  assert.match(stop, /Остановка неполная/i);
+  assert.ok((await fs.stat(f.stopFile)).isFile());
+  assert.equal(await jobEnabled(f, successful.jobId), false);
+  assert.equal(await jobEnabled(f, failed.jobId), true);
+  assert.equal((await f.mapping())[failed.action.id].pausedBy, undefined);
+  await f.failToggles([]);
+  await f.scheduler().tickNow();
+  assert.equal(await jobEnabled(f, failed.jobId), false);
+});
+
+test('native general resume reports only confirmed jobs when one enable fails', async t => {
+  const f = await profile(t);
+  const failed = await addForPause(f, 'С отказом');
+  const restored = await addForPause(f, 'Готовая');
+  assert.match(await f.command('[STOP_ALL]'), /снято с расписания задач: 2/);
+  await f.failToggles(['enable:' + failed.jobId]);
+  const result = await f.command('[RESUME_ALL]');
+  assert.match(result, /задачи снова в работе \(1\)[\s\S]*Готовая/);
+  assert.doesNotMatch(result, /• С отказом/);
+  assert.match(result, /Не удалось вернуть в расписание движка/);
+  assert.equal(await jobEnabled(f, restored.jobId), true);
+  assert.equal(await jobEnabled(f, failed.jobId), false);
+  assert.equal((await f.mapping())[failed.action.id].pausedBy, 'stop');
+});
+
+test('native personal resume under owner and fleet STOP saves intent without enabling the job', async t => {
+  const f = await profile(t);
+  const { action, jobId } = await addForPause(f, 'Под общей паузой');
+  assert.match(await f.command('[PAUSE_TASK: ' + action.id + ']'), /на паузе/);
+  const fleet = path.join(f.directory, 'remote-config.json');
+  await fs.writeFile(fleet, json({ autonomyGlobalStop: true }));
+  await f.command('[STOP_ALL]');
+  const enableCount = (await f.calls()).filter(args => args[1] === 'enable').length;
+  const personal = await f.command('[RESUME_TASK: ' + action.id + ']');
+  assert.match(personal, /включена[\s\S]*общая пауза/i);
+  assert.equal((await f.records())[0].enabled, true);
+  assert.equal(await jobEnabled(f, jobId), false);
+  assert.match(await f.command('[RESUME_ALL]'), /Общая пауза сервера остаётся/);
+  assert.equal((await f.calls()).filter(args => args[1] === 'enable').length, enableCount);
+  assert.equal(await jobEnabled(f, jobId), false);
+  await fs.unlink(fleet);
+  await f.scheduler().tickNow();
+  assert.equal(await jobEnabled(f, jobId), true);
+});
+
+test('personal pause preserves the old local intent and warns if native disable fails', async t => {
+  const f = await profile(t);
+  const { action, jobId } = await addForPause(f, 'Не снятая');
+  await f.failToggles(['disable:' + jobId]);
+  const pause = await f.command('[PAUSE_TASK: ' + action.id + ']');
+  assert.match(pause, /«Не снятая» на паузе/);
+  assert.match(pause, /Не удалось снять с расписания движка/);
+  assert.equal((await f.records())[0].disabledReason, 'owner');
+  assert.equal(await jobEnabled(f, jobId), true);
+  await f.failToggles([]);
+  await f.scheduler().tickNow();
+  assert.equal(await jobEnabled(f, jobId), false);
+  assert.equal((await f.mapping())[action.id].pausedBy, 'owner');
 });
