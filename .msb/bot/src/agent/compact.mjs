@@ -2,14 +2,16 @@ import { readClaudeVersion } from './claude-version.mjs';
 import { runClaudeTurn } from './claude.mjs';
 import { resolveEffort, resolveModel, resolvePermMode } from '../state.mjs';
 import {workspaceDir} from '../paths.mjs';
+import {resolveProjectCwd} from '../projects/paths.mjs';
 import {claudeNativeScope} from '../mcp/native-removal.mjs';
 
 /**
- * Route the old Telegram action to a verified provider implementation.
- * Keep [native MCP removals](../mcp/native-removal.mjs) active for the compact launch.
+ * Route the [Telegram action](../telegram/bot.mjs) to a verified provider.
+ * Codex uses the [captured project directory](../projects/paths.mjs) for the same
+ * native thread and its MCP configuration. [Checks](../../tests/compact-routing.test.mjs).
  */
 export async function compactSession(state, { signal, isCurrent = async () => true,
-  compactProvider, runClaude = runClaudeTurn, readVersion = readClaudeVersion } = {}) {
+  compactProvider, runClaude = runClaudeTurn, readVersion = readClaudeVersion, env = process.env } = {}) {
   if (state.engine === 'oc') return { ok: false, error: 'Сжатие OpenClaw в этом ядре пока не подключено.' };
   if (typeof state.ccSessionId !== 'string' || !state.ccSessionId.trim()) {
     return { ok: false, error: 'Нет активной CC-сессии. Напиши что-нибудь сначала.' };
@@ -17,7 +19,16 @@ export async function compactSession(state, { signal, isCurrent = async () => tr
   const provider = state.extAuthBypass || 'claude';
   if (provider === 'codex') {
     if (!compactProvider) return { ok: false, error: 'Сжатие Codex пока не подключено.' };
-    return compactProvider(state, { signal, isCurrent });
+    if (signal?.aborted) return { ok: false, aborted: true };
+    try {
+      const cwd = await resolveProjectCwd(state, env);
+      if (signal?.aborted || !await isCurrent()) return { ok: false, aborted: true };
+      return compactProvider(state, { signal, isCurrent, cwd });
+    } catch (error) {
+      if (error?.code !== 'PROJECT_NOT_FOUND') throw error;
+      if (signal?.aborted || !await isCurrent()) return { ok: false, aborted: true };
+      return { ok: false, error: error.message };
+    }
   }
   if (provider !== 'claude') return { ok: false, error: `Сжатие для ${provider} пока не подключено.` };
   if (state.ccSessionId.startsWith('ext:')) return { ok: false, error: 'Текущая сессия не принадлежит Claude.' };

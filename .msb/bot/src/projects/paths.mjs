@@ -1,7 +1,8 @@
 /**
  * Base workspace + saved project → captured execution cwd; no state/env writes.
  * Old qA/_A root contract: [reference](../../tests/reference/parity-projects-contract.txt).
- * Callers: [selection](./selection.mjs), [files](./files.mjs), [runner](../agent/turn.mjs).
+ * Callers: [selection](./selection.mjs), [files](./files.mjs),
+ * [runner](../agent/turn.mjs), [compact](../agent/compact.mjs).
  * [Execution checks](../../tests/project-execution.test.mjs), [UI checks](../../tests/projects.test.mjs).
  */
 import fs from 'node:fs/promises';

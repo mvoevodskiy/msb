@@ -147,3 +147,26 @@ workspace из того же report, предварительно assert child.c
 toString/__proto__ injection по-прежнему ловится. Focusedagent-modes8PASS. Этот
 failed735 export не выложен, runtime нового follow-up не меняется; финальный
 same-commit Linux gate и приёмка должны выполняться заново отдельно.
+
+Ручное сжатие Codex в выбранном проекте
+
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf, .iia/bot/index.js.
+См. git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba.
+Переключение проекта 112344–112379 и 122006–122019 меняло workspace, который
+возвращал _A (41795–41805). /compact 114077–114125 через oR 20911–20931
+запускал IJ с этим cwd (19514–19519) и текущим ID. Сообщение об успехе
+зависело от compact_boundary (19736–19738).
+
+На dc464a5 обычный Codex exec открывал выбранный проект, а /compact
+использовал process.cwd() для MCP и app-server. Codex CLI 0.166.0
+возобновлял тред с записанным cwd в общем профиле. При относительном
+CODEX_HOME app-server открывал другой профиль ещё до восстановления cwd
+и не находил rollout. 822c221 воспроизвёл пропуск cwd и запуск при
+отсутствующем выбранном проекте.
+
+Core разрешает cwd через общий project resolver и проверяет актуальность
+снимка. Overlay передаёт один cwd в scoped MCP, spawn и thread/resume.
+Успех требует подтверждённого contextCompaction и completed того же
+прогона. UI, session ID и правила проверки отмены сохраняются.
+Проверки в compact-routing.test.mjs, menu-handlers.test.mjs и
+mcp-native-remove.test.mjs проходят от Telegram и до нативной конфигурации.
