@@ -20,6 +20,7 @@ await fs.appendFile(traceFile, `${JSON.stringify({ name, argv, stdin })}\n`);
 const emit = (value) => process.stdout.write(`${JSON.stringify(value)}\n`);
 const thread = '0199a213-81c0-7800-8aa1-bbab2a035a53';
 const otherThread = '0299a213-81c0-7800-8aa1-bbab2a035a53';
+const scenario = process.env.REFERENCE_SCENARIO || '';
 
 if (name === 'claude') {
   emit({ type: 'system', subtype: 'init', session_id: 'reference-claude-session' });
@@ -39,6 +40,23 @@ if (name === 'claude') {
   await new Promise(resolve => process.stdout.write(started.slice(9) + '\r\n', resolve));
   await fs.writeFile(path.join(process.env.HOME, 'reference-native-started'), 'yes');
   setInterval(() => {}, 60_000);
+} else if (name === 'codex' && argv[0] === 'exec' && scenario.startsWith('codex-partial-')) {
+  emit({ type: 'thread.started', thread_id: scenario.endsWith('-mismatch') ? otherThread : thread });
+  const message = text => emit({ type: 'item.completed', item: { type: 'agent_message', text } });
+  message('Первый фрагмент');
+  message('Второй фрагмент');
+  if (scenario.endsWith('-resume')) {
+    message('[КНОПКИ: plan]\n\n[INSTALL_SKILL]{"name":"failed-turn-skill","description":"Fixture skill","body":"draft"}[/INSTALL_SKILL]');
+  }
+  if (scenario.endsWith('-metered')) {
+    const file = path.join(process.env.HOME, '.codex', 'sessions', 'rollout-fixture-' + thread + '.jsonl');
+    const sample = { type: 'event_msg', timestamp: new Date().toISOString(), payload: { type: 'token_count',
+      info: { model_context_window: 1000, last_token_usage: { total_tokens: 520 } } } };
+    await fs.appendFile(file, JSON.stringify(sample) + '\n');
+  }
+  if (!scenario.endsWith('-resume')) emit({ type: 'turn.failed', error: { message: scenario.endsWith('-transport')
+    ? 'websocket closed before completion' : 'Ordinary native fixture failure' } });
+  process.exitCode = 1;
 } else if (name === 'codex' && argv[0] === 'exec') {
   const calls = (await fs.readFile(traceFile, 'utf8')).trim().split('\n').map(JSON.parse)
     .filter((entry) => entry.name === 'codex' && entry.argv[0] === 'exec');
