@@ -1,9 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
-import os from 'node:os';
 import path from 'node:path';
-import { createBot } from '../src/telegram/bot.mjs';
+import { createRequire } from 'node:module';
+import { fixture } from './helpers/menu-fixture.mjs';
 import { saveState, loadState } from '../src/state.mjs';
 import { readEnvMap, setEnvKey, maskValue } from '../src/env/store.mjs';
 import { connScreen, envScreen, mcpScreen, skillsScreen, limitScreen, settingsScreen, monitorSettingsScreen, monitorDigestScreen } from '../src/telegram/screens.mjs';
@@ -11,62 +11,10 @@ import { saveMonitorConfig, defaultConfig } from '../src/monitor/config.mjs';
 import { appendItems } from '../src/monitor/store.mjs';
 import { maybeSendDigest } from '../src/monitor/digest.mjs';
 import { autonomyDir } from '../src/paths.mjs';
+import { projectPath } from '../src/projects/paths.mjs';
 import { trySessionOperation } from '../src/agent/session-operation.mjs';
 import { presentationAwareRetry } from '../src/telegram/presentation-api.mjs';
 import { installUpdateHook } from '../../../overlay/bot/ext/install.mjs';
-
-async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixture' }), { overlay = true } = {}) {
-  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-menu-'));
-  const previous = { ...process.env };
-  let bot;
-  process.env.HOME = home; process.env.MSB_BOT_ID = 'default'; process.env.ADMIN_ID = '42';
-  process.env.MSB_WORKSPACE_DIR = home;
-  delete process.env.JARVIS_CC_ONLY;
-  t.after(async () => {
-    await bot?.stop();
-    for (const key of Object.keys(process.env)) if (!(key in previous)) delete process.env[key];
-    Object.assign(process.env, previous);
-    await fs.rm(home, { recursive: true, force: true });
-  });
-  const messages = [], edits = [], deleted = [], messageOptions = [], typingSignals = [], editSignals = [], replySignals = [];
-  class Harness {
-    handlers = new Map(); commands = new Map(); middleware = [];
-    async start() {}
-    async stop() {}
-    api = {
-      config: { use() {} }, setMyCommands: async () => true,
-      sendChatAction: async (_chat, _action, _options, signal) => { typingSignals.push(signal); return true; },
-      sendMessage: async (_chat, text, opts, signal) => { messages.push(text); messageOptions.push(opts); replySignals.push(signal); return { message_id: messages.length }; },
-      editMessageText: async (_chat, _id, text, _options, signal) => { edits.push(text); editSignals.push(signal); },
-      answerCallbackQuery: async () => {},
-      deleteMessage: async (_chat, id) => { deleted.push(id); },
-    };
-    use(fn) { this.middleware.push(fn); }
-    command(name, fn) { this.commands.set(name, fn); }
-    on(name, fn) { for (const event of Array.isArray(name) ? name : [name]) this.handlers.set(event, fn); }
-    async handleUpdate(update) {
-      const event = update.callback_query || update.message;
-      const ctx = { from: event.from, chat: event.message?.chat || event.chat, message: update.message,
-        callbackQuery: update.callback_query, api: this.api,
-        reply: (text, opts, signal) => this.api.sendMessage(42, text, opts, signal), answerCallbackQuery: async () => {} };
-      const text = ctx.message?.text;
-      const command = text?.match(/^\/([^@\s]+)(?:@\S+)?(?:\s+([\s\S]*))?$/);
-      if (command) ctx.match = command[2] || '';
-      const handler = ctx.callbackQuery ? this.handlers.get('callback_query:data')
-        : command ? this.commands.get(command[1]) : this.handlers.get(text ? 'message:text' : update.message?.photo ? 'message:photo' : update.message?.video ? 'message:video' : 'message:document');
-      const step = (i) => i < this.middleware.length ? this.middleware[i](ctx, () => step(i + 1)) : handler?.(ctx);
-      return step(0);
-    }
-  }
-  bot = createBot({ botToken: 'fake', botId: 'default', adminId: 42, workspace: home, timezone: 'Europe/Moscow' }, { bot: new Harness(), runTurn });
-  if (overlay) installUpdateHook(Harness, { ADMIN_ID: '42' });
-  await saveState({ engine: 'cc', extAuthBypass: 'codex', ccSessionId: 'ext:codex:0199a213-81c0-7800-8aa1-bbab2a035a53', dailySpendLimit: 10 });
-  const storeFile = path.join(home, '.msb/bots/default/ext-providers.json');
-  await fs.writeFile(storeFile, JSON.stringify({ version: 1, active: 'codex', models: { codex: 'gpt-6.1-terra' }, efforts: { codex: 'max' } }));
-  const callback = (data, uid = 42) => bot.handleUpdate({ callback_query: { id: 'q', data, from: { id: uid }, message: { message_id: 1, chat: { id: 42 } } } });
-  const message = (text, uid = 42) => bot.handleUpdate({ message: { message_id: 99, text, from: { id: uid }, chat: { id: 42 } } });
-  return { home, bot, callback, message, messages, edits, deleted, messageOptions, typingSignals, editSignals, replySignals, storeFile };
-}
 
 test('explicit Back and start cancel env/auth input before ordinary text', async (t) => {
   const f = await fixture(t);
@@ -82,14 +30,15 @@ test('explicit Back and start cancel env/auth input before ordinary text', async
   assert.equal((await readEnvMap()).map.has('CLAUDE_CODE_OAUTH_TOKEN'), false);
 });
 
-test('env input rejects line injection, retains form for retry, keeps masked previews and service buttons, without new automatic message deletion', async (t) => {
+test('env input rejects line injection, retains form for retry, keeps masked previews and service buttons, without deleting the user value message', async (t) => {
   const f = await fixture(t);
   await f.callback('settings:env:quick:TEST_MENU_TOKEN');
   await f.message('first\nINJECTED=bad');
   assert.equal((await readEnvMap()).map.size, 0);
   await f.message('fixture-secret');
+  await f.callback('settings:env:skip-comment',42,{messageId:f.messages.length});
   assert.equal((await readEnvMap()).map.get('TEST_MENU_TOKEN'), 'fixture-secret');
-  assert.deepEqual(f.deleted, []);
+  assert.ok(!f.deleted.includes(99),'keep the user env-value message');
   const view = await envScreen();
   assert.doesNotMatch(view.text, /fixture-secret/);
   assert.match(view.text, /fix…ret/);
@@ -140,21 +89,26 @@ test('/stop keeps current turn locked until it finishes and never reports succes
   await f.message('/stop');
   await f.message('second before exit');
   assert.equal(calls, 1);
-  assert.match(f.messages.at(-1), /Уже работаю/);
+  assert.equal(f.messages.at(-1), '⏳ в очереди');
   release(); await first;
   await until(() => f.edits.includes('Моя остановочка ✋🏽⛔️'));
   await new Promise(resolve => setTimeout(resolve, 10));
+  await until(() => calls === 2, 'queued turn after stopped process exits');
   await f.message('after exit');
-  await until(() => calls === 2 && f.edits.at(-1) === 'fixture failure');
+  await until(() => calls === 3 && f.edits.at(-1) === 'fixture failure');
   assert.ok(!f.edits.includes('✅'));
 });
 
-test('/compact uses the selected Codex session and preserves the previous Telegram presentation', async (t) => {
+test('/compact uses the selected Codex project and session with the previous Telegram presentation', async (t) => {
   const f = await fixture(t, undefined, { overlay: false });
+  const project = projectPath('alpha');
+  await fs.mkdir(project, { recursive: true });
+  await saveState({ ...(await loadState()).state, activeProject: 'alpha' });
   const before = (await loadState()).state;
-  let called = false;
-  f.bot[Symbol.for('msb.compactProvider')] = async (snapshot, { isCurrent }) => {
+  let called = false, capturedCwd;
+  f.bot[Symbol.for('msb.compactProvider')] = async (snapshot, { isCurrent, cwd }) => {
     called = true;
+    capturedCwd = cwd;
     assert.equal(snapshot.ccSessionId, before.ccSessionId);
     assert.equal(snapshot.extAuthBypass, 'codex');
     assert.equal(await isCurrent(), true);
@@ -163,6 +117,7 @@ test('/compact uses the selected Codex session and preserves the previous Telegr
   await f.message('/compact');
   await until(() => f.edits.includes('🗜️ Контекст успешно сжат. Жду команду.'));
   assert.ok(called);
+  assert.equal(capturedCwd, project);
   assert.ok(f.messages.includes('🗜️ Сжимаю контекст...'));
   assert.equal(f.typingSignals.at(-1)?.aborted, true);
   for (const signal of [f.typingSignals.at(-1), f.editSignals.at(-1), f.replySignals[0]]) {
@@ -192,7 +147,7 @@ test('/stop keeps a compaction locked until the provider finishes', async (t) =>
   assert.equal(observedSignal.aborted, true);
   assert.equal(f.typingSignals.at(-1)?.aborted, true);
   await f.message('wait');
-  assert.match(f.messages.at(-1), /Уже работаю/);
+  assert.equal(f.messages.at(-1), '⏳ в очереди');
   release();
   await until(() => f.edits.includes('Моя остановочка ✋🏽⛔️'));
   assert.ok(!f.edits.includes('🗜️ Контекст успешно сжат. Жду команду.'));
@@ -240,13 +195,26 @@ test('/compact refuses a background run and never sends a switched session to th
 });
 
 test('/compact and normal turns cannot overlap across the owner’s chats', async (t) => {
-  let start, release;
+  let start, release, finishCompact, releaseHistory, runCalls = 0;
+  const historyGate = new Promise(resolve => { releaseHistory = resolve; });
+  // Release every held fake operation before fixture shutdown, even on failure.
+  t.after(() => { releaseHistory(); release?.(); finishCompact?.(); });
   const entered = new Promise((resolve) => { start = resolve; });
   const f = await fixture(t, async () => {
+    runCalls++;
     start();
-    await new Promise((resolve) => { release = resolve; });
+    if (runCalls === 1) await new Promise((resolve) => { release = resolve; });
     return { ok: true, text: 'done', result: {} };
   }, { overlay: false });
+  const appendFile = fs.appendFile.bind(fs);
+  let journalHeld = false;
+  t.mock.method(fs, 'appendFile', async (file, ...args) => {
+    if (!journalHeld && String(file).endsWith('/chat-diary.jsonl')) {
+      journalHeld = true;
+      await historyGate;
+    }
+    return appendFile(file, ...args);
+  });
   let compactCalls = 0;
   f.bot[Symbol.for('msb.compactProvider')] = async () => { compactCalls++; return { ok: true }; };
   await f.message('working');
@@ -257,19 +225,35 @@ test('/compact and normal turns cannot overlap across the owner’s chats', asyn
   release();
   await until(() => f.edits.some((text) => text.includes('done')));
 
-  let startCompact, finishCompact;
+  await until(() => journalHeld);
+  await f.message('/compact');
+  assert.match(f.messages.at(-1), /Уже работаю/);
+  assert.equal(compactCalls, 0, 'Visible text does not mean the journal/worker has finished.');
+  releaseHistory();
+
+  let startCompact, compactStarted = false;
   const compactEntered = new Promise((resolve) => { startCompact = resolve; });
   f.bot[Symbol.for('msb.compactProvider')] = async () => {
+    compactStarted = true;
     startCompact();
     await new Promise((resolve) => { finishCompact = resolve; });
     return { ok: true };
   };
-  await f.message('/compact');
+  // Wait through the public admission rule, including history flush. Do not
+  // equate a fake transport edit with the end of the detached inbox worker.
+  const end = Date.now() + 2000;
+  while (!compactStarted && Date.now() < end) {
+    await f.message('/compact');
+    if (!compactStarted) await new Promise(resolve => setTimeout(resolve, 5));
+  }
+  assert.ok(compactStarted, 'Compaction must start after the worker finishes.');
   await compactEntered;
   await f.bot.handleUpdate({ message: { message_id: 102, text: 'other chat', from: { id: 42 }, chat: { id: 43 } } });
-  assert.match(f.messages.at(-1), /Уже работаю/);
+  assert.equal(f.messages.at(-1), '⏳ в очереди');
+  assert.equal(runCalls, 1, 'The queued model cannot start inside compaction.');
   finishCompact();
   await until(() => f.edits.includes('🗜️ Контекст успешно сжат. Жду команду.'));
+  await until(() => runCalls === 2, 'Queued text starts after the compact provider finishes.');
 });
 
 test('timezone form validates and digest screen/executor use the same saved zone', async (t) => {
@@ -316,8 +300,9 @@ test('stale Codex auth cannot switch provider, and old Claude engine callback ex
 test('a Telegram acknowledgement failure does not claim that a saved env value was not written', async (t) => {
   const f = await fixture(t);
   await f.callback('settings:env:quick:TEST_MENU_TOKEN');
+  await f.message('fixture-secret'); // value remains a draft until the old description step
   f.bot.api.sendMessage = async () => { throw new Error('fixture Telegram failure'); };
-  await assert.rejects(f.message('fixture-secret'), /fixture Telegram failure/);
+  await assert.rejects(f.message('fixture description'), /fixture Telegram failure/);
   assert.equal((await readEnvMap()).map.get('TEST_MENU_TOKEN'), 'fixture-secret');
   assert.ok(!f.messages.some((x) => x.startsWith('Не сохранил')));
 });
@@ -343,19 +328,32 @@ test('all baseline menu button routes remain reachable', async (t) => {
   const callbacks = (v) => v.keyboard.inline_keyboard.flat().map((b) => b.callback_data).filter(Boolean);
   const state = { ...(await loadState()).state, permissionMode: 'auto', autonomyRights: false };
   await saveState(state);
-  for (const [name, expected] of Object.entries(contract.screens)) assert.deepEqual(callbacks(await screens[name](state)), expected, name);
+  const screenInput = { mcpScreen: 0, mcpWorkspaceScreen: { entries: [] } };
+  for (const [name, expected] of Object.entries(contract.screens)) {
+    // The pinned open-core snapshot exposed NODE_ENV deletion. Old bY55151
+    // protects it; this one unsafe action is restored by the env contract.
+    const restored = name === 'envScreen' ? expected.filter(data => data !== 'settings:env:delete:NODE_ENV') : expected;
+    const actual = callbacks(await screens[name](screenInput[name] ?? state));
+    if (name === 'limitScreen') {
+      // Old 52919–52927 restores two missing choices and their original order.
+      // This pinned snapshot still proves that all of its buttons are reachable.
+      assert.deepEqual(actual.filter(data => restored.includes(data)).sort(), restored.toSorted(), name);
+    } else {
+      assert.deepEqual(actual, restored, name);
+    }
+  }
   for (const [name, expected] of Object.entries(contract.overlay)) assert.deepEqual(callbacks(await overlay[name](process.env, f.home)), expected, name);
 });
 
-test('stored settings, cost history and selected project work again without claiming new executors', async (t) => {
+test('stored settings and cost history survive a real project selection reset', async (t) => {
   const f = await fixture(t);
-  const session = (await loadState()).state.ccSessionId;
+  const epoch = (await loadState()).state.sessionEpoch || 0;
   await f.callback('settings:limit:set:25');
   assert.equal((await loadState()).state.dailySpendLimit, 25);
-  await saveState({ ...(await loadState()).state, costPaused: true, costHistory: { [new Date().toISOString().slice(0, 10)]: 2.34 } });
+  await saveState({ ...(await loadState()).state, timezone: 'UTC', costPaused: true, costHistory: { [new Date().toISOString().slice(0, 10)]: 2.34 } });
   await f.message('/cost');
   assert.match(f.messages.at(-1), /\$2\.34/);
-  assert.match(f.messages.at(-1), /25\/день/);
+  assert.match(f.messages.at(-1), /из \$25/);
   await f.callback('settings:limit:set:0');
   assert.equal((await loadState()).state.costPaused, false);
   await f.callback('auto:rights-toggle');
@@ -369,7 +367,8 @@ test('stored settings, cost history and selected project work again without clai
   assert.ok((await fs.stat(path.join(f.home, 'projects/fixture-project'))).isDirectory());
   await f.callback('ext:permmode:set:plan');
   assert.equal((await loadState()).state.permissionMode, 'plan');
-  assert.equal((await loadState()).state.ccSessionId, session);
+  assert.equal((await loadState()).state.ccSessionId, undefined);
+  assert.equal((await loadState()).state.sessionEpoch, epoch+1);
   const store = JSON.parse(await fs.readFile(f.storeFile, 'utf8'));
   assert.equal(store.models.codex, 'gpt-6.1-terra');
   assert.equal(store.efforts.codex, 'max');
@@ -380,12 +379,13 @@ test('informational status preserves form input and core Back cancels even witho
   await f.callback('settings:env:quick:TEST_MENU_TOKEN');
   await f.message('/status');
   await f.message('fixture-after-status');
+  await f.callback('settings:env:skip-comment',42,{messageId:f.messages.length});
   assert.equal((await readEnvMap()).map.get('TEST_MENU_TOKEN'), 'fixture-after-status');
   await f.callback('settings:auth:switch-sub');
   await f.callback('menu:agent');
   await f.message('ordinary task');
   assert.equal((await readEnvMap()).map.has('CLAUDE_CODE_OAUTH_TOKEN'), false);
-  assert.deepEqual(f.deleted, []);
+  assert.ok(!f.deleted.includes(99),'env value is retained; only bot comment prompt is removed');
 });
 
 test('restored Claude engine selector opens its token form without switching Codex first', async (t) => {
@@ -569,4 +569,208 @@ test('/compact presents a successful no-op without inventing a compaction or an 
   await f.message('/compact');
   await until(() => f.edits.some(value => value === text));
   assert.ok(!f.edits.some(value => /успешно сжат|Не получилось/.test(value)));
+});
+
+test('reply stop parity: stop reply precedes timezone validation and leaves the form ready for its value', async t => {
+  let observed;
+  const f = await fixture(t, async ({ signal }) => {
+    observed = signal;
+    await new Promise(resolve => { signal.addEventListener('abort', resolve, { once: true }); });
+    return { ok: false, error: 'aborted', text: 'Остановлено.' };
+  }, { overlay: false });
+  await f.message('active'); await until(() => observed);
+  try {
+    await f.callback('settings:tz');
+    await f.bot.handleUpdate({ message: { message_id: 123, text: 'стоп', from: { id: 42 }, chat: { id: 42 }, reply_to_message: { text: 'Думаю…', from: { id: 99 } } } });
+    assert.equal(observed.aborted, true);
+    assert.ok(!f.messages.some(text => text.startsWith('Неизвестный часовой пояс.')));
+    await f.message('Pacific/Honolulu');
+    assert.equal((await loadState()).state.timezone, 'Pacific/Honolulu');
+  } finally { if (!observed.aborted) await f.message('/stop'); }
+});
+
+test('env parity: delete opens the original confirmation before changing the file', async t => {
+  const f = await fixture(t, undefined, { overlay: false });
+  await setEnvKey('TEST_DELETE_KEY', 'synthetic-value');
+  const before = await fs.readFile(path.join(f.home, '.msb/bots/default/.env'), 'utf8');
+  await f.callback('settings:env:delete:TEST_DELETE_KEY');
+  assert.equal(await fs.readFile(path.join(f.home, '.msb/bots/default/.env'), 'utf8'), before);
+  assert.equal(f.edits.at(-1), 'Удалить <code>TEST_DELETE_KEY</code>?');
+  assert.deepEqual(f.editOptions.at(-1).reply_markup.inline_keyboard, [[{text:'🗑 Да, удалить',callback_data:'settings:env:confirm-delete:TEST_DELETE_KEY'},{text:'« Нет',callback_data:'settings:env'}]]);
+  await f.callback('settings:env:confirm-delete:TEST_DELETE_KEY');
+  assert.equal((await readEnvMap()).map.has('TEST_DELETE_KEY'), false);
+});
+
+test('env parity: confirming deletion performs the action, while cancelling keeps the original value', async t => {
+  const f = await fixture(t, undefined, { overlay: false });
+  await setEnvKey('TEST_DELETE_KEY', 'keep-until-confirmed');
+  await f.callback('settings:env:delete:TEST_DELETE_KEY');
+  await f.callback('settings:env');
+  assert.equal((await readEnvMap()).map.get('TEST_DELETE_KEY'), 'keep-until-confirmed');
+  await f.callback('settings:env:confirm-delete:TEST_DELETE_KEY');
+  assert.equal((await readEnvMap()).map.has('TEST_DELETE_KEY'), false);
+});
+
+test('env parity: returning to the env list or the old Cancel exits key input before the next task', async t => {
+  let runs = 0;
+  const f = await fixture(t, async () => { runs++; return {ok:true,text:'accepted task'}; }, { overlay: false });
+  for (const cancel of ['settings:env','settings:env:cancel']) {
+    await f.callback('settings:env:quick:TEST_PENDING_KEY');
+    await f.callback(cancel);
+    await f.message('ordinary next task');
+    assert.equal((await readEnvMap()).map.has('TEST_PENDING_KEY'), false);
+  }
+  await until(() => runs === 2);
+});
+
+
+test('env parity: protected keys stay protected at both deletion steps', async t => {
+  const f = await fixture(t, undefined, {overlay:false});
+  await setEnvKey('BOT_TOKEN','12345:'+'F'.repeat(30),process.env,{internal:true});
+  await f.callback('settings:env:delete:BOT_TOKEN');
+  assert.equal(f.edits.at(-1),'❌ BOT_TOKEN — защищённый ключ, удаление запрещено.');
+  assert.deepEqual(f.editOptions.at(-1).reply_markup.inline_keyboard, [[{text:'« Назад',callback_data:'settings:env'}]]);
+  await f.callback('settings:env:confirm-delete:BOT_TOKEN');
+  assert.equal((await readEnvMap()).map.get('BOT_TOKEN'),'12345:'+'F'.repeat(30));
+});
+
+test('env parity: env list and old Cancel clear provider input in the overlay too', async t => {
+  const f = await fixture(t);
+  const {setPendingAuth,getPendingAuth,clearPendingAuth}=await import('../../../overlay/bot/ext/auth.mjs');
+  t.after(()=>clearPendingAuth(42));
+  for(const data of ['settings:env','settings:env:cancel']) {
+    setPendingAuth(42,'claude',42);
+    await f.callback(data);
+    assert.equal(getPendingAuth(42),null,'Leaving the form must clear overlay ownership before another message arrives.');
+  }
+});
+
+
+test('form timeout parity: expired env input is consumed without storing it or sending it to the model', async t => {
+  let clock=1_000_000,runs=0;
+  const f=await fixture(t,async()=>{runs++;return{ok:true,text:'ordinary accepted'};},{overlay:false,now:()=>clock});
+  await f.callback('settings:env:quick:TEST_EXPIRES');clock+=600_001;
+  await f.message('fixture-late-value');
+  assert.equal((await readEnvMap()).map.has('TEST_EXPIRES'),false);
+  assert.equal(runs,0);
+  assert.equal(f.messages.at(-1),'⏳ Время на ввод переменной истекло (10 мин) — режим ввода сброшен. Начни заново: /settings → 🔑 Переменные.');
+  await f.message('ordinary task');await until(()=>runs===1);
+});
+
+test('form timeout parity: env name-to-value transition keeps the original deadline', async t => {
+  let clock=1_000_000;
+  const f=await fixture(t,undefined,{overlay:false,now:()=>clock});
+  await f.callback('settings:env:add');clock+=590_000;
+  await f.message('TEST_WHOLE_FORM');clock+=10_001;
+  await f.message('fixture-late-value');
+  assert.equal((await readEnvMap()).map.has('TEST_WHOLE_FORM'),false);
+  assert.ok(f.messages.at(-1).startsWith('⏳ Время на ввод переменной истекло'));
+});
+
+test('form timeout parity: exactly ten minutes still accepts env input; reopening starts a new deadline', async t => {
+  let clock=1_000_000;
+  const f=await fixture(t,undefined,{overlay:false,now:()=>clock});
+  await f.callback('settings:env:quick:TEST_BOUNDARY');clock+=600_000;
+  await f.message('at-boundary');await f.callback('settings:env:skip-comment',42,{messageId:f.messages.length});assert.equal((await readEnvMap()).map.get('TEST_BOUNDARY'),'at-boundary');
+  await f.callback('settings:env:quick:TEST_BOUNDARY');clock+=600_001;
+  await f.message('too-late');assert.equal((await readEnvMap()).map.get('TEST_BOUNDARY'),'at-boundary');
+});
+
+test('form timeout parity: an expired Claude token input never changes auth or requests restart', async t => {
+  let clock=1_000_000,runs=0;
+  const f=await fixture(t,async()=>{runs++;return{ok:true,text:'ordinary accepted'};},{overlay:false,now:()=>clock});
+  const before=(await loadState()).state;
+  await f.callback('settings:auth:switch-sub');clock+=600_001;
+  await f.message('fixture_expired_auth_'+ 'x'.repeat(60));
+  assert.equal((await readEnvMap()).map.has('CLAUDE_CODE_OAUTH_TOKEN'),false);
+  assert.equal((await readEnvMap()).map.has('ANTHROPIC_API_KEY'),false);
+  assert.deepEqual((await loadState()).state,before);
+  assert.deepEqual(f.restartRequests,[]);assert.equal(runs,0);
+  assert.equal(f.messages.at(-1),'⏳ Время на ввод токена истекло (10 мин) — режим ввода сброшен. Начни заново: /settings → 🔌 Подключение.');
+  await f.message('ordinary task');await until(()=>runs===1);
+});
+
+for(const form of ['env','auth']) for(const leading of ['', '   ']) {
+  test(`form command parity: ${form} consumes an unknown slash input and cancels before the next task (${leading.length} spaces)`,async t=>{
+    let runs=0;
+    const f=await fixture(t,async()=>{runs++;return{ok:true,text:'ordinary accepted'};},{overlay:false});
+    await f.callback(form==='env'?'settings:env:quick:TEST_SLASH':'settings:auth:switch-sub');
+    await f.message(leading+'/not_a_registered_command');
+    assert.equal(f.messages.at(-1),form==='env'
+      ?'Вышел из режима ввода переменной — команда не была сохранена как значение. Отправь её ещё раз.'
+      :'Вышел из режима ввода токена — команда не была сохранена. Отправь её ещё раз.');
+    assert.equal((await readEnvMap()).map.has('TEST_SLASH'),false);
+    assert.equal((await readEnvMap()).map.has('CLAUDE_CODE_OAUTH_TOKEN'),false);
+    assert.deepEqual(f.restartRequests,[]);
+    await f.message('ordinary task');await until(()=>runs===1);
+  });
+}
+
+test('form timeout parity: timezone had no old TTL and remains editable after ten minutes',async t=>{
+  let clock=1_000_000;
+  const f=await fixture(t,undefined,{overlay:false,now:()=>clock});
+  await f.callback('settings:tz');clock+=700_000;
+  await f.message('Pacific/Honolulu');assert.equal((await loadState()).state.timezone,'Pacific/Honolulu');
+});
+
+test('Codex failed setting callbacks show the previous choice and keep the active conversation', async (t) => {
+  const f = await fixture(t);
+  process.env.CODEX_HOME = path.join(f.home, '.codex');
+  await fs.mkdir(process.env.CODEX_HOME, { recursive: true });
+  const configFile = path.join(process.env.CODEX_HOME, 'config.toml');
+  const config = 'model = "gpt-6.1-terra"\nmodel_reasoning_effort = "max"\n';
+  await fs.writeFile(configFile, config);
+  const before = await fs.readFile(f.storeFile, 'utf8');
+  const state = (await loadState()).state;
+  const rename = fs.rename;
+  t.mock.method(fs, 'rename', async (from, to) => {
+    if (path.basename(to) === 'config.toml') throw new Error('fixture native config unavailable');
+    return rename(from, to);
+  });
+  await f.callback('ext:model:set:gpt-5.4-mini');
+  assert.match(f.edits.at(-1), /Не сменил модель/);
+  assert.match(f.edits.at(-1), /модель: <b>gpt-6\.1-terra<\/b>/);
+  await f.callback('ext:effort:set:high');
+  assert.match(f.edits.at(-1), /❌ fixture native config unavailable/);
+  assert.match(f.edits.at(-1), /Глубина: <b>max<\/b>/);
+  assert.equal(await fs.readFile(f.storeFile, 'utf8'), before);
+  assert.equal(await fs.readFile(configFile, 'utf8'), config);
+  assert.deepEqual((await loadState()).state, state);
+});
+
+
+test('Codex preference remains successful when lock cleanup reports an error after publication', async (t) => {
+  const f = await fixture(t);
+  process.env.CODEX_HOME = path.join(f.home, '.codex');
+  await fs.mkdir(process.env.CODEX_HOME, { recursive: true });
+  const configFile = path.join(process.env.CODEX_HOME, 'config.toml');
+  await fs.writeFile(configFile, 'model = "gpt-6.1-terra"\n');
+  const Database = createRequire(import.meta.url)('better-sqlite3');
+  const { DatabaseSync } = await import('node:sqlite').catch(error => {
+    if (error.code !== 'ERR_UNKNOWN_BUILTIN_MODULE') throw error;
+    return {};
+  });
+  const drivers = [[Database.prototype, db => db.name]];
+  if (DatabaseSync) drivers.push([DatabaseSync.prototype, db => db.location?.('main')]);
+  const targets = new Set(['ext-providers.json.lock.sqlite', 'config.toml.lock.sqlite']);
+  const injected = new Set();
+  for (const [prototype, fileName] of drivers) {
+    const exec = prototype.exec;
+    t.mock.method(prototype, 'exec', function (sql, ...rest) {
+      const result = exec.call(this, sql, ...rest);
+      const file = path.basename(fileName(this) ?? '');
+      if (sql === 'ROLLBACK;' && targets.has(file) && !injected.has(file)) {
+        injected.add(file);
+        throw new Error('fixture cleanup after publication');
+      }
+      return result;
+    });
+  }
+  await f.callback('ext:model:set:gpt-5.4-mini');
+  assert.deepEqual(injected, targets);
+  assert.match(f.edits.at(-1), /^✔ .*модель <b>GPT-5\.4 Mini<\/b>/);
+  assert.equal(JSON.parse(await fs.readFile(f.storeFile, 'utf8')).models.codex, 'gpt-5.4-mini');
+  assert.match(await fs.readFile(configFile, 'utf8'), /^model = "gpt-5\.4-mini"$/m);
+  await f.callback('ext:effort:set:high');
+  assert.match(f.edits.at(-1), /^✔ Глубина: <b>high<\/b>/);
 });

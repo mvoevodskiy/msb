@@ -10,6 +10,8 @@ import { Bot } from 'grammy';
 // One subprocess per scenario keeps prototype patches and env writes isolated.
 const scenario = process.argv[2];
 const engineMenuScenario = scenario.startsWith('engine-');
+const profileScenario = scenario.startsWith('engine-profile-');
+const relativeProfile = profileScenario && scenario.includes('relative');
 const fixtureHome = process.env.HOME;
 if (!fixtureHome || fixtureHome !== process.env.REFERENCE_HOME || os.homedir() !== fixtureHome) {
   throw new Error('The reference harness requires its isolated HOME');
@@ -57,6 +59,21 @@ const writeJSON = (file, value) => fs.writeFile(file, JSON.stringify(value), { m
 const readJSON = async (file) => JSON.parse(await fs.readFile(file, 'utf8'));
 await writeJSON(stateFile, initialState);
 await writeJSON(storeFile, initialStore);
+
+const selectedProfile = path.join(fixtureHome, 'projects', 'alpha', 'native-profile');
+const selectedConfig = 'model = "gpt-5.4-mini"\nmodel_reasoning_effort = "medium"\n';
+if (profileScenario) {
+  const decoyProfile = path.join(workspace, 'native-profile');
+  await fs.mkdir(selectedProfile, { recursive: true });
+  await fs.mkdir(decoyProfile, { recursive: true });
+  await fs.writeFile(path.join(selectedProfile, 'auth.json'), nativeAuth, { mode: 0o600 });
+  await fs.writeFile(path.join(selectedProfile, 'config.toml'), selectedConfig);
+  await fs.writeFile(authFile, '{}');
+  if (scenario.endsWith('-missing')) await fs.writeFile(path.join(decoyProfile, 'auth.json'), nativeAuth);
+  process.env.CODEX_HOME = relativeProfile ? 'native-profile' : selectedProfile;
+  process.env.REFERENCE_LOGIN = 'profile';
+  process.chdir(workspace);
+}
 
 // The real router/overlay may write only this disposable profile. In particular,
 // never let a regression submit an OS-helper request or execute a system CLI.
@@ -177,6 +194,7 @@ if (engineMenuScenario) {
     sessions: { codex: thread }, models: { codex: 'gpt-6.1-sol' }, efforts: { codex: 'high' } };
   const selectedState = { ...initialState, engine: openClaw ? 'oc' : 'cc',
     ccModel: 'sonnet', ccEffort: 'medium', permissionMode: 'auto', sessionEpoch: 7,
+    ...(relativeProfile ? { activeProject: scenario.endsWith('-missing') ? 'missing' : 'alpha' } : {}),
     ...(alreadyCodex ? { extAuthBypass: 'codex', ccSessionId: session } : {}),
     ...(openClaw ? { ocModel: 'openai/reference', ocSessionId: 'reference-oc-session' } : {}) };
   await writeJSON(stateFile, selectedState);
@@ -199,7 +217,8 @@ if (engineMenuScenario) {
   const homeCoreCallbacks = [...f.coreCallbacks];
   const callsBeforeClick = f.calls.length;
   if (scenario !== 'engine-home') {
-    await f.callback(codexButton.callback_data, scenario === 'engine-foreign-owner' ? 43 : owner);
+    const action = scenario.endsWith('-login-button') ? 'ext:auth:codex' : codexButton.callback_data;
+    await f.callback(action, scenario === 'engine-foreign-owner' ? 43 : owner);
     if (scenario === 'engine-reselect') await f.callback(codexButton.callback_data);
   }
   const after = await snapshot();
@@ -211,6 +230,11 @@ if (engineMenuScenario) {
     // Only non-secret synthetic configuration is returned to the test process.
     nativeConfig: after.config, actionCalls: f.calls.slice(callsBeforeClick),
     coreCallbacks: f.coreCallbacks, cli: await trace(), forbiddenEffects,
+    ...(profileScenario ? {
+      selectedProfile,
+      selectedAuthUnchanged: await fs.readFile(path.join(selectedProfile, 'auth.json'), 'utf8') === nativeAuth,
+      selectedConfigUnchanged: await fs.readFile(path.join(selectedProfile, 'config.toml'), 'utf8') === selectedConfig,
+    } : {}),
   };
 } else if (scenario === 'roundtrip') {
   const f = await hookedBot();
@@ -240,6 +264,35 @@ if (engineMenuScenario) {
     claudeAuthUnchanged: process.env.CLAUDE_CODE_OAUTH_TOKEN === originalClaudeAuth,
     foreignCode: foreign.code, ownCode: own.code,
     forwarded: claudeCalls.map(({ argv, stdin }) => ({ argv, stdin })) };
+} else if (scenario.startsWith('codex-own-preferences-')) {
+  const field = scenario.endsWith('-legacy') ? 'model' : 'ccModel';
+  const claudeModel = 'custom-native-model';
+  const original = { ...initialState, [field]: claudeModel, ccEffort: 'max', ocModel: 'openrouter/fixture/model' };
+  await writeJSON(stateFile, original);
+  const f = await hookedBot();
+  await f.callback('ext:conn:set:codex');
+  const shimBin = fileURLToPath(new URL('../../../shim/bin/', import.meta.url));
+  process.env.PATH = [shimBin, binDir, path.dirname(process.execPath), '/usr/bin', '/bin'].join(':');
+  const { runAgentTurn } = await import('../../../../../../.msb/bot/src/agent/turn.mjs');
+  const first = await runAgentTurn({ prompt: 'reference Codex fallback preferences' });
+  const direct = await runShim(['-p', '--resume', session, '--model', 'gpt-5.4-mini']);
+  const { setSelectedModel, setSelectedEffort } = await import('../../../store.mjs');
+  await setSelectedModel('codex', 'gpt-6.1-terra');
+  await setSelectedEffort('codex', 'max');
+  const explicit = await runAgentTurn({ prompt: 'reference explicit Codex preferences' });
+  await f.callback('ext:conn:set:claude');
+  const claude = await runAgentTurn({ prompt: 'reference restored Claude preference' });
+  const calls = await trace();
+  const codexArgs = calls.filter(x => x.name === 'codex' && x.argv[0] === 'exec').map(x => x.argv);
+  const lastClaude = calls.filter(x => x.name === 'claude' && x.argv[0] === '-p').at(-1)?.argv || [];
+  const after = await readJSON(stateFile);
+  result = {
+    firstOk: first.ok, firstModel: first.result?.model, directOk: direct.code === 0,
+    explicitOk: explicit.ok, explicitModel: explicit.result?.model, claudeOk: claude.ok,
+    codexArgs, claudeArgs: lastClaude,
+    sameCodexSession: first.result?.sessionId === session && explicit.result?.sessionId === session,
+    claudeSession: after.ccSessionId, oldModel: after[field], oldEffort: after.ccEffort, oldOcModel: after.ocModel,
+  };
 } else if (scenario === 'pinned-route') {
   // The user changes the selected provider after an earlier turn took its snapshot.
   await writeJSON(storeFile, { ...initialStore, active:'claude', sessions:{codex:thread} });
@@ -268,6 +321,47 @@ if (engineMenuScenario) {
     loginChecked: (await trace()).some((entry) => entry.name === 'codex' && entry.argv.join(' ') === 'login status'),
     announcedSwitch: f.calls.some((call) => String(call.payload.text || '').includes('Агент теперь на')),
     apiCalls: f.calls.length };
+} else if (scenario === 'codex-first-stop' || scenario === 'codex-first-empty-error') {
+  const stopped = scenario === 'codex-first-stop';
+  const { ccSessionId, ...firstState } = initialState;
+  const priorUsage = { sessionId: 'earlier-session', contextTokens: 123, contextWindow: 1000 };
+  await writeJSON(stateFile, { ...firstState, extAuthBypass: 'codex', lastCcUsage: priorUsage });
+  await writeJSON(storeFile, { ...initialStore, active: 'codex' });
+  const shimBin = fileURLToPath(new URL('../../../shim/bin/', import.meta.url));
+  process.env.PATH = [shimBin, binDir, path.dirname(process.execPath), '/usr/bin', '/bin'].join(':');
+  const { runAgentTurn } = await import('../../../../../../.msb/bot/src/agent/turn.mjs');
+  const controller = new AbortController();
+  const pending = runAgentTurn({ prompt: 'reference first Codex turn', signal: controller.signal });
+  const exists = name => fs.access(path.join(fixtureHome, name)).then(() => true, () => false);
+  let out;
+  try {
+    if (stopped) {
+      const deadline = Date.now() + 5000;
+      while (!await exists('reference-native-started')) {
+        if (Date.now() > deadline) throw new Error('Codex did not emit thread.started');
+        await new Promise(resolve => setTimeout(resolve, 10));
+      }
+      // The CLI is held open after flushing its JSONL record. Allow its pipes to drain before stop.
+      await new Promise(resolve => setTimeout(resolve, 300));
+      controller.abort();
+    }
+    out = await pending;
+  } finally {
+    controller.abort();
+    await pending.catch(() => {});
+  }
+  const state = await readJSON(stateFile);
+  result = {
+    nativeExecutions: (await trace()).filter(entry => entry.name === 'codex' && entry.argv[0] === 'exec').length,
+    nativeStopped: await exists('reference-native-stopped'),
+    aborted: Boolean(out.result?.aborted), ok: out.ok, text: out.text,
+    observedId: out.result?.sessionId || null, context: out.result?.context ?? null,
+    active: state.ccSessionId ?? null, parked: state.parkedCcSessions?.codex ?? null,
+    lastUsage: state.lastCcUsage, priorUsage,
+    pending: state.pendingCcSessionStarts ?? null,
+    storedNative: (await readJSON(storeFile)).sessions.codex ?? null,
+    history: state.sessionHistory ?? [],
+  };
 } else if (scenario === 'model-error' || scenario === 'stream-cut') {
   await writeJSON(storeFile, { ...initialStore, active: 'codex', sessions: { codex: thread } });
   await writeJSON(stateFile, { ...initialState, extAuthBypass: 'codex', ccSessionId: session });

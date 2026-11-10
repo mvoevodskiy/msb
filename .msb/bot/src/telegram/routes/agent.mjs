@@ -1,17 +1,18 @@
 /**
- * Агент, авторизация, модель, effort и поздний setup fallback.
+ * Авторизация, effort/права и поздний setup fallback.
+ * Модели/версии → [отдельный route](./models.mjs), те же state и router.
  * Навигация: [Telegram](../README.md).
  */
+import { readClaudeVersion } from '../../agent/claude-version.mjs';
 import { loadState, updateState } from '../../state.mjs';
-import { agentScreen, connScreen, effortScreen, modelScreen, permModeScreen, placeholder, setupScreen } from '../screens.mjs';
-import { applyEffort, applyModelFamily, applyPermMode } from '../actions.mjs';
+import { agentScreen, connScreen, effortScreen, permModeScreen, setupScreen } from '../screens.mjs';
+import { applyEffort, applyPermMode } from '../actions.mjs';
 import { UNHANDLED } from './shared.mjs';
 
 export async function handleAgentRoute({ data, state, show, pending, chatId, bot }) {
   // —— agent / model ——
-  if (data === 'settings:model') return show(modelScreen());
-  if (data === 'settings:effort') return show(effortScreen());
-  if (data === 'settings:permmode') return show(permModeScreen());
+  if (data === 'settings:effort') return show(effortScreen(state, await readClaudeVersion()));
+  if (data === 'settings:permmode') return show(permModeScreen(state));
   if (data === 'settings:conn' || data === 'settings:auth') return show(await connScreen(state));
   if (data === 'settings:conn:noop') return;
   if (data === 'settings:conn:set:cc' || data === 'settings:engine:set:cc') {
@@ -28,25 +29,8 @@ export async function handleAgentRoute({ data, state, show, pending, chatId, bot
       keyboard: (await connScreen(state)).keyboard,
     });
   }
-  if (data.startsWith('settings:model:set:')) {
-    const family = data.split(':').pop();
-    const model = await applyModelFamily(family);
-    if (model) await bot.api.sendMessage(chatId, `Модель: <code>${model}</code>`, { parse_mode: 'HTML' });
-    return show(await agentScreen((await loadState()).state));
-  }
-  if (data === 'settings:model:fable:ask' || data.startsWith('settings:model:fable')) {
-    await applyModelFamily('fable');
-    await bot.api.sendMessage(
-      chatId,
-      'Fable включена. На Pro она может тратить usage credits сверх подписки.',
-    );
-    return show(await agentScreen((await loadState()).state));
-  }
-  if (data === 'settings:model:ver') {
-    return show(placeholder('📌 Версии', 'settings:model'));
-  }
   if (data.startsWith('settings:effort:set:')) {
-    await applyEffort(data.split(':').pop());
+    if (!await applyEffort(data.slice('settings:effort:set:'.length))) return;
     return show(await agentScreen((await loadState()).state));
   }
   if (data.startsWith('settings:permmode:set:')) {

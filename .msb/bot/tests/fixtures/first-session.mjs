@@ -14,6 +14,8 @@ const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-first-session-'));
 for (const key of Object.keys(process.env)) delete process.env[key];
 Object.assign(process.env, { HOME: home, PATH: path.dirname(process.execPath), MSB_BOT_ID: 'default',
   MSB_WORKSPACE_DIR: home, MSB_SESSION_DIR: path.join(home, 'sessions'), CLAUDE_CODE_OAUTH_TOKEN: 'fixture' });
+const { fixtureClaudeVersion } = await import('../helpers/claude-version-fixture.mjs');
+await fixtureClaudeVersion(home);
 const file = path.join(home, '.msb/bots/default/state.json');
 await fs.mkdir(path.dirname(file), { recursive: true });
 await fs.mkdir(path.join(home, '.codex'));

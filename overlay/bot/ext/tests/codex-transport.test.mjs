@@ -8,6 +8,7 @@ import {
   MSB_HTTP_PROVIDER_ID,
   codexHttpProviderOverrides,
 } from '../codex-transport.mjs';
+import { parseCodexTomlScalars } from '../codex-native.mjs';
 import { parseCodexStdout, buildCodexExecArgs, isCodexStreamCutMessage } from '../adapters/codex.mjs';
 
 test('ensureCodexStableTransport writes HTTP-only provider for ChatGPT auth', async () => {
@@ -32,6 +33,28 @@ test('ensureCodexStableTransport writes HTTP-only provider for ChatGPT auth', as
 
   const r2 = await ensureCodexStableTransport(home);
   assert.equal(r2.changed, false);
+});
+
+test('managed HTTP transport keeps its settings at the TOML root before user tables', async (t) => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-codex-tr-root-'));
+  t.after(() => fs.rm(home, { recursive: true, force: true }));
+  const directory = path.join(home, '.codex');
+  const file = path.join(directory, 'config.toml');
+  await fs.mkdir(directory);
+  const table = '[mcp_servers.fixture]\ncommand = "fixture"\n';
+  await fs.writeFile(file, "model_provider = 'openai' # keep root valid\n" +
+    'stream_idle_timeout_ms = 1000\nmodel = "gpt-5.4-mini"\n\n' + table);
+
+  await ensureCodexStableTransport(home);
+  const config = await fs.readFile(file, 'utf8');
+  const root = parseCodexTomlScalars(config);
+  assert.equal(root.model_provider, MSB_HTTP_PROVIDER_ID);
+  assert.equal(root.stream_idle_timeout_ms, '1000');
+  assert.equal(root.model, 'gpt-5.4-mini');
+  assert.equal(config.match(/^model_provider\s*=/gm).length, 1);
+  assert.equal(config.match(/^stream_idle_timeout_ms\s*=/gm).length, 1);
+  assert.ok(config.endsWith(table));
+  assert.equal((await ensureCodexStableTransport(home)).changed, false);
 });
 
 test('ensureCodexStableTransport uses api.openai.com for api_key auth', async () => {

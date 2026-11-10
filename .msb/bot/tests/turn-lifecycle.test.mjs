@@ -76,7 +76,8 @@ test('turn lifecycle: stop holds the lock through delayed CLI close, then admits
   assert.deepEqual(r.cli.map((call) => call.prompt), ['first task', 'second allowed']);
   assert.equal(r.maxActiveChildren, 1, 'The next CLI must not overlap the stopped process.');
   assert.ok(r.events.indexOf('cli-close:1') < r.events.indexOf('cli-start:2'));
-  assert.equal(r.calls.filter((call) => call.text?.startsWith('Уже работаю')).length, 2);
+  assert.ok([1, 2].includes(r.calls.filter((call) => call.text === '⏳ в очереди').length), 'The early probe queues; the allowed replacement may also queue while the old journal finishes.');
+  assert.equal(r.calls.filter((call) => call.text?.startsWith('Уже работаю')).length, 1, 'Compaction still cannot overlap the replacement CLI.');
   assert.ok(r.events.includes('cli-abort:1'));
   assert.ok(!r.events.includes('cli-abort:2'), 'Finishing the old turn must not disturb the replacement turn.');
   assertAnswerReplacedStatus(r, 2);
@@ -94,6 +95,23 @@ test('turn lifecycle: an aborted CLI session never replaces or creates the saved
     assert.ok(!r.calls.some((call) => /^success-1(?:\n|$)/.test(call.text)), 'Do not publish the late successful result after cancellation.');
   }
 });
+
+// Old blob 73aa9e7e: pushText 106296–106299, cancel 106806–106817,
+// finish 106578–106645, /stop 118225–118230 and reply-stop 119459–119464.
+for (const scenario of ['claude-stop-partial', 'claude-reply-stop-partial']) {
+  test('turn lifecycle: ' + scenario + ' keeps the pre-abort text and context in Telegram', () => {
+    const r = run(scenario);
+    const final = r.finalMessages[r.initialStatusId];
+    assert.match(final, /^Первый фрагмент Claude\.\n\n<blockquote>⏱ \d+\.\ds · ○○○ 10%<\/blockquote>$/);
+    assert.equal(r.calls.filter(call => call.applied && call.method === 'sendMessage' && call.text === stopped).length, 1);
+    assert.ok(!r.calls.some(call => /Поздний фрагмент|success-1|fixture-private-marker/.test(call.text)));
+    assert.equal(r.state.managedMcp, undefined);
+    assert.equal(r.state.ccSessionId, 'saved-session-A');
+    assert.deepEqual(r.state.lastCcUsage, { sessionId: 'saved-session-A', contextTokens: 17000 });
+    assert.equal(r.history[0].status, 'aborted');
+    assert.deepEqual(r.diary.map(row => [row.status, row.summary]), [['aborted', 'Первый фрагмент Claude.']]);
+  });
+}
 
 test('turn lifecycle: newtask during the first turn prevents its late session ID from returning', () => {
   const r = run('reset-session');

@@ -1,6 +1,6 @@
 # Эталонные сценарии open-core
 
-[← Карта кода](../../../../docs/CODEMAP.md) · [Telegram](../../src/telegram/README.md) ·
+[← Вход ядра](../../src/main.mjs) · [Telegram](../../src/telegram/README.md) ·
 [Overlay](../../../../overlay/bot/ext/README.md) · [Release checks](../../../../tools/release/README.md)
 
 Набор проверяет требуемое поведение настоящих handlers/runner/overlay с fake
@@ -12,12 +12,17 @@ Telegram, Deepgram и CLI. Ожидания не подгоняются под �
 
 | Сценарий | Маршрут | Проверка |
 |---|---|---|
+| Обычный reply, queued цитаты и reply «стоп» | [Контракт входов](parity-inputs-contract.txt) → inbox/executeTurn | [inbox lifecycle](../inbox-lifecycle.test.mjs), [формы](../menu-handlers.test.mjs) |
 | Голос и прежний preview/reply | [Telegram voice](../../src/telegram/README.md#голос) → [STT](../../src/media/README.md) → общий ход | [voice-progress](voice-progress.test.mjs), [voice-lifecycle](../voice-lifecycle.test.mjs), [stt](../stt.test.mjs) |
 | Typing/status, final edit/chunks/footer | [Жизненный цикл](../../src/telegram/README.md#жизненный-цикл-хода) → progress/response | [voice-progress](voice-progress.test.mjs), [response-delivery](../response-delivery.test.mjs), [presentation-retry](../presentation-retry.test.mjs) |
 | `/stop` во время долгого хода | `bot.start` / polling → controller → runner abort → cleanup/unlock | [stop-polling](stop-polling.test.mjs), [turn-lifecycle](../turn-lifecycle.test.mjs), [claude-abort](../claude-abort.test.mjs) |
 | Claude↔Codex, owner, failed login, error/session | [Интеграция](../../../../overlay/bot/ext/README.md#интеграция-telegram) → shim/adapter | [provider-switch](../../../../overlay/bot/ext/tests/reference/provider-switch.test.mjs), [codex-session](../../../../overlay/bot/ext/tests/codex-session.test.mjs) |
 | Настройки → Движки → Codex | core renderer/router → provider view → existing callback | [engine-menu](../../../../overlay/bot/ext/tests/reference/engine-menu.test.mjs) |
 | Context, MAX, forms и shared profile | [Agent](../../src/agent/README.md), [Telegram](../../src/telegram/README.md), [Shared](../../shared/README.md) | [codex-context](../codex-context.test.mjs), [menu-handlers](../menu-handlers.test.mjs), [runtime-profile](../runtime-profile.test.mjs) |
+
+Пояснения к ранним commits текущего аудита, old provenance, RED→GREEN и границы:
+[parity-audit-notes.txt](parity-audit-notes.txt). Это история проверок, не замена
+навигации у исходников и не утверждение полного паритета.
 
 ## Основа эталона
 

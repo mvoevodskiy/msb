@@ -1,13 +1,15 @@
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
+import { createInterface } from 'node:readline';
 
 /**
- * Запуск CLI: stdout собираем.
- * @param {{forwardStderr?: boolean}} opts — по умолчанию stderr дублируется в журнал процесса;
- *   для Codex ставь forwardStderr:false (сырой CLI stderr не должен попадать в журнал бота).
+ * Запуск CLI: stdout собираем. [Codex](./codex.mjs) также читает стартовую JSONL-запись до закрытия процесса.
+ * @param {{forwardStderr?: boolean, onStdoutLine?: (line: string) => void}} opts
+ * По умолчанию stderr дублируется в журнал процесса. Для Codex ставь
+ * forwardStderr:false, чтобы сырой stderr не попадал в журнал бота.
  * @returns {Promise<{code:number|null, stdout:string, stderr:string}>}
  */
-export function runCli(command, args, { cwd, env, input, timeoutMs = 1_800_000, forwardStderr = true } = {}) {
+export function runCli(command, args, { cwd, env, input, timeoutMs = 1_800_000, forwardStderr = true, onStdoutLine } = {}) {
   return new Promise((resolve, reject) => {
     let stdout = '';
     let stderr = '';
@@ -43,6 +45,12 @@ export function runCli(command, args, { cwd, env, input, timeoutMs = 1_800_000, 
     child.stdout.on('data', (chunk) => {
       stdout += chunk;
     });
+    if (onStdoutLine) {
+      const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
+      lines.on('line', line => {
+        if (!settled) onStdoutLine(line);
+      });
+    }
     child.stderr.on('data', (chunk) => {
       stderr += chunk;
       if (forwardStderr) process.stderr.write(chunk);

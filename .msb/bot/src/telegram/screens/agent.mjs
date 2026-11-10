@@ -1,9 +1,15 @@
 /**
- * Агент, модель, глубина, права и подключение Claude.
+ * Агент, глубина, права и подключение Claude.
+ * Модель/версии → [pure renderer](./models.mjs), совместимые re-exports ниже.
+ * [Routes](../routes/agent.mjs) supplies state; depth → [policy](../../agent/effort.mjs),
+ * [production checks](../../../tests/claude-effort.test.mjs). No setting writes here.
  * Навигация: [Telegram](../README.md).
  */
+import { VISIBLE_PERMISSION_MODES } from '../../../shared/permission-modes.mjs';
 import { InlineKeyboard } from 'grammy';
-import { hasClaudeAuth } from '../../state.mjs';
+import { CLAUDE_EFFORTS, isClaudeEffort, supportsClaudeEffort, claudeEffortFlag, effectiveClaudeEffort } from '../../agent/effort.mjs';
+import { hasClaudeAuth, resolveModel } from '../../state.mjs';
+import { defaultModelEffort, modelShortLabel } from '../../agent/models.mjs';
 import { agentDisplay } from '../../agent/display.mjs';
 import { CC_ONLY_OC_BLOCK } from '../commands.mjs';
 import { escapeHtml } from '../edit.mjs';
@@ -27,7 +33,7 @@ export async function agentScreen(state) {
     max: 'max',
   };
   const display = await agentDisplay(state);
-  const modelLabel = display.model.replace(/^claude-/, '');
+  const modelLabel = display.label || display.model.replace(/^claude-/, '');
   const effort = display.effort;
   const effortLabel = effort ? effortLabels[effort] || effort : null;
   const perm = display.engine === 'Codex' ? 'полный доступ, без подтверждений' : permLabels[state.permissionMode || state.permMode || 'auto'] || 'без спроса';
@@ -56,52 +62,44 @@ export async function agentScreen(state) {
   };
 }
 
-export function modelScreen() {
+export { modelScreen, modelVersionsScreen } from './models.mjs';
+
+export function effortScreen(state = {}, version) {
+  const model = resolveModel(state);
+  const keyboard = new InlineKeyboard();
+  if (!supportsClaudeEffort(model,version)) return {
+    text: '<b>💭 Глубина мыслей</b>\n\nУ этой модели глубина не настраивается.',
+    keyboard: keyboard.text('« Назад', 'menu:agent'),
+  };
+  const saved = state.ccEffort || state.effort;
+  const defaultLevel = saved && !isClaudeEffort(saved) ? effectiveClaudeEffort(model,saved,version) : defaultModelEffort(model,version).level;
+  const level = isClaudeEffort(saved) ? saved : defaultLevel;
+  const descriptions = ['быстро, минимум раздумий', 'обычная глубина', 'углублённо', 'глубже, для кода и сложных задач', 'максимум'];
+  CLAUDE_EFFORTS.forEach((value, index) => {
+    if (index > 0 && index % 3 === 0) keyboard.row();
+    keyboard.text(`${value}${level === value ? ' ✓' : ''}`, `settings:effort:set:${value}`);
+  });
+  keyboard.row().text('« Назад', 'menu:agent');
+  const normalized = ['xhigh', 'max'].filter(value => claudeEffortFlag(model, value, version) !== value);
+  const label = escapeHtml(modelShortLabel(model,version));
+  const note = normalized.length ? `\n\n<i>На ${label} ${normalized.join(' и ')} ${normalized.length === 1 ? 'работает' : 'работают'} как high.</i>` : '';
+  const choices = CLAUDE_EFFORTS.map((value, index) => `<b>${value}</b>: ${descriptions[index]}${value === defaultLevel ? ' (по умолчанию)' : ''}`).join('\n');
   return {
-    text: `<b>🧠 Модель</b>\n\nВыбери семейство. Конкретные версии — в «📌 Версии».\n${BLANK}`,
-    keyboard: new InlineKeyboard()
-      .text('🧠 Opus', 'settings:model:set:opus')
-      .text('🚀 Sonnet', 'settings:model:set:sonnet')
-      .row()
-      .text('⚡ Haiku', 'settings:model:set:haiku')
-      .text('🔮 Fable', 'settings:model:fable:ask')
-      .row()
-      .text('📌 Версии', 'settings:model:ver')
-      .row()
-      .text('« Назад', 'menu:agent'),
+    text: `<b>💭 Глубина мыслей</b>\n\nНасколько глубоко агент обдумывает ответ.\n\n${choices}\n\n<b>Сейчас:</b> ${level}${isClaudeEffort(saved) ? '' : ' (по умолчанию)'}${note}`,
+    keyboard,
   };
 }
 
-export function effortScreen() {
+export function permModeScreen(state = {}) {
+  const current = state.permissionMode || state.permMode || 'auto';
+  const modes = VISIBLE_PERMISSION_MODES;
+  const keyboard = new InlineKeyboard();
+  for (const mode of modes) keyboard.text(`${mode.label}${mode.id === current ? ' ✓' : ''}`, `settings:permmode:set:${mode.id}`).row();
+  keyboard.text('« Назад', 'menu:agent');
+  const selected = current === 'smart' ? 'Auto' : modes.find(mode => mode.id === current)?.label || modes[0].label;
   return {
-    text: `<b>💭 Глубина мыслей</b>\n\nПередаётся в Claude Code как <code>--effort</code>.\n${BLANK}`,
-    keyboard: new InlineKeyboard()
-      .text('off', 'settings:effort:set:off')
-      .text('low', 'settings:effort:set:low')
-      .text('medium', 'settings:effort:set:medium')
-      .row()
-      .text('high', 'settings:effort:set:high')
-      .text('xhigh', 'settings:effort:set:xhigh')
-      .text('max', 'settings:effort:set:max')
-      .row()
-      .text('« Назад', 'menu:agent'),
-  };
-}
-
-export function permModeScreen() {
-  return {
-    text: `<b>🔐 Режим прав</b>\n\nКак агент вносит правки.\n${BLANK}`,
-    keyboard: new InlineKeyboard()
-      .text('без спроса (auto)', 'settings:permmode:set:auto')
-      .row()
-      .text('smart', 'settings:permmode:set:smart')
-      .text('с подтверждением', 'settings:permmode:set:control')
-      .row()
-      .text('сначала план', 'settings:permmode:set:plan')
-      .row()
-      .text('bypass', 'settings:permmode:set:bypassPermissions')
-      .row()
-      .text('« Назад', 'menu:agent'),
+    text: `<b>🧠 Режим работы</b>\n\nСпрашивает ли агент разрешение перед изменениями.\n\n${modes.map(mode => `<b>${mode.label}</b> — ${mode.desc}`).join('\n')}\n\n<b>Сейчас:</b> ${selected}\n\n<i>Смена режима начнёт новую беседу.</i>`,
+    keyboard,
   };
 }
 

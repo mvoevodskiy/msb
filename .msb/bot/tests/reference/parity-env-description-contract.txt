@@ -1,0 +1,72 @@
+Env descriptions: восстановить прежний путь, не только кнопку
+
+Baseline0368f50, JAR1 принят5f439ba. Scope текущего этапа — per-bot env формы,
+metadata и передача пользовательских описаний агенту; global/default расхождение
+old/new остаётся отдельным пунктом аудита, без скрытой миграции живых ключей.
+
+Эталон: oldmaster00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.msb/bot/vendor/deobfuscated.js, readableblob73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11.
+Читать git show BLOB | sed -n '119178,119216p;121368,121377p'.
+nF:valid value хранится в transient form.varValue, step=comment, prompt
+«Описание для <code>KEY</code> (необязательно, видно тебе и агенту):» и одна
+кнопка «Пропустить →»/settings:env:skip-comment. Typed description trim/empty
+и skip передают undefined;existing description тогда сохраняется, new — без него.
+Только после description/skip JDA118613–118626 закрывает форму и вызывает s1.
+Skip действует только на реальной comment stage. Shared10min deadline включает
+name→value→comment; отмена/неперехваченная команда не записывает незаконченный ввод.
+Own bot comment prompt best-effort удаляется перед сохранением (nF119207+,
+skip121368+); принятое новым ядром сохранение пользовательских env-сообщений
+не меняется. Secret value не должен попасть в обычный prompt/историю формы.
+
+Хранение: sJ54377–54422 связывает последнее соседнее #description с key;
+blank/invalid line сбрасывает связь. s154577–54590 сохраняет существующий
+comment при undefined; empty internal comment очищает его. Gy54689–54707
+пишет #comment перед key. Не копировать old потерю остальных raw lines/quotes/
+duplicate quirks. Сохранять сырые незатронутые строки/значения нового profile.
+Value+comment — одна mutation в0368f50 общей process queue.
+Comment не должен позволять CR/LF/NUL env injection/смену protected key.
+
+UI:Wy54056–54079 показывает описание под custom key, italic/HTML-escaped,
+максимум300chars+ellipsis. Текущие принятые previews/servicebuttons не менять.
+Delete confirm53570–53590 добавляет 📝<i>description</i>,без value.
+JDA118708–118716/118742–118747 показывает 📝 только для введённого нового
+непустого описания;skip/blank не повторяет сохранённое ранее описание.
+Удаление key убирает связанную metadata, не приписывает её следующему ключу.
+
+Агент:zy52112–52124 наполняет key set e5 и comments Z9; vHA8469–8490/GZ8492+
+и prompt19306–19317 включают имена/описания, НЕ значения, лишь для truthy
+process.env. Known MG/pp9156–9245 и системные keys имеют отдельные old правила;
+не объявлять отсутствующий backend подключённым и не копировать Claude-only
+claims в Codex. Этот этап возвращает пользовательские key/description/fallback
+в существующий system prompt → CLI/shim для Claude/Codex, без новых API/сервисов.
+Реальный global/env activation и fixed known-service capabilities — отдельно.
+
+Новый путь до правки:forms/env сохраняет value сразу, metadata отсутствует
+в list/delete/prompt;skip callback не подключён. Нужен production RED перед fix.
+Transient draft принадлежит PendingInputs того же чата, сохраняет исходный TTL,
+очищается при cancel/replacement/stop;старый skip другого prompt не сохраняет
+новую форму. Нет нового persistent ledger/полномочий или произвольной отправки.
+
+Проверки:temp HOME/fake transport+CLI;name+quick,value→comment безраннейзаписи,
+entered/skip/blank update,comment metadata/list/delete/prompt безvalue,300cap,
+raw preservation/protected/injection,FIFO,expiryboundary/slash/cancel/otherchat/
+stale callback/shutdown,provider/session/model/effort сохранность.
+Не перезапускать JAR1 и не вводить настоящие credentials ради локального RED.
+Откат fix учитывает заменённый prompt shape/tests;code-only не возвращает.env.
+Полная env parity/global scope/liveClaude пока не заявляется.
+
+Уточнение registered/settings после первого RED:old command112175–112177
+вызывает iF52126–52190 без w9. Как уже закреплено parity-forms-contract,registered
+команды обходят generic form slash check; /settings сохраняет comment stage,
+не отменяет его. Исправлен ошибочный test expectation, продуктовый command
+handler не менялся. Выход — реальные Back/env list/cancel или reached unknownslash.
+
+Checkpoint:3eb076c contract,fdb84ce initial23RED. Один cancel-/settings expectation
+оказался неточным:узкий old command/iF proof выше;вместо изменения product handler
+проверка теперь подтверждает сохранение registered comment stage. Остальные
+расхождения подтверждены. После fix27description PASS/120targeted PASS.
+Дополнительные delayed prompt cancel/replace/shutdown:23PASS/3RED→26PASS;
+ещё parser raw/reset/internal clear контроль→27PASS. Independent Sol:63related
+PASS,после cleanup delta отдельно27PASS. Cleanup удаления ownprompt best effort:
+Telegram может отказать,но draft не оживает/чужая currentform не меняется.
+Это local synthetic proof,не realkey activation/liveClaude/fullenv parity.

@@ -3,13 +3,14 @@
  * Навигация: [Telegram](../README.md).
  */
 import { InlineKeyboard } from 'grammy';
+import { savedSpendLimit } from '../../billing/owner-spend.mjs';
 import { escapeHtml } from '../edit.mjs';
 export const BLANK = '⠀';
 
 /** Describe the saved value without inventing a default. */
 export function describeSpendLimit(value) {
-  const n = typeof value === 'number' ? value : typeof value === 'string' && value.trim() ? Number(value) : NaN;
-  if (!Number.isFinite(n)) return 'не задан';
+  const n = savedSpendLimit(value);
+  if (n === undefined) return 'не задан';
   return n > 0 ? `$${n}/день` : 'без ограничений';
 }
 

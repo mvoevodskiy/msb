@@ -1,6 +1,15 @@
+/**
+ * Единственный владелец tasks.json: read/modify/write под общим межпроцессным lock.
+ * Входы: [Telegram](../telegram/bot.mjs) добавляет, [scheduler](./scheduler.mjs)
+ * условно фиксирует результат одной задачи; runner не держит файловый lock.
+ * [Paths](../paths.mjs), [lock](../../shared/file-lock.mjs),
+ * [регрессии](../../tests/autonomy-store-concurrency.test.mjs).
+ */
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { isDeepStrictEqual } from 'node:util';
+import { withFileLock } from '../../shared/file-lock.mjs';
 import { autonomyDir, ensureDir } from '../paths.mjs';
 
 function tasksPath(env = process.env) {
@@ -28,7 +37,6 @@ async function saveTasks(tasks, env = process.env) {
 }
 
 export async function addTask(partial, env = process.env) {
-  const tasks = await listTasks(env);
   const task = {
     id: partial.id || randomUUID(),
     title: partial.title || partial.prompt?.slice(0, 80) || 'задача',
@@ -40,13 +48,33 @@ export async function addTask(partial, env = process.env) {
     createdAt: new Date().toISOString(),
     failStreak: 0,
   };
-  tasks.push(task);
-  await saveTasks(tasks, env);
+  await withFileLock(path.resolve(tasksPath(env)), async () => {
+    const tasks = await listTasks(env);
+    tasks.push(task);
+    await saveTasks(tasks, env);
+  });
   return task;
 }
 
 export async function saveAllTasks(tasks, env = process.env) {
-  await saveTasks(tasks, env);
+  // Explicit owner replacement only; a scheduler must never save its old snapshot.
+  await withFileLock(path.resolve(tasksPath(env)), () => saveTasks(tasks, env));
+}
+
+/** Commit only execution fields, and only if the task has not changed since launch. */
+export async function saveTaskResult(before, after, env = process.env) {
+  return withFileLock(path.resolve(tasksPath(env)), async () => {
+    const tasks = await listTasks(env);
+    const index = tasks.findIndex(task => task.id === before.id);
+    if (index < 0 || !isDeepStrictEqual(tasks[index], before)) return false;
+    const next = { ...tasks[index] };
+    for (const key of ['nextAt', 'failStreak', 'enabled', 'pausedUntil']) {
+      if (Object.hasOwn(after, key)) next[key] = after[key];
+    }
+    tasks[index] = next;
+    await saveTasks(tasks, env);
+    return true;
+  });
 }
 
 /**

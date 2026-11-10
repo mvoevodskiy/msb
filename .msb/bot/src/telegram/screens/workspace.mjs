@@ -1,71 +1,85 @@
 /**
- * Возможности workspace: проекты, навыки и MCP.
- * Навигация: [Telegram](../README.md).
+ * Old MCP headings, lists, status and cards. Inputs are display metadata only.
+ * [Route](../routes/workspace.mjs), [catalog](../../mcp/catalog.mjs),
+ * [view checks](../../../tests/mcp-catalog.test.mjs).
  */
-import { InlineKeyboard } from 'grammy';
-import { BLANK } from './shared.mjs';
+import {InlineKeyboard} from 'grammy';
+import {escapeHtml} from '../edit.mjs';
+import {mcpReference} from '../../mcp/reference.mjs';
+import {BLANK} from './shared.mjs';
 
-export function mcpScreen() {
+const back=destination=>new InlineKeyboard().text('« Назад',destination);
+
+export function mcpScreen(count) {
   return {
     text: `🔌 <b>MCP серверы</b>
 
 Внешние сервисы — транскрипты, скрейпинг, базы данных и другие инструменты.
 ${BLANK}`,
     keyboard: new InlineKeyboard()
-      .text('📁 workspace', 'mcp:folder:workspace')
-      .row()
-      .text('« Назад', 'menu:back'),
+      .text(`📂 workspace (${count})`,'mcp:folder:workspace').row()
+      .text('« Назад','menu:back'),
   };
 }
 
-export function mcpWorkspaceScreen() {
+export function mcpWorkspaceScreen(catalog) {
+  const {entries,at}=catalog;
+  const keyboard=new InlineKeyboard();
+  const lines=entries.map(row=>{
+    const {transport,status}=row;
+    const name=row.label ?? row.name;
+    keyboard.text(name,'mcp:server:'+mcpReference(catalog,row)).row();
+    const server=`<b>${escapeHtml(name)}</b> (${escapeHtml(transport)})`;
+    if(!status)return `[+] ${server}`;
+    const reason=status==='needs-auth'?'нужен вход заново':status==='failed'?'не запускается':status;
+    return `[x] ${server} — ${escapeHtml(reason)}`;
+  });
+  if(!lines.length)lines.push('<i>Нет серверов</i>');
+  if(at)lines.push('',`<i>Состояние на ${at} UTC</i>`);
   return {
-    text: `<b>📁 workspace</b>
+    text: `<b>📂 workspace</b>
 
 Доступны агенту во всех проектах.
 
-<i>Список native MCP пока не читается этим экраном.</i>
+${lines.join('\n')}
 ${BLANK}`,
-    keyboard: new InlineKeyboard()
-      .text('➕ Добавить', 'mcp:add')
-      .row()
-      .text('« Назад', 'menu:mcp'),
+    keyboard:keyboard.text('➕ Добавить','mcp:add').row().text('« Назад','menu:mcp'),
   };
 }
 
-export function mcpAddScreen() {
-  return {
-    text: `<b>➕ MCP сервер</b>
-
-Прежние пункты настройки. Их установка в open-core пока не подключена.
-${BLANK}`,
-    keyboard: new InlineKeyboard()
-      .text('Supadata', 'mcp:setup:supadata')
-      .text('Apify', 'mcp:setup:apify')
-      .row()
-      .text('« Назад', 'mcp:folder:workspace'),
-  };
+export function mcpCardScreen(row,deleteCallback) {
+  const name=escapeHtml(row.label ?? row.name);
+  const toolName=escapeHtml(row.toolName ?? row.name);
+  const keyboard=new InlineKeyboard();
+  if(deleteCallback)keyboard.text('🗑 Удалить',deleteCallback).row();
+  return {text:`🔌 <b>${name}</b>\n\nTools: <code>mcp__${toolName}__*</code>\n${BLANK}`,keyboard:keyboard.text('« Назад','mcp:folder:workspace')};
 }
 
-export function skillsScreen() {
-  return {
-    text: `<b>🧩 Навыки</b>
-
-Список навыков выбранного CLI пока не читается этим экраном.
-${BLANK}`,
-    keyboard: new InlineKeyboard().text('« Назад', 'menu:back'),
-  };
+export function mcpMissingScreen(destination) {
+  return {text:`MCP-сервер не найден.\n${BLANK}`,keyboard:back(destination)};
 }
 
-export function projectsScreen() {
-  return {
-    text: `<b>📁 Проекты</b>
-
-Проекты живут в <code>~/projects/</code>. Кнопка создаёт папку и сохраняет выбранный проект. Переключение cwd в open-core пока не подключено.
-${BLANK}`,
-    keyboard: new InlineKeyboard()
-      .text('➕ Новый проект', 'menu:newproject')
-      .row()
-      .text('« Назад', 'menu:back'),
-  };
+export function mcpReadErrorScreen(destination) {
+  return {text:`Не удалось получить список MCP-серверов.\n${BLANK}`,keyboard:back(destination)};
 }
+
+export function openClawMcpScreen(entries) {
+  const keyboard=new InlineKeyboard().text('➕ Добавить','mcp:add').row().text('« Назад','menu:back');
+  const heading='🔌 <b>MCP-серверы</b>\n\n';
+  if(!entries.length)return {
+    text:heading+'На движке сейчас нет настроенных MCP-серверов.\n\n<i>Чтобы подключить — попроси агента: «подключи MCP сервер …».</i>',
+    keyboard,
+  };
+
+  let text=heading+`Подключено к движку: <b>${entries.length}</b>. Инструменты доступны агенту как <code>mcp__имя__*</code>.\n`;
+  for(const {name,transport,target} of [...entries].sort((a,b)=>a.name.localeCompare(b.name))) {
+    const endpoint=target?` — <code>${escapeHtml(target.slice(0,60))}</code>`:'';
+    const line=`\n• <b>${escapeHtml(name)}</b> (${escapeHtml(transport)})${endpoint}`;
+    // Match the old one-message cap without splitting an HTML tag or entity.
+    if(text.length+line.length>3498){text+='\n…';break;}
+    text+=line;
+  }
+  return {text,keyboard};
+}
+
+export {mcpAddScreen} from './mcp-setup.mjs';

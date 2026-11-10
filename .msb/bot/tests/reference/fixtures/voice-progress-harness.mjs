@@ -21,6 +21,8 @@ if (!['voice', 'progress'].includes(scenario) || process.env.REFERENCE_FIXTURE !
     await fs.realpath(process.cwd()) !== await fs.realpath(fixtureHome)) {
   throw new Error('Refusing to run outside the isolated reference fixture.');
 }
+const { fixtureClaudeVersion, fixtureVersionExec } = await import('../../helpers/claude-version-fixture.mjs');
+await fixtureClaudeVersion(fixtureHome);
 const transcript = process.env.REFERENCE_TRANSCRIPT;
 const answer = process.env.REFERENCE_ANSWER;
 const result = { api: [], fetches: [], cli: [], forbiddenNetwork: [], forbiddenProcesses: [], pollingStarted: false };
@@ -81,6 +83,7 @@ function denyProcess(command) {
 for (const method of ['exec', 'execSync', 'execFile', 'execFileSync', 'spawnSync', 'fork']) {
   childProcess[method] = denyProcess;
 }
+childProcess.execFile = fixtureVersionExec(fixtureHome, denyProcess);
 childProcess.spawn = (command, args, options) => {
   if (command !== 'claude') return denyProcess(command);
   if (options.cwd !== process.env.MSB_WORKSPACE_DIR || options.env.HOME !== fixtureHome) {

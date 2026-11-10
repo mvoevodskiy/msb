@@ -5,6 +5,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { invalidateFirstSession } from '../shared/session-starts.mjs';
 import { runAgentTurn } from '../src/agent/turn.mjs';
+import { formatTurnFooter } from '../src/telegram/response.mjs';
 import { saveState, loadState, updateState } from '../src/state.mjs';
 const id = '0199a213-81c0-7800-8aa1-bbab2a035a53';
 const sessionId = `ext:codex:${id}`;
@@ -64,4 +65,75 @@ process.stdin.on('end', async () => {
   process.env.FIXTURE_CORE_MODE = 'fail';
   assert.equal((await runAgentTurn({ prompt: 'fixture', env })).ok, false);
   assert.deepEqual((await loadState(env)).state, state);
+});
+
+test('Codex uses the launched project profile for normal and partial footers even if CODEX_HOME changes', async t => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-turn-project-context-'));
+  const previous = process.cwd();
+  const prior = { ...process.env };
+  const keys = ['HOME', 'PATH', 'CODEX_HOME', 'MSB_WORKSPACE_DIR', 'FIXTURE_PROFILE_MODE'];
+  t.after(async () => {
+    process.chdir(previous);
+    for (const key of keys) {
+      if (prior[key] === undefined) delete process.env[key]; else process.env[key] = prior[key];
+    }
+    await fs.rm(home, { recursive: true, force: true });
+  });
+  const workspace = path.join(home, 'workspace'), project = path.join(home, 'projects', 'alpha');
+  const bin = path.join(home, 'bin');
+  const env = { HOME: home, MSB_WORKSPACE_DIR: workspace, CODEX_HOME: 'native-profile' };
+  const sample = total_tokens => JSON.stringify({ type: 'event_msg', payload: { type: 'token_count',
+    info: { last_token_usage: { total_tokens }, model_context_window: 100000 } } }) + '\n';
+  const profileFile = (cwd, profile) => path.join(cwd, profile, 'sessions', 'rollout-fixture-' + id + '.jsonl');
+  await fs.mkdir(bin, { recursive: true });
+  await fs.mkdir(project, { recursive: true });
+  for (const [cwd, profile, tokens] of [[workspace, 'native-profile', 98000],
+    [workspace, 'other-profile', 99000], [project, 'other-profile', 97000]]) {
+    const file = profileFile(cwd, profile);
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, sample(tokens));
+  }
+  const source = [
+    '#!' + process.execPath,
+    "const fs = require('node:fs');",
+    "const path = require('node:path');",
+    'const id = ' + JSON.stringify(id) + ';',
+    "const emit = event => process.stdout.write(JSON.stringify(event) + '\\n');",
+    "process.stdin.resume();",
+    "process.stdin.once('end', () => {",
+    " const partial = process.env.FIXTURE_PROFILE_MODE === 'partial';",
+    " const timestamp = new Date().toISOString();",
+    " const dir = path.resolve(process.env.CODEX_HOME, 'sessions');",
+    " fs.mkdirSync(dir, { recursive: true });",
+    " const start = { type: 'event_msg', timestamp, payload: { type: 'task_started', turn_id: 'fixture-profile-turn' } };",
+    " const sample = { type: 'event_msg', timestamp, payload: { type: 'token_count', info: { model_context_window: 100000, last_token_usage: { total_tokens: partial ? 52000 : 18000 } } } };",
+    " fs.appendFileSync(path.join(dir, 'rollout-fixture-' + id + '.jsonl'), [start, sample].map(row => JSON.stringify(row) + '\\n').join(''));",
+    " emit({ type: 'system', subtype: 'init', provider_id: 'codex', session_id: 'ext:codex:' + id });",
+    " emit({ type: 'result', subtype: partial ? 'error_partial' : 'success', is_error: partial, session_id: 'ext:codex:' + id, result: 'project fixture' });",
+    " if (partial) process.exitCode = 1;",
+    '});',
+  ].join('\n');
+  await fs.writeFile(path.join(bin, 'claude'), source, { mode: 0o755 });
+  Object.assign(process.env, env, { PATH: bin + ':' + path.dirname(process.execPath) + ':/usr/bin:/bin' });
+  process.chdir(workspace);
+  await saveState({ engine: 'cc', extAuthBypass: 'codex', activeProject: 'alpha' }, env);
+  const run = async mode => {
+    process.env.FIXTURE_PROFILE_MODE = mode;
+    env.CODEX_HOME = process.env.CODEX_HOME = 'native-profile';
+    return runAgentTurn({ prompt: 'relative native profile', env, onStatus(event) {
+      if (event.kind === 'init') env.CODEX_HOME = process.env.CODEX_HOME = 'other-profile';
+    } });
+  };
+  const first = await run('success');
+  assert.equal(first.ok, true);
+  assert.equal(first.result.context?.contextTokens, 18000);
+  assert.match(formatTurnFooter({ elapsedMs: 1700, context: first.result.context }), /○○○ 18%/);
+  const before = (await loadState(env)).state;
+  assert.equal(before.lastCcUsage.contextTokens, 18000);
+  const partial = await run('partial');
+  assert.equal(partial.ok, false);
+  assert.equal(partial.result.context, null);
+  assert.equal(partial.partialReply.context?.contextTokens, 52000);
+  assert.match(formatTurnFooter({ elapsedMs: 1700, context: partial.partialReply.context }), /●●○ 52%/);
+  assert.deepEqual((await loadState(env)).state.lastCcUsage, before.lastCcUsage);
 });

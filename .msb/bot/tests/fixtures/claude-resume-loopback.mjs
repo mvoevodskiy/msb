@@ -1,0 +1,189 @@
+/**
+ * Native Claude resume, context, stop and partial-error conformance in an offline disposable Linux container:
+ * node .msb/bot/tests/fixtures/claude-resume-loopback.mjs /absolute/native/claude
+ * [Runner](../../src/agent/turn.mjs) uses the actual PATH shim and a loopback model.
+ */
+import assert from 'node:assert/strict';
+import fs from 'node:fs/promises';
+import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { runAgentTurn } from '../../src/agent/turn.mjs';
+import { loadState, saveState } from '../../src/state.mjs';
+import { readClaudeVersion } from '../../src/agent/claude-version.mjs';
+import { sendClaudeFixtureReply } from './claude-loopback-reply.mjs';
+
+const binary = process.argv[2];
+assert.ok(path.isAbsolute(binary || ''), 'Pass the absolute native Claude CLI path');
+const root = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-native-claude-resume-'));
+const home = path.join(root, 'home');
+const workspace = path.join(home, 'workspace');
+const project = path.join(home, 'projects', 'alpha');
+const ownedFile = path.join(project, 'probe-input.txt');
+const wrapper = path.join(root, 'trace-claude');
+const trace = path.join(root, 'native-trace');
+const shim = fileURLToPath(new URL('../../../../overlay/bot/ext/shim/bin/', import.meta.url));
+const expired = '6b800e2c-f9b1-4b97-bd36-202f96a75530';
+const parkedCodex = 'ext:codex:0199a213-81c0-7800-8aa1-bbab2a035a53';
+const oldRow = { id: expired, providerId: 'claude', engine: 'cc', messageCount: 4, project: 'alpha' };
+const first = 'fixture exact request after missing session';
+const second = 'fixture continue the recovered session';
+const requests = [];
+const stop = new AbortController();
+const stopPrompt = 'fixture cancel with the first fragment';
+const draft = 'fixture draft before SIGINT';
+let stopRequests = 0;
+const errorPrompt = 'fixture stop after an ordinary API error';
+const errorDraft = 'fixture draft before API rejection';
+const terminalError = 'fixture ordinary terminal transport error';
+let failing = false, errorRequests = 0;
+const samples = [
+  { input_tokens: 10000, cache_read_input_tokens: 60000, cache_creation_input_tokens: 20000, output_tokens: 5 },
+  { input_tokens: 25000, cache_read_input_tokens: 130000, cache_creation_input_tokens: 25000, output_tokens: 5 },
+];
+const expectedContext = [90000, 180000].map(contextTokens => ({ contextTokens, contextWindow: 900000 }));
+
+const server = http.createServer(async (req, res) => {
+  try {
+    let raw = '';
+    for await (const part of req) raw += part;
+    if (req.url.includes('count_tokens')) return res.end('{"input_tokens":11}');
+    if (!req.url.startsWith('/v1/messages')) {
+      res.writeHead(404);
+      return res.end('{}');
+    }
+    const body = JSON.parse(raw);
+    const current = body.messages.flatMap(message => {
+      if (message.role !== 'user') return [];
+      return typeof message.content === 'string' ? [message.content] :
+        message.content.filter(block => block.type === 'text').map(block => block.text);
+    });
+    if (failing) {
+      errorRequests++;
+      if (errorRequests === 1) return sendClaudeFixtureReply(res, body, 'msg_fixture_failure', [
+        { type: 'text', text: errorDraft },
+        { type: 'tool_use', id: 'toolu_fixture_error_read', name: 'Read', input: { file_path: ownedFile } },
+      ], 'tool_use', samples[0]);
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      return res.end(JSON.stringify({ type: 'error', error: { type: 'invalid_request_error', message: terminalError } }));
+    }
+    if (current.includes(stopPrompt)) {
+      stopRequests++;
+      if (stopRequests === 1) {
+        return sendClaudeFixtureReply(res, body, 'msg_fixture_stop', [
+          { type: 'text', text: draft },
+          { type: 'tool_use', id: 'toolu_fixture_read', name: 'Read', input: { file_path: ownedFile } },
+        ], 'tool_use', { input_tokens: 12000, cache_read_input_tokens: 50000,
+          cache_creation_input_tokens: 10000, output_tokens: 5 });
+      }
+      // The follow-up request proves that the first assistant reply and tool
+      // result reached the native runner. Hold the second response until SIGINT.
+      stop.abort();
+      return;
+    }
+    requests.push(current.filter(text => text === first || text === second));
+    return sendClaudeFixtureReply(res, body, 'msg_fixture_' + requests.length,
+      { type: 'text', text: 'fixture native answer' }, 'end_turn', samples[requests.length - 1]);
+  } catch {
+    res.writeHead(500);
+    res.end('{}');
+  }
+});
+try {
+  await fs.mkdir(workspace, { recursive: true });
+  await fs.mkdir(project, { recursive: true });
+  await fs.writeFile(ownedFile, 'synthetic read only\n');
+  await fs.writeFile(wrapper, [
+    '#!/bin/bash',
+    'if [ "$1" != --version ]; then',
+    '  resume=-',
+    '  for arg in "$@"; do',
+    '    if [ "$resume" = __next__ ]; then resume="$arg"; break; fi',
+    '    if [ "$arg" = --resume ]; then resume=__next__; fi',
+    '  done',
+    '  printf "%s\\t%s\\t%s\\t%s\\n" "$resume" "$PWD" "$CLAUDE_CODE_AUTO_COMPACT_WINDOW" "$CLAUDE_AUTOCOMPACT_PCT_OVERRIDE" >> "$FIXTURE_TRACE"',
+    'fi',
+    'exec "$FIXTURE_NATIVE" "$@"',
+    '',
+  ].join('\n'), { mode: 0o700 });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+
+  for (const key of Object.keys(process.env)) delete process.env[key];
+  Object.assign(process.env, {
+    HOME: home, PATH: shim + ':/usr/local/bin:/usr/bin:/bin', MSB_REAL_CLAUDE: wrapper,
+    MSB_BOT_ID: 'default', MSB_RUNTIME_PROFILE: 'msb', MSB_RUNTIME_ROOT: path.join(home, '.msb'),
+    MSB_WORKSPACE_DIR: workspace, FIXTURE_NATIVE: binary, FIXTURE_TRACE: trace,
+    CLAUDE_CODE_OAUTH_TOKEN: 'fixture-loopback-only',
+    ANTHROPIC_BASE_URL: 'http://127.0.0.1:' + server.address().port,
+    CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1', DISABLE_AUTOUPDATER: '1', CI: '1',
+  });
+  await saveState({
+    engine: 'cc', authMode: 'subscription', hasSubscriptionAuth: true, ccModel: 'sonnet',
+    permissionMode: 'acceptEdits', activeProject: 'alpha', ccSessionId: expired,
+    sessionHistory: [oldRow], parkedCcSessions: { codex: parkedCodex },
+  });
+  const version = await readClaudeVersion();
+  const output = await runAgentTurn({ prompt: first, signal: AbortSignal.timeout(20000) });
+  assert.equal(output.ok, true);
+  assert.equal(output.text, 'fixture native answer');
+  assert.deepEqual(output.result.context, expectedContext[0]);
+  const id = output.result.sessionId;
+  assert.ok(id && id !== expired);
+  assert.equal((await loadState()).state.ccSessionId, id);
+
+  const next = await runAgentTurn({ prompt: second, signal: AbortSignal.timeout(20000) });
+  assert.equal(next.ok, true);
+  assert.equal(next.result.sessionId, id);
+  assert.deepEqual(next.result.context, expectedContext[1]);
+  assert.deepEqual(requests, [[first], [first, second]]);
+  const launches = (await fs.readFile(trace, 'utf8')).trimEnd().split('\n').map(line => line.split('\t'));
+  assert.deepEqual(launches, [expired, '-', id].map(resume => [resume, project, '1000000', '90']));
+  const { state } = await loadState();
+  assert.deepEqual(state.sessionHistory[0], oldRow);
+  assert.equal(state.sessionHistory[1].messageCount, 2);
+  assert.equal(state.lastCcUsage.sessionId, id);
+  assert.equal(state.lastCcUsage.contextTokens, expectedContext[1].contextTokens);
+  assert.equal(state.lastCcUsage.contextWindow, expectedContext[1].contextWindow);
+  assert.deepEqual(state.parkedCcSessions, { codex: parkedCodex });
+  assert.equal(state.pendingCcSessionStarts, undefined);
+
+  const stopped = await runAgentTurn({ prompt: stopPrompt, signal: AbortSignal.any([stop.signal, AbortSignal.timeout(20000)]) });
+  assert.equal(stopped.error, 'aborted');
+  assert.equal(stopRequests, 2);
+  assert.ok(stop.signal.aborted);
+  assert.deepEqual(stopped.result.assistantReply, {
+    text: draft, context: { contextTokens: 72000, contextWindow: 900000 },
+  });
+  const afterStop = (await loadState()).state;
+  assert.equal(afterStop.ccSessionId, id);
+  assert.deepEqual(afterStop.lastCcUsage, state.lastCcUsage);
+  assert.equal(afterStop.sessionHistory[1].messageCount, 3);
+
+  failing = true;
+  const failed = await runAgentTurn({ prompt: errorPrompt, signal: AbortSignal.timeout(30000) });
+  assert.equal(failed.ok, false);
+  assert.equal(failed.result.exitCode, 1);
+  assert.ok(errorRequests >= 2);
+  assert.equal(failed.modelText, errorDraft);
+  assert.equal(failed.text, errorDraft + '\n\nAPI Error: 400 ' + terminalError);
+  assert.deepEqual(failed.partialReply, { context: expectedContext[0] });
+  const afterFailure = (await loadState()).state;
+  assert.equal(afterFailure.ccSessionId, id);
+  assert.deepEqual(afterFailure.lastCcUsage, state.lastCcUsage);
+  assert.equal(afterFailure.sessionHistory[1].messageCount, 4);
+  console.log(JSON.stringify({
+    version, native_launches: launches.length, model_requests: requests.length,
+    missing_resume_model_requests: 0, retry_same_project: true, resumed_same_new_id: true,
+    original_input_and_context_preserved: true, expired_history_unchanged: true, codex_slot_unchanged: true,
+    measured_context: expectedContext, launch_window: 1000000, launch_percent: 90,
+    stop_case: { model_requests: stopRequests, draft_preserved: true, context: stopped.result.assistantReply.context,
+      active_id_and_previous_usage_unchanged: true },
+    error_case: { model_requests: errorRequests, exit_code: failed.result.exitCode, draft_separate: true,
+      context: failed.partialReply.context, active_id_and_previous_usage_unchanged: true },
+  }));
+} finally {
+  server.closeAllConnections();
+  if (server.listening) await new Promise(resolve => server.close(resolve));
+  await fs.rm(root, { recursive: true, force: true });
+}

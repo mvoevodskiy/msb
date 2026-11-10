@@ -1,0 +1,36 @@
+Stage2 old→new: env forms/deletion, existing UI/callbacks.
+Old master00f081f / readable blob73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11:
+53558–53562 settings:env clears env pending, then renders the list.
+53565–53585 settings:env:delete:KEY checks protected keys, then renders
+«Удалить <code>KEY</code>?», with «🗑 Да, удалить» → confirm-delete and
+«« Нет» → settings:env. It does not delete yet.
+53587–53592 confirm-delete performs deletion and returns to the list.
+The old Add UI also exposed settings:env:cancel (UI-SCREENS env contract).
+New3131916 swaps semantics: delete writes immediately, confirm-delete is a no-op;
+return to the list/old Cancel leaves env input active. Production handler tests
+reproduce both lost confirmation and the next task being saved as a key value.
+Synthetic keys/data only; existing services/preview/buttons must be preserved.
+
+Core env / Claude token TTL and slash input, old 54723–54750,55123,
+119119–119199 and119397–119465:
+- Strict Date.now()-startedAt >600000ms, checked on the next text only.
+- Name→value→comment transitions keep the first timestamp; reopening resets it.
+- Expired input is consumed with the old timeout reply, clears pending and is
+  never stored or sent to the model. No model turn/restart may happen.
+- trimStart().startsWith('/') in a reached timed form clears/consumes the input
+  with the old 'command was not saved' reply. Registered Bot.command handlers
+  are earlier and keep their established semantics (e.g. /status preserves form).
+- Other forms (timezone/project/bot/MCP/source) had no common TTL; do not impose
+  ten minutes on them or clear text pending when a voice message arrives.
+Quick env fields use the same iE value-stage state with startedAt (53804–53816),
+so they share the env deadline; this is not a newly imposed quick-key limit.
+
+Claude token text validation, old119416–119455:
+- Strip all whitespace, best-effort delete only this token message before validation.
+- Reject normalized length<20, or non-sk- token length<50; keep form for retry,
+  old reply: «Не похоже на токен. Запусти в терминале: <code>claude setup-token</code>».
+- Current open-core already offers API keys as well as setup-token. Keep this
+  accepted input route; sk-ant-oat* belongs to CLAUDE_CODE_OAUTH_TOKEN, only
+  sk-ant-api* goes to ANTHROPIC_API_KEY. Use one decision for file/process env.
+- This is routing/basic shape validation, not successful live authorization.
+  Preserve the other credential, active provider, session, model and effort.

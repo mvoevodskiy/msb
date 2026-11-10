@@ -1,9 +1,11 @@
 /**
  * Настройки, переменные окружения и сведения о сервере.
+ * Дневной лимит и /cost → [spend](./spend.mjs).
  * Навигация: [Telegram](../README.md).
  */
 import { InlineKeyboard } from 'grammy';
-import { QUICK_KEYS, listEnvEntries } from '../../env/store.mjs';
+import { QUICK_KEYS, listEnvEntries, PROTECTED_KEYS } from '../../env/store.mjs';
+import { envKeyReference } from '../../env/callback-key.mjs';
 import { escapeHtml } from '../edit.mjs';
 import { BLANK, describeSpendLimit } from './shared.mjs';
 
@@ -20,10 +22,10 @@ export function settingsScreen(state, { showEngines = true } = {}) {
   kb.text('🖥️ Состояние сервера', 'settings:server-status').row();
   kb.text('🔧 Системные', 'settings:extras').row();
   kb.text('« Назад', 'menu:back');
-  return {
-    text: `<b>⚙️ Настройки</b>\n\nПодключения, лимиты, сервер и системные опции.\n${BLANK}`,
-    keyboard: kb,
-  };
+  const lines = ['<b>⚙️ Настройки</b>', '', 'Подключения, лимиты, сервер и системные опции.'];
+  if (state.costPaused) lines.push('', '⚠️ <b>Лимит исчерпан — расходы на паузе</b>');
+  lines.push(BLANK);
+  return { text: lines.join('\n'), keyboard: kb };
 }
 
 export async function envScreen() {
@@ -37,6 +39,7 @@ export async function envScreen() {
   ];
   for (const e of entries.slice(0, 25)) {
     lines.push(`• <code>${escapeHtml(e.key)}</code> — ${escapeHtml(e.masked)}${e.protected ? ' 🔒' : ''}`);
+    if (e.comment) lines.push(`   └ <i>${escapeHtml(e.comment.length > 300 ? e.comment.slice(0,300)+'…' : e.comment)}</i>`);
   }
   if (entries.length > 25) lines.push(`… и ещё ${entries.length - 25}`);
   lines.push(BLANK);
@@ -46,10 +49,25 @@ export async function envScreen() {
   }
   kb.text('➕ Свой ключ', 'settings:env:add').row();
   for (const e of entries.filter((x) => !x.protected).slice(0, 8)) {
-    kb.text(`🗑 ${e.key}`, `settings:env:delete:${e.key}`).row();
+    kb.text(`🗑 ${e.key}`, `settings:env:delete:${envKeyReference(e.key)}`).row();
   }
   kb.text('« Назад', 'settings:back');
   return { text: lines.join('\n'), keyboard: kb };
+}
+
+/** Legacy two-step deletion. Opening this view never changes the env file. */
+export function envDeleteScreen(key,comment) {
+  const safeKey = escapeHtml(key);
+  if (PROTECTED_KEYS.has(key)) return {
+    text: `❌ ${safeKey} — защищённый ключ, удаление запрещено.`,
+    keyboard: new InlineKeyboard().text('« Назад', 'settings:env'),
+  };
+  return {
+    text: `Удалить <code>${safeKey}</code>?${comment ? `\n📝 <i>${escapeHtml(comment)}</i>\n` : ''}`,
+    keyboard: new InlineKeyboard()
+      .text('🗑 Да, удалить', `settings:env:confirm-delete:${envKeyReference(key)}`)
+      .text('« Нет', 'settings:env'),
+  };
 }
 
 export function tzScreen(state) {
@@ -57,21 +75,6 @@ export function tzScreen(state) {
   return {
     text: `<b>🕐 Часовой пояс</b>\n\nСейчас: <code>${escapeHtml(tz)}</code>\n\nПришли новое имя зоны (например <code>Europe/Moscow</code> или <code>Asia/Yekaterinburg</code>).\n${BLANK}`,
     keyboard: new InlineKeyboard().text('« Назад', 'settings:back'),
-  };
-}
-
-export function limitScreen(state) {
-  const lim = describeSpendLimit(state.dailySpendLimit);
-  return {
-    text: `<b>💰 Лимит API</b>\n\nСохранённый лимит: ${lim}.\nВыбери значение кнопкой. Проверка и применение лимита в open-core пока не подключены.\n${BLANK}`,
-    keyboard: new InlineKeyboard()
-      .text('$10', 'settings:limit:set:10')
-      .text('$25', 'settings:limit:set:25')
-      .text('$50', 'settings:limit:set:50')
-      .row()
-      .text('Без лимита', 'settings:limit:set:0')
-      .row()
-      .text('« Назад', 'settings:back'),
   };
 }
 

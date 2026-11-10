@@ -1,0 +1,71 @@
+Old owner spend report, daily limit, and actual ordinary runner boundary
+
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf:.iia/bot/index.js.
+Read git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba.
+The scope is ordinary Telegram turns and the existing owner spend fields.
+
+Reachability. Worker 110612–110618 and X1A 55938–55985 select
+OpenClaw xTA or Claude subscription LTA. Direct Anthropic API-key
+auth in that old ordinary route is disabled. LTA 56014–56053
+calls IJ and reports Claude quota exhaustion without the old
+generic API fallback. IJ 19915–19922 and $n 20791–20799 normalize
+the Claude CLI meter. Its ordinary return 20268–20312 puts it in
+meteredCostUsd and sets costUsd to zero. s0A 56450–56475 forwards
+costUsd without the meter. Early returns also report zero
+(20115–20138, 20187–20211). An existing separate CLI per-launch
+metered cap (20877–20888) is outside the owner ledger.
+
+Ordinary OpenClaw xTA 56331–56335 calls t7. The native result at
+32522–32546 contains costUsd:0 and kTA 56422–56447 forwards it,
+including when the gateway uses OpenRouter. The ordinary worker's
+110720–110741 call to qy needs a positive result cost. Neither
+verified ordinary runner supplies one. qy 54986–55023 has local-day
+aggregation, a 30-day limit, and notifications at 80% and 100%.
+It does not establish a paid source for the ordinary worker. Old
+Rz can call qy on a positive autonomy result (16685–16699, 24845–
+24846); that family's provenance is separate.
+
+Saved behavior. Y0 55653–55659 uses the owner-local calendar day.
+The /cost route at 114265–114292 reads today's sum and the seven
+latest saved dates. The new route keeps an absent sum unknown and
+keeps the existing consistency rule for an unset saved limit.
+A stored zero displays as zero. It neither rewrites nor prunes the
+ledger. The previous old fallback amount and process-session
+counters are not invented from missing data.
+
+52247–52254 displays the saved pause in settings. 52919–52927
+offers 0, 10, 25, 50, 100, 200 in that order and brackets the
+selected value. 52942–52953 clears a pause on any selection or
+the old explicit resume callback. Both return to settings
+(53845–53854) without changing costHistory or lastCostAlert.
+The old readable bundle has a resume handler but no emitting
+keyboard for it. No new button is added. Finite numeric callback
+values remain accepted even if they are not visible presets.
+An invalid amount cannot change saved state. Existing positive
+presets, the owner's manually saved zero, and the current
+no-default-read contract are preserved.
+
+Worker 110354–110362 returns the old paused message before
+dispatch even after the date changes. The open-core worker checks
+the persisted flag after normal input preparation and before the
+provider runner. Its existing Telegram status is completed and
+the prompt is not sent to the model. The saved flag is owner-wide,
+unlike a provider quota. /stop, context and normal unpaused
+provider routes keep their existing lifecycle.
+
+c3b0051 showed a raw CLI total as a billed footer, ignored the
+saved pause on ordinary turns, used the host UTC report day,
+and had an incomplete limit screen. 679ea1a reproduces those
+four gaps. The fix retains the native CLI amount as meteredCostUsd,
+without declaring it a payment. Codex/Cursor/Qwen stream adapters
+supply a compatibility zero. The current OpenClaw ACP parser
+returns usage/context but exposes no paid amount. None of these
+ordinary routes writes owner costHistory in this checkpoint.
+A future paid source requires evidence of its provider and field
+before an automatic ledger or threshold notification can be used.
+The limit screen discloses that new API spending is not yet recorded.
+Existing auth routes, Pult transport, and ledger bytes are preserved.
+
+Tests use the real Telegram handler, an owned synthetic Claude
+executable, and disposable state. No account charge or live
+provider acceptance is part of this checkpoint.

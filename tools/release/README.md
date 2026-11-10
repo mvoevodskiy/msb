@@ -1,6 +1,6 @@
 # Один commit → релиз JAR1
 
-[Карта кода](../../docs/CODEMAP.md) · [Профиль среды](../../.msb/bot/shared/README.md)
+[Вход ядра](../../.msb/bot/src/main.mjs) · [Профиль среды](../../.msb/bot/shared/README.md)
 
 Здесь нет патчей поведения и зависимости от прежней рабочей ветки. Сборщик
 читает Git-объекты выбранного commit, сохраняет байты и executable modes.
@@ -42,17 +42,20 @@ guarded puller/sync. Node, Codex CLI и установленные зависи�
 
 ## Локальная подготовка
 
-Из чистого выбранного commit (включая сам exporter):
+После изменения выполнить целевые регрессии и проверки связанных модулей.
+Промежуточные проверки идут локально. При разрешённом выпуске собрать один
+готовый пакет из чистого выбранного коммита вместе с его exporter:
 
 ```sh
 python3 tools/release/build.py --commit HEAD --output /tmp/jar1-release
-python3 tools/release/verify.py --stage /tmp/jar1-release --dependencies /path/to/node_modules
 python3 tools/release/pack.py --stage /tmp/jar1-release --output /tmp/jar1-release.tar.gz
 ```
 
-Mac-прогон полезен, но не разрешает deploy: оператор требует успешный Linux
-report для того же manifest, точную Node version и совпадающий fingerprint
-установленных версий зависимостей. `npm install`/обновление CLI здесь не выполняются.
+Полный обязательный прогон этого пакета выполняется на JAR1 в отдельном
+каталоге до выкладки. Для выпуска требуются Linux report того же manifest,
+точная версия Node и совпадающий fingerprint установленных зависимостей.
+Локальный полный прогон нужен при отдельной проверяемой причине. Установку
+пакетов и обновление CLI этот маршрут не запускает.
 
 ## Проверка и установка на JAR1
 
@@ -60,7 +63,9 @@ report для того же manifest, точную Node version и совпад�
 и недоступными для записи пользователю бота. Создать две dependency-ссылки
 `checks/source/.msb/bot/node_modules` и `checks/source/overlay/bot/node_modules`
 на `/home/client/.iia/bot/node_modules`. Только `checks/results` и `checks/test-home`
-создать writable для client. Проверку запускать под client:
+создать writable для client. На JAR1 с одним доступным CPU полный core suite
+может выйти за три минуты. Для него предел пять минут. Остальные suites
+сохраняют трёхминутный предел. Проверку запускать под client:
 
 ```sh
 python3 STAGE/ops/verify.py --stage STAGE --dependencies /home/client/.iia/bot/node_modules
@@ -93,3 +98,49 @@ python3 STAGE/ops/deploy.py --rollback BACKUP
 время установки автоматически возвращает прежний код и проверяет его startup.
 Не использовать старые `candidate.patch` сборщики как параллельный путь выпуска.
 Исторические операторские отчёты остаются в AgentsMania, но сборка от них не зависит.
+
+## Локальные Linux-проверки в Docker
+
+Docker подходит для отдельного Linux-сценария, нативного CLI и локальной
+проверки артефакта, если выпуск ещё не планируется. Промежуточный коммит
+можно проверить целевыми тестами без контейнера. [Dockerfile](Dockerfile) собирает только инструменты
+и зависимости из `runtime/bot/package*.json`; файлы бота/авторизации в образ не
+копируются. Проверка получает read-only export, отдельные writable results/HOME
+и временный `/tmp`, без сети. `exec` у tmpfs нужен fake CLI/STT-скриптам тестов;
+без него они закономерно падают с EACCES, это не допустимый RED продукта.
+Запуск с --init собирает остановленные дочерние процессы. Без него Python
+на PID 1 может оставить PID завершившегося guard в состоянии Z после
+группового SIGINT. Тест отмены проверяет исчезновение PID, поэтому контейнер
+должен использовать init, как целевой Linux использует systemd.
+
+Проверено: Docker Desktop4.84 / Engine29.6.2, Linux arm64, pinned base Node22.23.2.
+Первый snapshot74241e3:202core+78overlay+15reference+13release PASS (308tests),
+плюс syntax/dependencies/profile/snapshot checks. JAR1 использует Node22.23.4:
+этот контейнер — предварительная проверка, а не замена целевому Linux gate.
+Перед production release по-прежнему проверить тот же commit на JAR1, его
+Node/dependencies и installed artifact, затем Telegram. Результат Docker хранить
+как `docker-verification.json`, не использовать вместо JAR1 `verification.json`.
+
+Из чистого commit, с новым каталогом stage (исходники/lock берутся из Git):
+
+```sh
+MSB_CHECK_STAGE=/tmp/msb-local-linux
+python3 tools/release/build.py --commit HEAD --output "$MSB_CHECK_STAGE"
+docker build -t msb-local-checks:node22 -f tools/release/Dockerfile "$MSB_CHECK_STAGE/runtime/bot"
+mkdir -p "$MSB_CHECK_STAGE/checks/results" "$MSB_CHECK_STAGE/checks/test-home"
+ln -s /opt/msb-deps/node_modules "$MSB_CHECK_STAGE/checks/source/.msb/bot/node_modules"
+ln -s /opt/msb-deps/node_modules "$MSB_CHECK_STAGE/checks/source/overlay/bot/node_modules"
+docker run --rm --init --network none --read-only --user "$(id -u):$(id -g)" \
+  --tmpfs /tmp:rw,exec,mode=1777 --env PYTHONDONTWRITEBYTECODE=1 \
+  --mount "type=bind,src=$MSB_CHECK_STAGE,dst=/stage,readonly" \
+  --mount "type=bind,src=$MSB_CHECK_STAGE/checks/results,dst=/stage/checks/results" \
+  --mount "type=bind,src=$MSB_CHECK_STAGE/checks/test-home,dst=/stage/checks/test-home" \
+  msb-local-checks:node22 python3 /stage/ops/verify.py \
+  --stage /stage --dependencies /opt/msb-deps/node_modules
+mv "$MSB_CHECK_STAGE/checks/results/verification.json" "$MSB_CHECK_STAGE/checks/results/docker-verification.json"
+```
+
+Не монтировать checkout целиком, host HOME, SSH или runtime бота. При новой
+версии lock/Dockerfile образ пересобирается; Docker layer cache ускоряет повтор.
+Для JAR1 готовить отдельный чистый export: Linux-report должен принадлежать
+его финальному manifest и реальным установленным зависимостям.

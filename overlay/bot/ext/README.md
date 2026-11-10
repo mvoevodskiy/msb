@@ -1,6 +1,6 @@
 # CLI-провайдеры и обвязка
 
-[← Карта кода](../../../docs/CODEMAP.md) ·
+[← Вход ядра](../../../.msb/bot/src/main.mjs) ·
 [Установка обвязки](../../README.md) ·
 [Telegram ←](../../../.msb/bot/src/telegram/README.md) ·
 [Исполнение агента ←](../../../.msb/bot/src/agent/README.md)
@@ -15,6 +15,7 @@
 | Задача | Модуль → функция / маршрут | Проверка |
 |---|---|---|
 | Сжать текущую беседу Codex | [`compact-codex.mjs`](compact-codex.mjs): resume → compact → подтверждённый `contextCompaction` | [compact-codex](tests/compact-codex.test.mjs), [core routing](../../../.msb/bot/tests/compact-routing.test.mjs) |
+| Прочитать доступные навыки Codex | [`codex-skills.mjs`](codex-skills.mjs): captured cwd/provider → native metadata → core catalog; [`codex-skills-rpc.mjs`](codex-skills-rpc.mjs) отвечает за stdio/close | [core ingress](../../../.msb/bot/tests/skills-native.test.mjs), [mapping](tests/codex-skills.test.mjs), [transport](tests/codex-skills-rpc.test.mjs) |
 | Подготовить авторизацию Codex для хода и `/compact` | [`codex-auth-env.mjs`](codex-auth-env.mjs): `codexChildEnvironment`, native login → per-bot/shared env | [codex-auth-env](tests/codex-auth-env.test.mjs) |
 | Найти доступные CLI-провайдеры | [`providers.mjs`](providers.mjs): `PROVIDERS`, `getProvider` | [menu](tests/menu.test.mjs), [store](tests/store.test.mjs) |
 | Показать Codex в «Движках» | [`engine-menu.mjs`](engine-menu.mjs): `buildEngineProviderView`, `registerEngineProviderView`; core `enginesScreen` | [core engine-menu](../../../.msb/bot/tests/engine-menu.test.mjs), [core + overlay](tests/reference/engine-menu.test.mjs) |
@@ -23,10 +24,13 @@
 | Убедиться, что CLI установлен | [`ensure-cli.mjs`](ensure-cli.mjs): `ensureProviderCli` | [ensure-cli](tests/ensure-cli.test.mjs) |
 | Сохранить ключ Cursor/Qwen и настроить CLI | [`env.mjs`](env.mjs): `saveProviderSecret`; [`auth-wire.mjs`](auth-wire.mjs): `wireProviderAuth`; [`integration/text-input.mjs`](integration/text-input.mjs): `handleAuthMessage` | [env](tests/env.test.mjs), [auth-wire](tests/auth-wire.test.mjs) |
 
-Порядок Codex selection: готовность CLI → native login status → подготовка
-runtime → `setActive` → `syncExtAuthGate`. При отказе login-status активный профиль
-сохраняется; кнопка входа использует `ext:auth:codex`. Открытие «Движков» только читает
-store. Вход Codex хранится в native auth, секрет не запрашивается сообщением в Telegram.
+Выбор Codex: готовность CLI → проверка нативного входа → обновление
+[состояния](setup-bypass.mjs) → подготовка транспорта стандартного профиля.
+Относительный CODEX_HOME разрешается от выбранного проекта. Та же папка используется
+для проверки статуса и подтверждения device login через `ext:auth:codex`.
+Перед выбором профиль сверяется с текущим проектом внутри записи состояния.
+При отказе остаются предыдущий движок и его сессия. Открытие «Движков» только
+читает store. Вход хранится в native auth, секрет не запрашивается в Telegram.
 
 Owner-check выполняется в [`installUpdateHook`](integration/update-hook.mjs) до действий overlay;
 необработанное событие передаётся ядру. При разделении сохранять эту границу,
@@ -55,6 +59,17 @@ Owner-check выполняется в [`installUpdateHook`](integration/update-h
 по-прежнему не меняет state. Смена провайдера увеличивает `sessionEpoch`, чтобы поздний ответ старого хода не
 заменил текущую сессию. Повторный выбор того же provider не переключает беседу.
 
+Выбор Codex из store имеет приоритет над значением из native config. Если
+CODEX_HOME относительный, [разрешение профиля](../shared/codex-profile.mjs)
+использует каталог активного проекта. Модель, глубина и кэш в меню относятся к
+этому профилю. Явный выбор записывает значение в store и config.toml этого
+профиля. [Запись настроек](codex-config-write.mjs) берёт общий lock нативного
+файла, затем lock store бота. Публикация store завершает операцию, а при её
+отказе восстанавливается прежний config.toml. Transport использует тот же
+нативный lock. Обычный ход читает внешний профиль без записи HTTP-настроек
+в него или в неактивный HOME/.codex. [Профиль](tests/codex-profile-preferences.test.mjs),
+[проверки сохранения](tests/apply-model.test.mjs).
+
 ## Исполнение CLI
 
 [`shim/run-turn.mjs`](shim/run-turn.mjs) — граница с ядром: читает Claude argv/stdin,
@@ -67,12 +82,35 @@ shim; поздняя смена меню не направляет начаты�
 |---|---|---|
 | Claude passthrough / alternate dispatch | [`shim/run-turn.mjs`](shim/run-turn.mjs): `runAlternate` и ветка Claude | [provider-switch](tests/reference/provider-switch.test.mjs) |
 | Codex exec, resume, stream parsing | [`adapters/codex.mjs`](adapters/codex.mjs): `runCodexTurn`, `buildCodexExecArgs`, `parseCodexStdout` | [provider-switch](tests/reference/provider-switch.test.mjs); ограничения ниже |
+| Сохранённый фоновый запрос Codex | [saved-codex](adapters/saved-codex.mjs) → [файловые инструменты](adapters/saved-workspace-tools.mjs) → [проверка путей](adapters/saved-workspace-files.mjs) | [планировщик](../../../.msb/bot/tests/saved-codex-prompt-action.test.mjs), [права на файлы](tests/saved-codex-workspace.test.mjs) |
 | Native Codex config и HTTP transport | [`codex-native.mjs`](codex-native.mjs), [`codex-transport.mjs`](codex-transport.mjs): `ensureCodexStableTransport` | [codex-native](tests/codex-native.test.mjs), [codex-transport](tests/codex-transport.test.mjs) |
 | Cursor / Qwen | [`adapters/cursor.mjs`](adapters/cursor.mjs), [`adapters/qwen.mjs`](adapters/qwen.mjs); общие [`run-cli`](adapters/run-cli.mjs), [`stream`](adapters/stream.mjs), [`parse-args`](adapters/parse-args.mjs) | [cursor-adapter](tests/cursor-adapter.test.mjs), [parse-args](tests/parse-args.test.mjs); отдельного Qwen adapter test нет |
 
 При ошибке Codex текущая сессия сохраняется; запрос с инструментами автоматически
 не повторяется в новом thread. Это проверяют [codex-session](tests/codex-session.test.mjs)
 и [provider-switch](tests/reference/provider-switch.test.mjs).
+При отказе resume без подтверждённого ID и успешного результата подсказка
+ведёт в /sessions или /newtask. При переполнении выводится нативная диагностика.
+[Ручное сжатие](compact-codex.mjs) использует каталог выбранного проекта для
+проверки MCP и возобновления треда. Успех подтверждается событием сжатия
+и завершением одного и того же хода в исходной сессии.
+
+При первом ходе Codex сообщает thread ID по событию thread.started до
+завершения процесса. Обвязка передаёт его [парсеру ядра](../../../.msb/bot/src/agent/claude.mjs)
+отдельным системным событием. Если ход остановлен, ID доступен в /sessions
+для явного выбора. Существующий обработчик завершения хранит active ID
+и счётчики отдельно от истории.
+
+Обычная ошибка после готовых фрагментов передаёт их через системный результат
+error_partial. [Ядро](../../../.msb/bot/src/agent/turn.mjs) сохраняет подтверждённый
+ID в истории и передаёт футеру время и измерение текущего хода при его наличии.
+[Доставка](../../../.msb/bot/src/telegram/bot.mjs) применяет прежние обработчики
+к подлинному ответу модели. Диагностика CLI добавляется в готовое сообщение после
+разбора команд. Журнал сохраняет статус error. [Проверка](tests/reference/provider-switch.test.mjs)
+включает длинный вывод, обрыв сети и предупреждение о переполнении.
+[Счётчик](../../../.msb/bot/src/agent/context.mjs) читает тот же нативный
+профиль и cwd, с которыми запущен ход. /status разрешает относительный
+CODEX_HOME из текущего проекта или базового workspace.
 
 Codex — CLI-провайдер внутри канала `cc`, а не действие OS helper.
 OpenClaw/service actions находятся в [core engines](../../../.msb/bot/src/engines/README.md).
@@ -103,7 +141,7 @@ constructor-запросы в `handleLocalConstructorRequest`; здесь же �
 
 При дальнейшем разделении сохранять единственность pending-хранилищ, owner boundary,
 захват startup flags и порядок callback-ветвей. Исходники и установленный runtime различаются путями:
-[карта source/release/runtime](../../../docs/CODEMAP.md#исходники-сборка-и-runtime).
+[Вход ядра](../../../tools/release/README.md).
 
 ## Источник и выпуск
 

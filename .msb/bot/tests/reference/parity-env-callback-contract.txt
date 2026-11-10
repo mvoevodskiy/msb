@@ -1,0 +1,53 @@
+Env deletion callbacks: прежние длинные имена без потери двух шагов
+
+Baseline4ca87d23e039f5acbd9744ca761c0b36fd550eb4.
+Старый master00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.msb/bot/vendor/deobfuscated.js, readableblob73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11.
+Читать git show BLOB | sed -n '54056,54080p;54709,54722p;53565,53593p'.
+Wy строит delete action через ATA(key). ATA возвращает raw key при length<=30,
+иначе idx_<counter>→key в Map. Opening delete использует Dy для key/comment/
+protected check;confirm сохраняет encoded suffix и повторно вызывает Dy→tSA.
+Кнопки/двухшаговое подтверждение/Нет→env list не менять. Value не включён.
+Old registry жил только в процессе;сломанные stale-counter refs не копировать.
+
+Новый путь доfix:envScreen/deleteScreen вставляют полный key. Допустимый прежним
+name UI 40ASCII-key даёт60bytes opening callback,68bytes confirm. ActualBotAPI
+08.11.2026 на принятом4ca87d2 вернул400/BUTTON_DATA_INVALID для output
+production envDeleteScreen;сообщение не создано,envkey не создавался,7protected
+files точны. Sanitized proof — env-callback-telegram-evidence.json рядом.
+Само наличие callback в fake transport раньше ошибочно выглядело работой.
+
+Восстановление:малый env callback-key helper сохраняет raw short refs,длинные
+заменяет ограниченным opaque ref в тех же action prefixes. Renderer/route должны
+использовать одну функцию;decoding по текущим именам per-bot file,не по values.
+Не создавать второй delete path/registry/file migration или менять labels/previews.
+Одна и та же ссылка работает после process restart;unknown/ambiguous/malformed
+opaque ref не удаляет никакой ключ и не меняет текущие экран/форму. Protected
+keys и owner guard остаются. Legacy raw short и raw long opening refs совместимы.
+Callback_data всех кнопок <=64UTF8 bytes,включая confirm prefix. Это transport
+contract уже используемый monitor/source-ref;не переноситьmonitor state в env.
+
+Проверки:productioncreateBot с64byte-rejecting transport,perbottempHOME;
+40charиlongexistingkeys,confirm/Нет/actualdelete/description,short compatibility,
+serializedconfirm→freshprocess→samerealkey,unknownref no mutation/unauthorized,
+UTF8bytebudget. Session/model/effort/auth/provider/соседние keys неизменны.
+RealAPIbefore recorded отдельно от isolated regressions;послеfix безопаснаяживая
+приёмка толькона временнойобычнойпеременной безcredential/APIподключения.
+
+Name rules min2/max40/sanitize/_A/1A — отдельный этап. Linux257приEnvironmentFile
+пропускает_A/AA,отклоняет1A;runtimeassignment→Node/Bash child сохраняетвсе3.
+Поэтому только успешнаяJS-запись ещё не доказывает полную startupсовместимость1A.
+Эти данные не разрешают молча менять global scope/bootstrapprocess auth.
+
+RED checkpoint не выпускать. Rollbackfix возвращает transportfailure дляlongkey;
+code-onlyrollback не восстанавливает удалённые env values/descriptions.
+
+Уточнение до выпуска:initial fallback refreshlist дал production10PASS/1RED,
+если уже открыта новая env comment form. На экране был бы список,но draft жив:
+следующий текст скрыто сохранялся бы описанием. Unknownref теперь толькоack/noop,
+сохраняет текущую форму/экран;нет ложной навигации и второго cancel/write path.
+
+Checkpoint52bf260 contract/75a3d7e RED1PASS9RED. Послеcodec11casesGREEN,
+93relatedtestsPASS,0skip/todo. Sol independently92relatedPASS доinputdelta,
+затем11callbackPASS безfindings. РеальныйBotAPIafterfix/полныйLinux/live —
+уфинальногорелиза. Source labels/previews/store/auth/providerне менялись.

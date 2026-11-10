@@ -3,13 +3,24 @@ import { createReadStream } from 'node:fs';
 import { createInterface } from 'node:readline';
 import path from 'node:path';
 import { homeDir } from '../paths.mjs';
+import { resolveProjectCwd } from '../projects/paths.mjs';
 
-/** Native last request size, NOT accumulated billing usage across tool calls. */
-export async function readSessionContext(sessionId, env = process.env) {
-  const match = /^ext:codex:([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i.exec(sessionId || '');
+const CODEX_SESSION_ID = /^ext:codex:([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i;
+
+export function captureCodexProfile(env = process.env) {
+  return { HOME: homeDir(env), CODEX_HOME: env.CODEX_HOME };
+}
+
+/** Native last request size from the selected profile's rollout.
+ * [Turn](./turn.mjs) supplies its captured cwd/profile and can bound a partial response.
+ * [/status](../telegram/screens/sessions.mjs) resolves relative profiles from selection.
+ * [Context checks](../../tests/codex-context.test.mjs).
+ */
+export async function readSessionContext(sessionId, env = process.env, { cwd = process.cwd(), turnWindow } = {}) {
+  const match = CODEX_SESSION_ID.exec(sessionId || '');
   if (!match) return null;
-  const root = path.join(env.CODEX_HOME || path.join(homeDir(env), '.codex'), 'sessions');
   try {
+    const root = path.resolve(cwd, env.CODEX_HOME || path.join(homeDir(env), '.codex'), 'sessions');
     const files = (await fs.readdir(root, { recursive: true }))
       .filter((name) => name.endsWith(`-${match[1]}.jsonl`));
     // Never borrow another session's usage or pick an ambiguous transcript.
@@ -18,10 +29,20 @@ export async function readSessionContext(sessionId, env = process.env) {
     const lines = createInterface({ input: stream, crlfDelay: Infinity });
     let context = null;
     let model;
+    let inTurn = !turnWindow;
     try {
       for await (const line of lines) {
         let event;
         try { event = JSON.parse(line); } catch { continue; }
+        if (turnWindow) {
+          const timestamp = Date.parse(event.timestamp);
+          if (!(timestamp >= turnWindow.start && timestamp <= turnWindow.end)) continue;
+          if (event.type === 'event_msg' && event.payload?.type === 'task_started') {
+            if (inTurn) return null;
+            inTurn = true;
+          }
+          if (!inTurn) continue;
+        }
         if (event.type === 'turn_context') model = event.payload?.model;
         // A compaction changes the context. Wait for the next measured count.
         if (event.type === 'compacted' || event.payload?.type === 'context_compacted') context = null;
@@ -41,6 +62,20 @@ export async function readSessionContext(sessionId, env = process.env) {
     return context;
   } catch {
     // Telemetry must not prevent delivery of the model's answer.
+    return null;
+  }
+}
+
+export async function readStatusSessionContext(state, env = process.env) {
+  if (!CODEX_SESSION_ID.test(state.ccSessionId || '')) return null;
+  const profile = captureCodexProfile(env);
+  if (state.engine === 'oc' || !profile.CODEX_HOME || path.isAbsolute(profile.CODEX_HOME)) {
+    return readSessionContext(state.ccSessionId, profile);
+  }
+  try {
+    const cwd = await resolveProjectCwd(state, env);
+    return readSessionContext(state.ccSessionId, profile, { cwd });
+  } catch {
     return null;
   }
 }

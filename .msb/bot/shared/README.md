@@ -1,6 +1,6 @@
 # Общий runtime profile
 
-[← Карта кода](../../../docs/CODEMAP.md) · [Core](../OPEN-CORE.md) ·
+[← Вход ядра](../src/main.mjs) · [Core](../OPEN-CORE.md) ·
 [Overlay](../../../overlay/bot/ext/README.md) · [Выпуск](../../../tools/release/README.md)
 
 [profile.cjs](profile.cjs) — единственный resolver для ядра, overlay и entrypoints.
@@ -43,3 +43,24 @@ token, не history metadata или авторизация. Переключен
 Поздний успешный ID допускается только для своего token/provider и пустого
 слота; обычный fence существующих IDs не ослабляется. Маршрут и тесты —
 [исполнение](../src/agent/README.md#общий-ход).
+
+
+[Claude catalog](claude-models.mjs) — общие old model identities для core и
+защиты provider boundaries; policy находится в agent/models, а не в UI renderer.
+[Native resolver](claude-binary.mjs) используется startup/shim и metadata reader,
+исключает собственный shim по realpath. Это чтение локальной CLI версии, без auth
+или provider turn. [Native checks](../tests/claude-version.test.mjs).
+
+[env-writes.mjs](env-writes.mjs) — единая process queue для core и provider
+read/modify/write env; scope/валидация остаются у вызывающих. Обе стороны
+импортируют одну копию shared. [Контракт](../tests/reference/parity-env-write-contract.txt),
+[проверки порядка/ошибок](../tests/env-write-order.test.mjs).
+
+
+[engine-policy.mjs](engine-policy.mjs) сохраняет old OA/vB/RW: наличие legacy OC
+state делает Claude-only preference неэффективным; [loadState](../src/state.mjs)
+запоминает обнаружение на время процесса отдельно для каждого bot profile. На диск
+новых полей не пишется. MSB_CC_ONLY — действующий canonical alias, JARVIS_CC_ONLY
+совместим. [Skill target](../src/skills/install-target.mjs) захватывает эту eligibility
+вместе с provider/home. Это не включение OS engine/helper и не разрешение native
+Codex через существующий отдельный guard. [Проверки](../tests/skills-install-policy.test.mjs).

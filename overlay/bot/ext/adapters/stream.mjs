@@ -46,16 +46,17 @@ export function emitAssistantText(text, sessionId, { model, usage, providerId } 
   });
 }
 
-export function emitResult({ sessionId, text, isError = false, errorStatus, usage, model, providerId }) {
+export function emitResult({ sessionId, text, isError = false, subtype, errorStatus, usage, model, providerId, errorDisplay }) {
   const payload = {
     type: 'result',
-    subtype: isError ? 'error' : 'success',
+    subtype: subtype ?? (isError ? 'error' : 'success'),
     session_id: sessionId,
     is_error: !!isError,
     result: text || '',
     total_cost_usd: 0,
   };
   if (model) payload.model = model;
+  if (errorDisplay) payload.error_display = errorDisplay;
   if (usage && typeof usage === 'object') {
     payload.usage = normalizeUsage(usage, text, providerId);
   }

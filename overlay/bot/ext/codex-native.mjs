@@ -1,9 +1,13 @@
 /**
- * Нативная авторизация/конфиг Codex CLI (~/.codex), без копирования секретов в .env бота.
+ * Авторизация и аргументы Codex CLI. Профиль хода выбирает [launcher](./codex-auth-env.mjs),
+ * prefs читает [shared resolver](../shared/codex-profile.mjs).
  */
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { readCodexProfileConfig, resolveSelectedCodexProfileDir } from '../shared/codex-profile.mjs';
+import { readBotState } from './paths.mjs';
+export { parseCodexTomlScalars } from '../shared/codex-profile.mjs';
 
 export const CODEX_CLI_VERSION = '0.166.0';
 export const CODEX_NPM_SPEC = `@openai/codex@${CODEX_CLI_VERSION}`;
@@ -15,18 +19,19 @@ export function codexHome(home = os.homedir()) {
   return path.join(home, '.codex');
 }
 
-export function codexAuthPath(home = os.homedir()) {
-  return path.join(codexHome(home), 'auth.json');
+export function codexAuthPath(home = os.homedir(), directory = codexHome(home)) {
+  return path.join(directory, 'auth.json');
 }
 
-export function codexConfigPath(home = os.homedir()) {
-  return path.join(codexHome(home), 'config.toml');
+/** Same selected profile for the [login](./auth-wire.mjs) and [gate](./setup-bypass.mjs). */
+export async function selectedCodexProfileDir(env, home, state) {
+  return resolveSelectedCodexProfileDir(state ?? await readBotState(env, home), env, home);
 }
 
 /** Не логировать и не возвращать значения секретов. */
-export async function hasNativeCodexAuth(home = os.homedir()) {
+export async function hasNativeCodexAuth(home = os.homedir(), directory = codexHome(home)) {
   try {
-    const raw = await fs.readFile(codexAuthPath(home), 'utf8');
+    const raw = await fs.readFile(codexAuthPath(home, directory), 'utf8');
     const data = JSON.parse(raw);
     if (!data || typeof data !== 'object') return false;
     if (typeof data.OPENAI_API_KEY === 'string' && data.OPENAI_API_KEY.trim()) return true;
@@ -43,40 +48,8 @@ export async function hasNativeCodexAuth(home = os.homedir()) {
   }
 }
 
-/** Простой разбор top-level string/number ключей config.toml (без полного TOML). */
-export function parseCodexTomlScalars(text) {
-  const out = {};
-  for (const line of String(text || '').split(/\n/)) {
-    const t = line.trim();
-    if (t.startsWith('[')) break;
-    if (!t || t.startsWith('#')) continue;
-    const m = /^([A-Za-z0-9_.]+)\s*=\s*(.+)$/.exec(t);
-    if (!m) continue;
-    let v = m[2].trim();
-    if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
-      v = v.slice(1, -1);
-    }
-    out[m[1]] = v;
-  }
-  return out;
-}
-
-export async function readCodexNativeConfig(home = os.homedir()) {
-  try {
-    const raw = await fs.readFile(codexConfigPath(home), 'utf8');
-    const scalars = parseCodexTomlScalars(raw);
-    return {
-      model: scalars.model || null,
-      modelReasoningEffort: scalars.model_reasoning_effort || null,
-      approvalPolicy: scalars.approval_policy || null,
-      sandboxMode: scalars.sandbox_mode || null,
-    };
-  } catch (err) {
-    if (err?.code === 'ENOENT') {
-      return { model: null, modelReasoningEffort: null, approvalPolicy: null, sandboxMode: null };
-    }
-    throw err;
-  }
+export async function readCodexNativeConfig(home = os.homedir(), directory = codexHome(home)) {
+  return readCodexProfileConfig(directory);
 }
 
 export function isClaudeModelAlias(model) {

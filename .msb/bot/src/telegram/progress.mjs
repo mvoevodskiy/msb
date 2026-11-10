@@ -72,7 +72,7 @@ const TOOL_LABELS = {
 
 export function startTurnProgress(ctx, messageId, { signal, preparing = false, now = () => performance.now(), timers = globalThis } = {}) {
   let start = now();
-  const thread = ctx.message?.message_thread_id;
+  const thread = (ctx.message || ctx.callbackQuery?.message)?.message_thread_id;
   const topic = thread && thread !== 1 ? { message_thread_id: thread } : {};
   const typingAbort = new AbortController();
   const editsAbort = new AbortController();
@@ -96,7 +96,10 @@ export function startTurnProgress(ctx, messageId, { signal, preparing = false, n
     edits = (async () => {
       while (!stopped && pending !== null && now() >= pausedUntil) {
         const value = pending; pending = null;
-        try { await ctx.api.editMessageText(ctx.chat.id, messageId, value, {}, editsAbort.signal); } catch (err) { pauseOnRateLimit(err); }
+        // Do not abort an accepted edit on stop: Telegram may still apply it
+        // after a cancelled client fetch, overwriting the terminal status.
+        const requestSignal = presentationSignal(AbortSignal.any([editsAbort.signal, AbortSignal.timeout(15_000)]));
+        try { await ctx.api.editMessageText(ctx.chat.id, messageId, value, {}, requestSignal); } catch (err) { pauseOnRateLimit(err); }
       }
     })().finally(() => { editing = false; });
   };
@@ -132,9 +135,10 @@ export function startTurnProgress(ctx, messageId, { signal, preparing = false, n
     stopped = true; pending = null;
     timers.clearInterval(animationTimer); timers.clearInterval(typingTimer);
     if (initialTimer !== undefined) timers.clearTimeout(initialTimer);
-    // A best-effort animation must not hold the final reply behind an API retry.
-    editsAbort.abort(); typingAbort.abort(); signal?.removeEventListener('abort', stop);
-    return Promise.allSettled([edits, typingPending]);
+    // Stop future frames immediately, but drain the single bounded request before
+    // terminal delivery. Presentation requests never enter autoRetry pauses.
+    typingAbort.abort(); signal?.removeEventListener('abort', stop);
+    return Promise.allSettled([edits, typingPending]).finally(() => editsAbort.abort());
   };
   if (signal?.aborted) stop();
   else {

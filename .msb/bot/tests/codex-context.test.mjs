@@ -59,7 +59,7 @@ test('status, sessions and engines show active Codex, never stale Claude/model/c
   assert.doesNotMatch((await enginesScreen(state, env)).text, /Claude/);
 });
 
-test('all screens honor provider selection and native config fallback before first turn', async (t) => {
+test('status/engines honor native fallback; sessions show only the selected core provider ledger', async (t) => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-native-display-'));
   t.after(() => fs.rm(home, { recursive: true, force: true }));
   const env = { HOME: home };
@@ -72,9 +72,66 @@ test('all screens honor provider selection and native config fallback before fir
   const status = await statusScreen(state, cfg, env);
   assert.match(status.text, /gpt-6.1-terra/);
   assert.match(status.text, /max/);
-  assert.match((await sessionsScreen(state, env)).text, /Codex/);
+  assert.equal((await sessionsScreen(state, env)).text,'Нет сохранённых сессий. Напиши что-нибудь, чтобы начать первую.');
+  const withRows={...state,extAuthBypass:'codex',sessionHistory:[
+    {id:sessionId,engine:'cc',firstPrompt:'Codex saved conversation',messageCount:1,lastActivity:'2099-01-01T00:00:00Z'},
+    {id:'claude-other-fixture',engine:'cc',firstPrompt:'Claude foreign conversation',messageCount:1,lastActivity:'2099-01-01T00:00:00Z'}]};
+  const sessions=await sessionsScreen(withRows,env);assert.match(sessions.text,/Codex saved conversation/);assert.doesNotMatch(sessions.text,/Claude foreign conversation/);
   assert.match((await enginesScreen(state, env)).text, /Codex/);
   for (const screen of [sessionsScreen, enginesScreen]) {
     assert.doesNotMatch((await screen({ extAuthBypass: 'codex' }, { ...env, JARVIS_CC_ONLY: '1' })).text, /Codex/);
   }
+});
+
+test('status reads the selected relative profile after compact and keeps the CLI sessions ledger layout', async t => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-status-project-context-'));
+  const previous = process.cwd();
+  t.after(async () => { process.chdir(previous); await fs.rm(home, { recursive: true, force: true }); });
+  const workspace = path.join(home, 'workspace');
+  const project = path.join(home, 'projects', 'alpha');
+  const env = { HOME: home, MSB_WORKSPACE_DIR: workspace, CODEX_HOME: 'native-profile' };
+  const cfg = { botId: 'default', workspace };
+  const state = { engine: 'cc', extAuthBypass: 'codex', ccSessionId: sessionId, activeProject: 'alpha',
+    sessionHistory: [{ id: sessionId, engine: 'cc', firstPrompt: 'Saved project conversation', messageCount: 2 }] };
+  const count = total_tokens => JSON.stringify({ type: 'event_msg', payload: { type: 'token_count',
+    info: { last_token_usage: { total_tokens }, model_context_window: 100000 } } }) + '\n';
+  const rollout = cwd => path.join(cwd, env.CODEX_HOME, 'sessions', 'rollout-fixture-' + id + '.jsonl');
+  for (const [cwd, tokens] of [[workspace, 98000], [project, 18000]]) {
+    await fs.mkdir(path.dirname(rollout(cwd)), { recursive: true });
+    await fs.writeFile(rollout(cwd), count(tokens));
+  }
+  process.chdir(workspace);
+  const statusText = () => statusScreen(state, cfg, env).then(view => view.text);
+  assert.match(await statusText(), /Контекст: 18%/);
+  assert.doesNotMatch(await statusText(), /98%/);
+  await fs.appendFile(rollout(project), JSON.stringify({ type: 'compacted', payload: {} }) + '\n');
+  assert.match(await statusText(), /Контекст: нет данных текущей сессии\./);
+  await fs.appendFile(rollout(project), count(26000));
+  assert.match(await statusText(), /Контекст: 26%/);
+  const ledger = await sessionsScreen(state, env);
+  assert.match(ledger.text, /Saved project conversation/);
+  assert.doesNotMatch(ledger.text, /Контекст:/);
+  await fs.rename(project, project + '-removed');
+  assert.match(await statusText(), /Контекст: нет данных текущей сессии\./);
+  process.chdir(home);
+  assert.match((await statusScreen({ ...state, activeProject: undefined }, cfg, env)).text, /Контекст: 98%/);
+});
+
+test('status uses preferences from the selected project for relative CODEX_HOME', async (t) => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-native-display-project-'));
+  t.after(() => fs.rm(home, { recursive: true, force: true }));
+  const workspace = path.join(home, 'workspace');
+  const env = { HOME: home, MSB_WORKSPACE_DIR: workspace, CODEX_HOME: 'native-profile' };
+  const project = path.join(home, 'projects', 'alpha');
+  for (const [cwd, model, effort] of [[workspace, 'gpt-5.4', 'low'], [project, 'gpt-5.4-mini', 'high']]) {
+    const profile = path.join(cwd, env.CODEX_HOME);
+    await fs.mkdir(profile, { recursive: true });
+    await fs.writeFile(path.join(profile, 'config.toml'), 'model = "' + model + '" # root\n'
+      + "model_reasoning_effort = '" + effort + "' # root\n[profiles.other]\nmodel = 'other'\n");
+  }
+  const state = { engine: 'cc', extAuthBypass: 'codex', ccModel: 'opus', activeProject: 'alpha' };
+  const { text } = await statusScreen(state, { botId: 'default', workspace }, env);
+  assert.match(text, /gpt-5\.4-mini/);
+  assert.match(text, /high/);
+  assert.doesNotMatch(text, /opus|low|other/);
 });

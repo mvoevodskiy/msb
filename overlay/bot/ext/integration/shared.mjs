@@ -1,8 +1,11 @@
 /**
  * Общие операции интеграции: состояние маршрута и edit/send.
+ * Scope/ordered delivery → [shared lifecycle](../../shared/callback-renders.mjs);
+ * [continuation checks](../../../../.msb/bot/tests/callback-scope.test.mjs).
  * Навигация: [Обвязка](../README.md).
  */
 import fs from 'node:fs/promises';
+import { currentCallbackRender, callbackTransportSignal } from '../../shared/callback-renders.mjs';
 import os from 'node:os';
 import { botStatePath } from '../paths.mjs';
 
@@ -23,14 +26,17 @@ export async function readEngine(home = os.homedir()) {
 }
 
 export async function editOrReply(bot, chatId, messageId, text, keyboard) {
-  const opts = { parse_mode: 'HTML', reply_markup: keyboard };
-  if (messageId) {
-    try {
-      await bot.api.editMessageText(chatId, messageId, text, opts);
-      return;
-    } catch {
-      /* fall through */
+  const scope = currentCallbackRender(bot, chatId);
+  const deliver = async () => {
+    if (scope && !scope.isCurrent()) return;
+    const opts = { parse_mode: 'HTML', reply_markup: keyboard };
+    if (messageId) {
+      try {
+        await bot.api.editMessageText(chatId, messageId, text, opts, scope ? callbackTransportSignal(scope) : undefined);
+        return;
+      } catch { if (scope && !scope.isCurrent()) return; }
     }
-  }
-  await bot.api.sendMessage(chatId, text, opts);
+    if (!scope || scope.isCurrent()) await bot.api.sendMessage(chatId, text, opts, scope ? callbackTransportSignal(scope) : undefined);
+  };
+  return scope ? scope.render(deliver) : deliver();
 }

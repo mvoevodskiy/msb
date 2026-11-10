@@ -1,6 +1,6 @@
 # Мониторинг
 
-[← Карта кода](../../../../docs/CODEMAP.md) · [Telegram](../telegram/README.md#callback-маршруты)
+[← Вход ядра](../main.mjs) · [Telegram](../telegram/README.md#callback-маршруты)
 
 Сбор источников и дайджест. Вход — `startMonitorScheduler` из `main`;
 кнопки ведут через `handleMonitorRoute`. Данные — `<profile.root>/monitor`.

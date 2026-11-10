@@ -27,12 +27,12 @@ export function sessionDir(env = process.env) {
   return profile.envValue(env, 'MSB_SESSION_DIR') || path.join(botRoot(env), 'sessions');
 }
 
-export function workspaceDir(env = process.env) {
-  const workspace = profile.envValue(env, 'MSB_WORKSPACE_DIR');
-  if (workspace) return workspace;
-  // cwd is bind-mount of workspace in production
-  return process.cwd();
+// The legacy actions, schedules, and STOP live beside the session directory.
+export function actionRoot(env = process.env) {
+  return path.resolve(path.dirname(sessionDir(env)));
 }
+
+export { workspaceDir } from '../shared/project-paths.mjs';
 
 export function autonomyDir(env = process.env) {
   return env.AUTONOMY_DIR || path.join(msbRoot(env), 'autonomy');

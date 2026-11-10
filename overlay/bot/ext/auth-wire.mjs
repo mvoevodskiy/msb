@@ -8,7 +8,8 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { findBin } from './adapters/run-cli.mjs';
 import { enrichPath } from './ensure-cli.mjs';
-import { hasNativeCodexAuth } from './codex-native.mjs';
+import { hasNativeCodexAuth, selectedCodexProfileDir } from './codex-native.mjs';
+import { resolveCodexProfileDir } from '../shared/codex-profile.mjs';
 
 function qwenBaseUrl(key) {
   const k = key.trim();
@@ -82,8 +83,22 @@ function pipeLogin(bin, args, secret, env) {
   });
 }
 
-export async function wireCodexAuth({ accessToken, apiKey }, env = process.env, home = os.homedir()) {
-  const childEnv = { ...env, PATH: enrichPath(env, home) };
+/** Pin a relative CODEX_HOME to the same project used by normal Codex turns. */
+export async function captureCodexLogin(env = process.env, home = env.HOME || os.homedir()) {
+  const childEnv = { ...env, HOME: home };
+  const profileDir = await selectedCodexProfileDir(childEnv, home);
+  if (childEnv.CODEX_HOME) childEnv.CODEX_HOME = profileDir;
+  return { env: childEnv, home, profileDir };
+}
+
+export async function wireCodexAuth({ accessToken, apiKey }, env = process.env, home = env.HOME || os.homedir()) {
+  let target;
+  try {
+    target = await captureCodexLogin(env, home);
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+  const childEnv = { ...target.env, PATH: enrichPath(target.env, home) };
   const bin = findBin('codex', childEnv);
   if (!bin) return { ok: false, error: 'codex CLI ещё не установлен' };
 
@@ -103,10 +118,10 @@ export async function wireCodexAuth({ accessToken, apiKey }, env = process.env, 
 }
 
 /**
- * Проверка штатного входа Codex (ChatGPT / API key в ~/.codex/auth.json).
+ * Проверка штатного входа в [зафиксированном профиле](./integration/native-login.mjs).
  * Не читает и не возвращает значения секретов.
  */
-export async function codexLoginStatus(env = process.env, home = os.homedir()) {
+export async function codexLoginStatus(env = process.env, home = env.HOME || os.homedir()) {
   const childEnv = { ...env, HOME: home, PATH: enrichPath(env, home) };
   const bin = findBin('codex', childEnv);
   if (!bin) return { ok: false, error: 'codex CLI ещё не установлен' };
@@ -130,7 +145,10 @@ export async function codexLoginStatus(env = process.env, home = os.homedir()) {
   });
   const text = (res.out || '').trim();
   const loggedIn = /logged in/i.test(text) && !/not logged|logged out/i.test(text);
-  if (res.code === 0 && loggedIn) return { ok: true, mode: 'cli-status', detail: text.slice(0, 120) };
+  const apiKeyConfigured = /^API key configured(?: - [^\r\n]+)?\r?$/m.test(text);
+  if (res.code === 0 && (loggedIn || apiKeyConfigured)) {
+    return { ok: true, mode: 'cli-status', detail: apiKeyConfigured ? 'API key configured' : text.slice(0, 120) };
+  }
   return { ok: false, error: text.slice(0, 200) || 'Codex не авторизован' };
 }
 
@@ -138,8 +156,9 @@ export async function codexLoginStatus(env = process.env, home = os.homedir()) {
  * Headless ChatGPT login через device code.
  * Возвращает URL/код для Telegram; не копирует токены в .env.
  */
-export function startCodexDeviceLogin(env = process.env, home = os.homedir()) {
-  const childEnv = { ...env, PATH: enrichPath(env, home) };
+export function startCodexDeviceLogin(env = process.env, home = env.HOME || os.homedir()) {
+  const childEnv = { ...env, HOME: home, PATH: enrichPath(env, home) };
+  const profileDir = resolveCodexProfileDir(undefined, childEnv, home);
   const bin = findBin('codex', childEnv);
   if (!bin) {
     return {
@@ -180,7 +199,7 @@ export function startCodexDeviceLogin(env = process.env, home = os.homedir()) {
     child.on('error', (err) => resolve({ ok: false, error: err.message, ...extract() }));
     child.on('close', async (code) => {
       const info = extract();
-      if (code === 0 && (await hasNativeCodexAuth(home))) {
+      if (code === 0 && (await hasNativeCodexAuth(home, profileDir))) {
         resolve({ ok: true, mode: 'device-auth', ...info });
         return;
       }
@@ -196,14 +215,17 @@ export function startCodexDeviceLogin(env = process.env, home = os.homedir()) {
 }
 
 export async function waitCodexNativeAuth({
-  home = os.homedir(),
+  env = process.env,
+  home = env.HOME || os.homedir(),
   timeoutMs = 300_000,
   pollMs = 2_000,
 } = {}) {
+  const loginEnv = { ...env, HOME: home };
+  const profileDir = resolveCodexProfileDir(undefined, loginEnv, home);
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
-    if (await hasNativeCodexAuth(home)) {
-      const status = await codexLoginStatus(process.env, home);
+    if (await hasNativeCodexAuth(home, profileDir)) {
+      const status = await codexLoginStatus(loginEnv, home);
       if (status.ok) return status;
     }
     await new Promise((r) => setTimeout(r, pollMs));

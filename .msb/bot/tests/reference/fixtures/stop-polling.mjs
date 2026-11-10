@@ -14,6 +14,8 @@ const watchdog = setTimeout(() => { console.error('Fixture timed out'); process.
 try {
   for (const key of Object.keys(process.env)) delete process.env[key];
   Object.assign(process.env, { HOME: home, MSB_BOT_ID: 'default', MSB_WORKSPACE_DIR: home, ADMIN_ID: '42', CLAUDE_CODE_OAUTH_TOKEN: 'fixture-only' });
+  const { fixtureClaudeVersion } = await import('../../helpers/claude-version-fixture.mjs');
+  await fixtureClaudeVersion(home);
   globalThis.fetch = async () => { throw Error('Unexpected real fetch'); };
   cp.spawn = (command) => {
     if (command !== 'claude') throw Error(`Unexpected child: ${command}`);

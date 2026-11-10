@@ -1,5 +1,7 @@
 /**
  * Клиент Пульта для MSB-бота: чтение секретов, выдача билетов, разметка /pult.
+ * Helper-state adapter → [status](./status.mjs); settings/Refresh →
+ * [system route](../telegram/routes/system.mjs), [checks](../../tests/pult-status.test.mjs).
  */
 import fs from 'node:fs/promises';
 import os from 'node:os';

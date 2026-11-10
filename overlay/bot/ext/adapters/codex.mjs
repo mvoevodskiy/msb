@@ -1,14 +1,17 @@
 /**
- * Codex exec/resume и разбор ответа; transport error не запускает повтор в новом thread.
- * Навигация: [CLI-провайдеры](../README.md#исполнение-cli) → [native config](../codex-native.mjs).
+ * Codex exec/resume и разбор ответа. При обычном сбое сохраняет завершённые фрагменты.
+ * [Обвязка](../shim/run-turn.mjs) передаёт результат, [проверки](../tests/reference/provider-switch.test.mjs)
+ * проходят от Telegram до CLI. Transport error не запускает повтор в новом thread.
  */
 import os from 'node:os';
 import profile from '../../shared/profile.cjs';
 import { findBin, runCli } from './run-cli.mjs';
 import { codexChildEnvironment } from '../codex-auth-env.mjs';
+import {prepareCodexMcp} from '../codex-mcp-launch.mjs';
 import { decodeExtSession, getSelectedModel, getSelectedEffort } from '../store.mjs';
 import { enrichPath, ensureProviderCli } from '../ensure-cli.mjs';
 import {
+  codexHome,
   readCodexNativeConfig,
   resolveCodexModel,
   resolveCodexEffort,
@@ -32,6 +35,7 @@ export function parseCodexStdout(stdout) {
     .map((l) => l.trim())
     .filter(Boolean);
   let last = '';
+  const assistantMessages = [];
   let threadId = null;
   let usage = null;
   let turnCompleted = false;
@@ -41,9 +45,10 @@ export function parseCodexStdout(stdout) {
     try {
       const ev = JSON.parse(line);
       if (ev.type === 'thread.started' && ev.thread_id) threadId = ev.thread_id;
-      if (ev.type === 'item.completed' && ev.item?.type === 'agent_message' && ev.item.text) {
+      if (ev.type === 'item.completed' && ev.item?.type === 'agent_message' && typeof ev.item.text === 'string' && ev.item.text) {
         last = ev.item.text;
         if (isCodexStreamCutMessage(last)) streamCutSeen = true;
+        else if (last.trim()) assistantMessages.push(last.trim());
       }
       if (ev.type === 'turn.completed') {
         turnCompleted = true;
@@ -70,6 +75,8 @@ export function parseCodexStdout(stdout) {
   }
   return {
     text: last,
+    assistantText: assistantMessages.join('\n\n'),
+    lastAssistantText: assistantMessages.at(-1) || '',
     threadId,
     usage,
     turnCompleted,
@@ -78,7 +85,7 @@ export function parseCodexStdout(stdout) {
   };
 }
 
-export function buildCodexExecArgs({ model, effort, resumeId, forceHttp = true, httpProviderId }) {
+export function buildCodexExecArgs({ model, effort, resumeId, forceHttp = true, httpProviderId, mcpArgs=[] }) {
   const args = [
     'exec',
     '--json',
@@ -88,6 +95,7 @@ export function buildCodexExecArgs({ model, effort, resumeId, forceHttp = true, 
     '-c',
     'approval_policy="never"',
     ...codexHttpProviderOverrides(forceHttp, httpProviderId),
+    ...mcpArgs,
   ];
   if (model) {
     args.push('-m', model);
@@ -123,13 +131,15 @@ function resolveResumeId(parsed) {
   return { resumeId: null, dropped: null };
 }
 
-function streamCutUserText(raw, partial) {
-  const bits = [
-    'Codex: связь с моделью оборвалась (websocket). Если повтор не помог — напиши ещё раз.',
-  ];
-  if (partial) bits.push('', 'Черновик до обрыва:', partial);
-  if (raw && raw !== partial) bits.push('', String(raw).slice(0, 500));
-  return bits.join('\n');
+function failureWithDraft(before, text, after = '') {
+  return { text: before + text + after, ...(text ? { draft: { text, before, after } } : {}) };
+}
+
+function streamCutFailure(raw, partial) {
+  const notice = 'Codex: связь с моделью оборвалась (websocket). Если повтор не помог — напиши ещё раз.';
+  const before = notice + (partial ? '\n\nЧерновик до обрыва:\n' : '');
+  const after = raw && raw !== partial ? '\n\n' + String(raw).slice(0, 500) : '';
+  return failureWithDraft(before, partial, after);
 }
 
 async function execOnce({
@@ -142,13 +152,23 @@ async function execOnce({
   resumeId,
   forceHttp,
   httpProviderId,
+  mcpArgs,
+  onThreadStarted,
 }) {
-  const args = buildCodexExecArgs({ model, effort, resumeId, forceHttp, httpProviderId });
+  const args = buildCodexExecArgs({ model, effort, resumeId, forceHttp, httpProviderId, mcpArgs });
+  let threadAnnounced = false;
   const res = await runCli(bin, args, {
     cwd,
     env: childEnv,
     input: prompt,
     forwardStderr: false,
+    onStdoutLine: onThreadStarted && (line => {
+      if (threadAnnounced) return;
+      const { threadId } = parseCodexStdout(line);
+      if (!isValidCodexThreadId(threadId)) return;
+      threadAnnounced = true;
+      onThreadStarted(threadId);
+    }),
   });
   const parsedOut = parseCodexStdout(res.stdout);
   // Иногда reconnect пишет только в stderr
@@ -158,9 +178,13 @@ async function execOnce({
     parsedOut.turnFailed = parsedOut.turnFailed || errTail.slice(-500);
   }
   if (res.timedOut) {
+    const text = resumeId && parsedOut.threadId && parsedOut.threadId !== resumeId ? '' : parsedOut.text;
+    const before = 'Codex: таймаут ожидания ответа' + (text ? '\n\nЧерновик:\n' : '');
+    const failure = text && text.trim() === parsedOut.lastAssistantText
+      ? failureWithDraft(before, text) : { text: before + text };
     return {
       ok: false,
-      text: `Codex: таймаут ожидания ответа${parsedOut.text ? `\n\nЧерновик:\n${parsedOut.text}` : ''}`,
+      ...failure,
       model: model || undefined,
       streamCut: true,
       nativeSessionId: isValidCodexThreadId(parsedOut.threadId) ? parsedOut.threadId : undefined,
@@ -170,33 +194,43 @@ async function execOnce({
 }
 
 export function finalizeParsed({ res, parsedOut, model, resumeRequested }) {
+  const text = (parsedOut.text || '').trim();
+  let threadId = parsedOut.threadId;
+  const foreignThread = resumeRequested && threadId && threadId !== resumeRequested;
+  const interrupted = parsedOut.streamCut || isCodexStreamCutMessage(parsedOut.turnFailed) || isCodexStreamCutMessage(text);
+  const contextLimit = /ran out of room in the model's context window/i.test(parsedOut.turnFailed || '');
+  if (parsedOut.assistantText && (parsedOut.turnFailed || res.code !== 0) && !foreignThread && !interrupted && !contextLimit) {
+    return {
+      ok: false,
+      text: parsedOut.assistantText,
+      partial: true,
+      nativeSessionId: isValidCodexThreadId(threadId) ? threadId : undefined,
+      model: model || undefined,
+      usage: parsedOut.usage || undefined,
+    };
+  }
   if (parsedOut.turnFailed) {
     const raw = String(parsedOut.turnFailed);
     const streamCut = parsedOut.streamCut || isCodexStreamCutMessage(raw);
-    const partial = (parsedOut.text || '').trim();
-    const draft = partial && !isCodexStreamCutMessage(partial) ? partial : '';
+    const draft = !foreignThread && parsedOut.lastAssistantText === text ? text : '';
     return {
       ok: false,
-      text: streamCut ? streamCutUserText(raw, draft) : `Codex: ${raw}`,
+      ...(streamCut ? streamCutFailure(raw, draft) : { text: 'Codex: ' + raw }),
       model: model || undefined,
       streamCut,
-      partialText: draft || undefined,
     };
   }
-
-  const text = (parsedOut.text || '').trim();
-  let threadId = parsedOut.threadId;
 
   if (resumeRequested && !threadId) {
     if (!(res.code === 0 && parsedOut.turnCompleted && text)) {
       return {
         ok: false,
-        text: 'Codex resume не вернул native session id. Напиши ещё раз — начну новый тред.',
+        text: 'Codex не смог продолжить выбранную сессию. Выбери другую в /sessions или начни новую командой /newtask.',
         model: model || undefined,
       };
     }
     threadId = resumeRequested;
-  } else if (resumeRequested && threadId && threadId !== resumeRequested) {
+  } else if (foreignThread) {
     return { ok: false, text: 'Codex вернул другую сессию. Исходная беседа сохранена.', model };
   }
 
@@ -216,9 +250,7 @@ export function finalizeParsed({ res, parsedOut, model, resumeRequested }) {
     const streamCut = parsedOut.streamCut || isCodexStreamCutMessage(text);
     return {
       ok: false,
-      text: streamCut
-        ? streamCutUserText(text, '')
-        : text || `Codex не завершил ход (${why.join(', ')})`,
+      ...(streamCut ? streamCutFailure(text, '') : { text: text || 'Codex не завершил ход (' + why.join(', ') + ')' }),
       model: model || undefined,
       usage: parsedOut.usage || undefined,
       streamCut,
@@ -234,7 +266,7 @@ export function finalizeParsed({ res, parsedOut, model, resumeRequested }) {
   };
 }
 
-export async function runCodexTurn({ prompt, parsed, cwd, env, home = os.homedir() }) {
+export async function runCodexTurn({ prompt, parsed, cwd, env = process.env, home = env.HOME || os.homedir(), onThreadStarted }) {
   const envPath = { ...env, PATH: enrichPath(env, home) };
   let bin = findBin('codex', envPath);
   if (!bin) {
@@ -243,7 +275,7 @@ export async function runCodexTurn({ prompt, parsed, cwd, env, home = os.homedir
     bin = ensured.bin;
   }
 
-  const auth = await codexChildEnvironment(env, home);
+  const auth = await codexChildEnvironment(env, home, cwd);
   if (!auth.configured) {
     return {
       ok: false,
@@ -252,29 +284,33 @@ export async function runCodexTurn({ prompt, parsed, cwd, env, home = os.homedir
     };
   }
 
-  // HTTP-only provider — до первого хода, иначе 5× reconnect на WS.
+  // The default bot profile keeps its managed HTTP workaround. An external
+  // CODEX_HOME owns its transport and must not be edited by an ordinary turn.
   let httpProviderId = profile.resolveProfile(env, home).codexHttpProviderId;
-  let forceHttp = true;
-  try {
-    const tr = await ensureCodexStableTransport(home, env);
-    httpProviderId = tr.providerId;
-    forceHttp = !tr.skippedProviderSwitch;
-    if (tr.changed) {
-      console.error(
-        `[msb/ext/codex] transport → ${tr.providerId}${tr.baseUrl ? ` (${tr.baseUrl})` : ''}`,
-      );
+  let forceHttp = auth.profileDir === codexHome(home);
+  if (forceHttp) {
+    try {
+      const tr = await ensureCodexStableTransport(home, env);
+      httpProviderId = tr.providerId;
+      forceHttp = !tr.skippedProviderSwitch;
+      if (tr.changed) {
+        console.error(
+          '[msb/ext/codex] transport → ' + tr.providerId + (tr.baseUrl ? ' (' + tr.baseUrl + ')' : ''),
+        );
+      }
+    } catch (err) {
+      console.error('[msb/ext/codex] ensure transport failed:', err?.message || err);
     }
-  } catch (err) {
-    console.error('[msb/ext/codex] ensure transport failed:', err?.message || err);
   }
 
-  const nativeConfig = await readCodexNativeConfig(home);
+  const nativeConfig = await readCodexNativeConfig(home, auth.profileDir);
   const preferred = await getSelectedModel('codex', env, home);
   const preferredEffort = await getSelectedEffort('codex', env, home);
   const model = resolveCodexModel(parsed?.model, nativeConfig, preferred);
   const effort = preferredEffort || resolveCodexEffort(nativeConfig);
 
-  const childEnv = auth.env;
+  const {env:childEnv,args:mcpArgs,blocked,error:mcpError}=await prepareCodexMcp(bin,cwd,auth.env);
+  if(blocked)return {ok:false,text:'Codex: '+mcpError};
 
   const { resumeId: resumeRequested } = resolveResumeId(parsed);
 
@@ -289,6 +325,8 @@ export async function runCodexTurn({ prompt, parsed, cwd, env, home = os.homedir
       resumeId,
       forceHttp,
       httpProviderId,
+      mcpArgs,
+      onThreadStarted: parsed?.resume ? undefined : onThreadStarted,
     });
 
   const raw = await run(resumeRequested);

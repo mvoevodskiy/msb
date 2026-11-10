@@ -1,33 +1,72 @@
-import { invalidateFirstSession } from '../../shared/session-starts.mjs';
+import { beginCommandRender, runCallbackScope, trackCallbackTask, callbackTransportSignal, openCallbackRenders, stopCallbackRenders, cancelCallbackRenders, drainCallbackTasks } from '../../shared/callback-renders.mjs';
+import {resetCliConversation} from '../sessions/selection.mjs';
 /**
- * Сборка handlers, общих pending/running и жизненного цикла хода.
- * Навигация: [Telegram](./README.md) → [callbacks](./router.mjs), [voice](./voice.mjs).
+ * createBot собирает входящие Telegram события и lifecycle хода; UI не хранит
+ * provider session отдельно. Вход: [main](../main.mjs), owner → [auth](./auth.mjs).
+ * Текст/voice и [таймер](../autonomy/legacy-dispatch.mjs) → [inbox](./inbox.mjs) → executeTurn → [agent](../agent/turn.mjs).
+ * UI read/delivery lifecycle → [shared callbacks](../../shared/callback-renders.mjs).
+ * Кнопки → [router](./router.mjs) → routes/; вид → [screens](./screens.mjs).
+ * Карточка после знакомства Codex → [services](./bootstrap-services.mjs).
+ * Формы → [dispatcher](./forms.mjs); pending в этом процессе; записи → [state](../state.mjs) / [env](../env/store.mjs).
+ * Индикация → [progress](./progress.mjs), итог → [response](./response.mjs).
+ * Owner stop may deliver the frozen [Claude fragment](../agent/claude.mjs) without running response actions.
+ * Диагностика CLI добавляется после обработки подлинного текста модели.
+ * План/комментарий → [plan actions](./plan-actions.mjs) → тот же inbox; final marker → [plan](./plan.mjs).
+ * Лимиты автономки из ответа → [limit markers](./limit-markers.mjs) → [подтверждение](./limit-confirmation.mjs).
+ * журнал Пульта → [history](./history.mjs), STT → [voice](./voice.mjs).
+ * /cost → [saved spend view](./screens/spend.mjs); saved owner pause gates the model turn.
+ * Final [reminder](./reminder-markers.mjs) and [owner pause](./pause-markers.mjs), then installation markers.
+ * Model skill markers → [processor](../skills/response-markers.mjs) before plan/delivery/history, never UI metadata.
+ * Prepared skills views/chunks → [view delivery](./view-delivery.mjs), context reply retained.
+ * Skills command read options/OC loading → [read presentation](./skills-read.mjs), native OC reader is injectable.
+ * Проверки: [inbox lifecycle](../../tests/inbox-lifecycle.test.mjs),
+ * [polling/stop](../../tests/turn-lifecycle.test.mjs), [forms/menu](../../tests/menu-handlers.test.mjs).
  */
 import { Bot } from 'grammy';
 import { autoRetry } from '@grammyjs/auto-retry';
 import { presentationAwareRetry, presentationSignal } from './presentation-api.mjs';
-import fs from 'node:fs/promises';
-import path from 'node:path';
+import { handleFormInput } from './forms.mjs';
+import { BOOTSTRAP_SERVICE_INPUT, PendingInputs, pendingInputNotice } from './pending-input.mjs';
+import { bootstrapServiceOwnsInput, deliverBootstrapServices } from './bootstrap-services.mjs';
 import { recognizeVoice, voicePreview, STT_ONBOARDING } from './voice.mjs';
 import { startTurnProgress } from './progress.mjs';
+import { createInbox, isForwarded } from './inbox.mjs';
+import { prepareBatch, batchStatus } from './batch.mjs';
+import { createPlanActions } from './plan-actions.mjs';
+import { parsePlanResponse } from './plan.mjs';
 import { deliverTurnResponse } from './response.mjs';
+import { deliverView } from './view-delivery.mjs';
+import { processPauseMarkers } from './pause-markers.mjs';
+import { processGroupTaskRemovalMarkers, processTaskCancelMarkers } from './task-removal-markers.mjs';
+import { prepareTaskRescheduleMarkers, processTaskRescheduleMarkers } from './task-reschedule-markers.mjs';
+import { prepareTaskTextMarkers, processTaskTextMarkers, restoreTaskTextLiterals } from './task-text-markers.mjs';
+import { prepareLegacyTimerMarkers, processLegacyTimerMarkers, restoreLegacyTimerLiterals } from './legacy-timer-markers.mjs';
+import { processTaskControlMarkers } from './task-control-markers.mjs';
+import { processTaskInspectionMarkers } from './task-inspection-markers.mjs';
+import { processLimitMarkers } from './limit-markers.mjs';
+import { processReminderMarkers } from './reminder-markers.mjs';
+import { processInstallMarkers } from './install-markers.mjs';
+import { stripMcpMarkerPayloads } from '../mcp/response-markers.mjs';
+import { registerProjectCommands } from './project-commands.mjs';
+import {prepareSkillRead,skillReadOptions} from './skills-read.mjs';
+import {readOpenClawSkills as nativeOpenClawSkills} from '../skills/openclaw.mjs';
 import { beginTurnHistory } from './history.mjs';
 import { runAgentTurn } from '../agent/turn.mjs';
+import { BOOTSTRAP_GREETING, codexBootstrapScope, needsCodexIntroduction } from '../agent/codex-bootstrap.mjs';
 import { compactSession } from '../agent/compact.mjs';
 import { trySessionOperation } from '../agent/session-operation.mjs';
 import { hasClaudeAuth, loadState, updateState } from '../state.mjs';
 import { addTask, tryParseScheduleMessage } from '../autonomy/store.mjs';
-import { botRoot, ensureDir, workspaceDir } from '../paths.mjs';
-import { adminGuard, isSetupMode } from './auth.mjs';
+import { adminGuard, isAdmin, isSetupMode } from './auth.mjs';
 import { HELP_CC, HELP_OC, commandsForEngine } from './commands.mjs';
 import { handleCallback } from './router.mjs';
-import { hubScreen, monitorScreen, setupScreen, settingsScreen } from './screens.mjs';
-import { describeSpendLimit } from './screens/shared.mjs';
+import { costScreen, hubScreen, monitorScreen, setupScreen, settingsScreen } from './screens.mjs';
+import { SPEND_PAUSED } from '../billing/owner-spend.mjs';
 
 /**
  * @param {ReturnType<import('../config.mjs').readConfig>} cfg
  */
-export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgentTurn } = {}) {
+export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgentTurn, readOpenClawSkills = nativeOpenClawSkills, now = Date.now, restart = () => setTimeout(() => process.exit(0), 600) } = {}) {
   bot.api.config.use(presentationAwareRetry(autoRetry()));
 
   /** Active turns outlive the polling handler; keep ownership until delivery finishes. */
@@ -35,34 +74,90 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   // Includes completed deliveries whose journal is still flushing after chat unlock.
   const unfinished = new Set();
   /** @type {Map<number, string>} */
-  const pending = new Map();
+  const pending = new PendingInputs({ now });
+
+  // Every supported agent input enters one worker; commands/forms remain immediate.
+  const inbox = createInbox({
+    canRun: () => !stopping && running.size === 0,
+    status: showInboxStatus,
+    cancel: async (entry, merged = false) => {
+      await entry.presentation?.catch(() => {});
+      if (entry.status) {
+        if (merged) await entry.ctx.api.deleteMessage(entry.ctx.chat.id, entry.status.message_id, presentationSignal(AbortSignal.timeout(15_000))).catch(() => {});
+        else await showInboxStatus(entry, 'Моя остановочка ✋🏽⛔️');
+      }
+    },
+    run: (entry) => {
+      const turn = { controller: new AbortController(), completed: false, done: null };
+      running.set(entry.ctx.chat.id, turn); unfinished.add(turn);
+      turn.done = executeTurn(entry.ctx, entry.text || '', turn, entry.voice, entry)
+        .catch(() => console.error('[msb/bot] turn delivery failed'))
+        .finally(() => unfinished.delete(turn));
+      return turn.done;
+    },
+  });
+  function showInboxStatus(entry, text) {
+    const revision = entry.statusRevision = (entry.statusRevision || 0) + 1;
+    entry.presentation = (entry.presentation || Promise.resolve()).catch(() => {}).then(async () => {
+      if (entry.cancelled && text !== 'Моя остановочка ✋🏽⛔️') return;
+      if (text.startsWith('📥 Собираю') && revision !== entry.statusRevision) return;
+      const ctx = entry.ctx, thread = (ctx.message || ctx.callbackQuery?.message)?.message_thread_id;
+      if (entry.status) await ctx.api.editMessageText(ctx.chat.id, entry.status.message_id, text, {}, presentationSignal(AbortSignal.timeout(15_000)));
+      else entry.status = await ctx.reply(text, thread && thread !== 1 ? { message_thread_id: thread } : {}, presentationSignal(AbortSignal.timeout(15_000)));
+    });
+    return entry.presentation;
+  }
 
   let stopping = false;
+  let stopEpoch = 0;
+  bot[Symbol.for('msb.scheduledTurns')] = {
+    reserve({ chatId, userId, text }) {
+      const destination = Number(chatId);
+      if (stopping || !Number.isSafeInteger(destination) || !destination ||
+          !isAdmin({ from: { id: userId } }, cfg.adminId)) return null;
+      const ctx = {
+        chat: { id: destination }, api: bot.api,
+        reply: (...args) => bot.api.sendMessage(destination, ...args),
+      };
+      return inbox.reserveScheduled({ ctx, text });
+    },
+    get pending() { return inbox.hasScheduled; },
+    get stopEpoch() { return stopEpoch; },
+  };
+  const plan = createPlanActions({ enqueue: (ctx, text) => {
+    if (!stopping) inbox.push({ ctx, text, voice: false });
+  } });
   const startPolling = bot.start.bind(bot);
-  bot.start = (...args) => { stopping = false; return startPolling(...args); };
+  bot.start = (...args) => { stopping = false; openCallbackRenders(bot); inbox.open(); return startPolling(...args); };
   const stopPolling = bot.stop.bind(bot);
   bot.stop = async () => {
     stopping = true;
+    pending.clear();
+    stopCallbackRenders(bot);
     const turns = [...unfinished];
+    const drainInbox = inbox.shutdown();
     for (const turn of turns) if (!turn.completed) turn.controller.abort();
     try { await stopPolling(); }
-    finally { await Promise.allSettled(turns.map((turn) => turn.done)); }
+    finally { await Promise.allSettled([...turns.map((turn) => turn.done), drainInbox, drainCallbackTasks(bot)]); }
   };
 
   bot.use(adminGuard(cfg.adminId));
+  bot[Symbol.for('msb.openClawSkillsReader')]=readOpenClawSkills;
   bot[Symbol.for('msb.cancelPendingInput')] = (chatId) => pending.delete(chatId);
   bot.use(async (ctx, next) => {
+    if (/^\/(?:start|settings|stop)(?:@[\w_]+)?(?:\s|$)/.test(ctx.message?.text || '')) cancelCallbackRenders(bot, ctx.chat?.id);
     if (/^\/start(?:@[\w_]+)?(?:\s|$)/.test(ctx.message?.text || '')) pending.delete(ctx.chat?.id);
     return next();
   });
 
   bot.command('start', async (ctx) => {
-    const { state } = await loadState();
-    await updateState((s) => {
+    const state = await updateState((s, { exists }) => {
+      // Old Q1 initializes xhigh only when the profile file is absent.
+      const newProfile = !exists;
       s.chatId = ctx.chat.id;
       s.userId = ctx.from?.id;
       s.ownerUsername = ctx.from?.username || null;
-      if (s.ccEffort === undefined) s.ccEffort = 'xhigh';
+      if (newProfile && s.ccEffort === undefined) s.ccEffort = 'xhigh';
       if (s.dailySpendLimit === undefined) s.dailySpendLimit = 10;
       if (s.timezone === undefined) s.timezone = cfg.timezone;
       return s;
@@ -72,8 +167,16 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
       return;
     }
+    const scope = codexBootstrapScope(ctx.chat.id, ctx.from?.id, ctx.message?.message_thread_id);
+    if (await needsCodexIntroduction(state, scope)) {
+      await ctx.reply(BOOTSTRAP_GREETING);
+      return;
+    }
     const view = hubScreen();
     await ctx.reply(view.text, { reply_markup: view.keyboard });
+    if (state.codexServiceSetup?.scope === scope && scope && !running.has(ctx.chat.id)) {
+      await deliverBootstrapServices(ctx);
+    }
   });
 
   bot.command('help', async (ctx) => {
@@ -133,10 +236,19 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   });
 
 
-  bot.command('stop', async (ctx) => {
-    const turn = running.get(ctx.chat.id);
-    if (turn && !turn.completed) {
+  function interruptActiveTurns() {
+    const turns = [...running.values()].filter(turn => !turn.completed);
+    for (const turn of turns) {
+      if (!turn.controller.signal.aborted) turn.interruptedByUser = true;
       turn.controller.abort();
+    }
+    return turns.length > 0;
+  }
+
+  bot.command('stop', async (ctx) => {
+    stopEpoch++;
+    const queued = inbox.clear();
+    if (interruptActiveTurns() || queued) {
       await ctx.reply('Моя остановочка ✋🏽⛔️');
     } else {
       await ctx.reply('Нечего останавливать 🤷');
@@ -144,29 +256,20 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   });
 
   bot.command('newtask', async (ctx) => {
-    await updateState((s) => {
-      invalidateFirstSession(s);
-      delete s.ccSessionId;
-      s.sessionEpoch = (s.sessionEpoch || 0) + 1;
-      return s;
-    });
-    await ctx.reply('Новая сессия. Пиши задачу.');
+    const state=await resetCliConversation();
+    await ctx.reply(state.engine==='oc'?'Новая сессия. Пиши задачу.':'🆕 Новая сессия. Предыдущий контекст сброшен.');
   });
 
   bot.command('clear', async (ctx) => {
-    await updateState((s) => {
-      invalidateFirstSession(s);
-      delete s.ccSessionId;
-      s.sessionEpoch = (s.sessionEpoch || 0) + 1;
-      return s;
-    });
-    await ctx.reply('Начата новая беседа. Файлы и native-история сохранены.');
+    const bootstrapScope = codexBootstrapScope(ctx.chat.id, ctx.from?.id, ctx.message?.message_thread_id);
+    const state=await resetCliConversation(process.env, { bootstrapScope });
+    await ctx.reply(state.engine==='oc'?'Начата новая беседа. Файлы и native-история сохранены.':'🧹 Контекст сброшен. Начинаем с чистого листа.');
   });
 
   bot.command('compact', async (ctx) => {
     const chatId = ctx.chat.id;
     if (stopping) return;
-    if (running.size) {
+    if (running.size || inbox.size) {
       await ctx.reply('Уже работаю над предыдущим сообщением. /stop — прервать.');
       return;
     }
@@ -190,20 +293,23 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   bot.command('sessions', async (ctx) => {
     const { sessionsScreen } = await import('./screens.mjs');
     const { state } = await loadState();
-    const view = await sessionsScreen(state);
-    await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
+    const view = await sessionsScreen(state,process.env,0,{fromMenu:false});
+    await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard,
+      ...(view.disablePreview?{link_preview_options:{is_disabled:true}}:{}) });
   });
 
-  bot.command('projects', async (ctx) => {
-    const { projectsScreen } = await import('./screens.mjs');
-    const view = projectsScreen();
-    await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
-  });
+  registerProjectCommands(bot,pending);
 
-  bot.command('skills', async (ctx) => {
-    const { skillsScreen } = await import('./screens.mjs');
-    const view = skillsScreen();
-    await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
+  bot.command('skills', (ctx) => {
+    const scope=beginCommandRender(bot,ctx.message);
+    const task=runCallbackScope(scope,async()=>{
+      const {skillsScreen}=await import('./screens.mjs');
+      const {state}=await loadState();if(!scope.isCurrent())return;
+      if(!await prepareSkillRead(bot,state,{chatId:ctx.chat.id,signal:scope.signal}))return;
+      const view=await skillsScreen(state,process.env,skillReadOptions(bot,scope.signal));
+      await deliverView(view,{scope,reply:part=>scope.render(()=>ctx.reply(part.text,{parse_mode:'HTML',reply_markup:part.keyboard},callbackTransportSignal(scope)))});
+    }).catch(()=>{if(!scope.signal.aborted)console.error('[msb/bot] skills read failed');});
+    trackCallbackTask(bot,task);
   });
 
   bot.command('status', async (ctx) => {
@@ -215,13 +321,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
 
   bot.command('cost', async (ctx) => {
     const { state } = await loadState();
-    const day = new Date().toISOString().slice(0, 10);
-    const spent = state.costHistory?.[day];
-    const limit = describeSpendLimit(state.dailySpendLimit);
-    await ctx.reply(
-      `${typeof spent === 'number' && Number.isFinite(spent) ? `В сохранённой статистике за сегодня: <b>$${spent.toFixed(2)}</b>.` : 'В сохранённой статистике нет данных за сегодня.'}\nСохранённый лимит: ${limit}.\nСбор стоимости и применение лимита в open-core пока не подключены.`,
-      { parse_mode: 'HTML' },
-    );
+    await ctx.reply(costScreen(state, now()).text, { parse_mode: 'HTML' });
   });
 
   bot.command('autostatus', async (ctx) => {
@@ -241,7 +341,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
 
   bot.command('autoactions', async (ctx) => {
     const { autonomyTasksScreen } = await import('./screens.mjs');
-    const view = await autonomyTasksScreen();
+    const view = await autonomyTasksScreen(undefined, Boolean(bot[Symbol.for('msb.savedCodexPrompt')]));
     await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
   });
 
@@ -258,30 +358,44 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   });
 
   bot.command('feedback', async (ctx) => {
+    const text = ctx.match?.trim();
+    if (text) {
+      await handleFormInput({ kind: 'feedback', ctx, text, pending });
+      return;
+    }
     pending.set(ctx.chat.id, 'feedback');
     await ctx.reply('Напиши отзыв следующим сообщением — сохраню в workspace/ops/feedback.md.');
   });
 
   bot.on('callback_query:data', async (ctx) => {
-    await handleCallback({ bot, cfg, pending, ctx });
+    await handleCallback({ bot, cfg, pending, ctx, plan, now });
   });
 
   bot.on('message:text', async (ctx) => {
     const text = ctx.message.text || '';
     const chatId = ctx.chat.id;
+    const entry = pending.read(chatId);
+    if (entry.kind === BOOTSTRAP_SERVICE_INPUT && !bootstrapServiceOwnsInput(ctx, pending.payload(chatId))) {
+      entry.kind = undefined;
+    }
+    const notice = pendingInputNotice(entry, text);
+    if (notice) {
+      pending.delete(chatId);
+      await ctx.reply(notice, { parse_mode: 'HTML' });
+      return;
+    }
+    if(entry.kind==='new-project' && text.trimStart().startsWith('/')) {pending.delete(chatId);return;}
     if (text.startsWith('/')) return;
 
-    const pend = pending.get(chatId);
-    if (pend === 'auth-token') {
-      const token = text.trim();
-      const { setEnvKey } = await import('../env/store.mjs');
-      try {
-        await setEnvKey(token.startsWith('sk-ant-') ? 'ANTHROPIC_API_KEY' : 'CLAUDE_CODE_OAUTH_TOKEN', token);
-        await saveAuthToken(token);
-      } catch (err) { await ctx.reply(`Токен не сохранён: ${err.message}`); return; }
-      pending.delete(chatId);
-      await ctx.reply('Токен сохранён. Перезапускаюсь…');
-      setTimeout(() => process.exit(0), 600);
+    const pend = entry.kind;
+    if (await handleFormInput({ kind: pend, ctx, text, pending, cfg, restart })) return;
+
+    if (await plan.consumeComment(ctx, text)) return;
+
+    // Old reply-stop interrupts the current turn, but keeps collectors/FIFO.
+    // Env/auth forms above keep priority; timezone input below remains pending.
+    if (text.toLowerCase() === 'стоп' && ctx.message.reply_to_message) {
+      if (interruptActiveTurns()) await ctx.reply('Моя остановочка ✋🏽⛔️');
       return;
     }
     if (pend === 'timezone') {
@@ -296,162 +410,6 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       await ctx.reply(`Часовой пояс: <code>${escapeHtml(timezone)}</code>`, { parse_mode: 'HTML' });
       return;
     }
-    if (pend?.startsWith('env:')) {
-      const key = pend.slice(4);
-      const { setEnvKey } = await import('../env/store.mjs');
-      try { await setEnvKey(key, text.trim()); }
-      catch (err) { await ctx.reply(`Не сохранил: ${err.message}`); return; }
-      pending.delete(chatId);
-      await ctx.reply(`Сохранил <code>${escapeHtml(key)}</code> в .env бота. Это не проверка подключения сервиса. Для параметров запуска нужен перезапуск бота.`, { parse_mode: 'HTML' });
-      return;
-    }
-    if (pend === 'feedback') {
-      pending.delete(chatId);
-      const file = path.join(workspaceDir(), 'ops', 'feedback.md');
-      ensureDir(path.dirname(file));
-      await fs.appendFile(file, `\n## ${new Date().toISOString()}\n\n${text}\n`);
-      await ctx.reply('Спасибо, записал.');
-      return;
-    }
-    if (pend === 'new-project') {
-      pending.delete(chatId);
-      const name = text.trim().replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
-      if (!name) {
-        await ctx.reply('Имя не подошло. Только латиница, цифры, -_.');
-        return;
-      }
-      const dir = path.join(process.env.HOME || '', 'projects', name);
-      await fs.mkdir(dir, { recursive: true });
-      await updateState((s) => { s.activeProject = name; return s; });
-      await ctx.reply(`✔ Проект <code>${name}</code> создан и выбран. Переключение cwd в open-core пока не подключено.`, { parse_mode: 'HTML' });
-      return;
-    }
-    if (pend === 'bot-token') {
-      pending.delete(chatId);
-      await ctx.reply('⏳ Ставлю бота через bot-ctl…');
-      const { addBot } = await import('../bots/manage.mjs');
-      const res = await addBot(text.trim(), { ownerId: cfg.adminId });
-      if (res.ok) {
-        await ctx.reply(`✔ Служба бота <b>${res.botId}</b> создана и запущена. Ответ в Telegram ещё нужно проверить.`, { parse_mode: 'HTML' });
-      } else {
-        await ctx.reply(`Не удалось добавить бота: ${res.error}`);
-      }
-      return;
-    }
-    if (pend === 'env-key-name') {
-      const key = text.trim().toUpperCase();
-      if (!/^[A-Z][A-Z0-9_]*$/.test(key)) {
-        await ctx.reply('Имя ключа: только A-Z, цифры и _.');
-        return;
-      }
-      pending.set(chatId, `env:${key}`);
-      await ctx.reply(`Ок. Пришли значение для <code>${key}</code>.`, { parse_mode: 'HTML' });
-      return;
-    }
-    if (pend === 'mon-source') {
-      pending.delete(chatId);
-      const { addSourceFromInput } = await import('../monitor/config.mjs');
-      const res = await addSourceFromInput(text);
-      if (!res.ok) {
-        await ctx.reply(res.error);
-        return;
-      }
-      await ctx.reply(
-        res.added
-          ? `✔ Источник <b>${res.type}</b>: ${res.name}`
-          : `Уже был: <b>${res.type}</b> ${res.name}`,
-        { parse_mode: 'HTML' },
-      );
-      return;
-    }
-    if (
-      pend === 'pult-password' ||
-      pend === 'pult-tg-token' ||
-      pend === 'pult-url' ||
-      pend === 'pult-listen' ||
-      pend === 'pult-session'
-    ) {
-      pending.delete(chatId);
-      const { setEnvKey, deleteEnvKey } = await import('../env/store.mjs');
-      const { pultScreen } = await import('./screens.mjs');
-      const { engineStatusSnapshot, submitRequest, waitRequestResult } = await import('../engines/client.mjs');
-      const { readPultSecrets, pultPublicUrl, pultListenHost } = await import('../pult/client.mjs');
-      const { escapeHtml } = await import('./edit.mjs');
-
-      try {
-        if (pend === 'pult-password') {
-          const pw = text.trim();
-          if ([...pw].length < 12) {
-            await ctx.reply('Пароль короче 12 символов.');
-            return;
-          }
-          await setEnvKey('PULT_PASSWORD', pw);
-        } else if (pend === 'pult-tg-token') {
-          const v = text.trim();
-          if (v === '-' || v === '') await deleteEnvKey('PULT_TG_TOKEN');
-          else await setEnvKey('PULT_TG_TOKEN', v);
-        } else if (pend === 'pult-url') {
-          const v = text.trim().replace(/\/+$/, '');
-          try {
-            const u = new URL(v);
-            if (u.protocol !== 'http:' && u.protocol !== 'https:') throw new Error('protocol');
-          } catch {
-            await ctx.reply('Нужен URL вида https://… или http://…');
-            return;
-          }
-          await setEnvKey('PULT_PUBLIC_URL', v);
-        } else if (pend === 'pult-listen') {
-          const host = text.trim();
-          if (!/^\d{1,3}(\.\d{1,3}){3}$/.test(host) && host !== '::' && !host.includes(':')) {
-            await ctx.reply('Ожидаю IPv4, например 192.168.1.10');
-            return;
-          }
-          await setEnvKey('PULT_HOST', host);
-        } else if (pend === 'pult-session') {
-          const hours = Number(text.trim());
-          if (!Number.isInteger(hours) || hours < 1 || hours > 720) {
-            await ctx.reply('Нужно целое число часов от 1 до 720.');
-            return;
-          }
-          await setEnvKey('PULT_SESSION_HOURS', String(hours));
-        }
-
-        let note = 'сохранено';
-        try {
-          const { id } = await submitRequest('reload-pult', {
-            bot_id: process.env.MSB_BOT_ID || 'default',
-          });
-          const result = await waitRequestResult(id, { timeoutMs: 90_000 });
-          note =
-            result?.code === 'OK'
-              ? 'сохранено, службы обновлены'
-              : `сохранено; reload: ${result?.code || 'нет ответа'}`;
-        } catch (err) {
-          note = `сохранено; reload: ${err.message}`;
-        }
-
-        const secrets = await readPultSecrets();
-        const { readEnvMap } = await import('../env/store.mjs');
-        const { map } = await readEnvMap();
-        const snap = await engineStatusSnapshot();
-        const view = pultScreen(
-          snap.pult,
-          {
-            password: map.get('PULT_PASSWORD') || secrets.web.get('PULT_PASSWORD') || '',
-            host: map.get('PULT_HOST') || pultListenHost(secrets),
-            tgToken: map.get('PULT_TG_TOKEN') || secrets.web.get('PULT_TG_TOKEN') || '',
-            publicUrl: map.get('PULT_PUBLIC_URL') || pultPublicUrl(secrets),
-            sessionHours: map.get('PULT_SESSION_HOURS') || secrets.web.get('PULT_SESSION_HOURS') || '4',
-          },
-          escapeHtml(note),
-        );
-        await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
-      } catch (err) {
-        await ctx.reply(`Не удалось сохранить: ${err.message}`);
-      }
-      return;
-    }
-
     const { state } = await loadState();
     if (isSetupMode(state)) {
       const view = setupScreen();
@@ -459,7 +417,8 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       return;
     }
 
-    const scheduled = tryParseScheduleMessage(text);
+    const batchInput = isForwarded(ctx.message) || inbox.isCollecting(ctx);
+    const scheduled = !batchInput && tryParseScheduleMessage(text);
     if (scheduled) {
       const task = await addTask(scheduled);
       await ctx.reply(
@@ -469,34 +428,15 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       return;
     }
 
-    // маркеры автономки из ответа агента
-    const marker = text.match(/\[SCHEDULE_TASK\]([\s\S]*?)\[\/SCHEDULE_TASK\]/i);
-    if (marker) {
-      const body = marker[1].trim();
-      const task = await addTask({ prompt: body, title: body.slice(0, 80), everyHours: 24 });
-      await ctx.reply(`Задача из маркера: <b>${escapeHtml(task.title)}</b>`, { parse_mode: 'HTML' });
-      return;
-    }
-
-    if (running.has(chatId) || [...running.values()].some((turn) => turn.compacting)) {
-      await ctx.reply('Уже работаю над предыдущим сообщением. /stop — прервать.');
-      return;
-    }
-
-    if (!hasClaudeAuth(process.env, state)) {
+    // The named OpenClaw runner validates its own native profile.
+    if (state.engine !== 'oc' && !hasClaudeAuth(process.env, state)) {
       const view = setupScreen();
       await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
       return;
     }
 
     if (stopping) return;
-    const turn = { controller: new AbortController(), completed: false, done: null };
-    running.set(chatId, turn);
-    unfinished.add(turn);
-    // Return to Grammy immediately, so the next getUpdates can deliver /stop.
-    turn.done = executeTurn(ctx, text, turn).catch((err) => {
-      console.error('[msb/bot] turn delivery failed:', err.message);
-    }).finally(() => unfinished.delete(turn));
+    inbox.push({ ctx, text, voice: false });
   });
 
   async function executeCompact(ctx, turn, release) {
@@ -564,10 +504,11 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       turn.completed = true;
       if (running.get(chatId) === turn) running.delete(chatId);
       release();
+      inbox.kick();
     }
   }
 
-  async function executeTurn(ctx, text, turn, voice = false) {
+  async function executeTurn(ctx, text, turn, voice = false, entry = {}) {
     const chatId = ctx.chat.id;
     const signal = turn.controller.signal;
     let status;
@@ -579,19 +520,44 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     let responseReady = false;
     const stopped = async () => {
       outcome = 'aborted';
+      const received = turn.interruptedByUser ? result?.assistantReply : null;
+      const partial = received && stripMcpMarkerPayloads(received.text).trim();
+      if (partial) {
+        await deliverTurnResponse(ctx, status?.message_id, partial,
+          { elapsedMs: performance.now() - startedAt, context: received.context }, { allowPlan: false })
+          .then(() => { deliveredText = partial; delivered = true; }).catch(() => {});
+        return;
+      }
       if (status) await ctx.api.editMessageText(chatId, status.message_id, 'Моя остановочка ✋🏽⛔️', {}, presentationSignal(AbortSignal.timeout(15_000)))
         .then(() => { deliveredText = 'Моя остановочка ✋🏽⛔️'; delivered = true; }).catch(() => {});
     };
     try {
-      if (!voice) history = await beginTurnHistory({ input: ctx.message?.text ?? text });
-      const thread = ctx.message?.message_thread_id;
+      if (!voice && !entry.items) history = await beginTurnHistory({ input: text });
+      const thread = (ctx.message || ctx.callbackQuery?.message)?.message_thread_id;
+      try { await entry.presentation; }
+      catch {
+        if (entry.isAutoTurn && !entry.status) { outcome = 'delivery_error'; return; }
+      }
+      status = entry.status;
+      if (signal.aborted) { await stopped(); return; }
       if (voice) {
         transcription = await ctx.reply('🎙 Расшифровываю...', thread && thread !== 1 ? { message_thread_id: thread } : {});
-        if (signal.aborted) return;
+        if (signal.aborted) { await stopped(); return; }
       }
-      status = await ctx.reply('Думаю ⏳', thread && thread !== 1 ? { message_thread_id: thread } : {});
+      const initialText = entry.items ? batchStatus(entry) : 'Думаю ⏳';
+      if (status) await ctx.api.editMessageText(chatId, status.message_id, initialText, {}, presentationSignal(AbortSignal.any([signal, AbortSignal.timeout(15_000)])));
+      else {
+        const request = entry.scheduled ? presentationSignal(AbortSignal.any([signal, AbortSignal.timeout(15_000)])) : undefined;
+        try {
+          status = await ctx.reply(initialText, thread && thread !== 1 ? { message_thread_id: thread } : {}, request);
+        } catch (error) {
+          if (!entry.isAutoTurn) throw error;
+          outcome = 'delivery_error';
+          return;
+        }
+      }
       if (signal.aborted) { await stopped(); return; }
-      progress = startTurnProgress(ctx, status.message_id, { signal, preparing: voice });
+      progress = startTurnProgress(ctx, status.message_id, { signal, preparing: voice || Boolean(entry.items) });
       if (voice) {
         const recognized = await recognizeVoice(ctx, cfg.botToken, signal);
         signal.throwIfAborted();
@@ -604,20 +570,73 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         history = await beginTurnHistory({ input: recognized.transcript.slice(0, 300) });
         progress.beginThinking();
       }
-      const out = await runTurn({ prompt: text, signal, onStatus: ev => {
+      if (entry.items) {
+        text = await prepareBatch(entry, cfg.botToken, signal);
+        signal.throwIfAborted();
+        history = await beginTurnHistory({ input: text });
+        progress.beginThinking();
+      }
+      signal.throwIfAborted();
+      const reminderOwner = !entry.isAutoTurn && isAdmin(ctx, cfg.adminId) ? cfg.adminId : 0;
+      const codexAvailable = Boolean(bot[Symbol.for('msb.savedCodexPrompt')]);
+      const checkSavedCodex = codexAvailable ? bot[Symbol.for('msb.savedCodexPromptReady')] : undefined;
+      const { state } = await loadState();
+      signal.throwIfAborted();
+      const paused = Boolean(state.costPaused);
+      const bootstrapScope = !entry.scheduled && ctx.message && reminderOwner && state.extAuthBypass === 'codex'
+        ? codexBootstrapScope(chatId, reminderOwner, thread) : undefined;
+      const out = paused ? { ok: false, text: SPEND_PAUSED } : await runTurn({ prompt: entry.prompt ?? text, signal,
+        ...(reminderOwner ? { reminderOwner, checkSavedCodex } : {}),
+        ...(bootstrapScope ? { bootstrapScope } : {}),
+        ...(entry.isAutoTurn ? { isAutoTurn: true } : {}), onStatus: ev => {
         if (ev.kind === 'provider') history?.provider(ev.providerId);
         progress.onStatus(ev);
       } });
       result = out.result;
-      outcome = out.ok ? 'ok' : 'error';
+      outcome = paused ? 'blocked' : out.ok ? 'ok' : 'error';
       await progress.stop();
       if (signal.aborted || out.error === 'aborted') { await stopped(); return; }
+      if (out.bootstrap || out.terminalNotice || (!out.ok && result?.providerId === 'codex' && result.subtype === 'error_notice')) {
+        turn.completed = true;
+        responseReady = true;
+        const notice = stripMcpMarkerPayloads(out.text);
+        await deliverTurnResponse(ctx, status.message_id, notice, {}, { allowPlan: false });
+        deliveredText = notice; delivered = true;
+        if (out.bootstrapComplete) await deliverBootstrapServices(ctx);
+        return;
+      }
+      const autonomy = {
+        ownerId: reminderOwner, rail: out.reminderRail, ok: out.ok, chatId, threadId: thread,
+        messageId: (ctx.message || ctx.callbackQuery?.message)?.message_id, openClawProfile: out.openClawProfile,
+        timezone: cfg.timezone, now: now(), signal,
+        codexAvailable, checkSavedCodex,
+      };
+      const textEdits = prepareTaskTextMarkers(out.modelText ?? out.text);
+      const reschedule = prepareTaskRescheduleMarkers(textEdits.text);
+      const legacyTimers = prepareLegacyTimerMarkers(reschedule.text);
+      const reminders = await processReminderMarkers(legacyTimers.text, autonomy);
+      const pausedTasks = await processPauseMarkers(reminders, autonomy, ctx);
+      const askedRemoval = await processGroupTaskRemovalMarkers(pausedTasks, autonomy, ctx);
+      const inspected = await processTaskInspectionMarkers(askedRemoval, autonomy, ctx);
+      const rescheduled = await processTaskRescheduleMarkers(inspected, autonomy, ctx, reschedule.commands);
+      const editedTasks = await processTaskTextMarkers(rescheduled, autonomy, textEdits);
+      const cancelled = await processTaskCancelMarkers(editedTasks, autonomy, ctx);
+      const controlled = await processTaskControlMarkers(cancelled, autonomy);
+      const timers = await processLegacyTimerMarkers(controlled, autonomy, ctx, legacyTimers);
+      const actionText = await processLimitMarkers(timers, autonomy, ctx);
+      const replyText = await processInstallMarkers({ ...out, text: actionText }, { signal, readProvider: bot[Symbol.for('msb.mcpProvider')] });
+      signal.throwIfAborted();
       turn.completed = true;
       responseReady = true;
-      await deliverTurnResponse(ctx, status.message_id, out.text, out.ok ? {
-        elapsedMs: performance.now() - startedAt, costUsd: out.result?.costUsd, context: out.result?.context,
-      } : {});
-      deliveredText = out.text; delivered = true;
+      const errorDisplay = result?.errorDisplay;
+      const before = errorDisplay ? stripMcpMarkerPayloads(errorDisplay.before) : '';
+      const after = errorDisplay ? stripMcpMarkerPayloads(errorDisplay.after) : '';
+      const restoreText = value => before + restoreLegacyTimerLiterals(restoreTaskTextLiterals(value, textEdits), legacyTimers) + after;
+      await deliverTurnResponse(ctx, status.message_id, replyText, out.ok || out.partialReply ? {
+        elapsedMs: performance.now() - startedAt, costUsd: result?.costUsd,
+        context: out.partialReply ? out.partialReply.context : result?.context,
+      } : {}, { restoreText });
+      deliveredText = restoreText(parsePlanResponse(replyText)?.cleanText ?? replyText); delivered = true;
     } catch (err) {
       await progress?.stop();
       if (signal.aborted) await stopped().catch(() => {});
@@ -626,13 +645,13 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         turn.completed = true;
         if (voice && err.code === 'STT_NOT_CONFIGURED') {
           if (status) await ctx.api.deleteMessage(chatId, status.message_id, presentationSignal(AbortSignal.timeout(15_000))).catch(() => {});
-          const thread = ctx.message?.message_thread_id;
+          const thread = (ctx.message || ctx.callbackQuery?.message)?.message_thread_id;
           await ctx.reply(STT_ONBOARDING.text, { reply_markup: STT_ONBOARDING.reply_markup, ...(thread && thread !== 1 ? { message_thread_id: thread } : {}) });
         } else {
           const error = voice && !transcribed
             ? `❌ Не удалось обработать голосовое: ${String(err.message).slice(0, 200)}\n\nПопробуй ещё раз или напиши текстом.`
             : `❌ Ошибка: ${String(err.message).slice(0, 300)}`;
-          await deliverTurnResponse(ctx, status?.message_id, error, {});
+          await deliverTurnResponse(ctx, status?.message_id, error, {}, { allowPlan: false });
           deliveredText = error; delivered = true;
         }
       }
@@ -649,12 +668,8 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     const { state } = await loadState();
     if (isSetupMode(state)) { await ctx.reply('Сначала подключи AI: /start'); return; }
     if (stopping) return;
-    if (running.has(ctx.chat.id) || [...running.values()].some((turn) => turn.compacting)) { await ctx.reply('Уже работаю над предыдущим сообщением. /stop — прервать.'); return; }
-    const turn = { controller: new AbortController(), completed: false, done: null };
-    running.set(ctx.chat.id, turn);
-    unfinished.add(turn);
-    // Speech never passes through pending text forms or fabricated Telegram updates.
-    turn.done = executeTurn(ctx, '', turn, true).catch(err => console.error('[msb/bot] voice delivery failed:', err.message)).finally(() => unfinished.delete(turn));
+    // Speech never passes through pending text forms or fabricated updates.
+    inbox.push({ ctx, text: '', voice: true });
   });
 
   bot.on(['message:photo', 'message:video', 'message:document'], async (ctx) => {
@@ -672,21 +687,6 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     .catch((err) => console.error('[msb/bot] setMyCommands failed:', err.message));
 
   return bot;
-}
-
-async function saveAuthToken(raw) {
-  const token = raw.trim();
-  if (token.startsWith('sk-ant-')) {
-    process.env.ANTHROPIC_API_KEY = token;
-    process.env.MSB_ANTHROPIC_API_KEY = token;
-  } else {
-    process.env.CLAUDE_CODE_OAUTH_TOKEN = token;
-  }
-  await updateState((s) => {
-    s.authMode = 'subscription';
-    s.hasSubscriptionAuth = true;
-    return s;
-  });
 }
 
 function escapeHtml(s) {

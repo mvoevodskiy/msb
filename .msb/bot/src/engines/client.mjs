@@ -1,21 +1,16 @@
 /**
- * Клиент IPC к msb-engine: заявка в ~/.msb/engine/request, результат в /run/msb-engine/state.json
- * 
+ * Helper state/result reader; publication is owned by [request](./request.mjs).
+ * Existing consumers: [native controls](./telegram.mjs), [Pult routes](../telegram/routes/system.mjs).
+ * Read-only refresh is cancellable; publication success is not execution.
+ * [Checks](../../tests/engines-client.test.mjs), [publication boundary](../../tests/engines-publication.test.mjs).
  */
 import fs from 'node:fs/promises';
-import path from 'node:path';
-import { randomBytes } from 'node:crypto';
-import { msbRoot } from '../paths.mjs';
+import { setTimeout as delay } from 'node:timers/promises';
+import profile from '../../shared/profile.cjs';
+import { submitRequest } from './request.mjs';
+export { engineDir, requestPath, newRequestId, submitRequest } from './request.mjs';
 
 const RUN_CANDIDATES = ['/run/msb-engine/state.json'];
-
-export function engineDir(env = process.env) {
-  return path.join(msbRoot(env), 'engine');
-}
-
-export function requestPath(env = process.env) {
-  return path.join(engineDir(env), 'request');
-}
 
 export async function readEngineState() {
   for (const p of RUN_CANDIDATES) {
@@ -30,37 +25,14 @@ export async function readEngineState() {
   return { path: null, state: null };
 }
 
-export function newRequestId() {
-  return randomBytes(12).toString('hex');
-}
-
-/**
- * Атомарно записать заявку. Path-unit подхватит файл.
- * @returns {{ id: string, path: string }}
- */
-export async function submitRequest(action, params = {}, env = process.env) {
-  const dir = engineDir(env);
-  await fs.mkdir(dir, { recursive: true, mode: 0o700 });
-  const id = newRequestId();
-  const body = {
-    v: 1,
-    id,
-    action,
-    ...params,
-  };
-  const dest = requestPath(env);
-  const tmp = path.join(dir, `.request.${id}.tmp`);
-  await fs.writeFile(tmp, `${JSON.stringify(body)}\n`, { mode: 0o600 });
-  await fs.rename(tmp, dest);
-  return { id, path: dest };
-}
-
 /**
  * Дождаться результата заявки в state.requests[id] / state.last.
  */
-export async function waitRequestResult(id, { timeoutMs = 60_000, pollMs = 400 } = {}) {
+export async function waitRequestResult(id, { timeoutMs = 60_000, pollMs = 400, signal } = {}) {
+  signal?.throwIfAborted();
   const start = Date.now();
   while (Date.now() - start < timeoutMs) {
+    signal?.throwIfAborted();
     const { state } = await readEngineState();
     if (state) {
       const byId = state.requests?.[id];
@@ -69,7 +41,7 @@ export async function waitRequestResult(id, { timeoutMs = 60_000, pollMs = 400 }
         return state.last;
       }
     }
-    await new Promise((r) => setTimeout(r, pollMs));
+    await delay(pollMs, undefined, { signal });
   }
   return null;
 }
@@ -100,4 +72,14 @@ export async function engineStatusSnapshot() {
     host_ready: state.host_ready,
     at: state.at,
   };
+}
+
+/** One existing status round trip for native controls and Pult; no enable/reload. */
+export async function refreshEngineStatus({ signal, timeoutMs = 20_000, pollMs = 400 } = {}, env = process.env) {
+  const { id } = await submitRequest('status', { bot_id: profile.botId(env) }, env, { signal });
+  const result = await waitRequestResult(id, { timeoutMs, pollMs, signal });
+  signal?.throwIfAborted();
+  const snapshot = await engineStatusSnapshot();
+  signal?.throwIfAborted();
+  return { id, result, snapshot };
 }

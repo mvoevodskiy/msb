@@ -1,6 +1,6 @@
 # Обвязка open-core
 
-[← Проект](../README.md) · [Карта кода](../docs/CODEMAP.md) ·
+[← Проект](../README.md) · [Вход ядра](../.msb/bot/src/main.mjs) ·
 [Провайдеры и integration](bot/ext/README.md) · [Release](../tools/release/README.md)
 
 Опциональный слой добавляет Codex/Cursor/Qwen, local SSH constructor routes и

@@ -9,7 +9,8 @@ import os from 'node:os';
 import { invalidateFirstSession } from '../shared/session-starts.mjs';
 import { getProvider } from './providers.mjs';
 import { providerConfigured } from './env.mjs';
-import { loadStore } from './store.mjs';
+import { loadStore, setActive } from './store.mjs';
+import { selectedCodexProfileDir } from './codex-native.mjs';
 import { updateBotState } from './state-update.mjs';
 import { currentSessionProvider, switchProviderSession } from './provider-sessions.mjs';
 
@@ -26,13 +27,15 @@ async function hasClaudeCreds(env) {
 
 /**
  * Синхронизирует state.authMode с активным ext-провайдером.
- * @returns {{ changed: boolean, reason: string }}
+ * The [native login](./integration/native-login.mjs) may submit a verified
+ * Codex profile. Recheck the live project in the same state transaction.
+ * @returns {{ changed: boolean, reason: string, selected?: boolean }}
  */
-export async function syncExtAuthGate(env = process.env, home = os.homedir(), { activateCli = false } = {}) {
+export async function syncExtAuthGate(env = process.env, home = env.HOME || os.homedir(), { activateCli = false, verifiedCodexProfile } = {}) {
   let outcome;
   await updateBotState(async (state) => {
   const store = await loadStore(env, home);
-  const provider = getProvider(store.active) || getProvider('claude');
+  const provider = getProvider(verifiedCodexProfile ? 'codex' : store.active) || getProvider('claude');
   const previousProvider = currentSessionProvider(state);
   let sessionSwitched = false;
 
@@ -41,7 +44,15 @@ export async function syncExtAuthGate(env = process.env, home = os.homedir(), { 
     return null;
   }
 
-  const configured = await providerConfigured(provider, env, home);
+  const configured = await providerConfigured(provider, env, home, state);
+  if (verifiedCodexProfile) {
+    const directory = await selectedCodexProfileDir(env, home, state).catch(() => null);
+    if (!configured || directory !== verifiedCodexProfile) {
+      outcome = { changed: false, reason: 'codex-profile-not-ready' };
+      return null;
+    }
+    if (store.active !== 'codex') await setActive('codex', env, home);
+  }
   const claudeOk = await hasClaudeCreds(env);
   // A transient loss of the selected CLI's credentials must not discard its
   // conversation. The adapter still reports missing auth on the next turn.
@@ -98,7 +109,7 @@ export async function syncExtAuthGate(env = process.env, home = os.homedir(), { 
   if (changed) {
     console.error(`${MARK} ${reason}`);
   }
-  outcome = { changed, reason };
+  outcome = { changed, reason, ...(verifiedCodexProfile ? { selected: state[EXT_AUTH_FLAG] === 'codex' } : {}) };
   return changed ? state : null;
   }, env, home);
   return outcome;

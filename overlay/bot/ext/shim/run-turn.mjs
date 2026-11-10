@@ -5,9 +5,7 @@ import '../../shared/preload.mjs';
  * Навигация: [Исполнение CLI](../README.md#исполнение-cli) → [Codex](../adapters/codex.mjs).
  */
 import { spawn } from 'node:child_process';
-import fs from 'node:fs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolveNativeClaude } from '../../shared/claude-binary.mjs';
 import { loadStore, encodeExtSession, setSession, decodeExtSession } from '../store.mjs';
 import { isProviderId } from '../providers.mjs';
 import { parseClaudeArgv, readStdin, buildPrompt } from '../adapters/parse-args.mjs';
@@ -17,37 +15,7 @@ import { runCodexTurn } from '../adapters/codex.mjs';
 import { runQwenTurn } from '../adapters/qwen.mjs';
 import { isValidCodexThreadId } from '../codex-native.mjs';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-function resolveRealClaude(env = process.env) {
-  if (env.MSB_REAL_CLAUDE && fs.existsSync(env.MSB_REAL_CLAUDE)) return env.MSB_REAL_CLAUDE;
-  const candidates = [
-    '/usr/bin/claude',
-    '/usr/local/bin/claude',
-    '/usr/lib/node_modules/@anthropic-ai/claude-code/cli.js',
-  ];
-  for (const c of candidates) {
-    try {
-      fs.accessSync(c, fs.constants.X_OK);
-      return c;
-    } catch {
-      /* continue */
-    }
-  }
-  // PATH без нашего shim/bin
-  const shimBin = path.resolve(__dirname, 'bin');
-  for (const dir of (env.PATH || '').split(':')) {
-    if (!dir || path.resolve(dir) === shimBin) continue;
-    const c = path.join(dir, 'claude');
-    try {
-      fs.accessSync(c, fs.constants.X_OK);
-      return c;
-    } catch {
-      /* continue */
-    }
-  }
-  return null;
-}
 
 function stripForeignResume(argv) {
   // При возврате на Claude чужой ext session id не должен уходить в его CLI.
@@ -91,6 +59,10 @@ function acceptNativeSession(providerId, nativeId) {
   return nativeId;
 }
 
+function emitCodexNotice(text, sessionId, model) {
+  emitResult({ sessionId, text: '⚠️ ' + text, isError: true, subtype: 'error_notice', model, providerId: 'codex' });
+}
+
 async function runAlternate(providerId, argv) {
   const parsed = parseClaudeArgv(argv);
   const userText = await readStdin();
@@ -107,8 +79,16 @@ async function runAlternate(providerId, argv) {
   let result;
   try {
     if (providerId === 'cursor') result = await runCursorTurn(ctx);
-    else if (providerId === 'codex') result = await runCodexTurn(ctx);
-    else if (providerId === 'qwen') result = await runQwenTurn(ctx);
+    else if (providerId === 'codex') {
+      result = await runCodexTurn({
+        ...ctx,
+        onThreadStarted(id) {
+          // Core uses this provisional ID only for the history of a stopped first turn.
+          emit({ type: 'system', subtype: 'codex_thread_started',
+            provider_id: providerId, session_id: encodeExtSession(providerId, id) });
+        },
+      });
+    } else if (providerId === 'qwen') result = await runQwenTurn(ctx);
     else {
       const fallbackId = encodeExtSession(providerId, 'unknown');
       emitError(`Неизвестный провайдер: ${providerId}`, fallbackId);
@@ -120,7 +100,8 @@ async function runAlternate(providerId, argv) {
       ? `CLI провайдера «${providerId}» не найден в PATH`
       : String(err.message || err);
     const fallbackId = encodeExtSession(providerId, 'error');
-    emitError(msg, fallbackId);
+    if (providerId === 'codex') emitCodexNotice(msg, fallbackId);
+    else emitError(msg, fallbackId);
     process.exit(1);
     return;
   }
@@ -133,11 +114,19 @@ async function runAlternate(providerId, argv) {
   // Sentinel norestart адаптеры должны игнорировать (новый тред), а не отвечать «повреждённый ID».
   if (!result.ok) {
     if (providerId === 'codex') {
-      // A transport/model error does not invalidate an existing conversation.
-      const errId = parsed.resume || '';
+      // An observed partial thread is returned for the ledger. Only a successful turn updates the store.
+      const errId = result.partial && nativeId ? encodeExtSession(providerId, nativeId) : parsed.resume || '';
       emitInit({ sessionId: errId, model: modelLabel, providerId });
-      emitError(result.text || 'ход не завершён', errId, { model: modelLabel });
-      process.exit(1);
+      if (result.partial) {
+        emitResult({ sessionId: errId, text: result.text, isError: true, subtype: 'error_partial',
+          usage: result.usage, model: modelLabel, providerId });
+      } else if (result.draft) {
+        emitResult({ sessionId: errId, text: result.draft.text, isError: true, subtype: 'error_draft',
+          errorDisplay: { before: '⚠️ ' + result.draft.before, after: result.draft.after },
+          model: modelLabel, providerId });
+      } else emitCodexNotice(result.text || 'ход не завершён', errId, modelLabel);
+      // Let the stdout pipe drain before exiting with a failed turn.
+      process.exitCode = 1;
       return;
     }
     try {
@@ -169,6 +158,8 @@ async function runAlternate(providerId, argv) {
     providerId,
   });
 
+  // The introduction owns its resume ID. Let the queued stdout drain.
+  if (providerId === 'codex' && process.env.MSB_CODEX_BOOTSTRAP === '1') return;
   if (!String(nativeId).startsWith('norestart-')) {
     try {
       await setSession(providerId, nativeId);
@@ -198,7 +189,7 @@ async function main() {
   }
 
   if (active === 'claude' || process.env.JARVIS_CC_ONLY === '1') {
-    const real = resolveRealClaude();
+    const real = resolveNativeClaude();
     if (!real) {
       console.error('[msb/ext/shim] настоящий claude не найден (MSB_REAL_CLAUDE / PATH)');
       process.exit(127);

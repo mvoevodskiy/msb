@@ -35,7 +35,7 @@ function assertStopped(r) {
   assert.equal(r.finalMessages[r.transcriptionId], undefined, 'No delayed preview may remain after cancellation cleanup.');
   assert.ok(r.deleted.includes(r.transcriptionId));
   assert.equal(r.envAfter, r.envBefore);
-  assert.equal(r.calls.filter(call => call.text?.startsWith('Уже работаю')).length, 1, 'Retain the lock until the pending I/O drains.');
+  assert.equal(r.calls.filter(call => call.text === '⏳ в очереди').length, 1, 'Accept into the queue while keeping the active I/O lock; the second stop clears this probe.');
   assert.ok(!r.calls.some(call => /voice-answer|❌/.test(call.text || '')), 'A cancelled voice must not publish success or an error.');
 }
 

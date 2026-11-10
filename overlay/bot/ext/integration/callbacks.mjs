@@ -2,13 +2,13 @@
  * Callback-ветви расширения в прежнем порядке.
  * Навигация: [Обвязка](../README.md).
  */
-import os from 'node:os';
+import { isClaudeModelChoice } from '../../shared/claude-models.mjs';
+import { normalizePermissionMode } from '../../shared/permission-modes.mjs';
 import { isProviderId, getProvider } from '../providers.mjs';
 import { setActive } from '../store.mjs';
 import { providerConfigured } from '../env.mjs';
 import { buildConnMenu, buildModelMenu, buildAgentMenu, buildEffortMenu, buildPermModeMenu, authPrompt, switchedText, modelSwitchedText } from '../menu.mjs';
 import { setPendingAuth } from '../auth.mjs';
-import { codexLoginStatus } from '../auth-wire.mjs';
 import { updateBotState } from '../state-update.mjs';
 import { syncExtAuthGate } from '../setup-bypass.mjs';
 import { applyProviderModel, applyProviderEffort } from '../apply-model.mjs';
@@ -16,7 +16,7 @@ import { loadStore } from '../store.mjs';
 import { setLocalSshHost, setPendingLocalIp, clearPendingLocalIp } from '../local-ssh.mjs';
 import { buildLocalSshMenu, localSshPrompt } from '../menu.mjs';
 import { ccOnly, readEngine, editOrReply } from './shared.mjs';
-import { prepareCodexRuntime, ensureAndReport, connectCodexNative } from './native-login.mjs';
+import { selectCodexNative, ensureAndReport, connectCodexNative } from './native-login.mjs';
 import { showLocalAwareSshHome } from './ssh-screen.mjs';
 import { writeBotPermissionMode } from './actions.mjs';
 import { EXT_MARKER } from './shared.mjs';
@@ -44,7 +44,7 @@ export async function handleCallback(bot, cq, closedCore = false) {
 
   if (data === 'ext:ssh:local') {
     await bot.api.answerCallbackQuery(cq.id).catch(() => {});
-    clearPendingLocalIp(userId);
+    clearPendingLocalIp(userId, { chatId });
     const menu = await buildLocalSshMenu();
     await editOrReply(bot, chatId, messageId, menu.text, menu.keyboard);
     return true;
@@ -132,19 +132,7 @@ export async function handleCallback(bot, cq, closedCore = false) {
     await bot.api.answerCallbackQuery(cq.id).catch(() => {});
 
     if (id === 'codex') {
-      const ok = await ensureAndReport(bot, chatId, messageId, id);
-      if (!ok) return true;
-      const status = await codexLoginStatus();
-      if (!status.ok) {
-        await editOrReply(bot, chatId, messageId, 'Codex CLI не подтвердил вход. Выбранный движок и сессия сохранены.',
-          { inline_keyboard: [[{ text: '🔐 Вход', callback_data: 'ext:auth:codex' }], [{ text: '« Назад', callback_data: 'settings:conn' }]] });
-        return true;
-      }
-      await prepareCodexRuntime();
-      await setActive(id);
-      await syncExtAuthGate(process.env, os.homedir(), { activateCli: true });
-      const menu = await buildConnMenu();
-      await editOrReply(bot, chatId, messageId, `${switchedText(id)}\n\n${menu.text}`, menu.keyboard);
+      await selectCodexNative(bot, chatId, messageId);
       return true;
     }
 
@@ -242,8 +230,7 @@ export async function handleCallback(bot, cq, closedCore = false) {
       const mode = data.startsWith('ext:permmode:set:')
         ? data.slice('ext:permmode:set:'.length)
         : data.slice('settings:permmode:set:'.length);
-      const allowed = ['auto', 'smart', 'control', 'plan'];
-      const next = allowed.includes(mode) ? mode : 'auto';
+      const next = normalizePermissionMode(mode);
       await writeBotPermissionMode(next);
       const notice = store.active === 'codex' ? `✔ Настройка режима сохранена: <b>${next}</b>. Права Codex не менялись.` : `✔ Режим: <b>${next}</b>.`;
       const agent = await buildAgentMenu(process.env, undefined, notice);
@@ -276,7 +263,7 @@ export async function handleCallback(bot, cq, closedCore = false) {
       ? data.slice('ext:model:set:'.length)
       : data.slice('settings:model:set:'.length);
     // Не даём штатным алиасам Claude (opus/sonnet/…) записаться как модель Codex/Cursor.
-    if (/^(opus|sonnet|haiku|fable)\b/i.test(modelId)) {
+    if (isClaudeModelChoice(modelId)) {
       const menu = await buildModelMenu();
       await editOrReply(
         bot,

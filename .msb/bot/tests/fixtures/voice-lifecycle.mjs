@@ -96,6 +96,8 @@ try {
     CLAUDE_CODE_OAUTH_TOKEN: 'fixture-auth-unchanged',
     ...(scenario !== 'missing-key' ? { DEEPGRAM_API_KEY: 'fixture-deepgram' } : {}),
   });
+  const { fixtureClaudeVersion, fixtureVersionExec } = await import('../helpers/claude-version-fixture.mjs');
+  await fixtureClaudeVersion(fixtureHome);
   process.chdir(fixtureHome);
   const botRoot = path.join(fixtureHome, '.msb/bots/default');
   const stateFile = path.join(botRoot, 'state.json');
@@ -135,6 +137,7 @@ try {
     }
   };
   for (const method of ['exec', 'execSync', 'execFile', 'execFileSync', 'spawnSync', 'fork']) cp[method] = forbidden(method);
+  cp.execFile = fixtureVersionExec(fixtureHome, kind => forbidden(kind)());
   cp.spawn = (command, args, options) => {
     if (command !== 'claude' || options.env.HOME !== fixtureHome || options.cwd !== fixtureHome) return forbidden('unexpected spawn')();
     const child = new EventEmitter();
@@ -223,7 +226,9 @@ try {
     await until(() => has('stop-acknowledged'), 'stop acknowledgement while speech is pending');
     if (stage !== 'preview') await until(() => has(`${stage}-aborted`), 'cancellation reaches network signal');
     sendText('too early');
-    await until(() => report.calls.some(call => call.applied && call.text?.startsWith('Уже работаю')), 'running lock before the pending operation drains');
+    await until(() => report.calls.some(call => call.applied && call.text === '⏳ в очереди'), 'queued while the pending operation drains');
+    sendText('/stop');
+    await until(() => report.calls.filter(call => call.applied && call.text === stopped && call.method === 'sendMessage').length === 2, 'clear the queued probe');
     releaseNetwork(); releasePreview();
     await until(() => has('stopped-edit') && has('transcription-deleted'), 'stopped status and transcription cleanup');
   } else if (scenario === 'missing-key') {
@@ -235,6 +240,9 @@ try {
     report.envAfterVoice = await fs.readFile(envFile, 'utf8');
     report.keyAfterVoice = process.env.DEEPGRAM_API_KEY;
     sendText('fixture-typed-key');
+    await until(() => report.calls.some(call => call.applied && call.text?.startsWith('Описание для <code>DEEPGRAM_API_KEY</code>')), 'typed value reaches old description step');
+    const descriptionPrompt = report.calls.find(call => call.applied && call.text?.startsWith('Описание для <code>DEEPGRAM_API_KEY</code>'));
+    callback('settings:env:skip-comment', descriptionPrompt.message_id);
     await until(() => report.calls.some(call => call.applied && call.text?.startsWith('Сохранил <code>DEEPGRAM_API_KEY</code> в .env бота.')), 'typed input still consumes the pending env form');
   } else if (scenario === 'non-owner') {
     await until(() => has(`processed:${voiceUpdate}`), 'foreign update processed by the real polling middleware');
