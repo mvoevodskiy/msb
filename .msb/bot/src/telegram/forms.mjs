@@ -17,8 +17,11 @@ import { handleAuthInput } from './forms/auth.mjs';
 import { handleEnvNameInput, handleEnvValueInput, handleEnvCommentInput } from './forms/env.mjs';
 import {handleMcpInput} from './forms/mcp.mjs';
 import { handlePultInput, PULT_KINDS } from './forms/pult.mjs';
+import { BOOTSTRAP_SERVICE_INPUT } from './pending-input.mjs';
+import { handleBootstrapServiceInput } from './bootstrap-services.mjs';
 
 const HANDLERS = {
+  [BOOTSTRAP_SERVICE_INPUT]: handleBootstrapServiceInput,
   'auth-token': handleAuthInput, 'env-key-name': handleEnvNameInput,
   'feedback': handleFeedback, 'new-project': handleProjectNameInput,
   'bot-token': handleBotToken, 'mon-source': handleSource, 'mcp-setup':handleMcpInput,

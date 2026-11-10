@@ -1,5 +1,7 @@
 /**
  * The final introduction card through the production callback and form ingress.
+ * Old master 00f081f, readable blob 73aa9e7e, worker 110888–110897, fh 111476–111509,
+ * callback 122126–122159 and text ingress 119091–119117.
  * Native model work and Telegram delivery are faked. Env and bot state are real temporary files.
  */
 import test from 'node:test';
@@ -9,6 +11,7 @@ import path from 'node:path';
 import { fixture } from './helpers/menu-fixture.mjs';
 import { envFilePath, readEnvMap } from '../src/env/store.mjs';
 import { loadState, saveState } from '../src/state.mjs';
+import { setPendingAuth } from '../../../overlay/bot/ext/auth.mjs';
 
 const header = '<b>Какие сервисы подключить?</b>';
 const skipText = 'Готово! Сервисы можно добавить в любое время через /settings → 🔑';
@@ -80,6 +83,7 @@ test('Back, Skip and invalid values release the service form without changing .e
   await f.callback('svc_setup:RAILWAY_TOKEN');
   await f.callback('svc_setup:skip');
   assert.equal(f.edits.at(-1), skipText);
+  assert.deepEqual(callbacks(f.editOptions.at(-1)), []);
   await f.callback('svc_setup:VERCEL_TOKEN');
   await f.message('1234');
   assert.match(f.messages.at(-1), /слишком короткий|некорректный/i);
@@ -132,4 +136,50 @@ test('the owner can retry a failed card delivery on /start without another intro
   assert.equal(f.messages.filter(text => text.startsWith(header)).length, 1);
   assert.equal((await loadState()).state.servicesSetupShown, true);
   assert.equal((await loadState()).state.codexServiceSetup, undefined);
+});
+
+test('the service form owns input before the prompt edit is acknowledged', async t => {
+  const f = await serviceFixture(t, async () => assert.fail('a service key is not a model request'));
+  setPendingAuth(42, 'codex', 42);
+  const editing = Promise.withResolvers();
+  const acknowledge = Promise.withResolvers();
+  const edit = f.bot.api.editMessageText;
+  t.mock.method(f.bot.api, 'editMessageText', async (...args) => {
+    await edit(...args);
+    editing.resolve();
+    await acknowledge.promise;
+  });
+  const selection = f.callback('svc_setup:VOYAGE_API_KEY');
+  try {
+    await editing.promise;
+    await f.message('fixture-early-key');
+    assert.equal((await readEnvMap()).map.get('VOYAGE_API_KEY'), 'fixture-early-key');
+  } finally {
+    acknowledge.resolve();
+    await selection;
+  }
+});
+
+test('retry records an already delivered card after a state write failure', async t => {
+  const f = await serviceFixture(t);
+  const { file, state } = await loadState();
+  await saveState({ ...state, codexServiceSetup: { scope: '42:42:0' } });
+  const rename = fs.rename;
+  const cards = () => f.messages.filter(text => text.startsWith(header));
+  let failed = false;
+  t.mock.method(fs, 'rename', async (source, destination) => {
+    if (destination === file && cards().length && !failed) {
+      failed = true;
+      throw Object.assign(new Error('fixture state write failure'), { code: 'EACCES' });
+    }
+    return rename(source, destination);
+  });
+
+  await f.message('/start');
+  assert.equal(failed, true);
+  assert.equal(cards().length, 1);
+  assert.equal((await loadState()).state.servicesSetupShown, undefined);
+  await f.message('/start');
+  assert.equal(cards().length, 1);
+  assert.equal((await loadState()).state.servicesSetupShown, true);
 });

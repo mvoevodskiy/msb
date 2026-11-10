@@ -44,12 +44,14 @@ export function installUpdateHook(BotClass, env = process.env) {
           'settings:pult:password', 'settings:pult:tg-token', 'settings:pult:url',
           'settings:pult:session', 'settings:pult:listen:custom',
         ].includes(event.data) || /^(?:settings:env:quick:|mcp:setup:|ext:auth:|ext:conn:set:|settings:conn:set:|settings:engine:set:)/.test(event.data || '');
-        if (startsForm || ['menu:back', 'menu:close', 'menu:settings', 'menu:agent', 'settings:back', 'settings:env', 'settings:env:cancel', 'settings:auth', 'settings:conn', 'ext:conn', 'ext:ssh:local', 'mon:back', 'settings:bots:cancel'].includes(event.data)) {
+        // Core owns the scoped service draft. Clear only competing overlay forms on key selection.
+        const serviceForm = !closedCore && /^svc_setup:[A-Z0-9_]+$/.test(event.data || '');
+        if (startsForm || serviceForm || ['menu:back', 'menu:close', 'menu:settings', 'menu:agent', 'settings:back', 'settings:env', 'settings:env:cancel', 'settings:auth', 'settings:conn', 'ext:conn', 'ext:ssh:local', 'mon:back', 'settings:bots:cancel'].includes(event.data)) {
           const chatId = event.message?.chat?.id;
           if (chatId != null) {
             clearPendingAuth(event.from.id, { chatId });
             clearPendingLocalIp(event.from.id, { chatId });
-            this[Symbol.for('msb.cancelPendingInput')]?.(chatId);
+            if (!serviceForm) this[Symbol.for('msb.cancelPendingInput')]?.(chatId);
           }
         }
         const handled = await runCallbackScope(render, () => handleCallback(this, event, closedCore));

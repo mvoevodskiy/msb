@@ -125,6 +125,8 @@ async function publish({ scope, lease, result, env, signal }) {
       return saveEntry(state, scope, row);
     }
     complete = true;
+    // The Telegram card is delivered after the final reply, outside the state queue.
+    if (!state.servicesSetupShown && !state.codexServiceSetup) state.codexServiceSetup = { scope };
     const remaining = Object.fromEntries(Object.entries(entries(state))
       .filter(([, value]) => value?.workspace !== lease.workspace));
     return storeEntries(state, remaining);

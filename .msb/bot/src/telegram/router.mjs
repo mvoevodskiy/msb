@@ -41,6 +41,7 @@ import {handleWorkspaceRoute,isMcpReadCallback} from './routes/workspace.mjs';
 import { handleProjectRoute } from './routes/projects.mjs';
 import {handleSessionRoute} from './routes/sessions.mjs';
 import {handleSkillRoute,isSkillReadCallback} from './routes/skills.mjs';
+import { handleBootstrapServiceRoute } from './bootstrap-services.mjs';
 import { UNHANDLED } from './routes/shared.mjs';
 
 const ROUTES = [
@@ -58,6 +59,7 @@ const ROUTES = [
   handleMonitorRoute,
   handleWorkspaceRoute,
   handleSetupRoute,
+  handleBootstrapServiceRoute,
   handleMiscRoute,
 ];
 
@@ -93,7 +95,10 @@ export async function handleCallback({ bot, cfg, pending, ctx, plan, now = Date.
   if (['menu:back', 'menu:close', 'menu:agent', 'menu:settings', 'settings:back', 'mon:back', 'settings:bots:cancel'].includes(data)) pending.delete(chatId);
   const show = async view => {
     if (!scope.isCurrent()) return;
-    const extra=view.disablePreview?{link_preview_options:{is_disabled:true}}:{};
+    const extra = {
+      ...(view.disablePreview ? { link_preview_options: { is_disabled: true } } : {}),
+      ...(view.replyThreadId ? { message_thread_id: view.replyThreadId } : {}),
+    };
     return deliverView(view,{scope,
       edit:part=>editOrReply(bot.api,chatId,msgId,part.text,part.keyboard,'HTML',scope,extra),
       reply:part=>scope.render(()=>ctx.reply(part.text,{...extra,parse_mode:'HTML',reply_markup:part.keyboard},callbackTransportSignal(scope))),

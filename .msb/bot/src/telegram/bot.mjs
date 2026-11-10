@@ -6,6 +6,7 @@ import {resetCliConversation} from '../sessions/selection.mjs';
  * Текст/voice и [таймер](../autonomy/legacy-dispatch.mjs) → [inbox](./inbox.mjs) → executeTurn → [agent](../agent/turn.mjs).
  * UI read/delivery lifecycle → [shared callbacks](../../shared/callback-renders.mjs).
  * Кнопки → [router](./router.mjs) → routes/; вид → [screens](./screens.mjs).
+ * Карточка после знакомства Codex → [services](./bootstrap-services.mjs).
  * Формы → [dispatcher](./forms.mjs); pending в этом процессе; записи → [state](../state.mjs) / [env](../env/store.mjs).
  * Индикация → [progress](./progress.mjs), итог → [response](./response.mjs).
  * Диагностика Codex добавляется после обработки подлинного текста модели.
@@ -24,7 +25,8 @@ import { Bot } from 'grammy';
 import { autoRetry } from '@grammyjs/auto-retry';
 import { presentationAwareRetry, presentationSignal } from './presentation-api.mjs';
 import { handleFormInput } from './forms.mjs';
-import { PendingInputs, pendingInputNotice } from './pending-input.mjs';
+import { BOOTSTRAP_SERVICE_INPUT, PendingInputs, pendingInputNotice } from './pending-input.mjs';
+import { bootstrapServiceOwnsInput, deliverBootstrapServices } from './bootstrap-services.mjs';
 import { recognizeVoice, voicePreview, STT_ONBOARDING } from './voice.mjs';
 import { startTurnProgress } from './progress.mjs';
 import { createInbox, isForwarded } from './inbox.mjs';
@@ -171,6 +173,9 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     }
     const view = hubScreen();
     await ctx.reply(view.text, { reply_markup: view.keyboard });
+    if (state.codexServiceSetup?.scope === scope && scope && !running.has(ctx.chat.id)) {
+      await deliverBootstrapServices(ctx);
+    }
   });
 
   bot.command('help', async (ctx) => {
@@ -366,6 +371,9 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     const text = ctx.message.text || '';
     const chatId = ctx.chat.id;
     const entry = pending.read(chatId);
+    if (entry.kind === BOOTSTRAP_SERVICE_INPUT && !bootstrapServiceOwnsInput(ctx, pending.payload(chatId))) {
+      entry.kind = undefined;
+    }
     const notice = pendingInputNotice(entry, text);
     if (notice) {
       pending.delete(chatId);
@@ -582,6 +590,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         const notice = stripMcpMarkerPayloads(out.text);
         await deliverTurnResponse(ctx, status.message_id, notice, {}, { allowPlan: false });
         deliveredText = notice; delivered = true;
+        if (out.bootstrapComplete) await deliverBootstrapServices(ctx);
         return;
       }
       const autonomy = {

@@ -9,7 +9,8 @@
  */
 import { INPUT_TTL_MS, AUTH_INPUT_EXPIRED, ENV_INPUT_EXPIRED } from '../../shared/input-notices.mjs';
 export { INPUT_TTL_MS };
-const timed = kind => kind === 'auth-token' || kind === 'env-key-name' || kind?.startsWith('env:') || kind?.startsWith('env-comment:');
+export const BOOTSTRAP_SERVICE_INPUT = 'bootstrap-service';
+const timed = kind => kind === BOOTSTRAP_SERVICE_INPUT || kind === 'auth-token' || kind === 'env-key-name' || kind?.startsWith('env:') || kind?.startsWith('env-comment:');
 
 export class PendingInputs extends Map {
   #startedAt = new Map();
