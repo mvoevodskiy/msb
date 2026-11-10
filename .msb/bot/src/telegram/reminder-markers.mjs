@@ -8,6 +8,7 @@
 import { loadState, NO_STATE_WRITE, updateState } from '../state.mjs';
 import { readReminderPolicy, reminderOwnerChat } from '../autonomy/reminder-policy.mjs';
 import { addSavedAction } from '../autonomy/reminder-store.mjs';
+import { registerOpenClawReminder } from '../autonomy/openclaw-reminder-registration.mjs';
 import { savedPromptPlan } from '../autonomy/prompt-policy.mjs';
 import { promptRegistrationPermissions, promptRegistrationReady } from '../autonomy/prompt-registration.mjs';
 import { readAutonomyPause } from '../autonomy/owner-pause.mjs';
@@ -25,9 +26,12 @@ const failed = 'Не удалось поставить задачу.';
 async function registrationPolicy(context, state) {
   const policy = await readReminderPolicy(state);
   if (!policy.enabled) return { error: disabled };
-  if (!policy.local || policy.asleep || context.rail !== 'cc') return { error: unsupported };
-  if (!reminderOwnerChat(state, context.ownerId)) return { error: noCollector };
-  return { ...policy, timezone: state.timezone || context.timezone };
+  const local = context.rail === 'cc' && policy.local;
+  const native = context.rail === 'oc' && state.engine === 'oc';
+  if ((!local && !native) || policy.asleep) return { error: unsupported };
+  const ownerChat = reminderOwnerChat(state, context.ownerId);
+  if (!ownerChat) return { error: noCollector };
+  return { ...policy, native, ownerChat, timezone: state.timezone || context.timezone };
 }
 
 async function publishScheduledAction(context, action, publish) {
@@ -63,10 +67,26 @@ async function register(raw, context) {
     }
     const parsed = parseReminderMarker(value, { ...context, timezone: policy.timezone });
     if (!parsed.action) return parsed;
-    const saved = await addSavedAction(parsed.action, {
-      signal: context.signal,
-      commit: publish => publishScheduledAction(context, parsed.action, publish),
-    });
+    let saved;
+    if (policy.native) {
+      if (parsed.action.task.kind !== 'reminder' || parsed.action.trigger.kind !== 'once') return { error: unsupported };
+      if (context.openClawProfile === null) return { error: failed };
+      const action = parsed.action;
+      if (Number.isSafeInteger(context.messageId) && context.messageId > 0) action.origin.messageId = context.messageId;
+      saved = await registerOpenClawReminder(action, {
+        expectedProfile: context.openClawProfile, ownerId: context.ownerId, signal: context.signal,
+        validate: async () => {
+          const current = await registrationPolicy(context, (await loadState()).state);
+          return current.native && current.ownerChat === policy.ownerChat && current.timezone === policy.timezone
+            ? current : undefined;
+        },
+      });
+    } else {
+      saved = await addSavedAction(parsed.action, {
+        signal: context.signal,
+        commit: publish => publishScheduledAction(context, parsed.action, publish),
+      });
+    }
     if (!saved.action) return saved;
     const [advice, permissions] = await Promise.all([
       reminderRegistrationAdvice(saved.action, saved.previous, context.now, saved.timezone).catch(() => ''),

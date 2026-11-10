@@ -562,6 +562,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       if (signal.aborted || out.error === 'aborted') { await stopped(); return; }
       const autonomy = {
         ownerId: reminderOwner, rail: out.reminderRail, ok: out.ok, chatId, threadId: thread,
+        messageId: (ctx.message || ctx.callbackQuery?.message)?.message_id, openClawProfile: out.openClawProfile,
         timezone: cfg.timezone, now: now(), signal,
         codexAvailable, checkSavedCodex,
       };

@@ -7,6 +7,7 @@ import { listTasks, saveTaskResult } from './store.mjs';
 import { trySessionOperation } from '../agent/session-operation.mjs';
 import { readAutonomyPause, trackAutonomyTurn } from './owner-pause.mjs';
 import { createReminderDispatcher } from './reminder-dispatch.mjs';
+import { createOpenClawReminderDispatcher } from './openclaw-reminder-dispatch.mjs';
 import { dispatchLegacyTimers } from './legacy-dispatch.mjs';
 
 const START_DELAY_MS = 30_000;
@@ -27,9 +28,10 @@ export function startScheduler({ api, adminId, scheduledTurns, timezone, now = D
   log = console.error, runTurn = runAgentTurn, runCodexPrompt, readCodexQuota } = {}) {
   let stopped = false;
   let busy = false;
-  let legacyTick, reminderTick;
+  let legacyTick, reminderTick, openClawTick;
   const shutdown = new AbortController();
   const reminders = createReminderDispatcher({ api, adminId, timezone, now, log, signal: shutdown.signal, runCodexPrompt, readCodexQuota });
+  const openClaw = createOpenClawReminderDispatcher({ api, adminId, now, log, signal: shutdown.signal });
 
   log('[msb/scheduler] Starting (delay 30s)...');
   const boot = setTimeout(tick, START_DELAY_MS);
@@ -39,7 +41,7 @@ export function startScheduler({ api, adminId, scheduledTurns, timezone, now = D
 
   async function tick() {
     if (stopped) return;
-    const direct = dispatchReminders();
+    const direct = Promise.all([dispatchReminders(), dispatchOpenClaw()]);
     if (busy) return direct;
     busy = true;
     const stopEpoch = scheduledTurns?.stopEpoch;
@@ -81,13 +83,20 @@ export function startScheduler({ api, adminId, scheduledTurns, timezone, now = D
     return reminderTick;
   }
 
+  function dispatchOpenClaw() {
+    openClawTick ??= openClaw().catch(error => {
+      log('[msb/scheduler] OpenClaw reminder error: ' + (error.code || error.name));
+    }).finally(() => { openClawTick = undefined; });
+    return openClawTick;
+  }
+
   return {
     stop() {
       stopped = true;
       shutdown.abort();
       clearTimeout(boot);
       clearInterval(timer);
-      return Promise.all([legacyTick, reminderTick]);
+      return Promise.all([legacyTick, reminderTick, openClawTick]);
     },
     tickNow: tick,
   };

@@ -109,7 +109,7 @@ export async function runOpenClawTurn({state,prompt,systemPrompt,cwd,env,signal,
     try{await saveSession(state,env,name,result,profile,signal);}
     catch(error){if(!signal?.aborted)throw error;}
     if(signal?.aborted)return aborted();
-    return {ok:true,text:text || '(пустой ответ)',result};
+    return {ok:true,text:text || '(пустой ответ)',result,openClawProfile:profile?.file ?? null};
   }finally{
     if(directory)await fs.rm(directory,{recursive:true,force:true}).catch(()=>{});
   }

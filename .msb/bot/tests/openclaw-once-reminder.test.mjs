@@ -10,13 +10,15 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { openClawTaskMaintenancePrompt } from '../src/autonomy/reminder-protocol.mjs';
 import { loadState } from '../src/state.mjs';
+import { statePath } from '../src/paths.mjs';
 import { chat, marker, reminderFixture, scheduledAt } from './helpers/reminder-registration-fixture.mjs';
 
 const text = 'Проверить почту <входящие>';
 const due = Date.parse(scheduledAt);
 const json = value => JSON.stringify(value);
 
-async function profile(t, { rejectAdd = false, foreign = false, rejectEnable = false } = {}) {
+async function profile(t, { rejectAdd = false, foreign = false, rejectEnable = false,
+  ambiguousAdd = false, switchAfterAdd = false, fleetStopOnEnable = false } = {}) {
   const f = await reminderFixture(t, { engine: 'oc', output: () => ({ ok: true, text: marker(), reminderRail: 'oc' }) });
   const config = path.join(f.directory, 'openclaw', 'openclaw.json');
   const bin = path.join(f.home, 'fixture-oc-bin');
@@ -48,7 +50,12 @@ async function profile(t, { rejectAdd = false, foreign = false, rejectEnable = f
     '  if (' + json(rejectAdd) + ') process.exit(7);',
     '  const job = {id:"fixture-native-"+jobs.length, name:field("--name"), description:field("--description"),',
     '    enabled:!args.includes("--disabled"), schedule:{kind:"at",at:field("--at")}};',
-    '  jobs.push(job); save(); output(job);',
+    '  jobs.push(job); save();',
+    ...(switchAfterAdd ? ['  const file = ' + json(statePath()) + ';',
+      '  const state = JSON.parse(fs.readFileSync(file)); state.engine = "cc";',
+      '  fs.writeFileSync(file, JSON.stringify(state));'] : []),
+    '  if (' + json(ambiguousAdd) + ') process.exit(7);',
+    '  output(job);',
     '} else {',
     '  const index = jobs.findIndex(job => job.id === args[2]);',
     '  if (index < 0) process.exit(8);',
@@ -56,6 +63,8 @@ async function profile(t, { rejectAdd = false, foreign = false, rejectEnable = f
     '  else if (args[1] === "enable" || args[1] === "disable") {',
     '    if (args[1] === "enable" && ' + json(rejectEnable) + ') process.exit(6);',
     '    jobs[index].enabled = args[1] === "enable"; save(); output(jobs[index]);',
+    ...(fleetStopOnEnable ? ['    if (jobs[index].enabled) fs.writeFileSync(' +
+      json(path.join(f.directory, 'remote-config.json')) + ', JSON.stringify({autonomyGlobalStop:true}));'] : []),
     '  } else process.exit(9);',
     '}',
   ].join('\n'), { mode: 0o700 });
@@ -69,7 +78,7 @@ async function profile(t, { rejectAdd = false, foreign = false, rejectEnable = f
     throw error;
   })).trim().split('\n').filter(Boolean).map(JSON.parse);
   return { ...f, config, other, jobs: () => read(jobs), calls,
-    mapping: () => read(nativeMap), runEntries: entries => fs.writeFile(runs, json(entries)),
+    mapping: () => read(nativeMap), writeMapping: entries => fs.writeFile(nativeMap, json(entries)), runEntries: entries => fs.writeFile(runs, json(entries)),
     stopFile: path.join(f.directory, 'autonomy', 'STOP') };
 }
 
@@ -103,7 +112,7 @@ test('OpenClaw once waits for its native terminal event and delivers the stored 
   await first.tickNow();
   assert.deepEqual(f.delivered(), []);
   const finish = { jobId, action: 'finished', status: 'error', runAtMs: due, ts: due + 20,
-    summary: 'Текст модели, который не должен появиться' };
+    summary: 'Текст модели, который не должен появиться', usage: { input_tokens: 7, output_tokens: 3 } };
   await f.runEntries([finish, finish]);
   await first.tickNow();
   await first.stop();
@@ -116,6 +125,8 @@ test('OpenClaw once waits for its native terminal event and delivers the stored 
   assert.ok(spent.lastRunAt);
   const runs = await fs.readFile(path.join(f.directory, 'autonomy', 'runs.jsonl'), 'utf8');
   assert.equal(runs.trim().split('\n').length, 1);
+  const run = JSON.parse(runs);
+  assert.deepEqual([run.tokensIn, run.tokensOut, run.costVisible], [7, 3, false]);
 });
 
 test('OpenClaw once saved during STOP stays native-disabled until the pause is lifted', async t => {
@@ -136,7 +147,7 @@ test('OpenClaw once saved during STOP stays native-disabled until the pause is l
   assert.deepEqual(f.delivered(), []);
 });
 
-for (const problem of ['rejectAdd', 'foreign', 'rejectEnable']) {
+for (const problem of ['rejectAdd', 'foreign', 'rejectEnable', 'switchAfterAdd']) {
   test('OpenClaw once does not publish an action when ' + problem, async t => {
     const f = await profile(t, { [problem]: true });
     const existing = '[\n  {"id":"existing"}\n]\n';
@@ -156,3 +167,86 @@ for (const problem of ['rejectAdd', 'foreign', 'rejectEnable']) {
     }
   });
 }
+
+test('an accepted native add without usable stdout is recovered by its unique tag', async t => {
+  const f = await profile(t, { ambiguousAdd: true });
+  await f.request('Напомни через полчаса проверить почту');
+  assert.match(await f.final(), /Ок, поставил/);
+  const [action] = await f.records();
+  const map = (await f.mapping())[action.id];
+  assert.equal(map.tag, action.nativeReminderTag);
+  const jobs = await f.jobs();
+  assert.equal(jobs.length, 2);
+  assert.deepEqual(jobs[0], f.other);
+  assert.equal(jobs[1].id, map.jobId);
+  assert.equal(jobs[1].enabled, true);
+  assert.equal((await f.calls()).filter(args => args[1] === 'add').length, 1);
+});
+
+test('a lost registration intent is cleaned by tag and leaves the neighboring job', async t => {
+  const f = await profile(t);
+  await f.request('Напомни через полчаса проверить почту');
+  assert.match(await f.final(), /Ок, поставил/);
+  const [action] = await f.records();
+  const map = await f.mapping();
+  delete map[action.id].jobId;
+  await f.writeMapping(map);
+  await fs.writeFile(f.actionFile, '[]');
+  await f.scheduler().tickNow();
+  assert.deepEqual(await f.jobs(), [f.other]);
+  assert.deepEqual(await f.mapping(), {});
+  assert.deepEqual(f.delivered(), []);
+});
+
+test('a failed Telegram send leaves a durable retry and only one successful delivery', async t => {
+  const f = await profile(t);
+  await f.request('Напомни через полчаса проверить почту');
+  assert.match(await f.final(), /Ок, поставил/);
+  const [action] = await f.records();
+  const { jobId } = (await f.mapping())[action.id];
+  const sendMessage = f.bot.api.sendMessage;
+  let sends = 0;
+  f.bot.api.sendMessage = (...args) => {
+    if (args[1].startsWith('⏰ ') && ++sends === 1) throw Error('Synthetic Telegram outage');
+    return sendMessage(...args);
+  };
+  await f.runEntries([{ jobId, action: 'finished', status: 'ok', runAtMs: due, ts: due + 20 }]);
+  f.setTime(due);
+  const first = f.scheduler();
+  await first.tickNow();
+  const { delivery } = (await f.mapping())[action.id];
+  assert.equal(delivery.status, 'pending');
+  assert.equal(delivery.attempts, 1);
+  assert.equal(delivery.text, text);
+  assert.equal(delivery.retryAt, due + 60_000);
+  assert.equal((await f.records())[0].lastRunAt, scheduledAt);
+  const journal = path.join(f.directory, 'autonomy', 'runs.jsonl');
+  assert.equal(JSON.parse(await fs.readFile(journal, 'utf8')).detail, 'напоминание поставлено в очередь на доставку');
+  assert.deepEqual(f.delivered(), []);
+  await first.stop();
+  const restarted = f.scheduler();
+  f.setTime(delivery.retryAt - 1);
+  await restarted.tickNow();
+  assert.equal(sends, 1);
+  f.setTime(delivery.retryAt);
+  await restarted.tickNow();
+  await restarted.tickNow();
+  assert.equal(sends, 2);
+  assert.equal(f.delivered().length, 1);
+  assert.deepEqual(await f.mapping(), {});
+  assert.equal((await f.records())[0].lastStatus, 'ok');
+  const runs = await fs.readFile(path.join(f.directory, 'autonomy', 'runs.jsonl'), 'utf8');
+  assert.equal(runs.trim().split('\n').length, 1);
+});
+
+test('a fleet pause arriving during native activation fences the job before confirmation', async t => {
+  const f = await profile(t, { fleetStopOnEnable: true });
+  await f.request('Напомни через полчаса проверить почту');
+  assert.match(await f.final(), /Поставил:.*общая пауза сервера/s);
+  const [action] = await f.records();
+  const entry = (await f.mapping())[action.id];
+  assert.equal(entry.pausedBy, 'stop');
+  assert.equal(entry.enabled, false);
+  assert.equal((await f.jobs()).find(job => job.id === entry.jobId).enabled, false);
+  assert.deepEqual(f.delivered(), []);
+});

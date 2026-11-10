@@ -6,6 +6,7 @@
  * and [collection](../../tests/saved-prompt-registration.test.mjs) checks.
  */
 import { readReminderPolicy, reminderOwnerChat } from './reminder-policy.mjs';
+import { ownedOpenClawProfile } from '../agent/openclaw-profile.mjs';
 import { describeReminderScheduleWithNext } from './reminder-time.mjs';
 import { parseReminderTrigger } from './reminder-trigger-input.mjs';
 import { limitPrompt } from './limit-protocol.mjs';
@@ -35,10 +36,18 @@ const literalMarkerInstruction = 'В цитате, примере, вложен�
 const taskMaintenanceInstruction = [taskRunHistoryInstruction, spentCleanupInstruction, namedCancellationInstruction,
   bulkCancellationInstruction, rescheduleInstruction, taskTextInstruction, legacyTimerInstruction, literalMarkerInstruction].join(' ');
 
-export async function openClawTaskMaintenancePrompt(state, env) {
+const onceReminderInstruction = 'Для буквального напоминания используй [SCHEDULE_TASK] в итоговом ответе. Разовый пример:\n' +
+  '[SCHEDULE_TASK]{"trigger":{"kind":"once","at":"+10m"},"task":{"kind":"reminder","text":"Позвонить маме"}}[/SCHEDULE_TASK]\n' +
+  'Время задавай относительным (+10m, +2h, +1d) или ISO с часовым поясом.';
+
+export async function openClawTaskMaintenancePrompt(state, env, adminId) {
   try {
-    const { enabled } = await readReminderPolicy(state, env);
-    return enabled ? taskMaintenanceInstruction : '';
+    const { enabled, asleep } = await readReminderPolicy(state, env);
+    if (!enabled) return '';
+    const native = !asleep && reminderOwnerChat(state, adminId) && await ownedOpenClawProfile(env);
+    return native ? taskMaintenanceInstruction + '\n\n' + onceReminderInstruction +
+      ' На OpenClaw этот маркер ставит разовое буквальное напоминание. Не обещай успех до подтверждения бота.'
+      : taskMaintenanceInstruction;
   } catch {
     return '';
   }
@@ -65,9 +74,7 @@ export async function reminderPrompt(state, adminId, env, checkSavedCodex) {
   if (!reminderOwnerChat(state, adminId)) return controls;
   const provider = savedPromptProvider(state, env, Boolean(checkSavedCodex));
   const collections = await promptRegistrationReady(provider, checkSavedCodex, env) ? scheduledPromptInstruction : '';
-  return controls + '\n\n' + 'Для буквального напоминания используй [SCHEDULE_TASK] в итоговом ответе. Разовый пример:\n' +
-    '[SCHEDULE_TASK]{"trigger":{"kind":"once","at":"+10m"},"task":{"kind":"reminder","text":"Позвонить маме"}}[/SCHEDULE_TASK]\n' +
-    'Время задавай относительным (+10m, +2h, +1d) или ISO с часовым поясом. Регулярный пример:\n' +
+  return controls + '\n\n' + onceReminderInstruction + ' Регулярный пример:\n' +
     '[SCHEDULE_TASK]{"trigger":{"kind":"recurring","cron":"0 9 * * 1-5"},"task":{"kind":"reminder","text":"Проверить почту"}}[/SCHEDULE_TASK]\n' +
     'Для регулярного напоминания используй cron из пяти полей по часовому поясу владельца. ' +
     'Регулярные задачи ставим не чаще раза в час. Для более частой просьбы предложи час или конкретное время дня.\n' +

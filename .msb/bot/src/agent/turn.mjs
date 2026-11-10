@@ -74,7 +74,7 @@ export async function runAgentTurn({
     const cwd=await resolveProjectCwd(state,env,baseWorkspace);
     if(signal?.aborted)return aborted();
     const reminderRail = reminderOwner && !isAutoTurn ? 'oc' : undefined;
-    const maintenance = reminderRail ? await openClawTaskMaintenancePrompt(state, env) : '';
+    const maintenance = reminderRail ? await openClawTaskMaintenancePrompt(state, env, reminderOwner) : '';
     const extra = [skillInstallPrompt(skillInstall), maintenance].filter(Boolean).join('\n\n');
     const systemPrompt=await buildSystemPrompt({env,workspace:baseWorkspace,cwd,timezone:state.timezone || 'UTC',
       now:contextNow,extra});

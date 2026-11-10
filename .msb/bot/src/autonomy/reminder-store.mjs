@@ -11,8 +11,9 @@ import { createHash } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { withFileLock } from '../../shared/file-lock.mjs';
 import { actionRoot } from '../paths.mjs';
-import { physicalRecordPath, readOptionalJson, readRecordArray, writeRecordArray } from './record-file.mjs';
+import { physicalRecordPath, readRecordArray, writeRecordArray } from './record-file.mjs';
 import { recordReminderBreaker } from './reminder-breaker.mjs';
+import { readNativeJobMap } from './native-job-map.mjs';
 import { reminderSpacing, savedTaskSpent, spentReminder, validReminderTrigger } from './reminder-schedule.mjs';
 import { taskBodyField } from './saved-task-text.mjs';
 import { archiveSavedActions } from './task-removal-archive.mjs';
@@ -23,12 +24,7 @@ function actionFile(env) {
   return physicalRecordPath(path.join(actionRoot(env), 'actions.json'));
 }
 
-export async function readNativeJobMap(env) {
-  const jobs = await readOptionalJson(path.join(actionRoot(env), 'autonomy', 'cron-jobs.json'));
-  if (jobs === undefined) return {};
-  if (jobs === null || typeof jobs !== 'object' || Array.isArray(jobs)) throw new Error('Expected native job mapping');
-  return jobs;
-}
+export { readNativeJobMap };
 
 function localActionScope(action, jobs) {
   return !action.migratedToOc && [undefined, 'auto', 'cc'].includes(action.runner) && !Object.hasOwn(jobs, action.id);
@@ -42,7 +38,7 @@ export function isLocalSavedAction(action, jobs) {
   return task?.kind === 'prompt' && typeof task.prompt === 'string' && Boolean(task.prompt.trim());
 }
 
-export async function withActions(env, update, { signal, create, expectedFile } = {}) {
+export async function withActions(env, update, { signal, create, expectedFile, durable } = {}) {
   signal?.throwIfAborted();
   const file = await actionFile(env);
   if (expectedFile && file !== expectedFile) return null;
@@ -52,7 +48,7 @@ export async function withActions(env, update, { signal, create, expectedFile } 
     const records = await readRecordArray(file);
     return update(records, async beforePublish => {
       if (await actionFile(env) !== file) throw new Error('Action file changed');
-      await writeRecordArray(file, records, { signal, create, beforePublish });
+      await writeRecordArray(file, records, { signal, create, beforePublish, durable });
     }, file);
   });
 }
@@ -68,23 +64,28 @@ export async function savedActionSnapshot(env = process.env) {
   return { file, actions: records.filter(action => isLocalSavedAction(action, jobs)) };
 }
 
+export function prepareSavedAction(action, records, env, reserved = {}) {
+  const value = env.AUTONOMY_MAX_ACTIONS;
+  const number = value === undefined || value === '' ? 20 : Number(value);
+  const max = Number.isFinite(number) && number >= 0 ? number : 20;
+  if (max > 0 && records.filter(row => row?.enabled).length + 1 > max) {
+    return { error: 'Не получилось: достигнут лимит активных автодействий (' + max +
+      '). Отключи или удали лишние — или скажи мне: «подними предел задач», и места станет больше.' };
+  }
+  const base = 'conv-' + action.task.kind + '-' + action.createdAt.replace(/[:.]/g, '-');
+  let id = base;
+  for (let suffix = 2; Object.hasOwn(reserved, id) || records.some(row => row?.id === id); suffix++) id = base + '-' + suffix;
+  return { action: { ...action, id } };
+}
+
 export async function addSavedAction(action, { env = process.env, signal, commit = publish => publish() } = {}) {
   return withActions(env, async (records, save) => {
-    const value = env.AUTONOMY_MAX_ACTIONS;
-    const number = value === undefined || value === '' ? 20 : Number(value);
-    const max = Number.isFinite(number) && number >= 0 ? number : 20;
-    if (max > 0 && records.filter(row => row?.enabled).length + 1 > max) {
-      return { error: 'Не получилось: достигнут лимит активных автодействий (' + max +
-        '). Отключи или удали лишние — или скажи мне: «подними предел задач», и места станет больше.' };
-    }
+    const prepared = prepareSavedAction(action, records, env);
+    if (!prepared.action) return prepared;
     return commit(async () => {
-      const base = 'conv-' + action.task.kind + '-' + action.createdAt.replace(/[:.]/g, '-');
-      let id = base;
-      for (let suffix = 2; records.some(row => row?.id === id); suffix++) id = base + '-' + suffix;
-      const saved = { ...action, id };
-      records.push(saved);
+      records.push(prepared.action);
       await save();
-      return { action: saved, previous: records.slice(0, -1) };
+      return { action: prepared.action, previous: records.slice(0, -1) };
     });
   }, { signal, create: true });
 }

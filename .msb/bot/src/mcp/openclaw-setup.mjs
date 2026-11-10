@@ -7,6 +7,7 @@ import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import {readOpenClawOutput} from '../agent/openclaw-read.mjs';
+import {readOpenClawGatewayConfig,readOpenClawJson} from '../agent/openclaw-gateway.mjs';
 import {ownedOpenClawProfile,openClawProfileEnvironment} from '../agent/openclaw-profile.mjs';
 import {statePath} from '../paths.mjs';
 import {loadState} from '../state.mjs';
@@ -15,26 +16,14 @@ import {enrollMcpTemplate} from './managed.mjs';
 
 const writes=new Map();
 const localMode=['config','get','gateway.mode','--json'];
-const gatewayConfig=['gateway','call','config.get','--json'];
-
-async function readJson(args,options){
-  const text=await readOpenClawOutput(args,options);
-  try{return JSON.parse(text);}catch{return null;}
-}
-
-async function gatewaySnapshot(profile,options){
-  const response=await readJson(gatewayConfig,options);
-  if(typeof response?.path!=='string' || await fs.realpath(response.path).catch(()=>null)!==profile.file)return null;
-  return response.config ?? null;
-}
 
 async function registerTemplate(template,value,captured,env){
   if(!captured)return false;
   const profile=await ownedOpenClawProfile(env);
   if(profile?.file!==captured.file || profile.state!==captured.state)return false;
   const options={env:openClawProfileEnvironment(env,profile),timeoutMs:30_000};
-  if(await readJson(localMode,options)!=='local')return false;
-  const before=await gatewaySnapshot(profile,options);
+  if(await readOpenClawJson(localMode,options)!=='local')return false;
+  const before=await readOpenClawGatewayConfig(profile,options);
   if(!before || Object.hasOwn(before.mcp?.servers ?? {},template.name))return false;
   if(selectedMcpProvider((await loadState(env)).state)!=='oc')return false;
   const header=template.bearer?'Bearer '+value:value;
@@ -45,7 +34,7 @@ async function registerTemplate(template,value,captured,env){
     const file=path.join(temp,'registration.json');
     await fs.writeFile(file,JSON.stringify(batch),{mode:0o600});
     if(await readOpenClawOutput(['config','set','--batch-file',file],options)===null)return false;
-    const after=await gatewaySnapshot(profile,options);
+    const after=await readOpenClawGatewayConfig(profile,options);
     const entry=after?.mcp?.servers?.[template.name];
     return entry?.url===template.url && entry?.transport==='streamable-http';
   }finally{

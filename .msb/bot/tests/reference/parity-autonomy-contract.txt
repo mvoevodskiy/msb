@@ -1530,3 +1530,68 @@ the optional named selector. This case uses the core saved runner.
 The selected brief reaches a distinct child thread in its native
 agent_message item. The parent's tool receives the child result.
 Native auth and session data are synthetic.
+
+One-shot literal reminder on native OpenClaw
+-------------------------------------------
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.iia/bot/index.js. Read the stable source with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+WMA 26729–26748 and yg 23255–23319 accept the final
+SCHEDULE_TASK. _r 23003–23063 keeps an ISO once trigger,
+the literal text and origin. y7 46174–46235 routes to OC
+and restores the action after refused registration. GNA
+15886–15889, qNA 15989–15991, Ld 16106–16139, Q7/gd
+45633–45644 and cQA 45672–45682 use an isolated native
+one-shot, delete-after-run, light context and no delivery.
+z_ 45865–45970 maps action ID to job ID. yg 23372–23422
+fences a job added during STOP.
+
+VwA and dP 34323–34365 use the origin chat/topic/reply and
+the stored text. HwA 34453–34527 queues it on a mapped
+terminal run, independent of model text or native failure.
+Ko/jo 28258–28296 retry Telegram with the 60s to 1h backoff
+and eight attempts at nMA/Io 28169–28175 and 28308–28315.
+KwA 34919–34957 reconciles terminal events through the map.
+The journal records admission to delivery. It is separate
+from whether Telegram has already accepted a message.
+
+The new path uses a physically verified local Gateway under
+the bot profile, like the existing native MCP writer. It
+writes a tagged intent before a disabled add, saves the
+action and job ID, and arms only when the selected profile
+and pause still allow it. On error it rolls back that tag
+and action. An uncertain add without an ID stays fenced for
+a later lookup. The scheduler asks cron runs for this ID,
+including after native auto-delete. It keeps delivery state
+in the corresponding map row and writes the same once-run
+journal, using observed token counts and no assumed price.
+It retries Telegram after a known error. As in the old
+outbox, a process loss after accepted send and before the
+local receipt cannot prove whether Telegram received it.
+
+The scoped fixture reaches the existing Telegram final
+marker, the real Gateway and the scheduler. The CLI 2026.9.5
+runs once and its different model text stays on the Gateway.
+Telegram receives the literal saved text and origin reply.
+Both Gateways keep their preexisting jobs and profile bytes.
+Existing legacy job maps and outbox, arbitrary OC profiles,
+recurring cron, prompt collections and OC task controls are
+outside this checkpoint.
+
+Reproduce using the sealed runtime archive identified in
+parity-openclaw-turn-contract.txt, an exact release checks
+snapshot (tools/release/README.md) and its locked dependencies.
+Link checks/source/.msb/bot/node_modules to /opt/msb-deps/node_modules
+inside the snapshot before mounting it. Run with the archive,
+snapshot and dependencies read-only, without external network:
+  docker run --rm --init --network none --pull never \
+    --mount "type=bind,src=$archive,dst=/fixture/runtime.tar.gz,readonly" \
+    --mount "type=bind,src=$stage/checks/source,dst=/source,readonly" \
+    --mount "type=bind,src=$dependencies,dst=/opt/msb-deps/node_modules,readonly" \
+    --entrypoint /bin/sh node:24-alpine -c '
+      set -eu
+      mkdir /tmp/native
+      tar -xzf /fixture/runtime.tar.gz -C /tmp/native
+      node /source/.msb/bot/tests/fixtures/openclaw-once-native-loopback.mjs \
+        /tmp/native/openclaw/2026.9.5/lib/node_modules/openclaw/openclaw.mjs
+    '

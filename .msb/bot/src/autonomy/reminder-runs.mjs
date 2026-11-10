@@ -12,15 +12,16 @@ export function reminderRunPath(env = process.env) {
 }
 
 export async function appendSavedActionRun(action, ts, result,
-  { costVisible, format } = { costVisible: action.task.kind === 'reminder', format: 'tg-message' }) {
-  const file = reminderRunPath();
+  { costVisible = action.task.kind === 'reminder', format = 'tg-message', env = process.env } = {}) {
+  const file = reminderRunPath(env);
+  if (result.nativeJobId && (await readSavedActionRunTail(Infinity, env)).some(row => row?.nativeJobId === result.nativeJobId)) return;
   await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
   const row = {
     ts, actionId: action.id, kind: action.task.kind, name: action.name,
     status: result.status, costUsd: 0, costVisible, format,
     detail: result.detail || result.error || 'напоминание доставлено',
     tokensIn: result.tokensIn, tokensOut: result.tokensOut, meteredUsd: result.meteredUsd,
-    usageIncomplete: result.usageIncomplete || undefined,
+    usageIncomplete: result.usageIncomplete || undefined, nativeJobId: result.nativeJobId,
   };
   await fs.appendFile(file, JSON.stringify(row) + '\n', { mode: 0o600 });
 }
