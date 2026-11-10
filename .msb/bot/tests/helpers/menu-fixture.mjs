@@ -33,14 +33,14 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
     await fs.rm(home, { recursive: true, force: true });
   });
   const restartRequests = [];
-  const markupEdits = [], callbackAnswers = [];
+  const markupEdits = [], callbackAnswers = [], commandMenus = [];
   const messages = [], edits = [], editOptions = [], deleted = [], messageOptions = [], typingSignals = [], editSignals = [], replySignals = [];
   class Harness {
     handlers = new Map(); commands = new Map(); middleware = [];
     async start() {}
     async stop() {}
     api = {
-      config: { use() {} }, setMyCommands: async () => true,
+      config: { use() {} }, setMyCommands: async (commands) => { commandMenus.push(commands); return true; },
       sendChatAction: async (_chat, _action, _options, signal) => { typingSignals.push(signal); return true; },
       sendMessage: async (_chat, text, opts, signal) => { messages.push(text); messageOptions.push(opts); replySignals.push(signal); return { message_id: messages.length }; },
       editMessageText: async (_chat, _id, text, options, signal) => { edits.push(text); editOptions.push(options); editSignals.push(signal); },
@@ -86,5 +86,5 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
     await bot.handleUpdate({message:{message_id:99,text,from:{id:uid},chat:{id:42}}});
     if(waitForRender && /^\/skills(?:@\S+)?(?:\s|$)/.test(text))await Promise.allSettled([...(bot[tasks] || [])].filter(p=>!prior.has(p)));
   };
-  return { home, workspace, bot, callback, message, markupEdits, callbackAnswers, messages, edits, editOptions, deleted, messageOptions, typingSignals, editSignals, replySignals, storeFile, restartRequests };
+  return { home, workspace, bot, callback, message, markupEdits, callbackAnswers, commandMenus, messages, edits, editOptions, deleted, messageOptions, typingSignals, editSignals, replySignals, storeFile, restartRequests };
 }
