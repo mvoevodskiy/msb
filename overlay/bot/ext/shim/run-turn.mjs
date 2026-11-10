@@ -158,6 +158,8 @@ async function runAlternate(providerId, argv) {
     providerId,
   });
 
+  // The introduction owns its resume ID. Let the queued stdout drain.
+  if (providerId === 'codex' && process.env.MSB_CODEX_BOOTSTRAP === '1') return;
   if (!String(nativeId).startsWith('norestart-')) {
     try {
       await setSession(providerId, nativeId);

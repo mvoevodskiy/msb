@@ -21,6 +21,7 @@ import { ensureDir, statePath } from './paths.mjs';
  * managedMcp хранит только [ссылки подключений](./mcp/managed.mjs).
  * ocSessionProfile binds the [named OpenClaw slot](./agent/openclaw-turn.mjs).
  * ocPrevSessionIds keeps the [three preceding IDs](./sessions/openclaw.mjs).
+ * codexBootstrap holds scoped attempts and separate resume IDs for [introduction](./agent/codex-bootstrap.mjs).
  * sessionHistory (описания/ID, не native transcript) → [sessions](./sessions/README.md);
  * записи ID/usage/ledger атомарны через [result](./agent/session-result.mjs).
  * Проверки: [paths/state](../tests/paths-state.test.mjs), [session races](../tests/turn-lifecycle.test.mjs).

@@ -49,6 +49,7 @@ import {prepareSkillRead,skillReadOptions} from './skills-read.mjs';
 import {readOpenClawSkills as nativeOpenClawSkills} from '../skills/openclaw.mjs';
 import { beginTurnHistory } from './history.mjs';
 import { runAgentTurn } from '../agent/turn.mjs';
+import { BOOTSTRAP_GREETING, codexBootstrapScope, needsCodexIntroduction } from '../agent/codex-bootstrap.mjs';
 import { compactSession } from '../agent/compact.mjs';
 import { trySessionOperation } from '../agent/session-operation.mjs';
 import { hasClaudeAuth, loadState, updateState } from '../state.mjs';
@@ -163,6 +164,11 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
       return;
     }
+    const scope = codexBootstrapScope(ctx.chat.id, ctx.from?.id, ctx.message?.message_thread_id);
+    if (await needsCodexIntroduction(state, scope)) {
+      await ctx.reply(BOOTSTRAP_GREETING);
+      return;
+    }
     const view = hubScreen();
     await ctx.reply(view.text, { reply_markup: view.keyboard });
   });
@@ -246,7 +252,8 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   });
 
   bot.command('clear', async (ctx) => {
-    const state=await resetCliConversation();
+    const bootstrapScope = codexBootstrapScope(ctx.chat.id, ctx.from?.id, ctx.message?.message_thread_id);
+    const state=await resetCliConversation(process.env, { bootstrapScope });
     await ctx.reply(state.engine==='oc'?'Начата новая беседа. Файлы и native-история сохранены.':'🧹 Контекст сброшен. Начинаем с чистого листа.');
   });
 
@@ -556,8 +563,11 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       const { state } = await loadState();
       signal.throwIfAborted();
       const paused = Boolean(state.costPaused);
+      const bootstrapScope = !entry.scheduled && ctx.message && reminderOwner && state.extAuthBypass === 'codex'
+        ? codexBootstrapScope(chatId, reminderOwner, thread) : undefined;
       const out = paused ? { ok: false, text: SPEND_PAUSED } : await runTurn({ prompt: entry.prompt ?? text, signal,
         ...(reminderOwner ? { reminderOwner, checkSavedCodex } : {}),
+        ...(bootstrapScope ? { bootstrapScope } : {}),
         ...(entry.isAutoTurn ? { isAutoTurn: true } : {}), onStatus: ev => {
         if (ev.kind === 'provider') history?.provider(ev.providerId);
         progress.onStatus(ev);
@@ -566,7 +576,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       outcome = paused ? 'blocked' : out.ok ? 'ok' : 'error';
       await progress.stop();
       if (signal.aborted || out.error === 'aborted') { await stopped(); return; }
-      if (!out.ok && result?.providerId === 'codex' && result.subtype === 'error_notice') {
+      if (out.bootstrap || (!out.ok && result?.providerId === 'codex' && result.subtype === 'error_notice')) {
         turn.completed = true;
         responseReady = true;
         const notice = stripMcpMarkerPayloads(out.text);

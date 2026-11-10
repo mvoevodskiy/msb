@@ -38,6 +38,7 @@ function isolatedEnvironment() {
  * @property {string} [sessionId]
  * @property {string} [providerId]
  * @property {{ HOME: string, CODEX_HOME?: string }} [codexProfile] The profile used by [context](./context.mjs).
+ * @property {boolean} [codexBootstrap] Keep the Codex ID outside the ordinary provider store.
  * @property {object} [mcp]
  * @property {string} [model]
  * @property {string} [effort]
@@ -166,6 +167,7 @@ export async function runClaudeTurn(opts) {
           MSB_TURN_MCP_REMOVE: opts.mcp?.codexNativeRemoval?JSON.stringify(opts.mcp.codexNativeRemoval):undefined,
           MSB_TURN_MCP_CUSTOM: opts.mcp?.codexCustom?JSON.stringify(opts.mcp.codexCustom):undefined,
           MSB_TURN_PROVIDER: opts.providerId || undefined,
+          MSB_CODEX_BOOTSTRAP: opts.codexBootstrap ? '1' : undefined,
           CI: '1',
           CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
           CLAUDE_CODE_AUTO_COMPACT_WINDOW: process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW || '200000',

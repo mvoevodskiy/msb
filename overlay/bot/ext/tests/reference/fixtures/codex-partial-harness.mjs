@@ -24,6 +24,9 @@ const stateFile = path.join(root, 'state.json');
 const storeFile = path.join(root, 'ext-providers.json');
 const priorUsage = { sessionId: session, contextTokens: 980, contextWindow: 1000 };
 await Promise.all([root, bin, workspace, path.join(native, 'sessions')].map(dir => fs.mkdir(dir, { recursive: true })));
+// These are ordinary reply/recovery tests on an already configured workspace.
+await fs.writeFile(path.join(workspace, '.iia-bootstrapped'), 'fixture initialized');
+
 const fake = (await fs.readFile(new URL('./fake-provider-cli.mjs', import.meta.url), 'utf8'))
   .replace(/^#![^\n]+/, '#!' + process.execPath);
 await fs.writeFile(path.join(bin, 'codex'), fake, { mode: 0o700 });

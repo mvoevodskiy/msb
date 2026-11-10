@@ -18,6 +18,14 @@ Telegram UI, progress и отправка ответа остаются в со�
 | Сохранить ID/usage и описание сессии в одной транзакции | [`runAgentTurn`](turn.mjs) → [`applySessionResult`](session-result.mjs) → [`ledger`](../sessions/ledger.mjs), через [`updateState`](../state.mjs) | [session-ledger](../../tests/session-ledger.test.mjs), [turn-lifecycle](../../tests/turn-lifecycle.test.mjs), [state-concurrency](../../tests/state-concurrency.test.mjs) |
 | Сжать текущую сессию по провайдеру | [`compactSession`](compact.mjs) → Claude stream boundary или [Codex app-server](../../../../overlay/bot/ext/compact-codex.mjs) | [compact-routing](../../tests/compact-routing.test.mjs), [compact-codex](../../../../overlay/bot/ext/tests/compact-codex.test.mjs) |
 
+Первое знакомство Codex в пустом workspace идёт из /start и обычного входящего
+сообщения через [отдельный сценарий](codex-bootstrap.mjs). Он использует тот же
+CLI и выбранный native профиль, ведёт отдельную беседу по чату и теме и завершает
+запись [файлов workspace](bootstrap-workspace.mjs). /clear сбрасывает знакомство
+в исходной теме, /newtask сохраняет его. Готовые файлы или подтверждённая прежняя
+обычная беседа исключают повторное знакомство при обновлении. Карточка сервисов
+остаётся следующим этапом. [Проверки](../../tests/codex-bootstrap.test.mjs).
+
 Первый ход без ID атомарно резервирует `pendingCcSessionStarts[provider]` через
 [`session-starts`](../../shared/session-starts.mjs). Обычное переключение не отменяет
 этот внутренний token: поздний успешный ID сохраняется только в пустой собственный

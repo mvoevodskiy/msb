@@ -9,6 +9,7 @@ import {
 import { readClaudeVersion } from './claude-version.mjs';
 import { claudeAutoTurnModel } from './models.mjs';
 import { runClaudeTurn } from './claude.mjs';
+import { runCodexBootstrap } from './codex-bootstrap.mjs';
 import { readClaudeQuotaEvent, saveClaudeQuota } from './claude-quota.mjs';
 import { runOpenClawTurn } from './openclaw-turn.mjs';
 import { conversationalModePrompt } from './mode-prompt.mjs';
@@ -29,6 +30,7 @@ import {nativeMcpScope} from '../../shared/mcp-native-scope.mjs';
 /**
  * runAgentTurn: prompt/signal → выбранный CLI → результат и guarded session/usage.
  * Вызывают [Telegram](../telegram/bot.mjs) и [autonomy](../autonomy/scheduler.mjs).
+ * Cold owner Codex introduction → [bootstrap](./codex-bootstrap.mjs), before ordinary session reservation.
  * OpenClaw ordinary turn → [named acpx](./openclaw-turn.mjs), before Claude auth.
  * Аргументы/stream/abort → [runClaudeTurn](./claude.mjs) → существующий PATH shim;
  * native dispatch → [provider runner](../../../../overlay/bot/ext/shim/run-turn.mjs).
@@ -53,10 +55,15 @@ export async function runAgentTurn({
   isAutoTurn = false,
   reminderOwner = 0,
   checkSavedCodex,
+  bootstrapScope,
   env = process.env,
 } = {}) {
   const aborted = () => ({ ok: false, error: 'aborted', text: 'Остановлено.' });
   if (signal?.aborted) return aborted();
+  if (bootstrapScope && !autonomy && !isAutoTurn) {
+    const introduction = await runCodexBootstrap({ scope: bootstrapScope, prompt, env, signal, onStatus });
+    if (introduction) return introduction;
+  }
   let state, firstSession, baseWorkspace, contextNow, skillInstall, mcpInstall, mcp;
   await updateState(s => {
     state = { ...s };

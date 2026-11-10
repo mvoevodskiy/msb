@@ -11,6 +11,7 @@ import {resolveProjectDirectory} from '../projects/paths.mjs';
 import {cliSessionEntries,historyProvider} from './scope.mjs';
 import {resolveSessionReference} from './callback-key.mjs';
 import {clearOpenClawSession} from './openclaw.mjs';
+import {resetCodexBootstrap} from '../agent/codex-bootstrap.mjs';
 const project=row=>row.project || undefined;
 const epoch=state=>state.sessionEpoch || 0;
 function clearParkedProvider(state,provider) {
@@ -19,13 +20,14 @@ function clearParkedProvider(state,provider) {
   const next={...slots};delete next[provider];
   if(Object.keys(next).length)state.parkedCcSessions=next;else delete state.parkedCcSessions;
 }
-export function resetCliConversation(env=process.env) {
+export function resetCliConversation(env=process.env, {bootstrapScope}={}) {
   return updateState(state=>{
     if(state.engine==='oc')clearOpenClawSession(state);
     else{
       invalidateFirstSession(state);
       delete state.ccSessionId;
     }
+    resetCodexBootstrap(state,bootstrapScope);
     state.sessionEpoch=(Number.isSafeInteger(state.sessionEpoch)?state.sessionEpoch:0)+1;
     return state;
   },env);
