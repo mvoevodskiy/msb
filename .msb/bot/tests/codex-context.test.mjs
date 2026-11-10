@@ -82,3 +82,37 @@ test('status/engines honor native fallback; sessions show only the selected core
     assert.doesNotMatch((await screen({ extAuthBypass: 'codex' }, { ...env, JARVIS_CC_ONLY: '1' })).text, /Codex/);
   }
 });
+
+test('status reads the selected relative profile after compact and keeps the CLI sessions ledger layout', async t => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-status-project-context-'));
+  const previous = process.cwd();
+  t.after(async () => { process.chdir(previous); await fs.rm(home, { recursive: true, force: true }); });
+  const workspace = path.join(home, 'workspace');
+  const project = path.join(home, 'projects', 'alpha');
+  const env = { HOME: home, MSB_WORKSPACE_DIR: workspace, CODEX_HOME: 'native-profile' };
+  const cfg = { botId: 'default', workspace };
+  const state = { engine: 'cc', extAuthBypass: 'codex', ccSessionId: sessionId, activeProject: 'alpha',
+    sessionHistory: [{ id: sessionId, engine: 'cc', firstPrompt: 'Saved project conversation', messageCount: 2 }] };
+  const count = total_tokens => JSON.stringify({ type: 'event_msg', payload: { type: 'token_count',
+    info: { last_token_usage: { total_tokens }, model_context_window: 100000 } } }) + '\n';
+  const rollout = cwd => path.join(cwd, env.CODEX_HOME, 'sessions', 'rollout-fixture-' + id + '.jsonl');
+  for (const [cwd, tokens] of [[workspace, 98000], [project, 18000]]) {
+    await fs.mkdir(path.dirname(rollout(cwd)), { recursive: true });
+    await fs.writeFile(rollout(cwd), count(tokens));
+  }
+  process.chdir(workspace);
+  const statusText = () => statusScreen(state, cfg, env).then(view => view.text);
+  assert.match(await statusText(), /Контекст: 18%/);
+  assert.doesNotMatch(await statusText(), /98%/);
+  await fs.appendFile(rollout(project), JSON.stringify({ type: 'compacted', payload: {} }) + '\n');
+  assert.match(await statusText(), /Контекст: нет данных текущей сессии\./);
+  await fs.appendFile(rollout(project), count(26000));
+  assert.match(await statusText(), /Контекст: 26%/);
+  const ledger = await sessionsScreen(state, env);
+  assert.match(ledger.text, /Saved project conversation/);
+  assert.doesNotMatch(ledger.text, /Контекст:/);
+  await fs.rename(project, project + '-removed');
+  assert.match(await statusText(), /Контекст: нет данных текущей сессии\./);
+  process.chdir(home);
+  assert.match((await statusScreen({ ...state, activeProject: undefined }, cfg, env)).text, /Контекст: 98%/);
+});
