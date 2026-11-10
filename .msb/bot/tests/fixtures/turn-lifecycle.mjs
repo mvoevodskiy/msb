@@ -8,7 +8,8 @@ import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 
 const scenario = process.argv[2];
-if (!['early-stop', 'status-failure', 'late-edit', 'next-turn', 'saved-session', 'empty-session', 'reset-session', 'provider-roundtrip', 'provider-reset', 'provider-clear'].includes(scenario)) {
+const partialStop = ['claude-stop-partial', 'claude-reply-stop-partial'].includes(scenario);
+if (!partialStop && !['early-stop', 'status-failure', 'late-edit', 'next-turn', 'saved-session', 'empty-session', 'reset-session', 'provider-roundtrip', 'provider-reset', 'provider-clear'].includes(scenario)) {
   throw new Error('Unknown lifecycle scenario');
 }
 const fixtureHome = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-turn-lifecycle-'));
@@ -52,11 +53,12 @@ function hasAnswer(number) {
   return report.calls.some((call) => call.applied && call.method === 'editMessageText'
     && call.messageId === cli?.statusMessageId && call.parseMode === 'HTML' && text.test(call.text));
 }
-function send(text) {
+function send(text, replyTo) {
   const id = ++updateId;
   inbox.push({ update_id: id, message: {
     message_id: id, date: 1, from: { id: 42, is_bot: false, first_name: 'Fixture' },
     chat: { id: 42, type: 'private' }, text,
+    ...(replyTo ? { reply_to_message: { message_id: replyTo, date: 1, chat: { id: 42, type: 'private' } } } : {}),
     ...(text.startsWith('/') ? { entities: [{ type: 'bot_command', offset: 0, length: text.length }] } : {}),
   } });
   notifyInbox?.();
@@ -76,7 +78,8 @@ try {
   await fs.mkdir(path.dirname(stateFile), { recursive: true });
   await fs.writeFile(stateFile, JSON.stringify({
     authMode: 'subscription', hasSubscriptionAuth: true, fixtureUnrelated: 'preserve-me',
-    ...(scenario === 'saved-session' ? { ccSessionId: 'saved-session-A' } : {}),
+    ...(scenario === 'saved-session' || partialStop ? { ccSessionId: 'saved-session-A' } : {}),
+    ...(partialStop ? { lastCcUsage: { sessionId: 'saved-session-A', contextTokens: 17000 } } : {}),
     ...(['provider-roundtrip', 'provider-reset', 'provider-clear'].includes(scenario) ? {
       engine: 'cc', extAuthBypass: 'codex',
       ccSessionId: 'ext:codex:0199a213-81c0-7800-8aa1-bbab2a035a53', sessionEpoch: 0,
@@ -133,7 +136,7 @@ try {
       emit({ type: 'system', subtype: 'init', session_id: nativeId, model: 'fixture-model' });
       report.events.push(`cli-init:${number}`);
     });
-    children.push({ close });
+    children.push({ close, emit });
     return child;
   };
   syncBuiltinESMExports();
@@ -215,6 +218,25 @@ try {
     await until(() => has('cli-init:1'), 'next CLI after status failure');
     children[0].close('success');
     await until(() => hasAnswer(1), 'next answer replacing its status with the original HTML footer');
+  } else if (partialStop) {
+    await until(() => has('cli-init:1'), 'first Claude session');
+    const first = 'Первый фрагмент Claude.';
+    const privateMarker = '[ADD_MCP]{"name":"fixture-stop","type":"http","url":"https://fixture.invalid","headers":{"Authorization":"fixture-private-marker"}}[/ADD_MCP]';
+    children[0].emit({ type: 'assistant', message: {
+      usage: { input_tokens: 10000, cache_read_input_tokens: 80000 },
+      content: [{ type: 'text', text: first + '\n\n' + privateMarker }],
+    } });
+    await settle();
+    if (scenario === 'claude-reply-stop-partial') send('стоп', report.initialStatusId);
+    else send('/stop');
+    await until(() => has('cli-abort:1') && has('stop-acknowledged'), 'owner stop');
+    children[0].emit({ type: 'assistant', message: {
+      usage: { input_tokens: 680000 },
+      content: [{ type: 'text', text: 'Поздний фрагмент Claude.' }],
+    } });
+    children[0].close('late-result');
+    await until(() => has('stopped-edit-applied') || report.calls.some(call => call.applied &&
+      call.method === 'editMessageText' && call.text.startsWith(first)), 'terminal response after partial stop');
   } else if (scenario === 'reset-session') {
     await until(() => has('cli-init:1'), 'first native session before reset');
     send('/newtask');
@@ -279,6 +301,10 @@ try {
   const traceDir = path.join(path.dirname(stateFile), 'traces');
   report.history = [];
   for (const name of await fs.readdir(traceDir)) report.history.push(...(await fs.readFile(path.join(traceDir, name), 'utf8')).trim().split('\n').map(JSON.parse));
+  if (partialStop) {
+    const diary = await fs.readFile(path.join(path.dirname(stateFile), 'chat-diary.jsonl'), 'utf8');
+    report.diary = diary.trim().split('\n').map(JSON.parse);
+  }
   console.log('LIFECYCLE_RESULT=' + JSON.stringify(report));
 } finally {
   releaseInitial(); releaseProgress();

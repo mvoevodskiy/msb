@@ -96,6 +96,23 @@ test('turn lifecycle: an aborted CLI session never replaces or creates the saved
   }
 });
 
+// Old blob 73aa9e7e: pushText 106296–106299, cancel 106806–106817,
+// finish 106578–106645, /stop 118225–118230 and reply-stop 119459–119464.
+for (const scenario of ['claude-stop-partial', 'claude-reply-stop-partial']) {
+  test('turn lifecycle: ' + scenario + ' keeps the pre-abort text and context in Telegram', () => {
+    const r = run(scenario);
+    const final = r.finalMessages[r.initialStatusId];
+    assert.match(final, /^Первый фрагмент Claude\.\n\n<blockquote>⏱ \d+\.\ds · ○○○ 10%<\/blockquote>$/);
+    assert.equal(r.calls.filter(call => call.applied && call.method === 'sendMessage' && call.text === stopped).length, 1);
+    assert.ok(!r.calls.some(call => /Поздний фрагмент|success-1|fixture-private-marker/.test(call.text)));
+    assert.equal(r.state.managedMcp, undefined);
+    assert.equal(r.state.ccSessionId, 'saved-session-A');
+    assert.deepEqual(r.state.lastCcUsage, { sessionId: 'saved-session-A', contextTokens: 17000 });
+    assert.equal(r.history[0].status, 'aborted');
+    assert.deepEqual(r.diary.map(row => [row.status, row.summary]), [['aborted', 'Первый фрагмент Claude.']]);
+  });
+}
+
 test('turn lifecycle: newtask during the first turn prevents its late session ID from returning', () => {
   const r = run('reset-session');
   assert.equal(r.cli.length, 1);
