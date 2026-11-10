@@ -224,7 +224,7 @@ export function finalizeParsed({ res, parsedOut, model, resumeRequested }) {
     if (!(res.code === 0 && parsedOut.turnCompleted && text)) {
       return {
         ok: false,
-        text: 'Codex resume не вернул native session id. Напиши ещё раз — начну новый тред.',
+        text: 'Codex не смог продолжить выбранную сессию. Выбери другую в /sessions или начни новую командой /newtask.',
         model: model || undefined,
       };
     }
