@@ -37,6 +37,7 @@ function isolatedEnvironment() {
  * @property {string} prompt
  * @property {string} [sessionId]
  * @property {string} [providerId]
+ * @property {{ HOME: string, CODEX_HOME?: string }} [codexProfile] The profile used by [context](./context.mjs).
  * @property {object} [mcp]
  * @property {string} [model]
  * @property {string} [effort]
@@ -160,6 +161,7 @@ export async function runClaudeTurn(opts) {
         env: {
           ...(opts.isolated ? isolatedEnvironment() : process.env),
           ...opts.mcp?.env,
+          ...opts.codexProfile,
           MSB_TURN_MCP_TEMPLATES: opts.mcp?.codexTemplates?.join(','),
           MSB_TURN_MCP_REMOVE: opts.mcp?.codexNativeRemoval?JSON.stringify(opts.mcp.codexNativeRemoval):undefined,
           MSB_TURN_MCP_CUSTOM: opts.mcp?.codexCustom?JSON.stringify(opts.mcp.codexCustom):undefined,

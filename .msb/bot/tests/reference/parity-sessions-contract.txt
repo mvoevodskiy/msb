@@ -299,3 +299,26 @@ Independent Sol reread old source and ran58ledger+resume+session-starts PASS,
 no findings. These isolated checks use fake model protocol/own temporary HOME,
 not real adapter/native integration. Full same-commit Linux and native/live gates
 still pending; JAR1 remains01e867a and no push occurred.
+
+Нативный счётчик Codex и относительный профиль
+
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf, .iia/bot/index.js.
+См. git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba.
+Worker 110781–110790 и 110830–110840 передавал замер последнего прохода
+в футер 3362–3384. /info читал lastCcUsage (114177–114190).
+Список 111995–112011 был журналом бесед. /compact обновлял usage из
+CLI результата (114093–114119). В адаптации Codex берутся нативный
+last_token_usage.total_tokens и model_context_window, а /status читает
+rollout. После compacted нужен новый token_count.
+
+На 72ad72e CODEX_HOME в CLI относился к проекту, а чтение использовало cwd
+бота и переменные на момент завершения. d58845d показал 98% из workspace
+в /status вместо 18% проекта. При изменении окружения во время хода
+футер получал 99 000 токенов другого профиля вместо 18 000.
+
+Запуск и чтение используют один снимок HOME/CODEX_HOME и cwd хода.
+Для /status относительный профиль разрешается от текущего проекта
+или базового workspace через общий resolver. При недоступном проекте
+данные отсутствуют. /sessions сохраняет прежний журнал. Проверки в
+codex-context.test.mjs и turn-context.test.mjs покрывают также свежий
+замер после compacted и отдельный футер частичного ответа.

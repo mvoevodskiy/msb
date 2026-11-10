@@ -3,16 +3,24 @@ import { createReadStream } from 'node:fs';
 import { createInterface } from 'node:readline';
 import path from 'node:path';
 import { homeDir } from '../paths.mjs';
+import { resolveProjectCwd } from '../projects/paths.mjs';
 
-/** Native last request size from the session rollout.
- * [Turn](./turn.mjs) can bound the read to one native task for a partial response.
+const CODEX_SESSION_ID = /^ext:codex:([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i;
+
+export function captureCodexProfile(env = process.env) {
+  return { HOME: homeDir(env), CODEX_HOME: env.CODEX_HOME };
+}
+
+/** Native last request size from the selected profile's rollout.
+ * [Turn](./turn.mjs) supplies its captured cwd/profile and can bound a partial response.
+ * [/status](../telegram/screens/sessions.mjs) resolves relative profiles from selection.
  * [Context checks](../../tests/codex-context.test.mjs).
  */
-export async function readSessionContext(sessionId, env = process.env, turnWindow) {
-  const match = /^ext:codex:([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i.exec(sessionId || '');
+export async function readSessionContext(sessionId, env = process.env, { cwd = process.cwd(), turnWindow } = {}) {
+  const match = CODEX_SESSION_ID.exec(sessionId || '');
   if (!match) return null;
-  const root = path.join(env.CODEX_HOME || path.join(homeDir(env), '.codex'), 'sessions');
   try {
+    const root = path.resolve(cwd, env.CODEX_HOME || path.join(homeDir(env), '.codex'), 'sessions');
     const files = (await fs.readdir(root, { recursive: true }))
       .filter((name) => name.endsWith(`-${match[1]}.jsonl`));
     // Never borrow another session's usage or pick an ambiguous transcript.
@@ -54,6 +62,20 @@ export async function readSessionContext(sessionId, env = process.env, turnWindo
     return context;
   } catch {
     // Telemetry must not prevent delivery of the model's answer.
+    return null;
+  }
+}
+
+export async function readStatusSessionContext(state, env = process.env) {
+  if (!CODEX_SESSION_ID.test(state.ccSessionId || '')) return null;
+  const profile = captureCodexProfile(env);
+  if (state.engine === 'oc' || !profile.CODEX_HOME || path.isAbsolute(profile.CODEX_HOME)) {
+    return readSessionContext(state.ccSessionId, profile);
+  }
+  try {
+    const cwd = await resolveProjectCwd(state, env);
+    return readSessionContext(state.ccSessionId, profile, { cwd });
+  } catch {
     return null;
   }
 }

@@ -8,7 +8,7 @@ import {sessionListScreen} from './session-list.mjs';
  */
 import { InlineKeyboard } from 'grammy';
 import { agentDisplay } from '../../agent/display.mjs';
-import { readSessionContext, formatContextUsage } from '../../agent/context.mjs';
+import { readSessionContext, readStatusSessionContext, formatContextUsage } from '../../agent/context.mjs';
 import { escapeHtml } from '../edit.mjs';
 import { BLANK } from './shared.mjs';
 
@@ -31,7 +31,7 @@ ${BLANK}`,
 
 export async function statusScreen(state, cfg, env = process.env) {
   const agent = await agentDisplay(state, env);
-  const context = formatContextUsage(await readSessionContext(state.ccSessionId, env));
+  const context = formatContextUsage(await readStatusSessionContext(state, env));
   return {
     text: [
       '<b>Статус</b>',
