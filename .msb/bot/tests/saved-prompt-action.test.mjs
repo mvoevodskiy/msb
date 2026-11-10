@@ -23,7 +23,9 @@ const action = (id, changes = {}) => ({ id, name: 'Сбор ' + id, enabled: tru
   capability: 'read', authority: { profile: 'standard' }, output: { format: 'tg-message', store: false }, ...changes });
 const shim = fileURLToPath(new URL('../../../overlay/bot/ext/shim/bin', import.meta.url));
 
-async function profile(t, actions, { state = {}, text = 'Отчёт задачи <данные>', hold = false, version = '2.1.154' } = {}) {
+async function profile(t, actions, {
+  state = {}, text = 'Отчёт задачи <данные>', hold = false, version = '2.1.154', helperEvents = [],
+} = {}) {
   const f = await fixture(t, async () => assert.fail('Saved action must not call the shared owner turn'),
     { overlay: false, runtimeProfile: 'jar1' });
   for (const key of ['MSB_SESSION_DIR', 'IIA_SESSION_DIR', 'AUTONOMY_DIR', 'AUTONOMY_DAILY_CAP_USD',
@@ -48,6 +50,7 @@ const input=fs.readFileSync(0,'utf8');
 const emit=(kind,obj)=>console.log(JSON.stringify({type:kind,...obj}));
 const session_id='77777777-7777-4777-8777-777777777777';
 emit('system',{subtype:'init',session_id,model:'sonnet'});
+for (const event of ${JSON.stringify(helperEvents)}) emit('system', event);
 const finish=()=>{emit('result',{subtype:'success',session_id,is_error:false,result:${JSON.stringify(text)},total_cost_usd:0.02,
 usage:{input_tokens:15,output_tokens:4,cache_read_input_tokens:3,cache_creation_input_tokens:2}});};
 const held = ${JSON.stringify(hold)};
@@ -158,6 +161,44 @@ test('saved Claude helper opt-out carries the old work instruction on a supporte
   assert.ok(!tools.includes('Agent') && !tools.includes('Task'));
   assert.match(call.input, /Помощников не зови, всю работу делай сам: так попросил владелец\./);
 });
+
+const helperEvent = (subtype, task_id, total_tokens, status) => ({
+  subtype, task_id, usage: { total_tokens }, status,
+});
+const terminal = (taskId, tokens, status = 'completed') => helperEvent('task_notification', taskId, tokens, status);
+
+test('saved Claude helper usage records terminal measurements and consumes the daily token budget', async t => {
+  const helperEvents = [
+    helperEvent('task_started', 'worker', 100),
+    helperEvent('task_progress', 'worker', 130),
+    terminal('worker', 16),
+    terminal('worker', 16),
+    terminal('researcher', 7, 'failed'),
+    terminal('unmeasured', null),
+    terminal('negative', -10),
+    terminal(undefined, 11),
+  ];
+  const f = await profile(t, [action('first'), action('second')], { version: '2.1.316', helperEvents });
+  process.env.AUTONOMY_DAILY_CAP_TOKENS = '43';
+  await f.scheduler.tickNow();
+  const [first, second] = await f.runs();
+  assert.deepEqual([first.status, first.tokensIn, first.tokensOut, first.costUsd, first.meteredUsd], ['ok', 43, 4, 0, 0.02]);
+  assert.equal(second.status, 'blocked');
+  assert.match(second.detail, /дневной запас/);
+  assert.equal((await f.calls()).length, 1);
+});
+
+for (const [version, helpers] of [['2.1.154', undefined], ['2.1.316', false]]) {
+  test('saved Claude helper usage is ignored outside the native helper scope: ' + version, async t => {
+    const task = { kind: 'prompt', prompt: 'Проверь источники', ...(helpers === undefined ? {} : { helpers }) };
+    const f = await profile(t, [action('outside-scope', { task })], {
+      version, helperEvents: [terminal('worker', 16)],
+    });
+    await f.scheduler.tickNow();
+    const [run] = await f.runs();
+    assert.deepEqual([run.status, run.tokensIn, run.tokensOut], ['ok', 20, 4]);
+  });
+}
 
 test('an explicitly narrow saved prompt keeps quiet without writing or spawning helpers', async t => {
   const f = await profile(t, [action('quiet', { capability: 'none', authority: { profile: 'narrow' },
