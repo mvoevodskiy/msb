@@ -11,8 +11,8 @@ import { escapeHtml } from '../edit.mjs';
 import { savedActionIsActive, savedActionRows, savedActionViews } from './reminders.mjs';
 import { BLANK } from './shared.mjs';
 
-export async function autonomyHomeScreen(codexAvailable) {
-  const [tasks, reminders] = await Promise.all([listTasks(), savedActionViews(undefined, codexAvailable)]);
+export async function autonomyHomeScreen(codexAvailable, cursorAvailable = false) {
+  const [tasks, reminders] = await Promise.all([listTasks(), savedActionViews(undefined, codexAvailable, cursorAvailable)]);
   const active = tasks.filter(t => t.enabled !== false).length + reminders.actions.filter(action => savedActionIsActive(action, reminders)).length;
   const kb = new InlineKeyboard()
     .text('📋 Задачи', 'auto:tasks')
@@ -54,8 +54,8 @@ ${BLANK}`,
   };
 }
 
-export async function autonomyTasksScreen(state, codexAvailable) {
-  const [tasks, reminders] = await Promise.all([listTasks(), savedActionViews(state, codexAvailable)]);
+export async function autonomyTasksScreen(state, codexAvailable, cursorAvailable = false) {
+  const [tasks, reminders] = await Promise.all([listTasks(), savedActionViews(state, codexAvailable, cursorAvailable)]);
   const kb = new InlineKeyboard();
   const lines = tasks.map((task, index) => {
     const mark = task.enabled === false ? '⏸' : '▶️';

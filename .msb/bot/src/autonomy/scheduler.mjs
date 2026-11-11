@@ -25,12 +25,15 @@ const TICK_MS = 60_000;
  * [compact guard](../../tests/autonomy-compact-guard.test.mjs). [Контракт](./README.md).
  */
 export function startScheduler({ api, adminId, scheduledTurns, timezone, now = Date.now,
-  log = console.error, runTurn = runAgentTurn, runCodexPrompt, readCodexQuota } = {}) {
+  log = console.error, runTurn = runAgentTurn, runCodexPrompt, runCursorPrompt, readCodexQuota } = {}) {
   let stopped = false;
   let busy = false;
   let legacyTick, reminderTick, openClawTick;
   const shutdown = new AbortController();
-  const reminders = createReminderDispatcher({ api, adminId, timezone, now, log, signal: shutdown.signal, runCodexPrompt, readCodexQuota });
+  const reminders = createReminderDispatcher({
+    api, adminId, timezone, now, log, signal: shutdown.signal,
+    runCodexPrompt, runCursorPrompt, readCodexQuota,
+  });
   const openClaw = createOpenClawReminderDispatcher({ api, adminId, now, log, signal: shutdown.signal });
 
   log('[msb/scheduler] Starting (delay 30s)...');

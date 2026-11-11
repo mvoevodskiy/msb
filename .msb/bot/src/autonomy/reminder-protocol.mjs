@@ -58,7 +58,7 @@ export async function openClawTaskMaintenancePrompt(state, env, adminId) {
   }
 }
 
-export async function reminderPrompt(state, adminId, env, checkSavedCodex) {
+export async function reminderPrompt(state, adminId, env, checkSavedCodex, checkSavedCursor) {
   try {
     const { enabled, local, asleep } = await readReminderPolicy(state, env);
     if (!enabled || !local) return '';
@@ -74,8 +74,9 @@ export async function reminderPrompt(state, adminId, env, checkSavedCodex) {
     'Если подходят несколько задач, не выбирай сам. ' +
     literalMarkerInstruction + ' Не обещай успех до ответа бота.\n\n' + limitPrompt;
   if (!reminderOwnerChat(state, adminId)) return controls;
-  const provider = savedPromptProvider(state, env, Boolean(checkSavedCodex));
-  const collections = await promptRegistrationReady(provider, checkSavedCodex, env) ? scheduledPromptInstruction : '';
+  const provider = savedPromptProvider(state, env, Boolean(checkSavedCodex), Boolean(checkSavedCursor));
+  const collections = await promptRegistrationReady(provider, checkSavedCodex, env, checkSavedCursor)
+    ? scheduledPromptInstruction : '';
   return controls + '\n\n' + onceReminderInstruction + ' Регулярный пример:\n' +
     '[SCHEDULE_TASK]{"trigger":{"kind":"recurring","cron":"0 9 * * 1-5"},"task":{"kind":"reminder","text":"Проверить почту"}}[/SCHEDULE_TASK]\n' +
     'Для регулярного напоминания используй cron из пяти полей по часовому поясу владельца. ' +

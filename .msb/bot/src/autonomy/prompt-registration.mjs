@@ -77,10 +77,16 @@ export function parsePromptRegistration(marker) {
   };
 }
 
-export async function promptRegistrationReady(provider, checkSavedCodex, env = process.env) {
-  if (provider !== 'codex') return provider === 'claude';
-  try { return await checkSavedCodex?.(env) === true; }
-  catch { return false; }
+export async function promptRegistrationReady(provider, checkSavedCodex, env = process.env, checkSavedCursor) {
+  if (provider === 'codex') {
+    try { return await checkSavedCodex?.(env) === true; }
+    catch { return false; }
+  }
+  if (provider === 'cursor') {
+    try { return await checkSavedCursor?.(env) === true; }
+    catch { return false; }
+  }
+  return provider === 'claude';
 }
 
 export async function promptRegistrationPermissions(action, provider) {

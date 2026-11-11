@@ -24,9 +24,9 @@ import { savedPromptPlan } from './prompt-policy.mjs';
 import { runSavedPrompt } from './prompt-turn.mjs';
 import { deliverSavedPrompt } from './prompt-delivery.mjs';
 
-export function createReminderDispatcher({ api, adminId, timezone, now, log, signal, runCodexPrompt, readCodexQuota }) {
+export function createReminderDispatcher({ api, adminId, timezone, now, log, signal, runCodexPrompt, runCursorPrompt, readCodexQuota }) {
   let boundChat;
-  const planFor = (action, state) => savedPromptPlan(action, state, process.env, Boolean(runCodexPrompt));
+  const planFor = (action, state) => savedPromptPlan(action, state, process.env, Boolean(runCodexPrompt), Boolean(runCursorPrompt));
   const supports = (action, state) => action.task.kind === 'reminder' || Boolean(planFor(action, state));
   async function destination(isStopped) {
     if (isStopped() || !api || !adminId) return;
@@ -95,6 +95,7 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
     try {
       const result = await runSavedPrompt(action, plan, {
         runCodexPrompt,
+        runCursorPrompt,
         signal: active, isCurrent: async () => await savedActionClaimIsCurrent(file, action) &&
           (!quotaCurrent || await quotaCurrent()),
       }).catch(() => ({
@@ -123,7 +124,14 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
     const slotAt = now();
     for (const snapshot of actions) {
       if (isStopped()) break;
-      if (!reminderIsDue(snapshot, slotAt, target.timezone) || !supports(snapshot, target.state)) continue;
+      if (!reminderIsDue(snapshot, slotAt, target.timezone)) continue;
+      if (!supports(snapshot, target.state)) {
+        if (snapshot.enabled !== false && snapshot.task?.kind === 'prompt') {
+          log('[msb/reminder] skip ' + snapshot.id
+            + ' reason=no-plan provider=' + (target.state.extAuthBypass || 'claude'));
+        }
+        continue;
+      }
       const ts = new Date(now()).toISOString();
       try {
         // Old shared journals can be slow. Read them before locking the local

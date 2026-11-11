@@ -1,6 +1,7 @@
 /**
  * Execute a stateless saved prompt in the old autonomy workspace. [Policy](./prompt-policy.mjs)
- * supplies the tools for [Claude](../agent/claude.mjs) or the registered Codex adapter.
+ * supplies the tools for [Claude](../agent/claude.mjs), the registered Codex adapter,
+ * or the Cursor adapter. [Freshness](./prompt-freshness.mjs) refuses before spawn.
  * [Saved roles](./prompt-team.mjs) use the same tool boundary and claimed action.
  * [Dispatcher](./reminder-dispatch.mjs) owns cancellation, delivery and history.
  */
@@ -12,6 +13,7 @@ import { runClaudeTurn } from '../agent/claude.mjs';
 import { actionRoot, botRoot, homeDir, msbRoot, sessionDir } from '../paths.mjs';
 import { loadState } from '../state.mjs';
 import { savedPromptPlan } from './prompt-policy.mjs';
+import { checkSavedPromptFreshness } from './prompt-freshness.mjs';
 import { savedClaudeHelperRoles, savedClaudeHelpersSupported, savedClaudeTeamRoster } from './saved-claude-helpers.mjs';
 import { promptTeamInstructions, savedPromptTeam } from './prompt-team.mjs';
 import { physicalRecordPath } from './record-file.mjs';
@@ -27,12 +29,13 @@ async function protectedPaths(env, provider) {
   const action = actionRoot(env);
   const paths = [path.join(home, '.ssh', '**'), path.join(home, '.scripter', '**'),
     path.join(home, '.claude', '**'), path.join(home, '.claude.json'), path.join(home, '.codex', '**'),
+    path.join(home, '.cursor', '**'),
     path.join(runtime, '.env'), path.join(runtime, 'state.json'), path.join(runtime, 'sessions', '**'),
     path.join(runtime, 'bots', '**', '.env'), path.join(runtime, 'bots', '**', 'state.json'),
     path.join(runtime, 'bots', '**', 'ext-providers.json'), path.join(runtime, 'bots', '**', 'sessions', '**'),
     path.join(bot, '.env'), path.join(bot, 'state.json'), path.join(bot, 'ext-providers.json'),
     path.join(sessionDir(env), '**'), path.join(action, 'actions.json'), path.join(action, 'autonomy', '*.json*')];
-  if (provider === 'codex') {
+  if (provider === 'codex' || provider === 'cursor') {
     paths.push(path.join(runtime, 'bots', '**', 'actions.json'),
       path.join(action, '.records-*', '**'), path.join(action, 'autonomy', '.records-*', '**'));
   }
@@ -42,13 +45,25 @@ async function protectedPaths(env, provider) {
   return [...new Set([...paths.map(value => path.resolve(value)), ...physical])];
 }
 
-function taskInstructions(action, { quiet, provider, tools }, teamPrompt) {
+function workspaceName(provider) {
+  return provider === 'cursor' ? 'cursor-workspace' : 'cc-workspace';
+}
+
+function taskInstructions(action, { quiet, provider, tools, handoff, shell }, teamPrompt) {
   const fields = ['canWithoutApproval', 'needsApproval', 'escalateWhen', 'whatNotToDo'];
   const saved = action.authority ?? {};
   const lines = ['Твои полномочия на этом ходу (владелец записал их заранее, спросить его сейчас нельзя).',
     'Работай в рамках доступных инструментов. Результат получит владелец задачи в Telegram.'];
-  if (provider === 'codex' && tools.includes('Agent')) {
+  if ((provider === 'codex' || provider === 'cursor') && tools.includes('Agent')) {
     lines.push('В этом задании можно привлекать помощников. Передавай им часть задания в рамках тех же полномочий.');
+  }
+  if (provider === 'cursor' && handoff) {
+    const next = typeof action.handoff?.next === 'string' ? action.handoff.next.trim() : '';
+    lines.push('Handoff: делегируй куски работы внутри этого хода (подзадачи/агенты Cursor), без публикации наружу.'
+      + (next ? ' Дальше по плану: ' + next.slice(0, 350) : ''));
+  }
+  if (provider === 'cursor' && shell) {
+    lines.push('Разрешены shell-команды в рамках задания (inspect/scan). Не трогай секреты и чужие аккаунты.');
   }
   const labels = ['Разрешено без согласования', 'Требует согласования', 'Когда сообщить владельцу', 'Запрещено'];
   for (const [index, field] of fields.entries()) {
@@ -58,7 +73,7 @@ function taskInstructions(action, { quiet, provider, tools }, teamPrompt) {
   lines.push('', action.task.prompt);
   if (quiet) lines.push('', 'Если сообщать нечего — ответь одной строкой ' + quietMarker + '.');
   if (teamPrompt) lines.push('', teamPrompt);
-  if (provider === 'claude' && action.task.helpers === false) {
+  if ((provider === 'claude' || provider === 'cursor') && action.task.helpers === false) {
     lines.push('', 'Помощников не зови, всю работу делай сам: так попросил владелец.');
   }
   return lines.join('\n');
@@ -75,11 +90,27 @@ function quietResult(value) {
   return quietText(lines.pop()) === quietMarker && lines.filter(line => /^\s*```/.test(line)).length % 2 === 0;
 }
 
-export async function runSavedPrompt(action, plan, { signal, isCurrent, runCodexPrompt }, env = process.env) {
+function providerLabel(provider) {
+  if (provider === 'codex') return 'Codex';
+  if (provider === 'cursor') return 'Cursor';
+  return 'Claude';
+}
+
+export async function runSavedPrompt(action, plan, { signal, isCurrent, runCodexPrompt, runCursorPrompt }, env = process.env) {
   if (signal.aborted) return stopped;
+  if (plan.modelError) {
+    return { status: 'error', error: plan.modelError, text: plan.modelError };
+  }
+  const freshness = await checkSavedPromptFreshness(action, { env });
+  if (!freshness.ok) {
+    const message = 'источник протух: ' + freshness.path;
+    return { status: 'error', error: message, text: message, stale: true };
+  }
+
   const root = actionRoot(env);
-  const expected = path.join(await fs.realpath(root), 'autonomy', 'cc-workspace');
-  const logical = path.join(root, 'autonomy', 'cc-workspace');
+  const name = workspaceName(plan.provider);
+  const expected = path.join(await fs.realpath(root), 'autonomy', name);
+  const logical = path.join(root, 'autonomy', name);
   if (await physicalRecordPath(logical) !== expected) return deferred;
   await fs.mkdir(logical, { recursive: true, mode: 0o700 });
   const cwd = await fs.realpath(logical);
@@ -92,7 +123,10 @@ export async function runSavedPrompt(action, plan, { signal, isCurrent, runCodex
   const canLaunch = async () => {
     if (signal.aborted || await fs.realpath(logical) !== cwd || !await isCurrent()) return false;
     const { state } = await loadState(env);
-    return !signal.aborted && isDeepStrictEqual(savedPromptPlan(action, state, env, Boolean(runCodexPrompt)), plan);
+    return !signal.aborted && isDeepStrictEqual(
+      savedPromptPlan(action, state, env, Boolean(runCodexPrompt), Boolean(runCursorPrompt)),
+      plan,
+    );
   };
 
   const timeout = AbortSignal.timeout(plan.timeoutMs);
@@ -106,6 +140,11 @@ export async function runSavedPrompt(action, plan, { signal, isCurrent, runCodex
     if (plan.provider === 'codex') {
       result = await runCodexPrompt?.({ prompt, cwd, model: plan.model, tools: plan.tools,
         directories, denied, signal: turnSignal, canLaunch }, env);
+    } else if (plan.provider === 'cursor') {
+      result = await runCursorPrompt?.({
+        prompt, cwd, model: plan.model, continuous: plan.continuous, handoff: plan.handoff,
+        shell: plan.shell, actionId: action.id, signal: turnSignal, canLaunch, timeoutMs: plan.timeoutMs,
+      }, env);
     } else if (await canLaunch()) {
       const disallowedTools = ['mcp__*', 'Bash', 'Monitor', 'Skill', 'Workflow',
         ...denied.flatMap(value => ['Read', 'Edit'].map(tool => tool + '(/' + value + ')'))];
@@ -117,7 +156,7 @@ export async function runSavedPrompt(action, plan, { signal, isCurrent, runCodex
     }
   } catch {
     if (signal.aborted) return stopped;
-    return { status: 'error', error: 'не удалось запустить ' + (plan.provider === 'codex' ? 'Codex' : 'Claude') + ' для фоновой задачи' };
+    return { status: 'error', error: 'не удалось запустить ' + providerLabel(plan.provider) + ' для фоновой задачи' };
   }
   if (signal.aborted) return result?.fileCommitStarted ? { ...stopped, fileCommitStarted: true } : stopped;
   if (timeout.aborted && !result) return { status: 'error', error: 'ход прерван по сроку', timeout: true };

@@ -16,8 +16,9 @@ import { UNHANDLED } from './shared.mjs';
 export async function handleAutonomyRoute({ data, show, bot, chatId, state }) {
   // —— autonomy ——
   const codexAvailable = Boolean(bot[Symbol.for('msb.savedCodexPrompt')]);
+  const cursorAvailable = Boolean(bot[Symbol.for('msb.savedCursorPrompt')]);
   if (data === 'auto:what') return show(autonomyWhatScreen());
-  if (data === 'auto:tasks') return show(await autonomyTasksScreen(state, codexAvailable));
+  if (data === 'auto:tasks') return show(await autonomyTasksScreen(state, codexAvailable, cursorAvailable));
   if (data === 'auto:timers') return show(autonomyTimersScreen(await listLegacyTimers()));
   if (data.startsWith('auto:timer:')) {
     const id = data.slice('auto:timer:'.length);
@@ -61,7 +62,7 @@ export async function handleAutonomyRoute({ data, show, bot, chatId, state }) {
   }
   if (data.startsWith('auto:task:')) {
     const id = data.slice('auto:task:'.length);
-    const view = await savedActionViews(state, codexAvailable);
+    const view = await savedActionViews(state, codexAvailable, cursorAvailable);
     const action = view.actions.find(row => row.id === id);
     if (action) return show(savedActionCard(action, view));
     return show(placeholder(`Задача ${id.slice(0, 8)}`, 'auto:tasks'));
@@ -74,11 +75,11 @@ export async function handleAutonomyRoute({ data, show, bot, chatId, state }) {
         await changeSavedAction(id, deleteTask);
       } catch (error) {
         console.error('[msb/autonomy] Could not update reminder:', error.code || error.name);
-        const view = await autonomyTasksScreen(state, codexAvailable);
+        const view = await autonomyTasksScreen(state, codexAvailable, cursorAvailable);
         return show({ ...view, text: '⚠️ Не удалось изменить задачу.\n\n' + view.text });
       }
     }
-    return show(await autonomyTasksScreen(state, codexAvailable));
+    return show(await autonomyTasksScreen(state, codexAvailable, cursorAvailable));
   }
 
   return UNHANDLED;

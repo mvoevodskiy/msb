@@ -52,8 +52,8 @@ async function resumeNote(action, state, context) {
     return '📡 Пока действует ограничение частоты.';
   }
   if (action.task.kind === 'prompt') {
-    const plan = savedPromptPlan(action, state, process.env, context.codexAvailable);
-    if (!await promptRegistrationReady(plan?.provider, context.checkSavedCodex)) {
+    const plan = savedPromptPlan(action, state, process.env, context.codexAvailable, context.cursorAvailable);
+    if (!await promptRegistrationReady(plan?.provider, context.checkSavedCodex, process.env, context.checkSavedCursor)) {
       return '🔴 Запуск этой задачи на выбранном движке пока недоступен.';
     }
   }

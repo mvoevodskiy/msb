@@ -17,9 +17,9 @@ import { spentReminder } from '../../autonomy/reminder-schedule.mjs';
 import { escapeHtml } from '../edit.mjs';
 import { BLANK } from './shared.mjs';
 
-export async function savedActionViews(state, codexAvailable = false) {
+export async function savedActionViews(state, codexAvailable = false, cursorAvailable = false) {
   state ??= (await loadState()).state;
-  const view = { actions: [], state, codexAvailable, stopped: false, timezone: state.timezone || readConfig().timezone, now: Date.now() };
+  const view = { actions: [], state, codexAvailable, cursorAvailable, stopped: false, timezone: state.timezone || readConfig().timezone, now: Date.now() };
   if (!isLocalReminderEngine(state.engine)) return view;
   try {
     const [policy, { actions }, decisions] = await Promise.all([
@@ -32,7 +32,8 @@ export async function savedActionViews(state, codexAvailable = false) {
 }
 
 const kind = action => action.task.kind === 'reminder' ? 'напоминание' : 'сбор';
-const supported = (action, view) => action.task.kind === 'reminder' || Boolean(savedPromptPlan(action, view.state, process.env, view.codexAvailable));
+const supported = (action, view) => action.task.kind === 'reminder'
+  || Boolean(savedPromptPlan(action, view.state, process.env, view.codexAvailable, view.cursorAvailable));
 
 export function savedActionIsActive(action, view) {
   return reminderIsActive(action, view.decisions) && supported(action, view);

@@ -341,7 +341,11 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
 
   bot.command('autoactions', async (ctx) => {
     const { autonomyTasksScreen } = await import('./screens.mjs');
-    const view = await autonomyTasksScreen(undefined, Boolean(bot[Symbol.for('msb.savedCodexPrompt')]));
+    const view = await autonomyTasksScreen(
+      undefined,
+      Boolean(bot[Symbol.for('msb.savedCodexPrompt')]),
+      Boolean(bot[Symbol.for('msb.savedCursorPrompt')]),
+    );
     await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
   });
 
@@ -579,14 +583,16 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       signal.throwIfAborted();
       const reminderOwner = !entry.isAutoTurn && isAdmin(ctx, cfg.adminId) ? cfg.adminId : 0;
       const codexAvailable = Boolean(bot[Symbol.for('msb.savedCodexPrompt')]);
+      const cursorAvailable = Boolean(bot[Symbol.for('msb.savedCursorPrompt')]);
       const checkSavedCodex = codexAvailable ? bot[Symbol.for('msb.savedCodexPromptReady')] : undefined;
+      const checkSavedCursor = cursorAvailable ? bot[Symbol.for('msb.savedCursorPromptReady')] : undefined;
       const { state } = await loadState();
       signal.throwIfAborted();
       const paused = Boolean(state.costPaused);
       const bootstrapScope = !entry.scheduled && ctx.message && reminderOwner && state.extAuthBypass === 'codex'
         ? codexBootstrapScope(chatId, reminderOwner, thread) : undefined;
       const out = paused ? { ok: false, text: SPEND_PAUSED } : await runTurn({ prompt: entry.prompt ?? text, signal,
-        ...(reminderOwner ? { reminderOwner, checkSavedCodex } : {}),
+        ...(reminderOwner ? { reminderOwner, checkSavedCodex, checkSavedCursor } : {}),
         ...(bootstrapScope ? { bootstrapScope } : {}),
         ...(entry.isAutoTurn ? { isAutoTurn: true } : {}), onStatus: ev => {
         if (ev.kind === 'provider') history?.provider(ev.providerId);
@@ -609,7 +615,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         ownerId: reminderOwner, rail: out.reminderRail, ok: out.ok, chatId, threadId: thread,
         messageId: (ctx.message || ctx.callbackQuery?.message)?.message_id, openClawProfile: out.openClawProfile,
         timezone: cfg.timezone, now: now(), signal,
-        codexAvailable, checkSavedCodex,
+        codexAvailable, cursorAvailable, checkSavedCodex, checkSavedCursor,
       };
       const textEdits = prepareTaskTextMarkers(out.modelText ?? out.text);
       const reschedule = prepareTaskRescheduleMarkers(textEdits.text);
