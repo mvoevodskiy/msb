@@ -17,6 +17,7 @@ import { createSavedCodexQuotaReader } from '../adapters/saved-codex-quota.mjs';
 import { runSavedCursorPrompt, savedCursorPromptReady } from '../adapters/saved-cursor.mjs';
 import { clearPendingAuth } from '../auth.mjs';
 import { clearPendingLocalIp } from '../local-ssh.mjs';
+import { runLocalExtCallback } from '../local-ext.mjs';
 import { handleCallback } from './callbacks.mjs';
 import { handleAuthMessage } from './text-input.mjs';
 import { EXT_MARKER } from './shared.mjs';
@@ -60,6 +61,14 @@ export function installUpdateHook(BotClass, env = process.env) {
         }
         const handled = await runCallbackScope(render, () => handleCallback(this, event, closedCore));
         if (handled) return;
+        // После штатной обвязки: локальные пакеты владельца (новые callback_data).
+        const localHandled = await runCallbackScope(render, () => runLocalExtCallback({
+          bot: this,
+          cq: event,
+          closedCore,
+          data: String(event.data || ''),
+        }));
+        if (localHandled) return;
       }
       if (update?.message?.text) {
         const handled = await handleAuthMessage(this, event);

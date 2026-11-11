@@ -10,6 +10,10 @@
 который устанавливает PATH-shim и вызывает [`prepare`](integration/startup.mjs) до импорта ядра.
 [`install.mjs`](install.mjs) сохраняет прежние публичные экспорты `prepare` и `installUpdateHook`.
 
+Локальные пакеты владельца сервера (устойчивы к релизу/`applyExt`): каталог
+`<root>/local/ext/`, загрузчик [`local-ext.mjs`](local-ext.mjs),
+документация — [local-ext/README.md](local-ext/README.md).
+
 ## Выбор и авторизация
 
 | Задача | Модуль → функция / маршрут | Проверка |
@@ -131,8 +135,9 @@ constructor-запросы в `handleLocalConstructorRequest`; здесь же �
 
 | Подмодуль | Ответственность |
 |---|---|
-| [startup](integration/startup.mjs) | `prepare`: одна подготовка PATH, локального SSH и auth gate перед установкой hook |
-| [update-hook](integration/update-hook.mjs) | Startup owner/closed-core flags; owner guard до callback, отмены форм и текстового ввода; затем core passthrough |
+| [startup](integration/startup.mjs) | `prepare`: одна подготовка PATH, локального SSH, auth gate, hook и [`loadLocalExt`](local-ext.mjs) |
+| [update-hook](integration/update-hook.mjs) | Startup owner/closed-core flags; owner guard до callback, отмены форм и текстового ввода; overlay callback → local-ext callback → core passthrough |
+| [local-ext](local-ext.mjs) | Пакеты `<root>/local/ext/<id>/`; изоляция ошибок; skip при `msbApi` > контракта |
 | [callbacks](integration/callbacks.mjs) | Прежний порядок callback-ветвей; `true` поглощает событие, `false` передаёт его ядру |
 | [native-login](integration/native-login.mjs) | `ensureAndReport`, `prepareCodexRuntime`, `connectCodexNative` — прежняя последовательность CLI/native auth |
 | [text-input](integration/text-input.mjs) | Ввод локального IP и provider secret; используются общие pending-хранилища из `auth.mjs` / `local-ssh.mjs` |

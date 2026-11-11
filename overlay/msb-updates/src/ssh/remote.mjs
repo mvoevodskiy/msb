@@ -126,8 +126,11 @@ def install_file(src: pathlib.Path, dst: pathlib.Path):
 try:
   for f in files:
     rel = f["path"]
-    if ".." in rel.split("/"):
+    parts = [p for p in rel.replace("\\\\", "/").split("/") if p not in ("", ".")]
+    if not parts or ".." in parts:
       raise SystemExit("bad path " + rel)
+    if parts[0] == "local":
+      raise SystemExit("refusing local/ path: " + rel)
     data = base64.b64decode(f["b64"])
     digest = hashlib.sha256(data).hexdigest()
     if digest != f["sha256"]:
