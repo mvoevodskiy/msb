@@ -7,7 +7,13 @@ import { modelShortLabel } from './models.mjs';
 import { effectiveClaudeEffort } from './effort.mjs';
 import { resolveModel } from '../state.mjs';
 
-const TITLES = { claude: 'Claude Code', codex: 'Codex', cursor: 'Cursor', qwen: 'Qwen' };
+const TITLES = {
+  claude: 'Claude Code',
+  codex: 'Codex',
+  cursor: 'Cursor',
+  qwen: 'Qwen',
+  openai: 'OpenAI-совместимый',
+};
 
 /**
  * [Agent screen](../telegram/screens/agent.mjs) → read selected provider/model/effort.

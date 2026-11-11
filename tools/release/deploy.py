@@ -18,7 +18,7 @@ from transaction import backup_code, install_code, restore_code, validate_backup
 
 LIVE = Path('/home/client/.iia')
 UNIT = 'iia-bot@default.service'
-BACKUPS = Path('/var/lib/agentsmania-ops/releases')
+BACKUPS = Path('/var/lib/msb-ops/releases')
 PROTECTED = [LIVE / 'bots/default/state.json', LIVE / 'bots/default/ext-providers.json',
     Path('/home/client/.codex/config.toml'), Path('/home/client/.codex/auth.json'),
     LIVE / 'bots/default/.env', LIVE / '.env', LIVE / 'monitor/config.json']

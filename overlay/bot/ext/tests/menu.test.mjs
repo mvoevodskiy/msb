@@ -7,7 +7,7 @@ import { setActive } from '../store.mjs';
 import { writeEnvKey } from '../env.mjs';
 import { buildConnMenu, buildModelMenu, buildAgentMenu, buildEffortMenu, authPrompt } from '../menu.mjs';
 
-test('buildConnMenu marks active provider and lists all four', async () => {
+test('buildConnMenu marks active provider and lists CLI + openai-compat', async () => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-ext-'));
   const env = { MSB_BOT_ID: 'default' };
   await setActive('codex', env, home);
@@ -15,18 +15,27 @@ test('buildConnMenu marks active provider and lists all four', async () => {
 
   const menu = await buildConnMenu(env, home);
   assert.match(menu.text, /Codex/);
+  assert.match(menu.text, /OpenAI-совместимый/);
   const flat = menu.keyboard.inline_keyboard.flat().map((b) => b.callback_data);
   assert.ok(flat.includes('ext:conn:set:claude'));
   assert.ok(flat.includes('ext:conn:set:cursor'));
   assert.ok(flat.includes('ext:conn:set:codex'));
   assert.ok(flat.includes('ext:conn:set:qwen'));
+  assert.ok(flat.includes('ext:conn:set:openai'));
   assert.ok(flat.some((d) => d === 'ext:auth:cursor'));
+  assert.ok(flat.includes('ext:auth:openai'));
   assert.ok(flat.includes('settings:auth:switch-sub'));
   assert.ok(flat.includes('settings:auth:openrouter'), 'штатный OpenRouter');
   assert.ok(flat.includes('settings:engine:set:oc'), 'штатный OpenClaw');
   assert.ok(flat.includes('settings:engine:set:cc'), 'штатный движок Claude');
   assert.ok(flat.includes('menu:settings'), 'Назад из подключений → настройки');
   assert.ok(!flat.includes('menu:agent'), 'Назад не должен вести в Агент/Модель');
+});
+
+test('authPrompt for openai starts key/url/model wizard', () => {
+  const prompt = authPrompt('openai');
+  assert.match(prompt.text, /ключ/i);
+  assert.equal(prompt.step, 'key');
 });
 
 test('authPrompt for cursor', () => {

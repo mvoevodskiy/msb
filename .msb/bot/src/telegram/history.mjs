@@ -25,11 +25,11 @@ export async function beginTurnHistory({ input, env = process.env, now = Date.no
   const transcript = (at, row) => append(`transcripts/${at.slice(0, 10)}.jsonl`, { ts: at, turnId, providerId, ...row });
   await transcript(new Date(started).toISOString(), { role: 'user', text: query });
   return {
-    provider(value) { if (['claude', 'codex', 'cursor', 'qwen'].includes(value)) providerId = value; },
+    provider(value) { if (['claude', 'codex', 'cursor', 'qwen', 'openai'].includes(value)) providerId = value; },
     async finish({ status = 'error', text = '', delivered = false, result } = {}) {
       if (completed) return;
       completed = true;
-      if (['claude', 'codex', 'cursor', 'qwen'].includes(result?.providerId)) providerId = result.providerId;
+      if (['claude', 'codex', 'cursor', 'qwen', 'openai'].includes(result?.providerId)) providerId = result.providerId;
       const ended = now();
       const ts = new Date(ended).toISOString();
       const meta = { ts, turnId, providerId, status };

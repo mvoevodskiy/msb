@@ -38,6 +38,11 @@ export const PROVIDER_MODELS = Object.freeze({
     { id: 'qwen3-coder-flash', label: 'Qwen3 Coder Flash', desc: 'быстрее' },
     { id: 'qwen3.5-plus', label: 'Qwen3.5 Plus', desc: 'общая линия' },
   ],
+  openai: [
+    { id: 'openai/gpt-4.1-mini', label: 'GPT-4.1 Mini', desc: 'пример OpenRouter/OpenAI' },
+    { id: 'deepseek/deepseek-chat', label: 'DeepSeek Chat', desc: 'пример OpenRouter' },
+    { id: 'google/gemini-2.5-flash', label: 'Gemini 2.5 Flash', desc: 'пример OpenRouter' },
+  ],
 });
 
 function uniqById(list) {

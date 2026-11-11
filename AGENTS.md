@@ -80,7 +80,7 @@ OpenClaw-изменения.
 Главный агент проверяет выводы, интегрирует и коммитит только относящийся к цели код.
 Old master00f081f2220d0e6d3a186e8e1bb447b57acd6ebf; readable reference blob
 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11; provenance — .msb/bot/tests/reference/README.md.
-План и результаты оператора — соседний AgentsMania/deployment/ops/jar1/parity-audit-2026-11-07/.
+План и результаты оператора — `deployment/ops/jar1/parity-audit-2026-11-07/` (вне source/release).
 
 Решение владельца08.11.2026 по ключам сервисов: сохранять РАЗДЕЛЬНЫЕ настройки
 каждого бота. Core env list/set/delete работают с текущим per-bot файлом; не
@@ -113,5 +113,5 @@ bootstrap/OS-миграцию в рамках этой цели. Не объяв
 по локальному PASS: финальный source commit, проверка артефакта, startup и живая
 Telegram-приёмка фиксируются раздельно.
 
-Операторские инструкции и отчёты: соседний репозиторий AgentsMania/deployment/ops/jar1/.
+Операторские инструкции и отчёты: `deployment/ops/jar1/` (вне source/release).
 Не включать секреты, приватные архивы, node_modules и установленный runtime в Git.

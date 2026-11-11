@@ -87,7 +87,7 @@ python3 STAGE/ops/deploy.py --stage STAGE --apply
 
 ## Откат
 
-`applied.json` указывает private backup в `/var/lib/agentsmania-ops/releases/`.
+`applied.json` указывает private backup в `/var/lib/msb-ops/releases/`.
 
 ```sh
 python3 STAGE/ops/deploy.py --rollback BACKUP
@@ -97,7 +97,7 @@ python3 STAGE/ops/deploy.py --rollback BACKUP
 только код; новые сообщения, auth и настройки владельца остаются. Ошибка во
 время установки автоматически возвращает прежний код и проверяет его startup.
 Не использовать старые `candidate.patch` сборщики как параллельный путь выпуска.
-Исторические операторские отчёты остаются в AgentsMania, но сборка от них не зависит.
+Исторические операторские отчёты остаются в `deployment/ops/`, но сборка от них не зависит.
 
 ## Локальные Linux-проверки в Docker
 

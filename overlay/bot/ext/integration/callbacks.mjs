@@ -7,8 +7,9 @@ import { normalizePermissionMode } from '../../shared/permission-modes.mjs';
 import { isProviderId, getProvider } from '../providers.mjs';
 import { setActive } from '../store.mjs';
 import { providerConfigured } from '../env.mjs';
-import { buildConnMenu, buildModelMenu, buildAgentMenu, buildEffortMenu, buildPermModeMenu, authPrompt, switchedText, modelSwitchedText } from '../menu.mjs';
+import { buildConnMenu, buildModelMenu, buildAgentMenu, buildEffortMenu, buildPermModeMenu, authPrompt, openaiCompatPrompt, switchedText, modelSwitchedText } from '../menu.mjs';
 import { setPendingAuth } from '../auth.mjs';
+import { openaiCompatConfigured } from '../openai-compat.mjs';
 import { updateBotState } from '../state-update.mjs';
 import { syncExtAuthGate } from '../setup-bypass.mjs';
 import { applyProviderModel, applyProviderEffort } from '../apply-model.mjs';
@@ -86,11 +87,22 @@ export async function handleCallback(bot, cq, closedCore = false) {
     return false;
   }
 
-  if (['settings:auth:openrouter', 'settings:conn:set:openrouter', 'settings:engine:set:oc'].includes(data)) {
+  if (data === 'settings:engine:set:oc') {
     await bot.api.answerCallbackQuery(cq.id).catch(() => {});
     await editOrReply(bot, chatId, messageId,
       'Это подключение в текущем ядре не реализовано. Выбранный движок и сессия сохранены.',
       { inline_keyboard: [[{ text: '« Назад', callback_data: 'settings:conn' }]] });
+    return true;
+  }
+  if (data === 'settings:auth:openrouter' || data === 'settings:conn:set:openrouter') {
+    await bot.api.answerCallbackQuery(cq.id).catch(() => {});
+    if (await openaiCompatConfigured()) {
+      cq.data = 'ext:conn:set:openai';
+      return handleCallback(bot, cq, closedCore);
+    }
+    const prompt = openaiCompatPrompt('key');
+    setPendingAuth(userId, 'openai', chatId, { step: 'key', draft: {} });
+    await editOrReply(bot, chatId, messageId, prompt.text, prompt.keyboard);
     return true;
   }
   if (['settings:engine:set:cc', 'settings:conn:set:cc'].includes(data)) {
@@ -146,7 +158,7 @@ export async function handleCallback(bot, cq, closedCore = false) {
       await editOrReply(bot, chatId, messageId, prompt.text, prompt.keyboard);
       return true;
     }
-    if (id !== 'claude') {
+    if (id !== 'claude' && !p.noCli) {
       const ok = await ensureAndReport(bot, chatId, messageId, id);
       if (!ok) return true;
     }
@@ -241,7 +253,7 @@ export async function handleCallback(bot, cq, closedCore = false) {
     return false;
   }
 
-  // «🧠 Модель»: для Cursor/Codex/Qwen — свой список, не Claude Opus/Sonnet.
+  // «🧠 Модель»: для Cursor/Codex/Qwen/OpenAI — свой список, не Claude Opus/Sonnet.
   if (data === 'settings:model' || data.startsWith('settings:model:') || data.startsWith('ext:model:')) {
     if (ccOnly()) return false;
     if ((await readEngine()) === 'oc') return false;
@@ -249,6 +261,18 @@ export async function handleCallback(bot, cq, closedCore = false) {
     if (!store.active || store.active === 'claude') return false;
 
     await bot.api.answerCallbackQuery(cq.id).catch(() => {});
+
+    if (data === 'ext:model:custom:openai' && store.active === 'openai') {
+      setPendingAuth(userId, 'openai', chatId, { step: 'model-only', draft: {} });
+      await editOrReply(
+        bot,
+        chatId,
+        messageId,
+        '🌐 <b>Своя модель</b>\n\nПришли имя модели одним сообщением — как его ждёт endpoint.\n\nОтмена: « Назад.',
+        { inline_keyboard: [[{ text: '« Назад', callback_data: 'settings:model' }]] },
+      );
+      return true;
+    }
 
     const isSet = data.startsWith('ext:model:set:') || data.startsWith('settings:model:set:');
     if (!isSet) {
