@@ -76,6 +76,7 @@ export async function buildConnMenu(env = process.env, home) {
     '',
     'Выбери подключение или настрой авторизацию ниже.',
     'Cursor/Qwen — ключ в .env; Codex — ChatGPT login в ~/.codex (без секрета в Telegram).',
+    'OpenAI-совместимый — ключ + URL + имя модели (OpenRouter, Groq, локальный endpoint…).',
     '',
     'Память и файлы общие; при возврате к подключению продолжается его прежняя беседа.',
     '⠀',
@@ -112,6 +113,8 @@ export async function buildConnMenu(env = process.env, home) {
     ];
     if (p.authViaNative) {
       row.push(btn('🔐 Вход', `ext:auth:${p.id}`));
+    } else if (p.authViaWizard || p.id === 'openai') {
+      row.push(btn(has ? '⚙️ Заново' : '⚙️ Настроить', `ext:auth:${p.id}`));
     } else {
       row.push(btn(has ? '🔑 Новый ключ' : '🔑 Ключ', `ext:auth:${p.id}`));
     }
@@ -122,9 +125,54 @@ export async function buildConnMenu(env = process.env, home) {
   return { text: lines.join('\n'), keyboard: keyboard(rows), active: store.active, configured };
 }
 
+export function openaiCompatPrompt(step = 'key', draft = {}) {
+  const back = keyboard([[btn('« Назад', 'settings:auth')]]);
+  if (step === 'url') {
+    return {
+      text:
+        '🌐 <b>OpenAI-совместимый · URL</b>\n\n' +
+        'Пришли base URL API одним сообщением (обычно оканчивается на <code>/v1</code>).\n\n' +
+        'Примеры:\n' +
+        '• <code>https://openrouter.ai/api/v1</code>\n' +
+        '• <code>https://api.openai.com/v1</code>\n' +
+        '• <code>http://127.0.0.1:11434/v1</code>\n\n' +
+        'Отмена: « Назад.',
+      keyboard: back,
+      step: 'url',
+      draft,
+    };
+  }
+  if (step === 'model') {
+    return {
+      text:
+        '🌐 <b>OpenAI-совместимый · модель</b>\n\n' +
+        `URL: <code>${esc(draft.baseUrl || '—')}</code>\n\n` +
+        'Пришли имя модели одним сообщением — как его ждёт endpoint.\n\n' +
+        'Примеры: <code>openai/gpt-4.1-mini</code>, <code>deepseek/deepseek-chat</code>, <code>llama3.2</code>\n\n' +
+        'Отмена: « Назад.',
+      keyboard: back,
+      step: 'model',
+      draft,
+    };
+  }
+  return {
+    text:
+      '🌐 <b>OpenAI-совместимый · ключ</b>\n\n' +
+      'Три шага: ключ → URL → имя модели. Это станет основным каналом бота.\n\n' +
+      'Пришли API-ключ одним сообщением. Я сразу удалю его из чата.\n\n' +
+      'Отмена: « Назад.',
+    keyboard: back,
+    step: 'key',
+    draft,
+  };
+}
+
 export function authPrompt(providerId) {
   const p = getProvider(providerId);
   if (!p) return null;
+  if (p.id === 'openai' || p.authViaWizard) {
+    return openaiCompatPrompt('key');
+  }
   if (p.authViaNative) {
     return {
       text:
@@ -195,11 +243,15 @@ export async function buildModelMenu(env = process.env, home) {
     '',
     `Сейчас отвечает <b>${esc(title)}</b>, модель: <b>${esc(modelLabel(providerId, current) || current || '—')}</b>.`,
     '',
-    'Выбери модель этого провайдера. Список Claude сюда не относится.',
+    providerId === 'openai'
+      ? 'Имя модели задаётся строкой endpoint’а (не каталог Claude).'
+      : 'Выбери модель этого провайдера. Список Claude сюда не относится.',
     '',
     providerId === 'codex'
       ? '<i>Смена модели сохраняет текущую сессию.</i>'
-      : '<i>Смена модели начнёт новую беседу у CLI-провайдера.</i>',
+      : providerId === 'openai'
+        ? '<i>Смена модели сохраняет URL/ключ; новая беседа начнётся с следующего хода.</i>'
+        : '<i>Смена модели начнёт новую беседу у CLI-провайдера.</i>',
   ];
 
   const rows = [];
@@ -207,7 +259,9 @@ export async function buildModelMenu(env = process.env, home) {
     const mark = m.id === current ? ' ✓' : '';
     rows.push([btn(`${m.label}${mark}`, `ext:model:set:${m.id}`)]);
   }
-  if (!models.length) {
+  if (providerId === 'openai') {
+    rows.push([btn('✏️ Своя модель', 'ext:model:custom:openai')]);
+  } else if (!models.length) {
     lines.push('', 'Список моделей пуст — проверь CLI провайдера.');
   }
   rows.push([btn('« Назад', 'menu:agent')]);

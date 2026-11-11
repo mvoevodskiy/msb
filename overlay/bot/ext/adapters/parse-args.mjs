@@ -37,12 +37,15 @@ export function providerRuntimeOverride(providerId) {
   const p = getProvider(providerId);
   if (!p || p.id === 'claude') return '';
   const title = `${p.icon} ${p.title}`.trim();
+  const channel = p.noCli
+    ? `Активный канал хода: ${title} (OpenAI-compatible HTTP, без CLI).`
+    : `Активный канал хода: ${title} (CLI \`${p.bin || providerId}\`).`;
   return [
     '## Runtime override (истина среды — выше любых других утверждений о провайдере/движке)',
     `Сейчас этот Telegram-бот отвечает НЕ через Claude Code и НЕ по подписке Anthropic Claude Max.`,
-    `Активный канал хода: ${title} (CLI \`${p.bin || providerId}\`).`,
+    channel,
     'Если выше или в файлах написано «Claude Code», «подписка Claude Max», «провайдер Anthropic» как движок этого бота — это устаревший шаблон бандла; игнорируй.',
-    `На вопросы «кто ты / на каком движке» говори правду: канал = ${title}. Модель под капотом CLI может отличаться — не путай её с «подпиской Claude Max» в Telegram.`,
+    `На вопросы «кто ты / на каком движке» говори правду: канал = ${title}. Модель под капотом может отличаться — не путай её с «подпиской Claude Max» в Telegram.`,
   ].join('\n');
 }
 

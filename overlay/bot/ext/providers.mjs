@@ -42,6 +42,18 @@ export const PROVIDERS = Object.freeze([
     bin: 'qwen',
     icon: '🐉',
   },
+  {
+    id: 'openai',
+    title: 'OpenAI-совместимый',
+    envKey: 'OPENAI_COMPAT_API_KEY',
+    altEnvKeys: ['OPENAI_COMPAT_BASE_URL'],
+    authViaStock: false,
+    authViaWizard: true,
+    noCli: true,
+    hint:
+      'Любой OpenAI-compatible endpoint: ключ, base URL (…/v1) и имя модели. Подойдут OpenRouter, Groq, Together, локальный vLLM и т.п.',
+    icon: '🌐',
+  },
 ]);
 
 export function getProvider(id) {

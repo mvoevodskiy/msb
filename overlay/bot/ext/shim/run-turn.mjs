@@ -13,6 +13,7 @@ import { emit, emitInit, emitAssistantText, emitResult, emitError } from '../ada
 import { runCursorTurn, isCursorSessionId } from '../adapters/cursor.mjs';
 import { runCodexTurn } from '../adapters/codex.mjs';
 import { runQwenTurn } from '../adapters/qwen.mjs';
+import { runOpenaiTurn } from '../adapters/openai.mjs';
 import { isValidCodexThreadId } from '../codex-native.mjs';
 
 
@@ -74,6 +75,7 @@ async function runAlternate(providerId, argv) {
     parsed,
     cwd: process.cwd(),
     env: process.env,
+    userText,
   };
 
   let result;
@@ -89,6 +91,7 @@ async function runAlternate(providerId, argv) {
         },
       });
     } else if (providerId === 'qwen') result = await runQwenTurn(ctx);
+    else if (providerId === 'openai') result = await runOpenaiTurn(ctx);
     else {
       const fallbackId = encodeExtSession(providerId, 'unknown');
       emitError(`Неизвестный провайдер: ${providerId}`, fallbackId);

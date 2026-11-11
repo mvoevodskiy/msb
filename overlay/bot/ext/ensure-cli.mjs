@@ -136,6 +136,8 @@ async function installCursor(env, home) {
  */
 export async function ensureProviderCli(providerId, { env = process.env, home = env.HOME || os.homedir(), force = false } = {}) {
   if (providerId === 'claude') return { ok: true, skipped: true, bin: profile.envValue(env, 'MSB_REAL_CLAUDE') || 'claude' };
+  const meta = getProvider(providerId);
+  if (meta?.noCli) return { ok: true, skipped: true, bin: null };
 
   const envWithPath = { ...env, PATH: enrichPath(env, home) };
   if (!force) {

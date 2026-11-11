@@ -6,10 +6,16 @@
  */
 import { INPUT_TTL_MS } from '../shared/input-notices.mjs';
 
-const pending = new Map(); // userId -> { providerId, at, chatId }
+const pending = new Map(); // userId -> { providerId, at, chatId, step?, draft? }
 
-export function setPendingAuth(userId, providerId, chatId) {
-  pending.set(Number(userId), { providerId, chatId: Number(chatId), at: Date.now() });
+export function setPendingAuth(userId, providerId, chatId, extra = {}) {
+  pending.set(Number(userId), {
+    providerId,
+    chatId: Number(chatId),
+    at: Date.now(),
+    step: extra.step || 'key',
+    draft: extra.draft && typeof extra.draft === 'object' ? { ...extra.draft } : {},
+  });
 }
 
 export function clearPendingAuth(userId, { chatId } = {}) {

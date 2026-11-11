@@ -95,6 +95,10 @@ export async function providerConfigured(provider, env = process.env, home = env
     if (!directory) return false;
     if (await hasNativeCodexAuth(home, directory)) return true;
   }
+  if (provider.id === 'openai') {
+    const { openaiCompatConfigured } = await import('./openai-compat.mjs');
+    return openaiCompatConfigured(env, home);
+  }
   const keys = [provider.envKey, ...(provider.altEnvKeys || [])];
   for (const key of keys) {
     if (await readEnvKey(key, env, home)) return true;
