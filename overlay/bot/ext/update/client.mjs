@@ -5,7 +5,7 @@ import os from 'node:os';
 import crypto from 'node:crypto';
 import { detectCoreVersion, readUpdatesState, writeUpdatesState } from './core-id.mjs';
 import { isCoreCompatible } from './compat.mjs';
-import { assertSafeExtInstallPath } from './safe-path.mjs';
+import { resolveExtInstallTarget } from './safe-path.mjs';
 import { msbRoot } from '../paths.mjs';
 import profile from '../../shared/profile.cjs';
 
@@ -61,13 +61,12 @@ export async function applyExt(env = process.env, home = env.HOME || os.homedir(
     throw new Error('ext not compatible with core');
   }
   const live = msbRoot(home, env);
-  for (const f of release.files) {
-    // local/ — зона владельца; релиз/applyExt никогда не пишет и не чистит её.
-    const rel = assertSafeExtInstallPath(f.path);
+  // Validate all destinations before writing any release file.
+  const entries = await Promise.all(release.files.map(async file => [file, await resolveExtInstallTarget(live, file.path)]));
+  for (const [f, dest] of entries) {
     const buf = await downloadBlob(c, f.sha256);
     const digest = crypto.createHash('sha256').update(buf).digest('hex');
     if (digest !== f.sha256) throw new Error(`hash mismatch ${f.path}`);
-    const dest = path.join(live, rel);
     await fsp.mkdir(path.dirname(dest), { recursive: true });
     await fsp.writeFile(dest, buf, { mode: parseInt(f.mode || '644', 8) });
   }
