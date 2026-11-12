@@ -19,6 +19,7 @@ from transaction import backup_code, install_code, restore_code, validate_backup
 LIVE = Path('/home/client/.iia')
 UNIT = 'iia-bot@default.service'
 BACKUPS = Path('/var/lib/msb-ops/releases')
+LEGACY_BACKUPS = Path('/var/lib/agentsmania-ops/releases')
 PROTECTED = [LIVE / 'bots/default/state.json', LIVE / 'bots/default/ext-providers.json',
     Path('/home/client/.codex/config.toml'), Path('/home/client/.codex/auth.json'),
     LIVE / 'bots/default/.env', LIVE / '.env', LIVE / 'monitor/config.json']
@@ -163,9 +164,10 @@ def apply(stage):
 
 def rollback(backup):
     assert_host()
-    backup = backup.resolve()
-    if backup.parent != BACKUPS or backup.is_symlink():
+    resolved = backup.resolve()
+    if backup.is_symlink() or resolved.parent not in (BACKUPS, LEGACY_BACKUPS):
         raise ValueError('Rollback must name a recorded JAR1 release backup')
+    backup = resolved
     value = json.loads((backup / 'plan.json').read_text())['plan']
     if inventory(LIVE) != value['after']:
         raise RuntimeError('The live code differs from this release; inspect before rollback')

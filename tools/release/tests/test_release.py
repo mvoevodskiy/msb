@@ -219,6 +219,34 @@ class ReleaseTest(unittest.TestCase):
         with self.assertRaisesRegex(RuntimeError, 'verification on Linux'):
             deploy.verify_checks(stage, release)
 
+    def test_rollback_checks_backups_in_both_release_roots(self):
+        import deploy
+        from unittest.mock import patch
+
+        current = (self.root / 'msb-ops/releases').resolve()
+        legacy = (self.root / 'agentsmania-ops/releases').resolve()
+        outside = (self.root / 'unrecorded/releases').resolve()
+        for root in (current, legacy, outside):
+            backup = root / 'fixture'
+            backup.mkdir(parents=True)
+            (backup / 'plan.json').write_text('{"plan":{"after":{}}}')
+        alias = legacy / 'alias'
+        alias.symlink_to(legacy / 'fixture', target_is_directory=True)
+
+        with (patch.object(deploy, 'BACKUPS', current),
+              patch.object(deploy, 'LEGACY_BACKUPS', legacy, create=True),
+              patch.object(deploy, 'assert_host'), patch.object(deploy, 'inventory', return_value={}),
+              patch.object(deploy, 'validate_backup', side_effect=RuntimeError('fixture validation')) as validate):
+            for root in (current, legacy):
+                with self.subTest(root=root):
+                    with self.assertRaisesRegex(RuntimeError, 'fixture validation'):
+                        deploy.rollback(root / 'fixture')
+                    validate.assert_called_with(deploy.LIVE, root / 'fixture')
+            for invalid in (outside / 'fixture', alias):
+                with self.subTest(invalid=invalid):
+                    with self.assertRaisesRegex(ValueError, 'recorded JAR1 release backup'):
+                        deploy.rollback(invalid)
+
     def test_live_node_and_dependencies_must_match_verified_linux_environment(self):
         import deploy
         from unittest.mock import patch

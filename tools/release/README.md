@@ -88,6 +88,7 @@ python3 STAGE/ops/deploy.py --stage STAGE --apply
 ## Откат
 
 `applied.json` указывает private backup в `/var/lib/msb-ops/releases/`.
+Ранее записанные точки из `/var/lib/agentsmania-ops/releases/` доступны той же команде.
 
 ```sh
 python3 STAGE/ops/deploy.py --rollback BACKUP
