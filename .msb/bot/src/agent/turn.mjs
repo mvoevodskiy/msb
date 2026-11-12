@@ -28,8 +28,10 @@ import {mcpInstallPrompt} from '../mcp/install-protocol.mjs';
 import {nativeMcpScope} from '../../shared/mcp-native-scope.mjs';
 
 export function supportsCodexAttachments(state, env = process.env) {
+  // The existing provider switch and shim allow an explicitly selected Codex
+  // with MSB_CC_ONLY=1; the strict JARVIS_CC_ONLY guard still disables it.
   return state.engine !== 'oc' && state.extAuthBypass === 'codex' &&
-    env.MSB_CC_ONLY !== '1' && env.JARVIS_CC_ONLY !== '1';
+    env.JARVIS_CC_ONLY !== '1';
 }
 
 /**
