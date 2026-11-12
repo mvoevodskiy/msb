@@ -33,6 +33,7 @@ export async function buildSystemPrompt({ env = process.env, workspace = workspa
       `Рабочий каталог: ${JSON.stringify(cwd)}.`,
       `Базовый workspace: ${JSON.stringify(workspace)}. Проекты: ${JSON.stringify(projectLocations(env,workspace).root)}.`,
       'Файлы .media/* — фото и медиа от клиента, безопасно читать.',
+      'Отправка медиа клиенту: [ФОТО: путь], [ФАЙЛ: путь], [СТИКЕР: путь], [ВИДЕО: путь], [АУДИО: путь], [ГОЛОС: путь], [GIF: путь]. Опциональная подпись через пробел после пути. Маркеры убираются из текста ответа и файлы уходят отдельными сообщениями Telegram.',
       'Не выдумывай секреты и чужие продукты. На необратимом — спроси.',
     ].join('\n'),
   );

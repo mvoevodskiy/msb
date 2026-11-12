@@ -9,7 +9,7 @@ import {resetCliConversation} from '../sessions/selection.mjs';
  * Карточка после знакомства Codex → [services](./bootstrap-services.mjs).
  * Формы → [dispatcher](./forms.mjs); pending в этом процессе; записи → [state](../state.mjs) / [env](../env/store.mjs).
  * Индикация → [progress](./progress.mjs), итог → [response](./response.mjs).
- * Вложения → [attachments](./attachments.mjs).
+ * Вложения → [attachments](./attachments.mjs); исходящие файлы → [media-markers](./media-markers.mjs) + [send-media](./send-media.mjs).
  * Диагностика Codex добавляется после обработки подлинного текста модели.
  * План/комментарий → [plan actions](./plan-actions.mjs) → тот же inbox; final marker → [plan](./plan.mjs).
  * Лимиты автономки из ответа → [limit markers](./limit-markers.mjs) → [подтверждение](./limit-confirmation.mjs).
@@ -21,7 +21,7 @@ import {resetCliConversation} from '../sessions/selection.mjs';
  * Skills command read options/OC loading → [read presentation](./skills-read.mjs), native OC reader is injectable.
  * Проверки: [inbox lifecycle](../../tests/inbox-lifecycle.test.mjs),
  * [polling/stop](../../tests/turn-lifecycle.test.mjs), [forms/menu](../../tests/menu-handlers.test.mjs),
- * [attachments](../../tests/attachments.test.mjs).
+ * [attachments](../../tests/attachments.test.mjs), [media-markers](../../tests/media-markers.test.mjs).
  */
 import { Bot } from 'grammy';
 import { autoRetry } from '@grammyjs/auto-retry';
@@ -31,6 +31,8 @@ import { BOOTSTRAP_SERVICE_INPUT, PendingInputs, pendingInputNotice } from './pe
 import { bootstrapServiceOwnsInput, deliverBootstrapServices } from './bootstrap-services.mjs';
 import { recognizeVoice, voicePreview, STT_ONBOARDING } from './voice.mjs';
 import { attachmentStatusText, createAttachmentAlbums, prepareAttachment } from './attachments.mjs';
+import { extractMediaMarkers } from './media-markers.mjs';
+import { sendMediaQueue } from './send-media.mjs';
 import { startTurnProgress } from './progress.mjs';
 import { createInbox, isForwarded } from './inbox.mjs';
 import { prepareBatch, batchStatus } from './batch.mjs';
@@ -633,7 +635,9 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       const controlled = await processTaskControlMarkers(cancelled, autonomy);
       const timers = await processLegacyTimerMarkers(controlled, autonomy, ctx, legacyTimers);
       const actionText = await processLimitMarkers(timers, autonomy, ctx);
-      const replyText = await processInstallMarkers({ ...out, text: actionText }, { signal, readProvider: bot[Symbol.for('msb.mcpProvider')] });
+      const installedText = await processInstallMarkers({ ...out, text: actionText }, { signal, readProvider: bot[Symbol.for('msb.mcpProvider')] });
+      const media = extractMediaMarkers(installedText);
+      const replyText = media.text;
       signal.throwIfAborted();
       turn.completed = true;
       responseReady = true;
@@ -646,6 +650,9 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         context: out.partialReply ? out.partialReply.context : result?.context,
       } : {}, { restoreText });
       deliveredText = restoreText(parsePlanResponse(replyText)?.cleanText ?? replyText); delivered = true;
+      if (media.items.length) {
+        await sendMediaQueue(ctx.api, chatId, media.items, { threadId: thread });
+      }
     } catch (err) {
       await progress?.stop();
       if (signal.aborted) await stopped().catch(() => {});
