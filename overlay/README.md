@@ -11,6 +11,7 @@
 |---|---|
 | [bot/run.mjs](bot/run.mjs) | Profile preload → PATH-shim → integration prepare → установленный core index |
 | [bot/ext](bot/ext/README.md) | Меню, auth, adapters, shim, integration |
+| [bot/ext/local-ext](bot/ext/local-ext/README.md) | Локальные пакеты `<root>/local/ext/` вне релиза |
 | [install.sh](install.sh) | Наложение overlay на установку; не JAR1 release transaction |
 | [systemd drop-in](bot/systemd/60-ext-entry.conf) | Переключение entrypoint службы на `run.mjs` |
 | [msb-updates](msb-updates/README.md) | Отдельный сервис публикации/установки |

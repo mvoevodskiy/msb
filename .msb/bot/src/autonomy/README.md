@@ -123,6 +123,30 @@ scheduler-процессами. При изменении задачи во вр
 профиля. [Правила Codex](../../../../overlay/bot/ext/adapters/saved-codex.mjs)
 задают отдельный маршрут.
 
+### Saved-prompt на Cursor
+
+При `extAuthBypass=cursor` [провайдер](./prompt-policy.mjs) возвращает `cursor`
+без Claude OAuth. Обычный `ordinarySavedPrompt` по-прежнему узкий (Claude/Codex).
+Для Cursor работает `legacyCursorSavedPrompt`: допускает legacy-поля из
+`actions.json` — `task.freshness`, `inspect`+`scan`+`shell`, `memory=continuous`,
+`handoff`. Вне допуска (P2): `verify`, `sources[]`, `act`+`requiresApproval`.
+
+| Поле / условие | Claude/Codex ordinary | Cursor legacy |
+|---|---|---|
+| profile narrow/standard, capability none/read | да | да |
+| profile inspect + capability scan + shell | нет | да |
+| task.freshness | нет | да → [проверка](./prompt-freshness.mjs) до spawn |
+| continuous / handoff | нет | да |
+| verify / sources / act+approval | нет | нет |
+
+Таймаут Cursor: умолчание **20 мин (1200 с)**; `budget.maxRunSeconds` уважается
+с потолком **3600 с**. Workspace — `autonomy/cursor-workspace` (отдельно от
+`cc-workspace`). Continuous session id — `autonomy/cursor-sessions.json` по
+`action.id`; сбой resume → явный `error`/`deferred`, не тихий cold start.
+Раннер: [saved-cursor](../../../../overlay/bot/ext/adapters/saved-cursor.mjs).
+Due без plan → одна строка `[msb/reminder] skip … reason=no-plan` в journal.
+[Проверки](../../tests/saved-cursor-prompt.test.mjs).
+
 [Отправка напоминания](./reminder-dispatch.mjs) учитывает сохранённый чат владельца и
 [флаги автономки](./reminder-policy.mjs). Она записывает попытку до запроса
 Telegram, чтобы следующему процессу не досталась та же запись. Сбой между

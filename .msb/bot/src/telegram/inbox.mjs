@@ -42,13 +42,13 @@ export function createInbox({ run, status, cancel, canRun = () => true, onError 
   function kick() {
     if (closed || active || !canRun() || !queue[0]?.ready) return;
     const entry = queue.shift();
-    // The old worker merges adjacent, already waiting text, never voices/batches.
-    if (!entry.items && !entry.voice) {
+    // The old worker merges adjacent, already waiting text, never voices/batches/attachments.
+    if (!entry.items && !entry.voice && !entry.attachment) {
       const texts = [entry.text], prompts = [textPrompt(entry)]; let chars = prompts[0].length;
       let isAutoTurn = Boolean(entry.scheduled);
       while (texts.length < 20) {
         const next = queue[0];
-        if (!next?.ready || next.items || next.voice || keyOf(next) !== keyOf(entry)) break;
+        if (!next?.ready || next.items || next.voice || next.attachment || keyOf(next) !== keyOf(entry)) break;
         const prompt = textPrompt(next);
         if (chars + prompt.length > 1_000_000) break;
         queue.shift(); chars += prompt.length; texts.push(next.text); prompts.push(prompt);

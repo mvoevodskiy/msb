@@ -3,12 +3,13 @@ import {resetCliConversation} from '../sessions/selection.mjs';
 /**
  * createBot собирает входящие Telegram события и lifecycle хода; UI не хранит
  * provider session отдельно. Вход: [main](../main.mjs), owner → [auth](./auth.mjs).
- * Текст/voice и [таймер](../autonomy/legacy-dispatch.mjs) → [inbox](./inbox.mjs) → executeTurn → [agent](../agent/turn.mjs).
+ * Текст/voice/вложения и [таймер](../autonomy/legacy-dispatch.mjs) → [inbox](./inbox.mjs) → executeTurn → [agent](../agent/turn.mjs).
  * UI read/delivery lifecycle → [shared callbacks](../../shared/callback-renders.mjs).
  * Кнопки → [router](./router.mjs) → routes/; вид → [screens](./screens.mjs).
  * Карточка после знакомства Codex → [services](./bootstrap-services.mjs).
  * Формы → [dispatcher](./forms.mjs); pending в этом процессе; записи → [state](../state.mjs) / [env](../env/store.mjs).
  * Индикация → [progress](./progress.mjs), итог → [response](./response.mjs).
+ * Вложения → [attachments](./attachments.mjs); исходящие файлы → [media-markers](./media-markers.mjs) + [send-media](./send-media.mjs).
  * Owner stop may deliver the frozen [Claude fragment](../agent/claude.mjs) without running response actions.
  * Диагностика CLI добавляется после обработки подлинного текста модели.
  * План/комментарий → [plan actions](./plan-actions.mjs) → тот же inbox; final marker → [plan](./plan.mjs).
@@ -20,7 +21,8 @@ import {resetCliConversation} from '../sessions/selection.mjs';
  * Prepared skills views/chunks → [view delivery](./view-delivery.mjs), context reply retained.
  * Skills command read options/OC loading → [read presentation](./skills-read.mjs), native OC reader is injectable.
  * Проверки: [inbox lifecycle](../../tests/inbox-lifecycle.test.mjs),
- * [polling/stop](../../tests/turn-lifecycle.test.mjs), [forms/menu](../../tests/menu-handlers.test.mjs).
+ * [polling/stop](../../tests/turn-lifecycle.test.mjs), [forms/menu](../../tests/menu-handlers.test.mjs),
+ * [attachments](../../tests/attachments.test.mjs), [media-markers](../../tests/media-markers.test.mjs).
  */
 import { Bot } from 'grammy';
 import { autoRetry } from '@grammyjs/auto-retry';
@@ -29,6 +31,9 @@ import { handleFormInput } from './forms.mjs';
 import { BOOTSTRAP_SERVICE_INPUT, PendingInputs, pendingInputNotice } from './pending-input.mjs';
 import { bootstrapServiceOwnsInput, deliverBootstrapServices } from './bootstrap-services.mjs';
 import { recognizeVoice, voicePreview, STT_ONBOARDING } from './voice.mjs';
+import { attachmentStatusText, createAttachmentAlbums, prepareAttachment } from './attachments.mjs';
+import { extractMediaMarkers } from './media-markers.mjs';
+import { sendMediaQueue } from './send-media.mjs';
 import { startTurnProgress } from './progress.mjs';
 import { createInbox, isForwarded } from './inbox.mjs';
 import { prepareBatch, batchStatus } from './batch.mjs';
@@ -96,6 +101,13 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       return turn.done;
     },
   });
+  const albums = createAttachmentAlbums({
+    onReady: (entry) => {
+      if (stopping) return;
+      entry.ready = undefined;
+      inbox.push(entry);
+    },
+  });
   function showInboxStatus(entry, text) {
     const revision = entry.statusRevision = (entry.statusRevision || 0) + 1;
     entry.presentation = (entry.presentation || Promise.resolve()).catch(() => {}).then(async () => {
@@ -133,6 +145,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   bot.stop = async () => {
     stopping = true;
     pending.clear();
+    albums.clear();
     stopCallbackRenders(bot);
     const turns = [...unfinished];
     const drainInbox = inbox.shutdown();
@@ -247,6 +260,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
 
   bot.command('stop', async (ctx) => {
     stopEpoch++;
+    albums.clear();
     const queued = inbox.clear();
     if (interruptActiveTurns() || queued) {
       await ctx.reply('Моя остановочка ✋🏽⛔️');
@@ -341,7 +355,11 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
 
   bot.command('autoactions', async (ctx) => {
     const { autonomyTasksScreen } = await import('./screens.mjs');
-    const view = await autonomyTasksScreen(undefined, Boolean(bot[Symbol.for('msb.savedCodexPrompt')]));
+    const view = await autonomyTasksScreen(
+      undefined,
+      Boolean(bot[Symbol.for('msb.savedCodexPrompt')]),
+      Boolean(bot[Symbol.for('msb.savedCursorPrompt')]),
+    );
     await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
   });
 
@@ -532,7 +550,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         .then(() => { deliveredText = 'Моя остановочка ✋🏽⛔️'; delivered = true; }).catch(() => {});
     };
     try {
-      if (!voice && !entry.items) history = await beginTurnHistory({ input: text });
+      if (!voice && !entry.items && !entry.attachment) history = await beginTurnHistory({ input: text });
       const thread = (ctx.message || ctx.callbackQuery?.message)?.message_thread_id;
       try { await entry.presentation; }
       catch {
@@ -544,7 +562,11 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         transcription = await ctx.reply('🎙 Расшифровываю...', thread && thread !== 1 ? { message_thread_id: thread } : {});
         if (signal.aborted) { await stopped(); return; }
       }
-      const initialText = entry.items ? batchStatus(entry) : 'Думаю ⏳';
+      const initialText = entry.items
+        ? batchStatus(entry)
+        : entry.attachment
+          ? attachmentStatusText(entry.attachment === 'video' && ctx.message?.video_note ? 'video_note' : entry.attachment)
+          : 'Думаю ⏳';
       if (status) await ctx.api.editMessageText(chatId, status.message_id, initialText, {}, presentationSignal(AbortSignal.any([signal, AbortSignal.timeout(15_000)])));
       else {
         const request = entry.scheduled ? presentationSignal(AbortSignal.any([signal, AbortSignal.timeout(15_000)])) : undefined;
@@ -557,7 +579,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         }
       }
       if (signal.aborted) { await stopped(); return; }
-      progress = startTurnProgress(ctx, status.message_id, { signal, preparing: voice || Boolean(entry.items) });
+      progress = startTurnProgress(ctx, status.message_id, { signal, preparing: voice || Boolean(entry.items) || Boolean(entry.attachment) });
       if (voice) {
         const recognized = await recognizeVoice(ctx, cfg.botToken, signal);
         signal.throwIfAborted();
@@ -570,6 +592,12 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         history = await beginTurnHistory({ input: recognized.transcript.slice(0, 300) });
         progress.beginThinking();
       }
+      if (entry.attachment) {
+        text = await prepareAttachment(entry, cfg.botToken, signal);
+        signal.throwIfAborted();
+        history = await beginTurnHistory({ input: text.slice(0, 300) });
+        progress.beginThinking();
+      }
       if (entry.items) {
         text = await prepareBatch(entry, cfg.botToken, signal);
         signal.throwIfAborted();
@@ -579,14 +607,16 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       signal.throwIfAborted();
       const reminderOwner = !entry.isAutoTurn && isAdmin(ctx, cfg.adminId) ? cfg.adminId : 0;
       const codexAvailable = Boolean(bot[Symbol.for('msb.savedCodexPrompt')]);
+      const cursorAvailable = Boolean(bot[Symbol.for('msb.savedCursorPrompt')]);
       const checkSavedCodex = codexAvailable ? bot[Symbol.for('msb.savedCodexPromptReady')] : undefined;
+      const checkSavedCursor = cursorAvailable ? bot[Symbol.for('msb.savedCursorPromptReady')] : undefined;
       const { state } = await loadState();
       signal.throwIfAborted();
       const paused = Boolean(state.costPaused);
       const bootstrapScope = !entry.scheduled && ctx.message && reminderOwner && state.extAuthBypass === 'codex'
         ? codexBootstrapScope(chatId, reminderOwner, thread) : undefined;
       const out = paused ? { ok: false, text: SPEND_PAUSED } : await runTurn({ prompt: entry.prompt ?? text, signal,
-        ...(reminderOwner ? { reminderOwner, checkSavedCodex } : {}),
+        ...(reminderOwner ? { reminderOwner, checkSavedCodex, checkSavedCursor } : {}),
         ...(bootstrapScope ? { bootstrapScope } : {}),
         ...(entry.isAutoTurn ? { isAutoTurn: true } : {}), onStatus: ev => {
         if (ev.kind === 'provider') history?.provider(ev.providerId);
@@ -609,7 +639,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         ownerId: reminderOwner, rail: out.reminderRail, ok: out.ok, chatId, threadId: thread,
         messageId: (ctx.message || ctx.callbackQuery?.message)?.message_id, openClawProfile: out.openClawProfile,
         timezone: cfg.timezone, now: now(), signal,
-        codexAvailable, checkSavedCodex,
+        codexAvailable, cursorAvailable, checkSavedCodex, checkSavedCursor,
       };
       const textEdits = prepareTaskTextMarkers(out.modelText ?? out.text);
       const reschedule = prepareTaskRescheduleMarkers(textEdits.text);
@@ -624,7 +654,9 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       const controlled = await processTaskControlMarkers(cancelled, autonomy);
       const timers = await processLegacyTimerMarkers(controlled, autonomy, ctx, legacyTimers);
       const actionText = await processLimitMarkers(timers, autonomy, ctx);
-      const replyText = await processInstallMarkers({ ...out, text: actionText }, { signal, readProvider: bot[Symbol.for('msb.mcpProvider')] });
+      const installedText = await processInstallMarkers({ ...out, text: actionText }, { signal, readProvider: bot[Symbol.for('msb.mcpProvider')] });
+      const media = extractMediaMarkers(installedText);
+      const replyText = media.text;
       signal.throwIfAborted();
       turn.completed = true;
       responseReady = true;
@@ -637,6 +669,9 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         context: out.partialReply ? out.partialReply.context : result?.context,
       } : {}, { restoreText });
       deliveredText = restoreText(parsePlanResponse(replyText)?.cleanText ?? replyText); delivered = true;
+      if (media.items.length) {
+        await sendMediaQueue(ctx.api, chatId, media.items, { threadId: thread });
+      }
     } catch (err) {
       await progress?.stop();
       if (signal.aborted) await stopped().catch(() => {});
@@ -650,7 +685,9 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         } else {
           const error = voice && !transcribed
             ? `❌ Не удалось обработать голосовое: ${String(err.message).slice(0, 200)}\n\nПопробуй ещё раз или напиши текстом.`
-            : `❌ Ошибка: ${String(err.message).slice(0, 300)}`;
+            : entry.attachment
+              ? `❌ Ошибка: ${String(err.message).slice(0, 200)}`
+              : `❌ Ошибка: ${String(err.message).slice(0, 300)}`;
           await deliverTurnResponse(ctx, status?.message_id, error, {}, { allowPlan: false });
           deliveredText = error; delivered = true;
         }
@@ -672,13 +709,87 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     inbox.push({ ctx, text: '', voice: true });
   });
 
-  bot.on(['message:photo', 'message:video', 'message:document'], async (ctx) => {
+  async function acceptAttachment(ctx, kind, build) {
     const { state } = await loadState();
     if (isSetupMode(state)) {
       await ctx.reply('Сначала подключи AI: /start');
       return;
     }
-    await ctx.reply('Обработка вложений в текущем Telegram-ядре пока не подключена. Перешли задачу текстом.');
+    if (stopping) return;
+    const groupId = ctx.message?.media_group_id;
+    if (groupId && (kind === 'photo' || kind === 'video' || kind === 'document')) {
+      const piece = build(true);
+      const entry = kind === 'photo' ? albums.addPhoto(groupId, piece)
+        : kind === 'video' ? albums.addVideo(groupId, piece)
+          : albums.addDocument(groupId, piece);
+      if (!entry.status) {
+        try {
+          entry.status = await ctx.reply(
+            kind === 'document' ? '📎 Получаю файлы...' : kind === 'photo' ? '🖼 Получаю медиа...' : '🎥 Получаю медиа...',
+          );
+        } catch { /* status optional */ }
+      }
+      return;
+    }
+    inbox.push(build(false));
+  }
+
+  bot.on('message:photo', async ctx => {
+    const photos = ctx.message?.photo;
+    const best = photos?.[photos.length - 1];
+    if (!best) return;
+    await acceptAttachment(ctx, 'photo', (album) => album
+      ? { ctx, photos: [{ fileId: best.file_id, fileSize: best.file_size }], caption: ctx.message.caption }
+      : { ctx, text: '', attachment: 'photo' });
+  });
+
+  bot.on(['message:video', 'message:video_note'], async ctx => {
+    const video = ctx.message?.video || ctx.message?.video_note;
+    if (!video) return;
+    await acceptAttachment(ctx, 'video', (album) => album
+      ? {
+        ctx,
+        videos: [{
+          fileId: video.file_id,
+          fileSize: video.file_size,
+          duration: video.duration || 0,
+          isNote: Boolean(ctx.message?.video_note),
+        }],
+        caption: ctx.message.caption,
+      }
+      : { ctx, text: '', attachment: 'video' });
+  });
+
+  bot.on('message:animation', async ctx => {
+    if (!ctx.message?.animation) return;
+    await acceptAttachment(ctx, 'animation', () => ({ ctx, text: '', attachment: 'animation' }));
+  });
+
+  bot.on('message:document', async ctx => {
+    const doc = ctx.message?.document;
+    if (!doc) return;
+    await acceptAttachment(ctx, 'document', (album) => album
+      ? {
+        ctx,
+        docs: [{
+          fileId: doc.file_id,
+          fileName: doc.file_name || 'document',
+          fileSize: doc.file_size || 0,
+          mimeType: doc.mime_type || '',
+        }],
+        caption: ctx.message.caption,
+      }
+      : { ctx, text: '', attachment: 'document' });
+  });
+
+  bot.on('message:sticker', async ctx => {
+    if (!ctx.message?.sticker) return;
+    await acceptAttachment(ctx, 'sticker', () => ({ ctx, text: '', attachment: 'sticker' }));
+  });
+
+  bot.on('message:audio', async ctx => {
+    if (!ctx.message?.audio) return;
+    await acceptAttachment(ctx, 'audio', () => ({ ctx, text: '', attachment: 'audio' }));
   });
 
   // set commands after start

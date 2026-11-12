@@ -58,6 +58,7 @@ export async function runAgentTurn({
   isAutoTurn = false,
   reminderOwner = 0,
   checkSavedCodex,
+  checkSavedCursor,
   bootstrapScope,
   env = process.env,
 } = {}) {
@@ -122,7 +123,7 @@ export async function runAgentTurn({
   const permissionMode = resolvePermMode(state, cliVersion);
   const extra = [conversationalModePrompt(state), skillInstallPrompt(skillInstall), mcpInstallPrompt(mcpInstall)];
   const reminderRail = reminderOwner && !autonomy && !isAutoTurn && isLocalReminderEngine(state.engine);
-  if (reminderRail) extra.push(await reminderPrompt(state, reminderOwner, env, checkSavedCodex));
+  if (reminderRail) extra.push(await reminderPrompt(state, reminderOwner, env, checkSavedCodex, checkSavedCursor));
   const systemPrompt = await buildSystemPrompt({ env, workspace: baseWorkspace, cwd, timezone: state.timezone || 'UTC',
     now: contextNow, extra: extra.filter(Boolean).join('\n\n') });
 

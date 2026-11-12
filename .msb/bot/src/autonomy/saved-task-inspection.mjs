@@ -41,7 +41,9 @@ function silentSince(action, { runs, now, timezone, uptimeMs }) {
   return expected;
 }
 
-export async function readSavedTaskList(records, state, policy, { now, timezone, codexAvailable, checkSavedCodex }) {
+export async function readSavedTaskList(records, state, policy, {
+  now, timezone, codexAvailable, cursorAvailable, checkSavedCodex, checkSavedCursor,
+}) {
   const [jobs, timers, decisions, runs] = await Promise.all([
     readNativeJobMap().catch(() => null),
     listLegacyTimers(),
@@ -52,15 +54,24 @@ export async function readSavedTaskList(records, state, policy, { now, timezone,
   const spent = enabled.filter(savedTaskSpent);
   const ownerPaused = records.filter(action => !action.enabled && action.disabledReason === 'owner');
   const active = enabled.filter(action => !savedTaskSpent(action));
-  const codexReady = active.some(action => action.task.kind === 'prompt') && state.extAuthBypass === 'codex'
+  const hasPrompt = active.some(action => action.task.kind === 'prompt');
+  const codexReady = hasPrompt && state.extAuthBypass === 'codex'
     ? await promptRegistrationReady('codex', checkSavedCodex) : false;
+  const cursorReady = hasPrompt && state.extAuthBypass === 'cursor'
+    ? await promptRegistrationReady('cursor', checkSavedCodex, process.env, checkSavedCursor) : false;
   const uptimeMs = process.uptime() * 1000;
   const entries = active.map(action => {
     const job = jobs && Object.hasOwn(jobs, action.id) ? jobs[action.id] : undefined;
     const zone = savedTaskTimezone(action, timezone, job);
     const local = jobs && isLocalSavedAction(action, jobs);
-    const plan = local && action.task.kind === 'prompt' ? savedPromptPlan(action, state, process.env, codexAvailable) : undefined;
-    const available = Boolean(job || local && (action.task.kind === 'reminder' || plan && (plan.provider !== 'codex' || codexReady)));
+    const plan = local && action.task.kind === 'prompt'
+      ? savedPromptPlan(action, state, process.env, codexAvailable, cursorAvailable)
+      : undefined;
+    const available = Boolean(job || local && (action.task.kind === 'reminder' || plan && (
+      (plan.provider === 'codex' && codexReady)
+      || (plan.provider === 'cursor' && cursorReady)
+      || (plan.provider !== 'codex' && plan.provider !== 'cursor')
+    )));
     const frequencyHeld = local && !reminderFrequencyAllows(action, decisions);
     const held = frequencyHeld || action.disabledReason || action.budget?.killSwitch || job?.enabled === false || job?.pausedBy;
     return {

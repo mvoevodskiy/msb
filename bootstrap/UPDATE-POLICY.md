@@ -13,7 +13,11 @@
 | Слой | Примеры | При обновлении |
 |------|---------|----------------|
 | **Система / бот** | `.msb/bot/index.js`, `bot/ext/**` (если так задумано), `puller.cjs`, `sync.cjs`, `guard/`, `dialogue-mcp/`, `/usr/local/bin/bot-ctl.sh`, `msb-engine`, unit’ы `msb-*`, package-lock бота | Можно **заменять** целиком (с откатом по политике платформы) |
-| **Владелец / инстанс** | `workspace/CLAUDE.md`, `SOUL.md`, `USER.md`, `MEMORY.md`, `memory/**`, `ops/**` (учёт, реестры), `avatar/**`, `projects/**`, `.msb/.env`, `bots/<id>/.env`, `bots/<id>/state.json`, sessions/transcripts/traces, `ext-providers.json` | **Не перезаписывать** wholesale. Только seed при *первой* установке или явный запрос владельца |
+| **Владелец / инстанс** | `workspace/CLAUDE.md`, `SOUL.md`, `USER.md`, `MEMORY.md`, `memory/**`, `ops/**` (учёт, реестры), `avatar/**`, `projects/**`, `.msb/.env`, `bots/<id>/.env`, `bots/<id>/state.json`, sessions/transcripts/traces, `ext-providers.json`, **`<root>/local/**`** (локальные пакеты обвязки) | **Не перезаписывать** wholesale. Только seed при *первой* установке или явный запрос владельца |
+
+Локальные доработки владельца — только в `<root>/local/ext/<id>/` ([контракт](../overlay/bot/ext/local-ext/README.md)).
+Правки файлов релиза «поверх» обновления — неподдерживаемый путь. `applyExt` / deploy
+никогда не пишут и не удаляют `local/`; файлы там не считаются «лишними» вне списка релиза.
 
 `bootstrap/install.sh` на уже живом сервере **не** должен молча делать `rsync --delete` по `workspace/`.  
 Повторный прогон: система — да; workspace — только если передан явный флаг вроде `--reset-workspace` (осознанный сброс).

@@ -30,7 +30,9 @@ collector присоединяется к пачке; `/stop` очищает col
 активный ход, сохраняя очередь и collector; без активного хода потребляется
 без запуска модели. Это прежний отдельный путь, а не полный синоним `/stop`. Shutdown отменяет и дожидается доставки;
 после polling retry очередь снова принимает входы. Очередь оперативная, без диска.
-Вложения по-прежнему обслуживает отдельный существующий handler.
+Вложения (фото/видео/документ/аудио/стикер/GIF) → [`attachments`](attachments.mjs)
+в тот же FIFO; исходящие файлы — маркеры `[ГОЛОС:/ФОТО:/ФАЙЛ: …]` →
+[`media-markers`](media-markers.mjs) + [`send-media`](send-media.mjs) после текста ответа.
 
 [Эталон пачки](../../tests/reference/inbox-contract.md) ·
 [Контракт ordinary reply / reply-stop](../../tests/reference/parity-inputs-contract.txt) ·
@@ -153,6 +155,24 @@ Owner boundary остаётся перед core router: middleware бота и h
 
 Голос проходит напрямую в общий ход, минуя pending текстовых форм. Preview
 ограничивается для отображения; агент получает полный transcript с reply-контекстом.
+
+## Вложения
+
+[`message:photo|video|document|audio|sticker|animation`](bot.mjs) →
+[`prepareAttachment`](attachments.mjs) сохраняет байты в `workspace/.media/`
+и собирает текстовый prompt (как old agent-cc a$A) → тот же `executeTurn`.
+Альбомы `media_group_id` собираются 2.5 с, затем один ход.
+
+Альбомы уже в [`prepareAttachment`](attachments.mjs). Исходящий ответ:
+[`extractMediaMarkers`](media-markers.mjs) убирает `[ГОЛОС: путь подпись]`,
+очередь уходит через [`sendMediaQueue`](send-media.mjs) после текста.
+
+| Часть | Модуль | Проверка |
+|---|---|---|
+| Download Telegram → bytes | [telegram-download](../media/telegram-download.mjs) | [attachments](../../tests/attachments.test.mjs) |
+| Prompt для фото/видео/дока/аудио/стикера | [attachments](attachments.mjs) | [attachments](../../tests/attachments.test.mjs), [attachment-turn](../../tests/attachment-turn.test.mjs) |
+| Маркеры исходящих файлов | [media-markers](media-markers.mjs) | [media-markers](../../tests/media-markers.test.mjs) |
+| sendPhoto/Voice/Document/… | [send-media](send-media.mjs) | [send-media](../../tests/send-media.test.mjs), [attachment-turn](../../tests/attachment-turn.test.mjs) |
 
 ## Жизненный цикл хода
 

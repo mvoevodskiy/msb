@@ -45,8 +45,11 @@ async function publishScheduledAction(context, action, publish) {
       return NO_STATE_WRITE;
     }
     const collection = action.task.kind === 'prompt';
-    const plan = collection ? savedPromptPlan(action, state, process.env, context.codexAvailable) : undefined;
-    const ready = !collection || await promptRegistrationReady(plan?.provider, context.checkSavedCodex);
+    const plan = collection
+      ? savedPromptPlan(action, state, process.env, context.codexAvailable, context.cursorAvailable)
+      : undefined;
+    const ready = !collection
+      || await promptRegistrationReady(plan?.provider, context.checkSavedCodex, process.env, context.checkSavedCursor);
     result = ready ? { ...await publish(), timezone: policy.timezone, provider: plan?.provider }
       : { error: unavailableCollection };
     return NO_STATE_WRITE;

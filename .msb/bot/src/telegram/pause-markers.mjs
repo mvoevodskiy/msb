@@ -34,7 +34,7 @@ async function checkPolicy(context) {
   return unavailableEngine;
 }
 
-async function localActiveTasks(now, codexAvailable) {
+async function localActiveTasks(now, codexAvailable, cursorAvailable = false) {
   const [intervals, saved, decisions, { state }] = await Promise.all([
     listTasks().catch(() => []),
     savedActionSnapshot().catch(() => ({ actions: [] })),
@@ -42,7 +42,8 @@ async function localActiveTasks(now, codexAvailable) {
   ]);
   return [
     ...saved.actions.filter(action => reminderIsActive(action, decisions) &&
-      (action.task.kind === 'reminder' || savedPromptPlan(action, state, process.env, codexAvailable)))
+      (action.task.kind === 'reminder'
+        || savedPromptPlan(action, state, process.env, codexAvailable, cursorAvailable)))
       .map(action => ({ name: action.name, trigger: action.trigger })),
     ...intervals.filter(task => task && task.enabled !== false).map(task => {
       const next = new Date(task.nextAt ?? now);
@@ -121,7 +122,8 @@ async function changePause(command, context, ctx) {
   if (context.rail === 'oc') {
     result.native = await syncOwnedNativeReminderPause(stop, context).catch(() => ({ unavailable: true, tasks: [] }));
   }
-  const tasks = result.native?.tasks ?? await localActiveTasks(context.now, context.codexAvailable);
+  const tasks = result.native?.tasks
+    ?? await localActiveTasks(context.now, context.codexAvailable, context.cursorAvailable);
   const text = stop ? await describeStop(result, tasks, ctx, context) : await describeResume(result, tasks, context);
   return { text };
 }
