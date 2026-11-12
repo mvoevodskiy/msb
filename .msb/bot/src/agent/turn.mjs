@@ -27,6 +27,11 @@ import {captureMcpInstallTarget} from '../mcp/managed.mjs';
 import {mcpInstallPrompt} from '../mcp/install-protocol.mjs';
 import {nativeMcpScope} from '../../shared/mcp-native-scope.mjs';
 
+export function supportsCodexAttachments(state, env = process.env) {
+  return state.engine !== 'oc' && state.extAuthBypass === 'codex' &&
+    env.MSB_CC_ONLY !== '1' && env.JARVIS_CC_ONLY !== '1';
+}
+
 /**
  * runAgentTurn: prompt/signal → выбранный CLI → результат и guarded session/usage.
  * Вызывают [Telegram](../telegram/bot.mjs) и [autonomy](../autonomy/scheduler.mjs).
@@ -60,6 +65,7 @@ export async function runAgentTurn({
   checkSavedCodex,
   checkSavedCursor,
   bootstrapScope,
+  requireCodex = false,
   env = process.env,
 } = {}) {
   const aborted = () => ({ ok: false, error: 'aborted', text: 'Остановлено.' });
@@ -71,6 +77,7 @@ export async function runAgentTurn({
   let state, firstSession, baseWorkspace, contextNow, skillInstall, mcpInstall, mcp;
   await updateState(s => {
     state = { ...s };
+    if (requireCodex && !supportsCodexAttachments(state, env)) return NO_STATE_WRITE;
     skillInstall=captureSkillInstallTarget(state,env);
     if(!autonomy)mcpInstall=captureMcpInstallTarget(state,env);
     baseWorkspace = projectLocations(env).workspace;
@@ -81,6 +88,9 @@ export async function runAgentTurn({
   }, env);
   try {
   if (signal?.aborted) return aborted();
+  if (requireCodex && !supportsCodexAttachments(state, env)) {
+    return { ok: false, error: 'provider_changed', text: 'Движок сменился. Выбери Codex и отправь вложение заново.' };
+  }
   if(state.engine==='oc' && !autonomy){
     const cwd=await resolveProjectCwd(state,env,baseWorkspace);
     if(signal?.aborted)return aborted();

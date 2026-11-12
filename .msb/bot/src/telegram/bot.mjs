@@ -56,7 +56,7 @@ import { registerProjectCommands } from './project-commands.mjs';
 import {prepareSkillRead,skillReadOptions} from './skills-read.mjs';
 import {readOpenClawSkills as nativeOpenClawSkills} from '../skills/openclaw.mjs';
 import { beginTurnHistory } from './history.mjs';
-import { runAgentTurn } from '../agent/turn.mjs';
+import { runAgentTurn, supportsCodexAttachments } from '../agent/turn.mjs';
 import { BOOTSTRAP_GREETING, codexBootstrapScope, needsCodexIntroduction } from '../agent/codex-bootstrap.mjs';
 import { compactSession } from '../agent/compact.mjs';
 import { trySessionOperation } from '../agent/session-operation.mjs';
@@ -535,6 +535,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   async function executeTurn(ctx, text, turn, voice = false, entry = {}) {
     const chatId = ctx.chat.id;
     const signal = turn.controller.signal;
+    const requireCodex = entry.items?.some(item => item.batchDocument) === true;
     let status;
     let progress;
     let transcription;
@@ -605,6 +606,9 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         progress.beginThinking();
       }
       if (entry.items) {
+        if (requireCodex && !supportsCodexAttachments((await loadState()).state)) {
+          throw Error('Движок сменился. Выбери Codex и отправь вложение заново.');
+        }
         text = await prepareBatch(entry, cfg.botToken, signal);
         signal.throwIfAborted();
         history = await beginTurnHistory({ input: text });
@@ -622,6 +626,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       const bootstrapScope = !entry.scheduled && ctx.message && reminderOwner && state.extAuthBypass === 'codex'
         ? codexBootstrapScope(chatId, reminderOwner, thread) : undefined;
       const out = paused ? { ok: false, text: SPEND_PAUSED } : await runTurn({ prompt: entry.prompt ?? text, signal,
+        ...(requireCodex ? { requireCodex: true } : {}),
         ...(reminderOwner ? { reminderOwner, checkSavedCodex, checkSavedCursor } : {}),
         ...(bootstrapScope ? { bootstrapScope } : {}),
         ...(entry.isAutoTurn ? { isAutoTurn: true } : {}), onStatus: ev => {
@@ -722,6 +727,12 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       return;
     }
     if (stopping) return;
+    // Keep the Codex document in the reserved forward position, even with a Telegram group ID.
+    if (kind === 'document' && supportsCodexAttachments(state) &&
+        (isForwarded(ctx.message) || inbox.isCollecting(ctx))) {
+      inbox.push({ ...build(false), batchDocument: true });
+      return;
+    }
     const groupId = ctx.message?.media_group_id;
     if (groupId && (kind === 'photo' || kind === 'video' || kind === 'document')) {
       const piece = build(true);

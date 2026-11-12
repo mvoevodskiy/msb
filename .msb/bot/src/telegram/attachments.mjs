@@ -3,6 +3,7 @@
  * Old photo/video/document/audio/sticker/animation handlers; multimodal arrays
  * are flattened to disk paths the same way agent-cc a$A did before CLI launch.
  * Caller [bot](./bot.mjs) → [inbox](./inbox.mjs) → executeTurn → prepareAttachment.
+ * [Forwarded batches](./batch.mjs) share the document download and type rules.
  * Download → [telegram-download](../media/telegram-download.mjs); STT → [stt](../media/stt.mjs).
  * Checks: [attachments](../../tests/attachments.test.mjs).
  */
@@ -179,30 +180,69 @@ async function prepareAnimation(entry, botToken, signal) {
   ].join('\n\n'));
 }
 
-async function prepareDocument(entry, botToken, signal) {
-  const doc = entry.ctx.message.document;
-  if (!doc) throw Error('Нет документа в сообщении');
+function documentInfo(doc) {
   const name = doc.file_name || 'document';
   const size = doc.file_size || 0;
   const mime = doc.mime_type || '';
-  if (size > MAX_BYTES) throw Error(`Файл ${name} слишком большой (${sizeLabel(size)}). Максимум 20MB.`);
   const ext = path.extname(name).toLowerCase();
-  if (mime.startsWith('image/') || IMAGE_EXT.has(ext)) {
-    const file = await saveImage(entry.ctx.api, botToken, doc.file_id, name, {
-      signal, sizeHint: size, env: entry.env,
-    });
-    return withReply(entry.ctx, photoPrompt([file], entry.ctx.message.caption));
-  }
-  const saved = await downloadToWorkspace(entry.ctx.api, botToken, doc.file_id, name, {
+  return {
+    name, size,
+    image: mime.startsWith('image/') || IMAGE_EXT.has(ext),
+    textual: mime.startsWith('text/') || TEXT_EXT.has(ext) || name.toLowerCase().endsWith('.env.example'),
+  };
+}
+
+function saveDocument(entry, botToken, signal, { name, size }) {
+  return downloadToWorkspace(entry.ctx.api, botToken, entry.ctx.message.document.file_id, name, {
     signal, sizeHint: size, env: entry.env,
   });
+}
+
+async function prepareDocument(entry, botToken, signal) {
+  const doc = entry.ctx.message.document;
+  if (!doc) throw Error('Нет документа в сообщении');
+  const info = documentInfo(doc);
+  const { name, size, image, textual } = info;
+  if (size > MAX_BYTES) throw Error(`Файл ${name} слишком большой (${sizeLabel(size)}). Максимум 20MB.`);
+  const saved = await saveDocument(entry, botToken, signal, info);
+  if (image) return withReply(entry.ctx, photoPrompt([saved], entry.ctx.message.caption));
   const caption = entry.ctx.message.caption || `Проанализируй файл ${name}`;
-  const textual = mime.startsWith('text/') || TEXT_EXT.has(ext) || name.toLowerCase().endsWith('.env.example');
   if (textual && size <= TEXT_INLINE_MAX) {
     const body = await fs.readFile(saved, 'utf8');
     return withReply(entry.ctx, `Пользователь отправил файл ${name} (${sizeLabel(size)}):\nФайл: ${saved}\n\n${body}\n\n${caption}`);
   }
   return withReply(entry.ctx, `Пользователь отправил файл ${name} (${sizeLabel(size)}).\nФайл сохранён: ${saved}\nОткрой и проанализируй.\n\n${caption}`);
+}
+
+export function canDownloadForwardedDocument(doc) {
+  return Boolean(doc?.file_id && (doc.file_size || 0) <= MAX_BYTES);
+}
+
+/** Old batch caps apply to download attempts. A failed slot leaves later inputs intact. */
+export async function prepareForwardedDocument(entry, botToken, signal, budget) {
+  const doc = entry.ctx.message.document;
+  const info = documentInfo(doc);
+  const { name, size, image, textual } = info;
+  const label = `файл ${name}${size ? ` (${sizeLabel(size)})` : ''}`;
+  if (size > MAX_BYTES) return { label: `${label} — не скачан (>20MB, лимит Telegram)` };
+  if (!doc.file_id) return { label: `${label} — не удалось скачать` };
+  if (budget.downloads === 0) return { label: `${label} — не скачан (предел пачки)` };
+  budget.downloads--;
+  const inline = !image && textual && size <= TEXT_INLINE_MAX && budget.inline > 0;
+  if (inline) budget.inline--;
+  let saved;
+  try { saved = await saveDocument(entry, botToken, signal, info); }
+  catch {
+    signal.throwIfAborted();
+    return { label: `${label} — не удалось скачать` };
+  }
+  let content;
+  if (inline) {
+    try {
+      if ((await fs.stat(saved)).size <= TEXT_INLINE_MAX) content = await fs.readFile(saved, { encoding: 'utf8', signal });
+    } catch { signal.throwIfAborted(); }
+  }
+  return { name, label: `${label} — сохранён: ${saved}`, content };
 }
 
 async function prepareSticker(entry, botToken, signal) {
