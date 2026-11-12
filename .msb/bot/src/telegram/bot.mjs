@@ -85,13 +85,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   const inbox = createInbox({
     canRun: () => !stopping && running.size === 0,
     status: showInboxStatus,
-    cancel: async (entry, merged = false) => {
-      await entry.presentation?.catch(() => {});
-      if (entry.status) {
-        if (merged) await entry.ctx.api.deleteMessage(entry.ctx.chat.id, entry.status.message_id, presentationSignal(AbortSignal.timeout(15_000))).catch(() => {});
-        else await showInboxStatus(entry, 'Моя остановочка ✋🏽⛔️');
-      }
-    },
+    cancel: cancelInboxEntry,
     run: (entry) => {
       const turn = { controller: new AbortController(), completed: false, done: null };
       running.set(entry.ctx.chat.id, turn); unfinished.add(turn);
@@ -118,6 +112,14 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       else entry.status = await ctx.reply(text, thread && thread !== 1 ? { message_thread_id: thread } : {}, presentationSignal(AbortSignal.timeout(15_000)));
     });
     return entry.presentation;
+  }
+
+  async function cancelInboxEntry(entry, merged = false) {
+    await entry.presentation?.catch(() => {});
+    if (entry.status) {
+      if (merged) await entry.ctx.api.deleteMessage(entry.ctx.chat.id, entry.status.message_id, presentationSignal(AbortSignal.timeout(15_000))).catch(() => {});
+      else await showInboxStatus(entry, 'Моя остановочка ✋🏽⛔️');
+    }
   }
 
   let stopping = false;
@@ -260,9 +262,13 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
 
   bot.command('stop', async (ctx) => {
     stopEpoch++;
-    albums.clear();
+    const collecting = albums.clear();
+    for (const entry of collecting) {
+      entry.cancelled = true;
+      cancelInboxEntry(entry).catch(() => {});
+    }
     const queued = inbox.clear();
-    if (interruptActiveTurns() || queued) {
+    if (interruptActiveTurns() || queued || collecting.length) {
       await ctx.reply('Моя остановочка ✋🏽⛔️');
     } else {
       await ctx.reply('Нечего останавливать 🤷');
@@ -722,12 +728,10 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       const entry = kind === 'photo' ? albums.addPhoto(groupId, piece)
         : kind === 'video' ? albums.addVideo(groupId, piece)
           : albums.addDocument(groupId, piece);
-      if (!entry.status) {
-        try {
-          entry.status = await ctx.reply(
-            kind === 'document' ? '📎 Получаю файлы...' : kind === 'photo' ? '🖼 Получаю медиа...' : '🎥 Получаю медиа...',
-          );
-        } catch { /* status optional */ }
+      if (!entry.presentation) {
+        await showInboxStatus(entry,
+          kind === 'document' ? '📎 Получаю файлы...' : kind === 'photo' ? '🖼 Получаю медиа...' : '🎥 Получаю медиа...',
+        ).catch(() => {});
       }
       return;
     }

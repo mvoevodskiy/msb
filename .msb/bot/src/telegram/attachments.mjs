@@ -39,8 +39,7 @@ async function saveBytes(bytes, name, env = process.env) {
   return file;
 }
 
-function withReply(ctx, prompt) {
-  const referent = buildReplyContext(ctx.message, ctx.me?.id);
+function withReply(ctx, prompt, referent = buildReplyContext(ctx.message, ctx.me?.id)) {
   return referent ? `${referent}\n\n${prompt}` : prompt;
 }
 
@@ -303,7 +302,7 @@ async function prepareAlbum(entry, botToken, signal) {
               : 'Проанализируй это видео.');
   const body = [...parts, caption].filter(Boolean).join('\n\n');
   if (!body.trim()) throw Error('Не удалось обработать медиа.');
-  return withReply(entry.ctx, body);
+  return withReply(entry.ctx, body, entry.referent);
 }
 
 /** Download/prepare one attachment entry into a model prompt. */
@@ -369,50 +368,32 @@ export function createAttachmentAlbums({ onReady, now = Date.now, setTimer = set
     entry.timer.unref?.();
   }
 
+  function addPiece(map, groupId, piece, kind) {
+    let entry = map.get(groupId);
+    const referent = buildReplyContext(piece.ctx.message, piece.ctx.me?.id);
+    if (!entry) {
+      entry = { attachment: 'album', photos: [], videos: [], docs: [], ...piece, referent, startedAt: now() };
+      map.set(groupId, entry);
+    } else {
+      entry[kind].push(...piece[kind]);
+      if (piece.caption) entry.caption = piece.caption;
+      if (referent) entry.referent = referent;
+      entry.ctx = piece.ctx;
+    }
+    schedule(map, groupId, entry);
+    return entry;
+  }
+
   return {
-    addPhoto(groupId, piece) {
-      let entry = albums.get(groupId);
-      if (!entry) {
-        entry = { attachment: 'album', photos: [], videos: [], docs: [], ...piece, startedAt: now() };
-        albums.set(groupId, entry);
-      } else {
-        entry.photos.push(...piece.photos);
-        if (piece.caption) entry.caption = piece.caption;
-        entry.ctx = piece.ctx;
-      }
-      schedule(albums, groupId, entry);
-      return entry;
-    },
-    addVideo(groupId, piece) {
-      let entry = albums.get(groupId);
-      if (!entry) {
-        entry = { attachment: 'album', photos: [], videos: [], docs: [], ...piece, startedAt: now() };
-        albums.set(groupId, entry);
-      } else {
-        entry.videos.push(...piece.videos);
-        if (piece.caption) entry.caption = piece.caption;
-        entry.ctx = piece.ctx;
-      }
-      schedule(albums, groupId, entry);
-      return entry;
-    },
-    addDocument(groupId, piece) {
-      let entry = docs.get(groupId);
-      if (!entry) {
-        entry = { attachment: 'album', photos: [], videos: [], docs: [], ...piece, startedAt: now() };
-        docs.set(groupId, entry);
-      } else {
-        entry.docs.push(...piece.docs);
-        if (piece.caption) entry.caption = piece.caption;
-        entry.ctx = piece.ctx;
-      }
-      schedule(docs, groupId, entry);
-      return entry;
-    },
+    addPhoto: (groupId, piece) => addPiece(albums, groupId, piece, 'photos'),
+    addVideo: (groupId, piece) => addPiece(albums, groupId, piece, 'videos'),
+    addDocument: (groupId, piece) => addPiece(docs, groupId, piece, 'docs'),
     clear() {
-      for (const entry of [...albums.values(), ...docs.values()]) clearTimer(entry.timer);
+      const entries = [...albums.values(), ...docs.values()];
+      for (const entry of entries) clearTimer(entry.timer);
       albums.clear();
       docs.clear();
+      return entries;
     },
   };
 }
