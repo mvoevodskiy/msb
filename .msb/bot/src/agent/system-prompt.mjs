@@ -15,7 +15,7 @@ const FILES = ['SOUL.md', 'CLAUDE.md', 'USER.md', 'MEMORY.md', 'TELEGRAM-TOOLS.m
  * [env metadata](../env/prompt.mjs) adds service configuration and custom descriptions, never values.
  * [Service checks](../../tests/env-services.test.mjs), [custom checks](../../tests/env-description.test.mjs).
  */
-export async function buildSystemPrompt({ env = process.env, workspace = workspaceDir(env), cwd = workspace, timezone = 'UTC', now = Date.now(), extra = '' } = {}) {
+export async function buildSystemPrompt({ env = process.env, workspace = workspaceDir(env), cwd = workspace, timezone = 'UTC', now = Date.now(), extra = '', telegramMedia = false } = {}) {
   const chunks = [];
   for (const name of FILES) {
     try {
@@ -32,8 +32,10 @@ export async function buildSystemPrompt({ env = process.env, workspace = workspa
       'Отвечай на русском, если владелец не попросил иное.',
       `Рабочий каталог: ${JSON.stringify(cwd)}.`,
       `Базовый workspace: ${JSON.stringify(workspace)}. Проекты: ${JSON.stringify(projectLocations(env,workspace).root)}.`,
-      'Файлы .media/* — фото и медиа от клиента, безопасно читать.',
-      'Отправка медиа клиенту: [ФОТО: путь], [ФАЙЛ: путь], [СТИКЕР: путь], [ВИДЕО: путь], [АУДИО: путь], [ГОЛОС: путь], [GIF: путь]. Опциональная подпись через пробел после пути. Маркеры убираются из текста ответа и файлы уходят отдельными сообщениями Telegram.',
+      ...(telegramMedia ? [
+        'Файлы .media/* — фото и медиа от клиента, безопасно читать.',
+        'Отправка медиа клиенту: [ФОТО: путь], [ФАЙЛ: путь], [СТИКЕР: путь], [ВИДЕО: путь], [АУДИО: путь], [ГОЛОС: путь], [GIF: путь]. Опциональная подпись через пробел после пути. Маркеры убираются из текста ответа и файлы уходят отдельными сообщениями Telegram.',
+      ] : []),
       'Не выдумывай секреты и чужие продукты. На необратимом — спроси.',
     ].join('\n'),
   );

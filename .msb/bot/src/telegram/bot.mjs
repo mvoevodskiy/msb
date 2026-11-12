@@ -55,14 +55,14 @@ import { registerProjectCommands } from './project-commands.mjs';
 import {prepareSkillRead,skillReadOptions} from './skills-read.mjs';
 import {readOpenClawSkills as nativeOpenClawSkills} from '../skills/openclaw.mjs';
 import { beginTurnHistory } from './history.mjs';
-import { runAgentTurn } from '../agent/turn.mjs';
+import { runAgentTurn, supportsCodexAttachments } from '../agent/turn.mjs';
 import { BOOTSTRAP_GREETING, codexBootstrapScope, needsCodexIntroduction } from '../agent/codex-bootstrap.mjs';
 import { compactSession } from '../agent/compact.mjs';
 import { trySessionOperation } from '../agent/session-operation.mjs';
 import { hasClaudeAuth, loadState, updateState } from '../state.mjs';
 import { addTask, tryParseScheduleMessage } from '../autonomy/store.mjs';
 import { adminGuard, isAdmin, isSetupMode } from './auth.mjs';
-import { HELP_CC, HELP_OC, commandsForEngine } from './commands.mjs';
+import { HELP_CC, HELP_CODEX, HELP_OC, commandsForEngine } from './commands.mjs';
 import { handleCallback } from './router.mjs';
 import { costScreen, hubScreen, monitorScreen, setupScreen, settingsScreen } from './screens.mjs';
 import { SPEND_PAUSED } from '../billing/owner-spend.mjs';
@@ -195,7 +195,8 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
 
   bot.command('help', async (ctx) => {
     const { state } = await loadState();
-    await ctx.reply(state.engine === 'oc' ? HELP_OC : HELP_CC, { parse_mode: 'HTML' });
+    const help = state.engine === 'oc' ? HELP_OC : supportsCodexAttachments(state) ? HELP_CODEX : HELP_CC;
+    await ctx.reply(help, { parse_mode: 'HTML' });
   });
 
   bot.command('claude', async (ctx) => {
@@ -583,6 +584,9 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         progress.beginThinking();
       }
       if (entry.attachment) {
+        if (!supportsCodexAttachments((await loadState()).state)) {
+          throw Error('Движок сменился. Выбери Codex и отправь вложение заново.');
+        }
         text = await prepareAttachment(entry, cfg.botToken, signal);
         signal.throwIfAborted();
         history = await beginTurnHistory({ input: text.slice(0, 300) });
@@ -604,6 +608,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       const bootstrapScope = !entry.scheduled && ctx.message && reminderOwner && state.extAuthBypass === 'codex'
         ? codexBootstrapScope(chatId, reminderOwner, thread) : undefined;
       const out = paused ? { ok: false, text: SPEND_PAUSED } : await runTurn({ prompt: entry.prompt ?? text, signal,
+        ...(entry.attachment ? { requireCodex: true } : {}),
         ...(reminderOwner ? { reminderOwner, checkSavedCodex } : {}),
         ...(bootstrapScope ? { bootstrapScope } : {}),
         ...(entry.isAutoTurn ? { isAutoTurn: true } : {}), onStatus: ev => {
@@ -642,7 +647,8 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       const timers = await processLegacyTimerMarkers(controlled, autonomy, ctx, legacyTimers);
       const actionText = await processLimitMarkers(timers, autonomy, ctx);
       const installedText = await processInstallMarkers({ ...out, text: actionText }, { signal, readProvider: bot[Symbol.for('msb.mcpProvider')] });
-      const media = extractMediaMarkers(installedText);
+      const mediaEnabled = result?.providerId ? result.providerId === 'codex' : supportsCodexAttachments(state);
+      const media = mediaEnabled ? extractMediaMarkers(installedText) : { text: installedText, items: [] };
       const replyText = media.text;
       signal.throwIfAborted();
       turn.completed = true;
@@ -698,6 +704,13 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
 
   async function acceptAttachment(ctx, kind, build) {
     const { state } = await loadState();
+    if (!supportsCodexAttachments(state)) {
+      if (ctx.message?.photo || ctx.message?.video || ctx.message?.document) {
+        await ctx.reply(isSetupMode(state) ? 'Сначала подключи AI: /start' :
+          'Обработка вложений в текущем Telegram-ядре пока не подключена. Перешли задачу текстом.');
+      }
+      return;
+    }
     if (isSetupMode(state)) {
       await ctx.reply('Сначала подключи AI: /start');
       return;

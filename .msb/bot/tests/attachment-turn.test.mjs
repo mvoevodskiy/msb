@@ -103,6 +103,24 @@ test('model voice markers are stripped from text and sent as sendVoice', async (
   assert.equal(f.mediaSends[0].options.caption, 'Урок 1');
 });
 
+test('Claude and OpenClaw keep their existing attachment and reply behavior', async t => {
+  const f = await fixture(t, async () => ({ ok: true, text: 'Обычный ответ.\n[ФАЙЛ: local.txt]' }), { overlay: false });
+  await fs.writeFile(path.join(f.workspace, 'local.txt'), 'fixture');
+  t.mock.method(globalThis, 'fetch', async () => assert.fail('Unexpected attachment download'));
+  for (const engine of ['cc', 'oc']) {
+    await saveState({ ...(await loadState()).state, engine, extAuthBypass: 'claude', authMode: 'subscription', hasSubscriptionAuth: true });
+    await albumPhoto(f, 70);
+    assert.match(f.messages.at(-1), /Обработка вложений .* пока не подключена/);
+    await f.message('/help');
+    assert.match(f.messages.at(-1), /вложений в open-core пока не подключена/);
+    const before = f.edits.length;
+    await f.message('обычное сообщение');
+    await until(() => f.edits.slice(before).some(text => text.includes('Обычный ответ.')), 'existing text response');
+    assert.ok(f.edits.slice(before).some(text => text.includes('[ФАЙЛ:')));
+    assert.equal(f.mediaSends.length, 0);
+  }
+});
+
 test('Codex attachment turn sends a relative file from the captured project', async t => {
   const f = await mcpFixture(t, 'codex', { runTurn: runAgentTurn });
   const native = await nativeFixtures(f);

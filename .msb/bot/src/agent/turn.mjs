@@ -27,6 +27,11 @@ import {captureMcpInstallTarget} from '../mcp/managed.mjs';
 import {mcpInstallPrompt} from '../mcp/install-protocol.mjs';
 import {nativeMcpScope} from '../../shared/mcp-native-scope.mjs';
 
+export function supportsCodexAttachments(state, env = process.env) {
+  return state.engine !== 'oc' && state.extAuthBypass === 'codex' &&
+    env.MSB_CC_ONLY !== '1' && env.JARVIS_CC_ONLY !== '1';
+}
+
 /**
  * runAgentTurn: prompt/signal → выбранный CLI → результат и guarded session/usage.
  * Вызывают [Telegram](../telegram/bot.mjs) и [autonomy](../autonomy/scheduler.mjs).
@@ -56,6 +61,7 @@ export async function runAgentTurn({
   reminderOwner = 0,
   checkSavedCodex,
   bootstrapScope,
+  requireCodex = false,
   env = process.env,
 } = {}) {
   const aborted = () => ({ ok: false, error: 'aborted', text: 'Остановлено.' });
@@ -64,9 +70,11 @@ export async function runAgentTurn({
     const introduction = await runCodexBootstrap({ scope: bootstrapScope, prompt, env, signal, onStatus });
     if (introduction) return introduction;
   }
-  let state, firstSession, baseWorkspace, contextNow, skillInstall, mcpInstall, mcp;
+  let state, firstSession, baseWorkspace, contextNow, skillInstall, mcpInstall, mcp, telegramMedia;
   await updateState(s => {
     state = { ...s };
+    telegramMedia = supportsCodexAttachments(state, env);
+    if (requireCodex && !telegramMedia) return NO_STATE_WRITE;
     skillInstall=captureSkillInstallTarget(state,env);
     if(!autonomy)mcpInstall=captureMcpInstallTarget(state,env);
     baseWorkspace = projectLocations(env).workspace;
@@ -77,6 +85,9 @@ export async function runAgentTurn({
   }, env);
   try {
   if (signal?.aborted) return aborted();
+  if (requireCodex && !telegramMedia) {
+    return { ok: false, error: 'provider_changed', text: 'Движок сменился. Выбери Codex и отправь вложение заново.' };
+  }
   if(state.engine==='oc' && !autonomy){
     const cwd=await resolveProjectCwd(state,env,baseWorkspace);
     if(signal?.aborted)return aborted();
@@ -86,7 +97,7 @@ export async function runAgentTurn({
     const systemPrompt=await buildSystemPrompt({env,workspace:baseWorkspace,cwd,timezone:state.timezone || 'UTC',
       now:contextNow,extra});
     const result=await runOpenClawTurn({state,prompt,systemPrompt,cwd,env,signal,onStatus});
-    return {...result,cwd,skillInstall,...(reminderRail ? {reminderRail} : {})};
+    return {...result,skillInstall,...(reminderRail ? {reminderRail} : {})};
   }
   if (!hasClaudeAuth(env, state)) {
     return {
@@ -120,7 +131,7 @@ export async function runAgentTurn({
   const extra = [conversationalModePrompt(state), skillInstallPrompt(skillInstall), mcpInstallPrompt(mcpInstall)];
   const reminderRail = reminderOwner && !autonomy && !isAutoTurn && isLocalReminderEngine(state.engine);
   if (reminderRail) extra.push(await reminderPrompt(state, reminderOwner, env, checkSavedCodex));
-  const systemPrompt = await buildSystemPrompt({ env, workspace: baseWorkspace, cwd, timezone: state.timezone || 'UTC',
+  const systemPrompt = await buildSystemPrompt({ env, workspace: baseWorkspace, cwd, telegramMedia, timezone: state.timezone || 'UTC',
     now: contextNow, extra: extra.filter(Boolean).join('\n\n') });
 
   if (signal?.aborted) return aborted();
@@ -199,7 +210,8 @@ export async function runAgentTurn({
   // only when the CLI returned actual assistant text.
   const canInstallMcp=result.text && (!result.isError || (providerId==='claude' && result.assistantTextObserved));
   const display = result.errorDisplay;
-  return { ok: !result.isError, text: display ? display.before + text + display.after : text, result, cwd, skillInstall,
+  return { ok: !result.isError, text: display ? display.before + text + display.after : text, result, skillInstall,
+    ...(telegramMedia && result.providerId === 'codex' ? { cwd } : {}),
     ...(display ? { modelText: text } : {}),
     ...(partial ? { partialReply: { context } } : {}),
     mcpInstall:canInstallMcp && mcpInstall?{...mcpInstall,cwd,nativeScope:installScope}:null,
