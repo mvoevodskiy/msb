@@ -41,6 +41,8 @@ class ReleaseTest(unittest.TestCase):
         self.write('overlay/bot/ext/shim/bin/claude', '#!/bin/sh\nexit 0\n', 0o755)
         self.write('.msb/bot/tests/example.test.mjs', '// fixture test\n')
         self.write('overlay/bot/ext/tests/example.test.mjs', '// fixture test\n')
+        self.write('bootstrap/workspace-seed/SOUL.md', '# fixture seed identity\n')
+        self.write('bootstrap/workspace-seed/memory/.gitkeep', '')
         self.write('.msb/bot/vendor/deobfuscated.js', '// inert reference\n')
         self.write('tools/release/build.py', (TOOLS / 'build.py').read_text())
         self.write('tools/release/verify.py', '# fixture operator\n')
@@ -83,6 +85,9 @@ class ReleaseTest(unittest.TestCase):
         self.assertFalse(any(p.name in ['.env', 'MEMORY.md', 'auth.json'] for p in (a / 'runtime').rglob('*')))
         self.assertFalse(any('/tests/' in x for x in expected))
         self.assertFalse((a / 'checks/source/.msb/bot/vendor/deobfuscated.js').exists())
+        for name in ('bootstrap/workspace-seed/SOUL.md', 'bootstrap/workspace-seed/memory/.gitkeep'):
+            self.assertEqual((a / 'checks/source' / name).read_bytes(), (self.repo / name).read_bytes())
+            self.assertFalse((a / 'runtime' / name).exists(), 'seed is test input, not runtime owner data')
 
     def test_dirty_head_is_not_silently_exported(self):
         self.write('.msb/bot/src/main.mjs', 'changed without a commit\n')
@@ -218,6 +223,34 @@ class ReleaseTest(unittest.TestCase):
         (stage / 'checks/results/verification.json').write_text(json.dumps(report))
         with self.assertRaisesRegex(RuntimeError, 'verification on Linux'):
             deploy.verify_checks(stage, release)
+
+    def test_rollback_checks_backups_in_both_release_roots(self):
+        import deploy
+        from unittest.mock import patch
+
+        current = (self.root / 'msb-ops/releases').resolve()
+        legacy = (self.root / 'agentsmania-ops/releases').resolve()
+        outside = (self.root / 'unrecorded/releases').resolve()
+        for root in (current, legacy, outside):
+            backup = root / 'fixture'
+            backup.mkdir(parents=True)
+            (backup / 'plan.json').write_text('{"plan":{"after":{}}}')
+        alias = legacy / 'alias'
+        alias.symlink_to(legacy / 'fixture', target_is_directory=True)
+
+        with (patch.object(deploy, 'BACKUPS', current),
+              patch.object(deploy, 'LEGACY_BACKUPS', legacy, create=True),
+              patch.object(deploy, 'assert_host'), patch.object(deploy, 'inventory', return_value={}),
+              patch.object(deploy, 'validate_backup', side_effect=RuntimeError('fixture validation')) as validate):
+            for root in (current, legacy):
+                with self.subTest(root=root):
+                    with self.assertRaisesRegex(RuntimeError, 'fixture validation'):
+                        deploy.rollback(root / 'fixture')
+                    validate.assert_called_with(deploy.LIVE, root / 'fixture')
+            for invalid in (outside / 'fixture', alias):
+                with self.subTest(invalid=invalid):
+                    with self.assertRaisesRegex(ValueError, 'recorded JAR1 release backup'):
+                        deploy.rollback(invalid)
 
     def test_live_node_and_dependencies_must_match_verified_linux_environment(self):
         import deploy

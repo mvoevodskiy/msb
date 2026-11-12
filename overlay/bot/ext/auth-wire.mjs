@@ -1,11 +1,14 @@
 /**
- * Дописывает локальные конфиги CLI после сохранения ключа из меню.
- * Без этого Qwen/Codex часто требуют интерактивный /auth или login.
+ * Локальные CLI-конфиги и штатный device login Codex без передачи токенов в чат.
+ * Вход: вывод CLI и выбранный профиль; выход: URL/код и подтверждённый статус.
+ * Вызывающий: [native login](./integration/native-login.mjs); проверка:
+ * [device login](./tests/codex-device-login.test.mjs), [auth](./tests/auth-wire.test.mjs).
  */
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { stripVTControlCharacters } from 'node:util';
 import { findBin } from './adapters/run-cli.mjs';
 import { enrichPath } from './ensure-cli.mjs';
 import { hasNativeCodexAuth, selectedCodexProfileDir } from './codex-native.mjs';
@@ -183,15 +186,22 @@ export function startCodexDeviceLogin(env = process.env, home = env.HOME || os.h
     stderr += c;
   });
 
-  const combined = () => `${stdout}\n${stderr}`;
   const extract = () => {
-    const text = combined();
-    const url =
-      text.match(/https?:\/\/[^\s]+/i)?.[0]?.replace(/[),.;]+$/, '') || null;
-    const code =
-      text.match(/\b([A-Z0-9]{4,}-[A-Z0-9-]{4,})\b/)?.[1] ||
-      text.match(/code[:\s]+([A-Z0-9-]+)/i)?.[1] ||
-      null;
+    // CLI output can contain terminal colours and arrive in several chunks.
+    // Parse each stream separately so a synthetic separator never completes
+    // a device code whose final character has not arrived yet.
+    const streams = [stdout, stderr].map(stripVTControlCharacters);
+    const text = streams.join('\n');
+    const url = streams.map((stream) =>
+      stream.match(/https?:\/\/[^\s]+(?=\s)/i)?.[0]?.replace(/[),.;]+$/, '')
+    ).find(Boolean) || null;
+    const dashed = streams.map((stream) =>
+      stream.match(/\b([A-Z0-9]{4,}-[A-Z0-9-]{4,})(?=[\s),.;!])/)
+    ).find(Boolean)?.[1];
+    const labelled = streams.flatMap((stream) =>
+      Array.from(stream.matchAll(/\bcode[:\s]+([a-z0-9-]{4,})(?=[\s),.;!])/gi), (match) => match[1])
+    ).find((value) => /^[A-Z0-9-]+$/.test(value));
+    const code = dashed || labelled || null;
     return { url, code, text };
   };
 

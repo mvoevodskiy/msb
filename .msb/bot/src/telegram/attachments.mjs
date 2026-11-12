@@ -3,6 +3,7 @@
  * Old photo/video/document/audio/sticker/animation handlers; multimodal arrays
  * are flattened to disk paths the same way agent-cc a$A did before CLI launch.
  * Caller [bot](./bot.mjs) → [inbox](./inbox.mjs) → executeTurn → prepareAttachment.
+ * [Forwarded batches](./batch.mjs) share the document download and type rules.
  * Download → [telegram-download](../media/telegram-download.mjs); STT → [stt](../media/stt.mjs).
  * Checks: [attachments](../../tests/attachments.test.mjs).
  */
@@ -39,8 +40,7 @@ async function saveBytes(bytes, name, env = process.env) {
   return file;
 }
 
-function withReply(ctx, prompt) {
-  const referent = buildReplyContext(ctx.message, ctx.me?.id);
+function withReply(ctx, prompt, referent = buildReplyContext(ctx.message, ctx.me?.id)) {
   return referent ? `${referent}\n\n${prompt}` : prompt;
 }
 
@@ -83,10 +83,11 @@ async function extractVideoInsights(bytes, durationSec, { signal, isNote = false
     signal?.throwIfAborted?.();
     try {
       const audio = path.join(directory, 'audio.ogg');
-      await exec('ffmpeg', ['-i', video, '-vn', '-acodec', 'libopus', '-ar', '16000', '-ac', '1', '-y', audio], { timeout: 120_000 });
+      await exec('ffmpeg', ['-i', video, '-vn', '-acodec', 'libopus', '-ar', '16000', '-ac', '1', '-y', audio], { timeout: 120_000, signal });
       const ogg = await fs.readFile(audio);
       transcript = await tryTranscript(ogg, { signal });
     } catch {
+      signal?.throwIfAborted();
       /* optional track */
     }
     const duration = Math.max(1, Number(durationSec) || 3);
@@ -98,10 +99,11 @@ async function extractVideoInsights(bytes, durationSec, { signal, isNote = false
       signal?.throwIfAborted?.();
       const frame = path.join(directory, `frame_${i}.jpg`);
       try {
-        await exec('ffmpeg', ['-ss', String(at), '-i', video, '-vframes', '1', '-q:v', '3', '-y', frame], { timeout: 30_000 });
+        await exec('ffmpeg', ['-ss', String(at), '-i', video, '-vframes', '1', '-q:v', '3', '-y', frame], { timeout: 30_000, signal });
         const jpeg = await fs.readFile(frame);
         frames.push(await saveBytes(jpeg, `frame_${i}.jpg`));
       } catch {
+        signal?.throwIfAborted();
         /* skip frame */
       }
     }
@@ -178,30 +180,69 @@ async function prepareAnimation(entry, botToken, signal) {
   ].join('\n\n'));
 }
 
-async function prepareDocument(entry, botToken, signal) {
-  const doc = entry.ctx.message.document;
-  if (!doc) throw Error('Нет документа в сообщении');
+function documentInfo(doc) {
   const name = doc.file_name || 'document';
   const size = doc.file_size || 0;
   const mime = doc.mime_type || '';
-  if (size > MAX_BYTES) throw Error(`Файл ${name} слишком большой (${sizeLabel(size)}). Максимум 20MB.`);
   const ext = path.extname(name).toLowerCase();
-  if (mime.startsWith('image/') || IMAGE_EXT.has(ext)) {
-    const file = await saveImage(entry.ctx.api, botToken, doc.file_id, name, {
-      signal, sizeHint: size, env: entry.env,
-    });
-    return withReply(entry.ctx, photoPrompt([file], entry.ctx.message.caption));
-  }
-  const saved = await downloadToWorkspace(entry.ctx.api, botToken, doc.file_id, name, {
+  return {
+    name, size,
+    image: mime.startsWith('image/') || IMAGE_EXT.has(ext),
+    textual: mime.startsWith('text/') || TEXT_EXT.has(ext) || name.toLowerCase().endsWith('.env.example'),
+  };
+}
+
+function saveDocument(entry, botToken, signal, { name, size }) {
+  return downloadToWorkspace(entry.ctx.api, botToken, entry.ctx.message.document.file_id, name, {
     signal, sizeHint: size, env: entry.env,
   });
+}
+
+async function prepareDocument(entry, botToken, signal) {
+  const doc = entry.ctx.message.document;
+  if (!doc) throw Error('Нет документа в сообщении');
+  const info = documentInfo(doc);
+  const { name, size, image, textual } = info;
+  if (size > MAX_BYTES) throw Error(`Файл ${name} слишком большой (${sizeLabel(size)}). Максимум 20MB.`);
+  const saved = await saveDocument(entry, botToken, signal, info);
+  if (image) return withReply(entry.ctx, photoPrompt([saved], entry.ctx.message.caption));
   const caption = entry.ctx.message.caption || `Проанализируй файл ${name}`;
-  const textual = mime.startsWith('text/') || TEXT_EXT.has(ext) || name.toLowerCase().endsWith('.env.example');
   if (textual && size <= TEXT_INLINE_MAX) {
     const body = await fs.readFile(saved, 'utf8');
     return withReply(entry.ctx, `Пользователь отправил файл ${name} (${sizeLabel(size)}):\nФайл: ${saved}\n\n${body}\n\n${caption}`);
   }
   return withReply(entry.ctx, `Пользователь отправил файл ${name} (${sizeLabel(size)}).\nФайл сохранён: ${saved}\nОткрой и проанализируй.\n\n${caption}`);
+}
+
+export function canDownloadForwardedDocument(doc) {
+  return Boolean(doc?.file_id && (doc.file_size || 0) <= MAX_BYTES);
+}
+
+/** Old batch caps apply to download attempts. A failed slot leaves later inputs intact. */
+export async function prepareForwardedDocument(entry, botToken, signal, budget) {
+  const doc = entry.ctx.message.document;
+  const info = documentInfo(doc);
+  const { name, size, image, textual } = info;
+  const label = `файл ${name}${size ? ` (${sizeLabel(size)})` : ''}`;
+  if (size > MAX_BYTES) return { label: `${label} — не скачан (>20MB, лимит Telegram)` };
+  if (!doc.file_id) return { label: `${label} — не удалось скачать` };
+  if (budget.downloads === 0) return { label: `${label} — не скачан (предел пачки)` };
+  budget.downloads--;
+  const inline = !image && textual && size <= TEXT_INLINE_MAX && budget.inline > 0;
+  if (inline) budget.inline--;
+  let saved;
+  try { saved = await saveDocument(entry, botToken, signal, info); }
+  catch {
+    signal.throwIfAborted();
+    return { label: `${label} — не удалось скачать` };
+  }
+  let content;
+  if (inline) {
+    try {
+      if ((await fs.stat(saved)).size <= TEXT_INLINE_MAX) content = await fs.readFile(saved, { encoding: 'utf8', signal });
+    } catch { signal.throwIfAborted(); }
+  }
+  return { name, label: `${label} — сохранён: ${saved}`, content };
 }
 
 async function prepareSticker(entry, botToken, signal) {
@@ -303,7 +344,7 @@ async function prepareAlbum(entry, botToken, signal) {
               : 'Проанализируй это видео.');
   const body = [...parts, caption].filter(Boolean).join('\n\n');
   if (!body.trim()) throw Error('Не удалось обработать медиа.');
-  return withReply(entry.ctx, body);
+  return withReply(entry.ctx, body, entry.referent);
 }
 
 /** Download/prepare one attachment entry into a model prompt. */
@@ -369,50 +410,32 @@ export function createAttachmentAlbums({ onReady, now = Date.now, setTimer = set
     entry.timer.unref?.();
   }
 
+  function addPiece(map, groupId, piece, kind) {
+    let entry = map.get(groupId);
+    const referent = buildReplyContext(piece.ctx.message, piece.ctx.me?.id);
+    if (!entry) {
+      entry = { attachment: 'album', photos: [], videos: [], docs: [], ...piece, referent, startedAt: now() };
+      map.set(groupId, entry);
+    } else {
+      entry[kind].push(...piece[kind]);
+      if (piece.caption) entry.caption = piece.caption;
+      if (referent) entry.referent = referent;
+      entry.ctx = piece.ctx;
+    }
+    schedule(map, groupId, entry);
+    return entry;
+  }
+
   return {
-    addPhoto(groupId, piece) {
-      let entry = albums.get(groupId);
-      if (!entry) {
-        entry = { attachment: 'album', photos: [], videos: [], docs: [], ...piece, startedAt: now() };
-        albums.set(groupId, entry);
-      } else {
-        entry.photos.push(...piece.photos);
-        if (piece.caption) entry.caption = piece.caption;
-        entry.ctx = piece.ctx;
-      }
-      schedule(albums, groupId, entry);
-      return entry;
-    },
-    addVideo(groupId, piece) {
-      let entry = albums.get(groupId);
-      if (!entry) {
-        entry = { attachment: 'album', photos: [], videos: [], docs: [], ...piece, startedAt: now() };
-        albums.set(groupId, entry);
-      } else {
-        entry.videos.push(...piece.videos);
-        if (piece.caption) entry.caption = piece.caption;
-        entry.ctx = piece.ctx;
-      }
-      schedule(albums, groupId, entry);
-      return entry;
-    },
-    addDocument(groupId, piece) {
-      let entry = docs.get(groupId);
-      if (!entry) {
-        entry = { attachment: 'album', photos: [], videos: [], docs: [], ...piece, startedAt: now() };
-        docs.set(groupId, entry);
-      } else {
-        entry.docs.push(...piece.docs);
-        if (piece.caption) entry.caption = piece.caption;
-        entry.ctx = piece.ctx;
-      }
-      schedule(docs, groupId, entry);
-      return entry;
-    },
+    addPhoto: (groupId, piece) => addPiece(albums, groupId, piece, 'photos'),
+    addVideo: (groupId, piece) => addPiece(albums, groupId, piece, 'videos'),
+    addDocument: (groupId, piece) => addPiece(docs, groupId, piece, 'docs'),
     clear() {
-      for (const entry of [...albums.values(), ...docs.values()]) clearTimer(entry.timer);
+      const entries = [...albums.values(), ...docs.values()];
+      for (const entry of entries) clearTimer(entry.timer);
       albums.clear();
       docs.clear();
+      return entries;
     },
   };
 }

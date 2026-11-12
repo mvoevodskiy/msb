@@ -342,7 +342,13 @@ test('all baseline menu button routes remain reachable', async (t) => {
       assert.deepEqual(actual, restored, name);
     }
   }
-  for (const [name, expected] of Object.entries(contract.overlay)) assert.deepEqual(callbacks(await overlay[name](process.env, f.home)), expected, name);
+  for (const [name, expected] of Object.entries(contract.overlay)) {
+    // The OpenAI-compatible provider adds its two routes before the back button.
+    const routes = name === 'buildConnMenu'
+      ? expected.toSpliced(-1, 0, 'ext:conn:set:openai', 'ext:auth:openai')
+      : expected;
+    assert.deepEqual(callbacks(await overlay[name](process.env, f.home)), routes, name);
+  }
 });
 
 test('stored settings and cost history survive a real project selection reset', async (t) => {

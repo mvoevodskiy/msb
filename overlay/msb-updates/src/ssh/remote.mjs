@@ -100,9 +100,25 @@ fi
 
 python3 - <<'PY'
 import base64, json, os, hashlib, pathlib, shutil
-live = pathlib.Path(os.path.expanduser("~/.msb"))
+live = pathlib.Path(os.path.expanduser("~/.msb")).resolve()
 manifest = json.loads(${JSON.stringify(manifestLit)})
 files = json.loads(${JSON.stringify(filesLit)})
+local_root = (live / "local").resolve()
+
+def release_path(raw):
+  normalized = raw.replace(chr(92), "/")
+  parts = [part for part in normalized.split("/") if part not in ("", ".")]
+  if not parts or normalized.startswith("/") or pathlib.PureWindowsPath(normalized).drive or ".." in parts or chr(0) in raw:
+    raise SystemExit("bad path " + raw)
+  rel = pathlib.Path(*parts)
+  target = (live / rel).resolve()
+  if target == live or live not in target.parents:
+    raise SystemExit("bad path " + raw)
+  if parts[0] == "local" or target == local_root or local_root in target.parents:
+    raise SystemExit("refusing local/ path: " + raw)
+  return rel
+
+entries = [(f, release_path(f["path"])) for f in files]
 staging = live / ".msb-updates-staging" / ("ext-" + str(os.getpid()))
 staging.mkdir(parents=True, exist_ok=True)
 rollback = live / "updates" / "rollback" / ("ext-" + manifest["version"])
@@ -124,17 +140,11 @@ def install_file(src: pathlib.Path, dst: pathlib.Path):
       except OSError: pass
 
 try:
-  for f in files:
-    rel = f["path"]
-    parts = [p for p in rel.replace("\\\\", "/").split("/") if p not in ("", ".")]
-    if not parts or ".." in parts:
-      raise SystemExit("bad path " + rel)
-    if parts[0] == "local":
-      raise SystemExit("refusing local/ path: " + rel)
+  for f, rel in entries:
     data = base64.b64decode(f["b64"])
     digest = hashlib.sha256(data).hexdigest()
     if digest != f["sha256"]:
-      raise SystemExit("hash mismatch " + rel)
+      raise SystemExit("hash mismatch " + str(rel))
     dest = staging / rel
     dest.parent.mkdir(parents=True, exist_ok=True)
     dest.write_bytes(data)
@@ -145,8 +155,7 @@ try:
       bak = rollback / rel
       bak.parent.mkdir(parents=True, exist_ok=True)
       shutil.copy2(live_file, bak)
-  for f in files:
-    rel = f["path"]
+  for _, rel in entries:
     src = staging / rel
     dst = live / rel
     install_file(src, dst)

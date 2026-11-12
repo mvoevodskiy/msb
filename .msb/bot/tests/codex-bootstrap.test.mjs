@@ -16,6 +16,7 @@ const introduction = '0299a213-81c0-7800-8aa1-bbab2a035a53';
 const greeting = 'Меня только что подключили к твоему серверу. Давай настроюсь — как тебя зовут и чем занимаешься?';
 const hub = /^Готов\. Пиши задачу или выбери действие\./;
 const scope = '42:42:0';
+const shippedSeed = fileURLToPath(new URL('../../../bootstrap/workspace-seed/', import.meta.url));
 
 async function waitFor(check) {
   const until = Date.now() + 5000;
@@ -42,13 +43,115 @@ test('cold Codex /start greets only before the old workspace readiness signals',
     assert.match(f.messages.at(-1), hub);
     await fs.unlink(file);
   }
+  await fs.mkdir(path.join(f.workspace, 'memory'), { recursive: true });
+  await fs.writeFile(path.join(f.workspace, 'memory/.gitkeep'), '');
+  await f.message('/start');
+  assert.match(f.messages.at(-1), hub, 'without the exact shipped identity even .gitkeep retains old readiness');
   const after = (await loadState()).state;
   assert.equal(after.ccSessionId, before.ccSessionId);
   assert.equal(after.extAuthBypass, 'codex');
 });
 
-async function nativeFixture(t, { ordinarySession = false } = {}) {
+test('an explicitly selected Codex still greets under the stock MSB flag', async t => {
+  const f = await fixture(t);
+  await saveState({ ...(await loadState()).state, ccSessionId: undefined });
+  process.env.MSB_CC_ONLY = '1';
+  delete process.env.JARVIS_CC_ONLY;
+  await f.message('/start');
+  assert.equal(f.messages.at(-1), greeting);
+  process.env.JARVIS_CC_ONLY = '1';
+  await f.message('/start');
+  assert.match(f.messages.at(-1), hub);
+});
+
+test('a seeded workspace does not introduce Claude or OpenClaw as Codex', async t => {
+  const f = await fixture(t);
+  await fs.cp(shippedSeed, f.workspace, { recursive: true });
+  process.env.MSB_CC_ONLY = '1';
+  for (const state of [
+    { engine: 'cc', authMode: 'subscription', hasSubscriptionAuth: true },
+    { engine: 'oc' },
+  ]) {
+    await saveState(state);
+    await f.message('/start');
+    assert.match(f.messages.at(-1), hub);
+    assert.equal((await loadState()).state.codexBootstrap, undefined);
+  }
+});
+
+test('the exact shipped seed is not a completed identity; real owner files still are', async t => {
+  const f = await fixture(t);
+  await saveState({ ...(await loadState()).state, ccSessionId: undefined });
+  delete process.env.MSB_CC_ONLY;
+  await fs.cp(shippedSeed, f.workspace, { recursive: true });
+  const soul = path.join(f.workspace, 'SOUL.md');
+  const original = await fs.readFile(soul);
+  await f.message('/start');
+  assert.equal(f.messages.at(-1), greeting, 'the actual SOUL and empty memory/.gitkeep are only seed');
+  assert.deepEqual(await fs.readFile(soul), original);
+
+  await fs.writeFile(path.join(f.workspace, 'memory', 'owner-note.md'), 'Owner memory');
+  await f.message('/start');
+  assert.match(f.messages.at(-1), hub, 'real memory still means configured');
+  await fs.unlink(path.join(f.workspace, 'memory', 'owner-note.md'));
+  const personalised = Buffer.from(original);
+  personalised[0] = personalised[0] === 35 ? 33 : 35;
+  await fs.writeFile(soul, personalised); // Same size: identity must be distinguished by bytes, not length.
+  await f.message('/start');
+  assert.match(f.messages.at(-1), hub, 'a modified identity is never treated as seed');
+  assert.deepEqual(await fs.readFile(soul), personalised);
+  await fs.writeFile(soul, original);
+  await fs.writeFile(path.join(f.workspace, 'memory', '.gitkeep'), 'Owner data');
+  await f.message('/start');
+  assert.match(f.messages.at(-1), hub, 'a non-empty placeholder is treated as owner memory');
+  await fs.writeFile(path.join(f.workspace, 'memory', '.gitkeep'), '');
+  await fs.unlink(soul);
+  await fs.symlink(path.join(shippedSeed, 'SOUL.md'), soul);
+  await f.message('/start');
+  assert.match(f.messages.at(-1), hub, 'a user-owned identity symlink retains old readiness');
+});
+
+test('a seeded workspace with a pre-existing owner profile is not reintroduced', async t => {
+  const f = await fixture(t);
+  await saveState({ ...(await loadState()).state, ccSessionId: undefined });
+  await fs.cp(shippedSeed, f.workspace, { recursive: true });
+  await fs.writeFile(path.join(f.workspace, 'USER.md'), 'Existing owner profile');
+  await f.message('/start');
+  assert.match(f.messages.at(-1), hub);
+  assert.equal(await fs.readFile(path.join(f.workspace, 'USER.md'), 'utf8'), 'Existing owner profile');
+  await fs.unlink(path.join(f.workspace, 'USER.md'));
+  await fs.writeFile(path.join(f.workspace, 'MEMORY.md'), 'Existing owner memory');
+  await f.message('/start');
+  assert.match(f.messages.at(-1), hub);
+  assert.equal(await fs.readFile(path.join(f.workspace, 'MEMORY.md'), 'utf8'), 'Existing owner memory');
+});
+
+test('unreadable identity or placeholder fails closed as an existing profile', async t => {
+  const f = await fixture(t);
+  await saveState({ ...(await loadState()).state, ccSessionId: undefined });
+  await fs.cp(shippedSeed, f.workspace, { recursive: true });
+  const soul = path.join(f.workspace, 'SOUL.md');
+  const placeholder = path.join(f.workspace, 'memory/.gitkeep');
+  const read = fs.readFile, lstat = fs.lstat;
+  let denied = soul;
+  t.mock.method(fs, 'readFile', async (file, ...args) => {
+    if (file === denied) throw Object.assign(new Error('fixture denied'), { code: 'EACCES' });
+    return read(file, ...args);
+  });
+  t.mock.method(fs, 'lstat', async (file, ...args) => {
+    if (file === placeholder && file === denied) throw Object.assign(new Error('fixture denied'), { code: 'EACCES' });
+    return lstat(file, ...args);
+  });
+  await f.message('/start');
+  assert.match(f.messages.at(-1), hub);
+  denied = placeholder;
+  await f.message('/start');
+  assert.match(f.messages.at(-1), hub);
+});
+
+async function nativeFixture(t, { ordinarySession = false, seed = false } = {}) {
   const f = await fixture(t, runAgentTurn);
+  if (seed) await fs.cp(shippedSeed, f.workspace, { recursive: true });
   const { state } = await loadState();
   const project = path.join(f.home, 'projects', 'alpha');
   const profile = path.join(project, 'native-profile');
@@ -90,10 +193,16 @@ async function nativeFixture(t, { ordinarySession = false } = {}) {
     '    fs.writeFileSync(' + JSON.stringify(started) + ', "started");',
     '    while (!fs.existsSync(' + JSON.stringify(release) + ')) await new Promise(r => setTimeout(r, 10));',
     '  }',
+    '  if (prompt.includes("fixture record owner")) {',
+    '    fs.writeFileSync("USER.md", "# Fixture owner\\n");',
+    '    fs.mkdirSync("memory", {recursive:true}); fs.mkdirSync("knowledge", {recursive:true});',
+    '    fs.writeFileSync("memory/intro-note.md", "Fixture memory\\n");',
+    '    fs.writeFileSync("knowledge/intro-note.md", "Fixture knowledge\\n");',
+    '  }',
     '  const finished = prompt.includes("fixture finish the introduction");',
     '  if (finished) {',
-    '    fs.writeFileSync("SOUL.md", "# Fixture identity\\n");',
-    '    fs.writeFileSync("USER.md", "# Fixture owner\\n");',
+    '    fs.appendFileSync("SOUL.md", "\\n# Fixture identity\\n");',
+    '    if (!fs.existsSync("USER.md")) fs.writeFileSync("USER.md", "# Fixture owner\\n");',
     '  }',
     '  const text = finished ? "fixture finished" : "fixture native reply";',
     '  console.log(JSON.stringify({type:"item.completed",item:{type:"agent_message",text}}));',
@@ -104,6 +213,70 @@ async function nativeFixture(t, { ordinarySession = false } = {}) {
   const calls = async () => (await fs.readFile(trace, 'utf8')).trim().split('\n').map(JSON.parse);
   return { ...f, profile, project, resume, started, release, calls, config };
 }
+
+test('the shipped seed and stock flag permit multiple Codex introduction turns without losing the identity', async t => {
+  const f = await nativeFixture(t, { seed: true });
+  process.env.MSB_CC_ONLY = '1';
+  delete process.env.JARVIS_CC_ONLY;
+  const soul = path.join(f.workspace, 'SOUL.md');
+  const original = await fs.readFile(soul, 'utf8');
+  await f.message('/start');
+  assert.equal(f.messages.at(-1), greeting);
+
+  const first = await runAgentTurn({ prompt: 'fixture record owner', bootstrapScope: scope });
+  assert.equal(first.bootstrap, true);
+  assert.equal(first.bootstrapComplete, false);
+  assert.equal(await fs.readFile(soul, 'utf8'), original);
+  assert.equal(await fs.readFile(path.join(f.workspace, 'USER.md'), 'utf8'), '# Fixture owner\n');
+  assert.equal(await fs.readFile(path.join(f.workspace, 'memory/intro-note.md'), 'utf8'), 'Fixture memory\n');
+  assert.equal(await fs.readFile(path.join(f.workspace, 'knowledge/intro-note.md'), 'utf8'), 'Fixture knowledge\n');
+  await f.message('/start');
+  assert.equal(f.messages.at(-1), greeting, 'owner notes written during introduction do not end it');
+
+  const second = await runAgentTurn({ prompt: 'fixture keep introducing', bootstrapScope: scope });
+  assert.equal(second.bootstrap, true);
+  assert.equal(second.bootstrapComplete, false);
+  assert.equal(await fs.readFile(soul, 'utf8'), original);
+  const final = await runAgentTurn({ prompt: 'fixture finish the introduction', bootstrapScope: scope });
+  assert.equal(final.bootstrapComplete, true);
+  assert.ok((await fs.readFile(soul, 'utf8')).startsWith(original), 'preserve all original seed rules');
+  assert.equal(await fs.readFile(path.join(f.workspace, 'USER.md'), 'utf8'), '# Fixture owner\n');
+  await fs.stat(path.join(f.workspace, '.iia-bootstrapped'));
+  const prior = f.messages.length;
+  await f.message('/start');
+  assert.ok(f.messages.slice(prior).some(text => hub.test(text)), 'the completed workspace opens the hub');
+  assert.deepEqual((await f.calls()).map(row => row.resumed), [null, introduction, introduction]);
+});
+
+test('the attempt limit does not overwrite the shipped identity or existing owner notes', async t => {
+  const f = await nativeFixture(t, { seed: true });
+  process.env.MSB_CC_ONLY = '1';
+  const soul = path.join(f.workspace, 'SOUL.md');
+  const original = await fs.readFile(soul);
+  await fs.writeFile(path.join(f.workspace, 'USER.md'), 'Owner note during introduction');
+  await saveState({ ...(await loadState()).state, codexBootstrap: { [scope]: {
+    workspace: f.workspace, profileDir: f.profile, turns: 8, sessionId: 'ext:codex:' + introduction,
+  } } });
+  const result = await runAgentTurn({ prompt: 'fixture attempt limit', bootstrapScope: scope });
+  assert.equal(result.bootstrapComplete, true);
+  assert.deepEqual(await fs.readFile(soul), original);
+  assert.equal(await fs.readFile(path.join(f.workspace, 'USER.md'), 'utf8'), 'Owner note during introduction');
+  await assert.rejects(f.calls, { code: 'ENOENT' });
+  await fs.stat(path.join(f.workspace, '.iia-bootstrapped'));
+});
+
+test('owner notes from an interrupted seeded introduction are not attributed to a different Codex profile', async t => {
+  const f = await nativeFixture(t, { seed: true });
+  process.env.MSB_CC_ONLY = '1';
+  const first = await runAgentTurn({ prompt: 'fixture record owner', bootstrapScope: scope });
+  assert.equal(first.bootstrap, true);
+  await fs.mkdir(path.join(f.home, 'projects', 'beta', 'native-profile'), { recursive: true });
+  await saveState({ ...(await loadState()).state, activeProject: 'beta' });
+  await f.message('/start');
+  assert.match(f.messages.at(-1), hub);
+  assert.equal(await fs.readFile(path.join(f.workspace, 'USER.md'), 'utf8'), '# Fixture owner\n');
+  assert.equal((await f.calls()).length, 1);
+});
 
 test('Codex uses a separate introduction session in the base directory and resumes normal work afterward', async t => {
   const f = await nativeFixture(t);

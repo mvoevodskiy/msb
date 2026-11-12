@@ -56,13 +56,13 @@ import { registerProjectCommands } from './project-commands.mjs';
 import {prepareSkillRead,skillReadOptions} from './skills-read.mjs';
 import {readOpenClawSkills as nativeOpenClawSkills} from '../skills/openclaw.mjs';
 import { beginTurnHistory } from './history.mjs';
-import { runAgentTurn } from '../agent/turn.mjs';
+import { runAgentTurn, supportsCodexAttachments } from '../agent/turn.mjs';
 import { BOOTSTRAP_GREETING, codexBootstrapScope, needsCodexIntroduction } from '../agent/codex-bootstrap.mjs';
 import { compactSession } from '../agent/compact.mjs';
 import { trySessionOperation } from '../agent/session-operation.mjs';
 import { hasClaudeAuth, loadState, updateState } from '../state.mjs';
 import { addTask, tryParseScheduleMessage } from '../autonomy/store.mjs';
-import { adminGuard, isAdmin, isSetupMode } from './auth.mjs';
+import { adminGuard, hasCodexSetup, isAdmin, isSetupMode } from './auth.mjs';
 import { HELP_CC, HELP_OC, commandsForEngine } from './commands.mjs';
 import { handleCallback } from './router.mjs';
 import { costScreen, hubScreen, monitorScreen, setupScreen, settingsScreen } from './screens.mjs';
@@ -85,13 +85,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   const inbox = createInbox({
     canRun: () => !stopping && running.size === 0,
     status: showInboxStatus,
-    cancel: async (entry, merged = false) => {
-      await entry.presentation?.catch(() => {});
-      if (entry.status) {
-        if (merged) await entry.ctx.api.deleteMessage(entry.ctx.chat.id, entry.status.message_id, presentationSignal(AbortSignal.timeout(15_000))).catch(() => {});
-        else await showInboxStatus(entry, 'Моя остановочка ✋🏽⛔️');
-      }
-    },
+    cancel: cancelInboxEntry,
     run: (entry) => {
       const turn = { controller: new AbortController(), completed: false, done: null };
       running.set(entry.ctx.chat.id, turn); unfinished.add(turn);
@@ -118,6 +112,14 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       else entry.status = await ctx.reply(text, thread && thread !== 1 ? { message_thread_id: thread } : {}, presentationSignal(AbortSignal.timeout(15_000)));
     });
     return entry.presentation;
+  }
+
+  async function cancelInboxEntry(entry, merged = false) {
+    await entry.presentation?.catch(() => {});
+    if (entry.status) {
+      if (merged) await entry.ctx.api.deleteMessage(entry.ctx.chat.id, entry.status.message_id, presentationSignal(AbortSignal.timeout(15_000))).catch(() => {});
+      else await showInboxStatus(entry, 'Моя остановочка ✋🏽⛔️');
+    }
   }
 
   let stopping = false;
@@ -176,7 +178,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       return s;
     });
     if (isSetupMode(state)) {
-      const view = setupScreen();
+      const view = setupScreen({ codexAvailable: hasCodexSetup(bot) });
       await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
       return;
     }
@@ -260,9 +262,13 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
 
   bot.command('stop', async (ctx) => {
     stopEpoch++;
-    albums.clear();
+    const collecting = albums.clear();
+    for (const entry of collecting) {
+      entry.cancelled = true;
+      cancelInboxEntry(entry).catch(() => {});
+    }
     const queued = inbox.clear();
-    if (interruptActiveTurns() || queued) {
+    if (interruptActiveTurns() || queued || collecting.length) {
       await ctx.reply('Моя остановочка ✋🏽⛔️');
     } else {
       await ctx.reply('Нечего останавливать 🤷');
@@ -430,7 +436,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     }
     const { state } = await loadState();
     if (isSetupMode(state)) {
-      const view = setupScreen();
+      const view = setupScreen({ codexAvailable: hasCodexSetup(bot) });
       await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
       return;
     }
@@ -448,7 +454,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
 
     // The named OpenClaw runner validates its own native profile.
     if (state.engine !== 'oc' && !hasClaudeAuth(process.env, state)) {
-      const view = setupScreen();
+      const view = setupScreen({ codexAvailable: hasCodexSetup(bot) });
       await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
       return;
     }
@@ -529,6 +535,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   async function executeTurn(ctx, text, turn, voice = false, entry = {}) {
     const chatId = ctx.chat.id;
     const signal = turn.controller.signal;
+    const requireCodex = entry.items?.some(item => item.batchDocument) === true;
     let status;
     let progress;
     let transcription;
@@ -599,6 +606,9 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         progress.beginThinking();
       }
       if (entry.items) {
+        if (requireCodex && !supportsCodexAttachments((await loadState()).state)) {
+          throw Error('Движок сменился. Выбери Codex и отправь вложение заново.');
+        }
         text = await prepareBatch(entry, cfg.botToken, signal);
         signal.throwIfAborted();
         history = await beginTurnHistory({ input: text });
@@ -616,6 +626,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       const bootstrapScope = !entry.scheduled && ctx.message && reminderOwner && state.extAuthBypass === 'codex'
         ? codexBootstrapScope(chatId, reminderOwner, thread) : undefined;
       const out = paused ? { ok: false, text: SPEND_PAUSED } : await runTurn({ prompt: entry.prompt ?? text, signal,
+        ...(requireCodex ? { requireCodex: true } : {}),
         ...(reminderOwner ? { reminderOwner, checkSavedCodex, checkSavedCursor } : {}),
         ...(bootstrapScope ? { bootstrapScope } : {}),
         ...(entry.isAutoTurn ? { isAutoTurn: true } : {}), onStatus: ev => {
@@ -670,7 +681,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       } : {}, { restoreText });
       deliveredText = restoreText(parsePlanResponse(replyText)?.cleanText ?? replyText); delivered = true;
       if (media.items.length) {
-        await sendMediaQueue(ctx.api, chatId, media.items, { threadId: thread });
+        await sendMediaQueue(ctx.api, chatId, media.items, { threadId: thread, cwd: out.cwd });
       }
     } catch (err) {
       await progress?.stop();
@@ -716,18 +727,22 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       return;
     }
     if (stopping) return;
+    // Keep the Codex document in the reserved forward position, even with a Telegram group ID.
+    if (kind === 'document' && supportsCodexAttachments(state) &&
+        (isForwarded(ctx.message) || inbox.isCollecting(ctx))) {
+      inbox.push({ ...build(false), batchDocument: true });
+      return;
+    }
     const groupId = ctx.message?.media_group_id;
     if (groupId && (kind === 'photo' || kind === 'video' || kind === 'document')) {
       const piece = build(true);
       const entry = kind === 'photo' ? albums.addPhoto(groupId, piece)
         : kind === 'video' ? albums.addVideo(groupId, piece)
           : albums.addDocument(groupId, piece);
-      if (!entry.status) {
-        try {
-          entry.status = await ctx.reply(
-            kind === 'document' ? '📎 Получаю файлы...' : kind === 'photo' ? '🖼 Получаю медиа...' : '🎥 Получаю медиа...',
-          );
-        } catch { /* status optional */ }
+      if (!entry.presentation) {
+        await showInboxStatus(entry,
+          kind === 'document' ? '📎 Получаю файлы...' : kind === 'photo' ? '🖼 Получаю медиа...' : '🎥 Получаю медиа...',
+        ).catch(() => {});
       }
       return;
     }

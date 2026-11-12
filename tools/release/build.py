@@ -18,7 +18,7 @@ SINGLE = {
     'tools/release/profiles/jar1.json': 'bot/runtime-profile.json',
 }
 TREES = {'.msb/bot/src/': 'bot/src/', '.msb/bot/shared/': 'bot/shared/', 'overlay/bot/ext/': 'bot/ext/'}
-CHECKS = ('.msb/bot/tests/', 'overlay/bot/ext/tests/')
+CHECKS = ('.msb/bot/tests/', 'overlay/bot/ext/tests/', 'bootstrap/workspace-seed/')
 
 def git(repo, *args):
     return subprocess.check_output(['git', '-C', str(repo), *args])

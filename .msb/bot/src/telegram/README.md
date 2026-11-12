@@ -166,6 +166,8 @@ Owner boundary остаётся перед core router: middleware бота и h
 Альбомы уже в [`prepareAttachment`](attachments.mjs). Исходящий ответ:
 [`extractMediaMarkers`](media-markers.mjs) убирает `[ГОЛОС: путь подпись]`,
 очередь уходит через [`sendMediaQueue`](send-media.mjs) после текста.
+Относительный путь отсчитывается от каталога, с которым запущен этот ход
+[агента](../agent/turn.mjs). URL и абсолютные пути передаются напрямую.
 
 | Часть | Модуль | Проверка |
 |---|---|---|

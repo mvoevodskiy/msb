@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -13,6 +14,7 @@ import {
   resetLocalExtState,
 } from '../local-ext.mjs';
 import { assertSafeExtInstallPath } from '../update/safe-path.mjs';
+import { applyExt } from '../update/client.mjs';
 import { msbRoot } from '../paths.mjs';
 
 async function tmpHome() {
@@ -179,4 +181,25 @@ test('assertSafeExtInstallPath: local/ запрещён, bot/** разрешён
   assert.throws(() => assertSafeExtInstallPath('local'), /refusing local/);
   assert.throws(() => assertSafeExtInstallPath('../etc/passwd'), /bad path/);
   assert.throws(() => assertSafeExtInstallPath('bot/../local/secret'), /bad path/);
+});
+
+test('applyExt preserves the owner package when a release path points to it', async t => {
+  const home = await tmpHome();
+  t.after(() => fs.rm(home, { recursive: true, force: true }));
+  const env = { HOME: home, MSB_UPDATES_URL: 'https://updates.example', MSB_UPDATES_TOKEN: 'fixture' };
+  const root = msbRoot(home, env);
+  const owner = await writePkg(home, 'owner', {});
+  const target = path.join(owner, 'manifest.json');
+  const before = await fs.readFile(target, 'utf8');
+  await fs.mkdir(path.join(root, 'bot/ext'), { recursive: true });
+  await fs.symlink(owner, path.join(root, 'bot/ext/demo'), 'dir');
+  const bytes = Buffer.from('released fixture');
+  const sha256 = createHash('sha256').update(bytes).digest('hex');
+  t.mock.method(globalThis, 'fetch', async url => url.includes('/channels/')
+    ? new Response(JSON.stringify({ release: { version: 'test', files: [{ path: 'bot/ext/demo/manifest.json', sha256 }] } }))
+    : new Response(bytes));
+
+  const outcome = await applyExt(env, home).catch(error => error);
+  assert.equal(await fs.readFile(target, 'utf8'), before);
+  assert.match(outcome.message, /refusing local/);
 });

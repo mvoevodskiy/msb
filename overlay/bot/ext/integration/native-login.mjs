@@ -1,5 +1,6 @@
 /**
- * Проверка CLI и прежний native login Codex.
+ * Проверка CLI и прежний native login Codex; вход — callback меню, выход — статус и инструкция.
+ * Вызывает [auth-wire](../auth-wire.mjs); проверка: [device login](../tests/codex-device-login.test.mjs).
  * Навигация: [Обвязка](../README.md).
  */
 import { getProvider } from '../providers.mjs';
@@ -128,19 +129,31 @@ export async function connectCodexNative(bot, chatId, messageId) {
 
   // Дать CLI напечатать URL/код. Проверять вход только в исходном профиле.
   let guideSent = false;
-  const guideTimer = setInterval(() => {
+  let guideSending = false;
+  const sendCompleteGuide = async () => {
+    if (guideSent || guideSending) return;
     const info = started.extract?.() || {};
-    if (!guideSent && (info.url || info.code)) {
+    if (!info.url || !info.code) return;
+    guideSending = true;
+    try {
+      await bot.api.sendMessage(chatId, codexLoginGuide(info), { parse_mode: 'HTML' });
       guideSent = true;
-      bot.api.sendMessage(chatId, codexLoginGuide(info), { parse_mode: 'HTML' }).catch(() => {});
+    } catch {
+      // Leave it eligible for retry while the same device login is pending.
+    } finally {
+      guideSending = false;
     }
-  }, 1000);
+  };
+  const guideTimer = setInterval(() => { void sendCompleteGuide(); }, 1000);
   await new Promise((r) => setTimeout(r, 1500));
-  if (!guideSent) {
-    guideSent = true;
-    await bot.api
-      .sendMessage(chatId, codexLoginGuide(started.extract?.() || {}), { parse_mode: 'HTML' })
-      .catch(() => {});
+  await sendCompleteGuide();
+  if (!guideSent && !guideSending) {
+    const info = started.extract?.() || {};
+    if (!info.url && !info.code) {
+      await bot.api
+        .sendMessage(chatId, codexLoginGuide(), { parse_mode: 'HTML' })
+        .catch(() => {});
+    }
   }
 
   const waited = await waitCodexNativeAuth({ env: profile.env, home: profile.home, timeoutMs: 300_000 });
