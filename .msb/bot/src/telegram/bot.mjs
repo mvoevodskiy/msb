@@ -657,7 +657,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       } : {}, { restoreText });
       deliveredText = restoreText(parsePlanResponse(replyText)?.cleanText ?? replyText); delivered = true;
       if (media.items.length) {
-        await sendMediaQueue(ctx.api, chatId, media.items, { threadId: thread });
+        await sendMediaQueue(ctx.api, chatId, media.items, { threadId: thread, cwd: out.cwd });
       }
     } catch (err) {
       await progress?.stop();

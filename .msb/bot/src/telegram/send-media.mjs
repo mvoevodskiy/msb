@@ -1,7 +1,8 @@
 /**
  * Queued media descriptor → Telegram send* after the text answer.
  * Old F9Q/C9Q: local path or http(s) URL; optional H.264 convert for video.
- * Caller [bot](./bot.mjs); markers → [media-markers](./media-markers.mjs).
+ * Caller [bot](./bot.mjs) uses the [turn's](../agent/turn.mjs) captured cwd.
+ * Markers → [media-markers](./media-markers.mjs).
  * Checks: [send-media](../../tests/send-media.test.mjs).
  */
 import fs from 'node:fs/promises';
@@ -20,10 +21,10 @@ function threadOptions(threadId) {
   return { message_thread_id: threadId };
 }
 
-function resolvePath(filePath, env = process.env) {
+function resolvePath(filePath, cwd) {
   if (/^https?:\/\//i.test(filePath)) return filePath;
   if (path.isAbsolute(filePath)) return filePath;
-  return path.resolve(workspaceDir(env), filePath);
+  return path.resolve(cwd, filePath);
 }
 
 async function ensureVideoTelegram(filePath) {
@@ -63,8 +64,8 @@ async function toInput(filePath, type) {
 }
 
 /** Send one media item; missing/oversized files throw for the caller log. */
-export async function sendMediaItem(api, chatId, item, { threadId, env = process.env } = {}) {
-  const resolved = resolvePath(item.path, env);
+export async function sendMediaItem(api, chatId, item, { threadId, env = process.env, cwd = workspaceDir(env) } = {}) {
+  const resolved = resolvePath(item.path, cwd);
   if (!/^https?:\/\//i.test(resolved)) {
     const stat = await fs.stat(resolved);
     const limit = item.type === 'photo' ? PHOTO_MAX : OTHER_MAX;
@@ -95,10 +96,10 @@ export async function sendMediaItem(api, chatId, item, { threadId, env = process
 }
 
 /** Deliver queued media after the text answer; failures are logged, not fatal. */
-export async function sendMediaQueue(api, chatId, items, { threadId, env = process.env, log = console.error } = {}) {
+export async function sendMediaQueue(api, chatId, items, { threadId, env = process.env, cwd, log = console.error } = {}) {
   for (const item of items) {
     try {
-      await sendMediaItem(api, chatId, item, { threadId, env });
+      await sendMediaItem(api, chatId, item, { threadId, env, cwd });
     } catch (err) {
       log(`[msb/bot] send_media failed (${item.type}): ${err.message}`);
     }
