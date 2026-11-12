@@ -21,6 +21,7 @@ async function exists(file) {
     return true;
   } catch (error) {
     if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return false;
+    if (error.code === 'EACCES' || error.code === 'EPERM') return true;
     throw error;
   }
 }
@@ -36,6 +37,7 @@ async function hasEntries(directory, { ignoreSeedPlaceholder = false } = {}) {
     return true;
   } catch (error) {
     if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return false;
+    if (error.code === 'EACCES' || error.code === 'EPERM') return true;
     throw error;
   }
 }
@@ -51,6 +53,7 @@ async function identityKind(workspace) {
     return createHash('sha256').update(value).digest('hex') === seedSoul.sha256 ? 'seed' : 'owner';
   } catch (error) {
     if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return 'missing';
+    if (error.code === 'EACCES' || error.code === 'EPERM') return 'owner';
     throw error;
   }
 }

@@ -126,6 +126,29 @@ test('a seeded workspace with a pre-existing owner profile is not reintroduced',
   assert.equal(await fs.readFile(path.join(f.workspace, 'MEMORY.md'), 'utf8'), 'Existing owner memory');
 });
 
+test('unreadable identity or placeholder fails closed as an existing profile', async t => {
+  const f = await fixture(t);
+  await saveState({ ...(await loadState()).state, ccSessionId: undefined });
+  await fs.cp(shippedSeed, f.workspace, { recursive: true });
+  const soul = path.join(f.workspace, 'SOUL.md');
+  const placeholder = path.join(f.workspace, 'memory/.gitkeep');
+  const read = fs.readFile, lstat = fs.lstat;
+  let denied = soul;
+  t.mock.method(fs, 'readFile', async (file, ...args) => {
+    if (file === denied) throw Object.assign(new Error('fixture denied'), { code: 'EACCES' });
+    return read(file, ...args);
+  });
+  t.mock.method(fs, 'lstat', async (file, ...args) => {
+    if (file === placeholder && file === denied) throw Object.assign(new Error('fixture denied'), { code: 'EACCES' });
+    return lstat(file, ...args);
+  });
+  await f.message('/start');
+  assert.match(f.messages.at(-1), hub);
+  denied = placeholder;
+  await f.message('/start');
+  assert.match(f.messages.at(-1), hub);
+});
+
 async function nativeFixture(t, { ordinarySession = false, seed = false } = {}) {
   const f = await fixture(t, runAgentTurn);
   if (seed) await fs.cp(shippedSeed, f.workspace, { recursive: true });
