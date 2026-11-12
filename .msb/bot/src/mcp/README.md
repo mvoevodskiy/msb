@@ -1,5 +1,9 @@
 # MCP
 
+Обратное направление — отдать данные ботов наружу в Cursor/IDE —
+отдельный stdio-сервер: [mcp-server](../../mcp-server/README.md).
+Этот каталог описывает MCP *внутри* хода агента (каталог, ADD_MCP, launch).
+
 [Кнопка в Telegram](../telegram/routes/workspace.mjs) передаёт снимок
 выбранного движка в [каталог](catalog.mjs), затем отображает полученные
 имена и транспорты в [экране](../telegram/screens/workspace.mjs).
