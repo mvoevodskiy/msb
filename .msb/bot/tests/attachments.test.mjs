@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { setTimeout as delay } from 'node:timers/promises';
 import { prepareAttachment } from '../src/telegram/attachments.mjs';
 
 test('prepareAttachment saves a photo under workspace .media and builds a Read prompt', async (t) => {
@@ -74,4 +75,32 @@ test('prepareAttachment inlines small text documents and keeps the path', async 
   assert.match(prompt, /note\.md/);
   assert.match(prompt, /Разбери файл/);
   assert.match(prompt, /\.media\//);
+});
+
+test('aborting video preparation terminates its ffmpeg child', async t => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-video-stop-'));
+  t.after(() => fs.rm(home, { recursive: true, force: true }));
+  const oldPath = process.env.PATH;
+  const workspace = path.join(home, 'workspace');
+  const started = path.join(home, 'started');
+  await fs.mkdir(workspace);
+  await fs.writeFile(path.join(home, 'ffmpeg'), '#!/bin/sh\nprintf ready > "' + started + '"\nexec sleep 4\n', { mode: 0o700 });
+  process.env.PATH = `${home}:${oldPath}`;
+  t.after(() => { process.env.PATH = oldPath; });
+  t.mock.method(globalThis, 'fetch', async () => ({ ok: true, arrayBuffer: async () => new ArrayBuffer(4) }));
+  const api = { getFile: async () => ({ file_path: 'fixture.mp4', file_size: 4 }) };
+  const ctx = { api, message: { video: { file_id: 'fixture', duration: 7, file_size: 4 } } };
+  const controller = new AbortController();
+  const work = prepareAttachment({ ctx, attachment: 'video', env: { MSB_WORKSPACE_DIR: workspace } }, 'fixture', controller.signal)
+    .then(() => 'completed', error => error.name);
+  const deadline = Date.now() + 3_000;
+  try {
+    while (!await fs.access(started).then(() => true, () => false)) {
+      assert.ok(Date.now() < deadline, 'ffmpeg did not start');
+      await delay(10);
+    }
+  } finally {
+    controller.abort();
+  }
+  assert.equal(await Promise.race([work, delay(1_500, 'still running', { ref: false })]), 'AbortError');
 });

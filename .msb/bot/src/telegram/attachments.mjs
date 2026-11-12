@@ -82,10 +82,11 @@ async function extractVideoInsights(bytes, durationSec, { signal, isNote = false
     signal?.throwIfAborted?.();
     try {
       const audio = path.join(directory, 'audio.ogg');
-      await exec('ffmpeg', ['-i', video, '-vn', '-acodec', 'libopus', '-ar', '16000', '-ac', '1', '-y', audio], { timeout: 120_000 });
+      await exec('ffmpeg', ['-i', video, '-vn', '-acodec', 'libopus', '-ar', '16000', '-ac', '1', '-y', audio], { timeout: 120_000, signal });
       const ogg = await fs.readFile(audio);
       transcript = await tryTranscript(ogg, { signal });
     } catch {
+      signal?.throwIfAborted();
       /* optional track */
     }
     const duration = Math.max(1, Number(durationSec) || 3);
@@ -97,10 +98,11 @@ async function extractVideoInsights(bytes, durationSec, { signal, isNote = false
       signal?.throwIfAborted?.();
       const frame = path.join(directory, `frame_${i}.jpg`);
       try {
-        await exec('ffmpeg', ['-ss', String(at), '-i', video, '-vframes', '1', '-q:v', '3', '-y', frame], { timeout: 30_000 });
+        await exec('ffmpeg', ['-ss', String(at), '-i', video, '-vframes', '1', '-q:v', '3', '-y', frame], { timeout: 30_000, signal });
         const jpeg = await fs.readFile(frame);
         frames.push(await saveBytes(jpeg, `frame_${i}.jpg`));
       } catch {
+        signal?.throwIfAborted();
         /* skip frame */
       }
     }
