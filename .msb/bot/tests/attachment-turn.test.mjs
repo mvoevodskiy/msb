@@ -62,6 +62,57 @@ test('/stop cancels an album still collecting and updates its status', async t =
   assert.equal(calls, 0);
 });
 
+test('Codex receives one forwarded voice/document batch with its reply in arrival order', async t => {
+  const turns = [], downloads = [];
+  let release;
+  const held = new Promise(resolve => { release = resolve; });
+  const f = await fixture(t, async turn => {
+    turns.push(turn);
+    if (turns.length === 1) await held;
+    return { ok: true, text: 'Готово.' };
+  }, { overlay: false });
+  process.env.DEEPGRAM_API_KEY = 'test-stt';
+  delete process.env.STT_COMMAND;
+  t.mock.method(f.bot.api, 'getFile', async fileId => {
+    downloads.push(fileId);
+    return { file_path: fileId };
+  });
+  const document = 'Код документа: DOC-QUEUE-428';
+  t.mock.method(globalThis, 'fetch', async url => {
+    if (String(url).startsWith('https://api.deepgram.com/')) {
+      return { ok: true, json: async () => ({ results: { channels: [{ alternatives: [{ transcript: 'Фиолетовый компас 428' }] }] } }) };
+    }
+    const body = String(url).endsWith('/voice.ogg') ? 'OggS' : document;
+    return { ok: true, arrayBuffer: async () => new TextEncoder().encode(body).buffer };
+  });
+  const source = { type: 'hidden_user', sender_user_name: 'Test' };
+  const send = (id, message) => f.bot.handleUpdate({ message: {
+    message_id: id, date: 1, chat: { id: 42 }, from: { id: 42 }, ...message,
+  } });
+  try {
+    await f.message('предыдущий ход');
+    await until(() => turns.length === 1, 'active turn');
+    await send(71, { voice: { file_id: 'voice.ogg', duration: 4 }, forward_origin: source });
+    await send(72, {
+      document: { file_id: 'doc.txt', file_name: 'doc.txt', mime_type: 'text/plain', file_size: 55 },
+      caption: 'Подпись документа', forward_origin: source,
+    });
+    await send(73, {
+      text: 'Проверь пачку', reply_to_message: { from: { id: 42 }, text: 'Полное сообщение' },
+      quote: { text: 'Контрольная цитата' },
+    });
+    assert.deepEqual(downloads, [], 'queued batch must not start in parallel');
+  } finally { release(); }
+  await until(() => turns.length === 2, 'forwarded batch reaches Codex');
+  const { prompt, requireCodex } = turns[1];
+  assert.match(prompt, /пачку из 3 сообщений/);
+  assert.match(prompt, /#1 [^\n]*голосовое[\s\S]*Фиолетовый компас 428[\s\S]*#2 [^\n]*файл doc\.txt[^\n]*\/\.media\/[\s\S]*Подпись документа[\s\S]*Код документа: DOC-QUEUE-428[\s\S]*#3 [^\n]*комментарий пользователя[\s\S]*Контрольная цитата[\s\S]*Проверь пачку/);
+  assert.doesNotMatch(prompt, /Полное сообщение/);
+  assert.deepEqual(downloads, ['voice.ogg', 'doc.txt']);
+  assert.equal(requireCodex, true);
+  assert.ok([...f.messages, ...f.edits].some(text => text.includes('загружаю медиа (2)')));
+});
+
 test('the album preserves the quoted reply when a later photo has no reply', async t => {
   const prompts = [];
   const f = await fixture(t, async ({ prompt }) => {

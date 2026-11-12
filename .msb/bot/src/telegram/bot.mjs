@@ -528,6 +528,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   async function executeTurn(ctx, text, turn, voice = false, entry = {}) {
     const chatId = ctx.chat.id;
     const signal = turn.controller.signal;
+    const requireCodex = Boolean(entry.attachment || entry.items?.some(item => item.batchDocument));
     let status;
     let progress;
     let transcription;
@@ -583,10 +584,10 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         history = await beginTurnHistory({ input: recognized.transcript.slice(0, 300) });
         progress.beginThinking();
       }
+      if (requireCodex && !supportsCodexAttachments((await loadState()).state)) {
+        throw Error('Движок сменился. Выбери Codex и отправь вложение заново.');
+      }
       if (entry.attachment) {
-        if (!supportsCodexAttachments((await loadState()).state)) {
-          throw Error('Движок сменился. Выбери Codex и отправь вложение заново.');
-        }
         text = await prepareAttachment(entry, cfg.botToken, signal);
         signal.throwIfAborted();
         history = await beginTurnHistory({ input: text.slice(0, 300) });
@@ -608,7 +609,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       const bootstrapScope = !entry.scheduled && ctx.message && reminderOwner && state.extAuthBypass === 'codex'
         ? codexBootstrapScope(chatId, reminderOwner, thread) : undefined;
       const out = paused ? { ok: false, text: SPEND_PAUSED } : await runTurn({ prompt: entry.prompt ?? text, signal,
-        ...(entry.attachment ? { requireCodex: true } : {}),
+        ...(requireCodex ? { requireCodex: true } : {}),
         ...(reminderOwner ? { reminderOwner, checkSavedCodex } : {}),
         ...(bootstrapScope ? { bootstrapScope } : {}),
         ...(entry.isAutoTurn ? { isAutoTurn: true } : {}), onStatus: ev => {
@@ -716,6 +717,11 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       return;
     }
     if (stopping) return;
+    // Forwarded documents belong to the same reserved inbox position even if Telegram sets a group ID.
+    if (kind === 'document' && (isForwarded(ctx.message) || inbox.isCollecting(ctx))) {
+      inbox.push({ ...build(false), batchDocument: true });
+      return;
+    }
     const groupId = ctx.message?.media_group_id;
     if (groupId && (kind === 'photo' || kind === 'video' || kind === 'document')) {
       const piece = build(true);
