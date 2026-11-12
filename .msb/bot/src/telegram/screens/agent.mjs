@@ -2,7 +2,9 @@
  * Агент, глубина, права и подключение Claude.
  * Модель/версии → [pure renderer](./models.mjs), совместимые re-exports ниже.
  * [Routes](../routes/agent.mjs) supplies state; depth → [policy](../../agent/effort.mjs),
- * [production checks](../../../tests/claude-effort.test.mjs). No setting writes here.
+ * [production checks](../../../tests/claude-effort.test.mjs); first-run presentation →
+ * [setup route](../routes/agent.mjs), [checks](../../../tests/onboarding-guides.test.mjs).
+ * No setting writes here.
  * Навигация: [Telegram](../README.md).
  */
 import { VISIBLE_PERMISSION_MODES } from '../../../shared/permission-modes.mjs';
@@ -137,16 +139,21 @@ export async function connScreen(state, env = process.env) {
   return { text, keyboard: kb };
 }
 
-export function setupScreen() {
+export function setupScreen({ codexAvailable = false } = {}) {
+  const keyboard = new InlineKeyboard()
+    .text('🔑 Новый токен Claude', 'setup:subscription')
+    .row()
+    .text('❔ Инструкция Claude', 'setup:help');
+  if (codexAvailable) keyboard.row().text('❔ Инструкция Codex', 'setup:help:codex');
   return {
-    text: `Сначала подключи AI.
+    text: `<b>Сначала подключи AI</b>
 
-Для Claude нужен его токен. Codex и другие CLI подключаются через /settings → «Подключения».
-Нажми «🔑 Новый токен» и пришли вывод <code>claude setup-token</code> или ключ <code>sk-ant-…</code>.
+<b>Claude Code</b> — нажми «🔑 Новый токен Claude» и пришли токен подписки или API-ключ Anthropic.${codexAvailable ? `
+
+<b>Codex</b> — вход через ChatGPT: /settings → «🔌 Подключения» → «🔐 Вход» рядом с Codex. Токен в чат отправлять не нужно.
+
+Другие подключения доступны в /settings → «🔌 Подключения».` : ''}
 ${BLANK}`,
-    keyboard: new InlineKeyboard()
-      .text('🔑 Новый токен', 'setup:subscription')
-      .row()
-      .text('❔ Инструкция', 'setup:help'),
+    keyboard,
   };
 }

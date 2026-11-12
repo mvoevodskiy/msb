@@ -62,7 +62,7 @@ import { compactSession } from '../agent/compact.mjs';
 import { trySessionOperation } from '../agent/session-operation.mjs';
 import { hasClaudeAuth, loadState, updateState } from '../state.mjs';
 import { addTask, tryParseScheduleMessage } from '../autonomy/store.mjs';
-import { adminGuard, isAdmin, isSetupMode } from './auth.mjs';
+import { adminGuard, hasCodexSetup, isAdmin, isSetupMode } from './auth.mjs';
 import { HELP_CC, HELP_OC, commandsForEngine } from './commands.mjs';
 import { handleCallback } from './router.mjs';
 import { costScreen, hubScreen, monitorScreen, setupScreen, settingsScreen } from './screens.mjs';
@@ -178,7 +178,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       return s;
     });
     if (isSetupMode(state)) {
-      const view = setupScreen();
+      const view = setupScreen({ codexAvailable: hasCodexSetup(bot) });
       await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
       return;
     }
@@ -436,7 +436,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     }
     const { state } = await loadState();
     if (isSetupMode(state)) {
-      const view = setupScreen();
+      const view = setupScreen({ codexAvailable: hasCodexSetup(bot) });
       await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
       return;
     }
@@ -454,7 +454,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
 
     // The named OpenClaw runner validates its own native profile.
     if (state.engine !== 'oc' && !hasClaudeAuth(process.env, state)) {
-      const view = setupScreen();
+      const view = setupScreen({ codexAvailable: hasCodexSetup(bot) });
       await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
       return;
     }

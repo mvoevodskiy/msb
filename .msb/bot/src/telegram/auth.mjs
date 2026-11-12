@@ -1,6 +1,9 @@
 /**
  * Ворота владельца: только ADMIN_ID.
  * Чужие апдейты — тишина (как в закрытом ядре), без reply.
+ * Первый запуск: [bot](./bot.mjs) и [setup route](./routes/agent.mjs);
+ * наличие Codex определяется той же регистрацией overlay, что и сохранённые ходы.
+ * Проверка: [onboarding guides](../../tests/onboarding-guides.test.mjs).
  */
 export function isAdmin(ctx, adminId) {
   const uid = ctx.from?.id;
@@ -36,4 +39,9 @@ export function isSetupMode(state, env = process.env) {
   if (env.CLAUDE_CODE_OAUTH_TOKEN?.trim()) return false;
   if (env.MSB_ANTHROPIC_API_KEY?.trim() || env.ANTHROPIC_API_KEY?.trim()) return false;
   return true;
+}
+
+/** Не предлагать инструкцию для маршрута, отсутствующего в plain core или отключённого флагом. */
+export function hasCodexSetup(bot, env = process.env) {
+  return env.JARVIS_CC_ONLY !== '1' && typeof bot?.[Symbol.for('msb.savedCodexPrompt')] === 'function';
 }

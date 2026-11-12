@@ -1,13 +1,16 @@
 /**
  * Авторизация, effort/права и поздний setup fallback.
  * Модели/версии → [отдельный route](./models.mjs), те же state и router.
- * Навигация: [Telegram](../README.md).
+ * Первый запуск → [setup availability](../auth.mjs), [screen](../screens/agent.mjs),
+ * [checks](../../../tests/onboarding-guides.test.mjs). Навигация: [Telegram](../README.md).
  */
 import { readClaudeVersion } from '../../agent/claude-version.mjs';
 import { loadState, updateState } from '../../state.mjs';
 import { agentScreen, connScreen, effortScreen, permModeScreen, setupScreen } from '../screens.mjs';
 import { applyEffort, applyPermMode } from '../actions.mjs';
+import { hasCodexSetup } from '../auth.mjs';
 import { UNHANDLED } from './shared.mjs';
+import { InlineKeyboard } from 'grammy';
 
 export async function handleAgentRoute({ data, state, show, pending, chatId, bot }) {
   // —— agent / model ——
@@ -41,15 +44,25 @@ export async function handleAgentRoute({ data, state, show, pending, chatId, bot
   return UNHANDLED;
 }
 
-export async function handleSetupRoute({ data, show }) {
+export async function handleSetupRoute({ data, show, bot, pending, chatId }) {
+  const codexAvailable = hasCodexSetup(bot);
+  const back = () => new InlineKeyboard().text('« Назад', 'setup:back');
+  // A guide does not accept a Claude token; don't consume the next ordinary text as one.
+  if (['setup:help', 'setup:help:codex', 'setup:back'].includes(data) && pending.get(chatId) === 'auth-token') pending.delete(chatId);
   // —— setup ——
   if (data === 'setup:help') {
     return show({
-      text: 'На машине выполни <code>claude setup-token</code>, скопируй токен и пришли его боту.',
-      keyboard: setupScreen().keyboard,
+      text: '<b>Claude Code · инструкция</b>\n\n1. На машине, где работает бот, выполни <code>claude setup-token</code> и скопируй токен. Можно использовать и API-ключ Anthropic.\n2. Вернись назад, нажми «🔑 Новый токен Claude» и пришли токен или ключ боту.',
+      keyboard: back(),
     });
   }
-  if (data.startsWith('setup:')) return show(setupScreen());
+  if (data === 'setup:help:codex' && codexAvailable) {
+    return show({
+      text: '<b>Codex · инструкция</b>\n\n1. Открой /settings → «🔌 Подключения».\n2. Рядом с Codex нажми «🔐 Вход». При необходимости бот установит Codex CLI.\n3. Открой полученную ссылку, войди в ChatGPT и введи код из сообщения.\n4. Дождись подтверждения бота: после успешного входа он выберет Codex.\n\nПароль и токены не отправляй в чат.',
+      keyboard: back(),
+    });
+  }
+  if (data.startsWith('setup:')) return show(setupScreen({ codexAvailable }));
 
   return UNHANDLED;
 }
