@@ -2,7 +2,11 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { runAgentTurn } from '../src/agent/turn.mjs';
+import { loadState, saveState } from '../src/state.mjs';
 import { fixture } from './helpers/menu-fixture.mjs';
+import { mcpFixture } from './helpers/mcp-fixture.mjs';
+import { nativeFixtures } from './helpers/mcp-launch-fixture.mjs';
 
 async function until(check, label = 'condition') {
   const end = Date.now() + 5000;
@@ -97,4 +101,32 @@ test('model voice markers are stripped from text and sent as sendVoice', async (
   assert.doesNotMatch(delivered, /\[ГОЛОС:/);
   assert.match(delivered, /Озвучу урок|Готово/);
   assert.equal(f.mediaSends[0].options.caption, 'Урок 1');
+});
+
+test('Codex attachment turn sends a relative file from the captured project', async t => {
+  const f = await mcpFixture(t, 'codex', { runTurn: runAgentTurn });
+  const native = await nativeFixtures(f);
+  const project = path.join(f.home, 'projects', 'media-fixture');
+  await fs.mkdir(project, { recursive: true });
+  await fs.writeFile(path.join(project, 'project-only.txt'), 'fixture project result');
+  await saveState({ ...(await loadState()).state, activeProject: 'media-fixture' });
+  await native.respond('Вложение обработано.\n[ФАЙЛ: project-only.txt]');
+  const incoming = Buffer.from('attachment contents fixture');
+  t.mock.method(globalThis, 'fetch', async () => ({
+    ok: true, arrayBuffer: async () => Uint8Array.from(incoming).buffer,
+  }));
+
+  await f.bot.handleUpdate({ message: {
+    message_id: 63, date: 1, chat: { id: 42 },
+    from: { id: 42, is_bot: false, first_name: 'Owner' },
+    document: { file_id: 'doc', file_name: 'note.txt', file_size: incoming.length, mime_type: 'text/plain' },
+  } });
+  await until(() => f.edits.some(text => text.includes('Вложение обработано')), 'Codex attachment answer');
+  await f.bot.stop();
+  const call = (await native.trace()).find(row => row.kind === 'codex-exec');
+  assert.equal(call.cwd, await fs.realpath(project));
+  assert.match(call.prompt, /attachment contents fixture/);
+  assert.equal(f.mediaSends.length, 1);
+  assert.equal(f.mediaSends[0].method, 'sendDocument');
+  assert.equal(f.mediaSends[0].media.filename, 'project-only.txt');
 });

@@ -90,7 +90,7 @@ export async function runAgentTurn({
     const systemPrompt=await buildSystemPrompt({env,workspace:baseWorkspace,cwd,timezone:state.timezone || 'UTC',
       now:contextNow,extra});
     const result=await runOpenClawTurn({state,prompt,systemPrompt,cwd,env,signal,onStatus});
-    return {...result,skillInstall,...(reminderRail ? {reminderRail} : {})};
+    return {...result,cwd,skillInstall,...(reminderRail ? {reminderRail} : {})};
   }
   if (!hasClaudeAuth(env, state)) {
     return {
@@ -219,7 +219,7 @@ export async function runAgentTurn({
   // only when the CLI returned actual assistant text.
   const canInstallMcp=result.text && (!result.isError || claudePartial);
   const display = result.errorDisplay;
-  return { ok: !result.isError, text: display ? display.before + text + display.after : text, result, skillInstall,
+  return { ok: !result.isError, text: display ? display.before + text + display.after : text, result, cwd, skillInstall,
     ...(display ? { modelText: text } : {}),
     ...(partialReply ? { partialReply } : {}),
     ...(claudeFailure && !claudePartial ? { terminalNotice: true } : {}),
