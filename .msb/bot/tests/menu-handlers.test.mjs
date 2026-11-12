@@ -447,21 +447,15 @@ async function until(check) {
   while (!check()) { if (Date.now() > end) throw Error('Timed out waiting for detached turn'); await new Promise(r => setTimeout(r, 5)); }
 }
 
-// Old-core help reports voice support (vendor/UI-SCREENS.md); current open-core
-// retains voice/STT but not photo/video/document ingestion. Exercise both routes.
-test('help and attachment fallback do not claim that working voice is unavailable', async (t) => {
+// Old-core help reports voice and attachment support; open-core routes media into the turn.
+test('help and attachment ingress do not claim that working voice is unavailable', async (t) => {
   const f = await fixture(t, undefined, { overlay: false });
   await f.message('/help');
   const help = f.messages.at(-1);
   assert.match(help, /Голосов[^\n]*распознаван/iu);
-  assert.match(help, /вложени[^\n]*пока не подключен/iu);
+  assert.match(help, /Фото|вложен/iu);
+  assert.doesNotMatch(help, /вложени[^\n]*пока не подключен/iu);
   assert.doesNotMatch(help, /голосов[^\n]*не подключен/iu);
-  for (const kind of ['photo', 'video', 'document']) {
-    await f.bot.handleUpdate({ message: { message_id: 100, date: 1, chat: { id: 42 },
-      from: { id: 42, is_bot: false, first_name: 'Fixture' }, [kind]: {} } });
-    assert.match(f.messages.at(-1), /вложени[^\n]*пока не подключен/iu);
-    assert.doesNotMatch(f.messages.at(-1), /голос/iu);
-  }
 });
 
 // Old help described the legacy implementations; open-core handlers are explicit

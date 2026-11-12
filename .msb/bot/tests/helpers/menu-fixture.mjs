@@ -35,6 +35,7 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
   const restartRequests = [];
   const markupEdits = [], callbackAnswers = [], commandMenus = [];
   const messages = [], edits = [], editOptions = [], deleted = [], messageOptions = [], typingSignals = [], editSignals = [], replySignals = [];
+  const mediaSends = [];
   class Harness {
     handlers = new Map(); commands = new Map(); middleware = [];
     async start() {}
@@ -47,6 +48,14 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
       editMessageReplyMarkup: async (chatId, messageId, options) => { markupEdits.push({ chatId, messageId, options }); },
       answerCallbackQuery: async (...args) => { callbackAnswers.push(args); },
       deleteMessage: async (_chat, id) => { deleted.push(id); },
+      getFile: async () => ({ file_path: 'photos/x.jpg', file_size: 4 }),
+      sendVoice: async (chatId, media, options) => { mediaSends.push({ method: 'sendVoice', chatId, media, options }); return { message_id: 900 + mediaSends.length }; },
+      sendPhoto: async (chatId, media, options) => { mediaSends.push({ method: 'sendPhoto', chatId, media, options }); return { message_id: 900 + mediaSends.length }; },
+      sendDocument: async (chatId, media, options) => { mediaSends.push({ method: 'sendDocument', chatId, media, options }); return { message_id: 900 + mediaSends.length }; },
+      sendVideo: async (chatId, media, options) => { mediaSends.push({ method: 'sendVideo', chatId, media, options }); return { message_id: 900 + mediaSends.length }; },
+      sendAudio: async (chatId, media, options) => { mediaSends.push({ method: 'sendAudio', chatId, media, options }); return { message_id: 900 + mediaSends.length }; },
+      sendAnimation: async (chatId, media, options) => { mediaSends.push({ method: 'sendAnimation', chatId, media, options }); return { message_id: 900 + mediaSends.length }; },
+      sendSticker: async (chatId, media, options) => { mediaSends.push({ method: 'sendSticker', chatId, media, options }); return { message_id: 900 + mediaSends.length }; },
     };
     use(fn) { this.middleware.push(fn); }
     command(name, fn) { this.commands.set(name, fn); }
@@ -59,8 +68,16 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
       const text = ctx.message?.text;
       const command = text?.match(/^\/([^@\s]+)(?:@\S+)?(?:\s+([\s\S]*))?$/);
       if (command) ctx.match = command[2] || '';
+      const mediaHandler = update.message?.photo ? 'message:photo'
+        : update.message?.video || update.message?.video_note ? 'message:video'
+          : update.message?.animation ? 'message:animation'
+            : update.message?.document ? 'message:document'
+              : update.message?.sticker ? 'message:sticker'
+                : update.message?.audio ? 'message:audio'
+                  : update.message?.voice ? 'message:voice' : 'message:text';
       const handler = ctx.callbackQuery ? this.handlers.get('callback_query:data')
-        : command ? this.commands.get(command[1]) || this.handlers.get('message:text') : this.handlers.get(text ? 'message:text' : update.message?.photo ? 'message:photo' : update.message?.video ? 'message:video' : 'message:document');
+        : command ? this.commands.get(command[1]) || this.handlers.get('message:text')
+          : this.handlers.get(text ? 'message:text' : mediaHandler);
       const step = (i) => i < this.middleware.length ? this.middleware[i](ctx, () => step(i + 1)) : handler?.(ctx);
       return step(0);
     }
@@ -86,5 +103,5 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
     await bot.handleUpdate({message:{message_id:99,text,from:{id:uid},chat:{id:42}}});
     if(waitForRender && /^\/skills(?:@\S+)?(?:\s|$)/.test(text))await Promise.allSettled([...(bot[tasks] || [])].filter(p=>!prior.has(p)));
   };
-  return { home, workspace, bot, callback, message, markupEdits, callbackAnswers, commandMenus, messages, edits, editOptions, deleted, messageOptions, typingSignals, editSignals, replySignals, storeFile, restartRequests };
+  return { home, workspace, bot, callback, message, markupEdits, callbackAnswers, commandMenus, messages, edits, editOptions, deleted, messageOptions, typingSignals, editSignals, replySignals, mediaSends, storeFile, restartRequests };
 }

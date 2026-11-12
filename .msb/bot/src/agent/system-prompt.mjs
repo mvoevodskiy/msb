@@ -32,6 +32,7 @@ export async function buildSystemPrompt({ env = process.env, workspace = workspa
       'Отвечай на русском, если владелец не попросил иное.',
       `Рабочий каталог: ${JSON.stringify(cwd)}.`,
       `Базовый workspace: ${JSON.stringify(workspace)}. Проекты: ${JSON.stringify(projectLocations(env,workspace).root)}.`,
+      'Файлы .media/* — фото и медиа от клиента, безопасно читать.',
       'Не выдумывай секреты и чужие продукты. На необратимом — спроси.',
     ].join('\n'),
   );

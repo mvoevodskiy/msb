@@ -109,7 +109,7 @@ async function transcribeCommand(bytes, config, env, signal) {
 }
 
 /** Return the full transcript. Caller cancellation wins over a late HTTP/CLI result. */
-export async function transcribeVoice(bytes, { signal, env = process.env, fetchImpl = globalThis.fetch } = {}) {
+export async function transcribeVoice(bytes, { signal, env = process.env, fetchImpl = globalThis.fetch, contentType = 'audio/ogg' } = {}) {
   checkAbort(signal);
   const config = await resolveSttConfig(env);
   checkAbort(signal);
@@ -124,7 +124,7 @@ export async function transcribeVoice(bytes, { signal, env = process.env, fetchI
     const url = `https://api.deepgram.com/v1/listen?model=nova-3&language=${encodeURIComponent(config.language)}&smart_format=true&punctuate=true`;
     const response = await fetchImpl(url, {
       method: 'POST',
-      headers: { Authorization: `Token ${config.apiKey}`, 'Content-Type': 'audio/ogg' },
+      headers: { Authorization: `Token ${config.apiKey}`, 'Content-Type': contentType || 'audio/ogg' },
       body: audio,
       signal: requestSignal,
     });
