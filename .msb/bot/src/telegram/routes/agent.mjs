@@ -52,8 +52,8 @@ export async function handleSetupRoute({ data, show, bot, pending, chatId }) {
   // —— setup ——
   if (data === 'setup:help') {
     return show({
-      text: '<b>Claude Code · инструкция</b>\n\n1. На машине, где работает бот, выполни <code>claude setup-token</code> и скопируй токен. Можно использовать и API-ключ Anthropic.\n2. Вернись назад, нажми «🔑 Новый токен Claude» и пришли токен или ключ боту.',
-      keyboard: back(),
+      text: '<b>Claude Code · инструкция</b>\n\n1. На машине, где работает бот, выполни <code>claude setup-token</code> и скопируй токен. Можно использовать и API-ключ Anthropic.\n2. Нажми «🔑 Новый токен Claude» и пришли токен или ключ боту.',
+      keyboard: new InlineKeyboard().text('🔑 Новый токен Claude', 'setup:subscription').row().text('« Назад', 'setup:back'),
     });
   }
   if (data === 'setup:help:codex' && codexAvailable) {

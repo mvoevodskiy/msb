@@ -34,6 +34,8 @@ test('first start offers distinct Claude and Codex instructions for the installe
   assert.match(f.edits.at(-1), /Claude Code[\s\S]*Codex/);
   await f.callback('setup:help');
   assert.match(f.edits.at(-1), /Claude[\s\S]*claude setup-token/);
+  assert.ok(buttons(f.editOptions.at(-1)).some(b => b.callback_data === 'setup:subscription'),
+    'the Claude guide keeps the direct token action');
   await f.callback('setup:subscription');
   assert.match(f.edits.at(-1), /токен Claude/);
   await f.message('/start');
