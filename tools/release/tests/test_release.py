@@ -41,6 +41,8 @@ class ReleaseTest(unittest.TestCase):
         self.write('overlay/bot/ext/shim/bin/claude', '#!/bin/sh\nexit 0\n', 0o755)
         self.write('.msb/bot/tests/example.test.mjs', '// fixture test\n')
         self.write('overlay/bot/ext/tests/example.test.mjs', '// fixture test\n')
+        self.write('bootstrap/workspace-seed/SOUL.md', '# fixture seed identity\n')
+        self.write('bootstrap/workspace-seed/memory/.gitkeep', '')
         self.write('.msb/bot/vendor/deobfuscated.js', '// inert reference\n')
         self.write('tools/release/build.py', (TOOLS / 'build.py').read_text())
         self.write('tools/release/verify.py', '# fixture operator\n')
@@ -83,6 +85,9 @@ class ReleaseTest(unittest.TestCase):
         self.assertFalse(any(p.name in ['.env', 'MEMORY.md', 'auth.json'] for p in (a / 'runtime').rglob('*')))
         self.assertFalse(any('/tests/' in x for x in expected))
         self.assertFalse((a / 'checks/source/.msb/bot/vendor/deobfuscated.js').exists())
+        for name in ('bootstrap/workspace-seed/SOUL.md', 'bootstrap/workspace-seed/memory/.gitkeep'):
+            self.assertEqual((a / 'checks/source' / name).read_bytes(), (self.repo / name).read_bytes())
+            self.assertFalse((a / 'runtime' / name).exists(), 'seed is test input, not runtime owner data')
 
     def test_dirty_head_is_not_silently_exported(self):
         self.write('.msb/bot/src/main.mjs', 'changed without a commit\n')

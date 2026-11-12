@@ -1,12 +1,19 @@
 /**
- * Old workspace readiness and non-overwriting bootstrap completion.
+ * Old workspace readiness and non-overwriting bootstrap completion. The exact
+ * shipped cold-install seed is not an owner identity; compare bytes before
+ * allowing an introduction, and treat all other files as owner data.
  * Used by [Codex introduction](./codex-bootstrap.mjs) and verified through
  * [Telegram/native shim](../../tests/codex-bootstrap.test.mjs).
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createHash } from 'node:crypto';
 
 const marker = '.iia-bootstrapped';
+// bootstrap/workspace-seed/SOUL.md at this source revision. Update alongside
+// the shipped seed and its real-seed test; never identify user files by name alone.
+const seedSoul = { size: 9239, sha256: 'e630d64ec0e932c773364797d358d58533f1a90c1b2064755cc70231723487c3' };
+const ownerFiles = ['USER.md', 'MEMORY.md', 'MISSION.md', 'GOALS.md', 'PROJECTS.md', 'PREFERENCES.md', 'LEARNED.md', 'IDENTITY.md'];
 
 async function exists(file) {
   try {
@@ -18,9 +25,15 @@ async function exists(file) {
   }
 }
 
-async function hasEntries(directory) {
+async function hasEntries(directory, { ignoreSeedPlaceholder = false } = {}) {
   try {
-    return (await fs.readdir(directory)).length > 0;
+    const entries = await fs.readdir(directory);
+    if (!entries.length) return false;
+    if (ignoreSeedPlaceholder && entries.length === 1 && entries[0] === '.gitkeep') {
+      const placeholder = await fs.lstat(path.join(directory, '.gitkeep'));
+      if (placeholder.isFile() && placeholder.size === 0) return false;
+    }
+    return true;
   } catch (error) {
     if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return false;
     throw error;
@@ -28,11 +41,34 @@ async function hasEntries(directory) {
 }
 
 export const bootstrapMarkerExists = workspace => exists(path.join(workspace, marker));
-export const bootstrapIdentityExists = workspace => exists(path.join(workspace, 'SOUL.md'));
+async function identityKind(workspace) {
+  const file = path.join(workspace, 'SOUL.md');
+  try {
+    const info = await fs.lstat(file);
+    // A user file, symlink or directory must retain the old ready behaviour.
+    if (!info.isFile() || info.size !== seedSoul.size) return 'owner';
+    const value = await fs.readFile(file);
+    return createHash('sha256').update(value).digest('hex') === seedSoul.sha256 ? 'seed' : 'owner';
+  } catch (error) {
+    if (error.code === 'ENOENT' || error.code === 'ENOTDIR') return 'missing';
+    throw error;
+  }
+}
 
-export async function bootstrapWorkspaceReady(workspace) {
-  return await bootstrapMarkerExists(workspace) || await bootstrapIdentityExists(workspace) ||
-    await hasEntries(path.join(workspace, 'memory')) || await hasEntries(path.join(workspace, 'knowledge'));
+export const bootstrapIdentityExists = async workspace => await identityKind(workspace) === 'owner';
+
+export async function bootstrapWorkspaceReady(workspace, { introductionActive = false } = {}) {
+  if (await bootstrapMarkerExists(workspace)) return true;
+  const identity = await identityKind(workspace);
+  if (identity === 'owner') return true;
+  // This scoped attempt started only after checking an empty seed. Notes it
+  // creates during the conversation are not a completed identity by themselves.
+  if (identity === 'seed' && introductionActive) return false;
+  if (identity === 'seed' && !introductionActive) {
+    for (const name of ownerFiles) if (await exists(path.join(workspace, name))) return true;
+  }
+  return await hasEntries(path.join(workspace, 'memory'), { ignoreSeedPlaceholder: identity === 'seed' }) ||
+    await hasEntries(path.join(workspace, 'knowledge'));
 }
 
 const defaults = {
