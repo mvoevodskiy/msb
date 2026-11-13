@@ -117,6 +117,10 @@ async function reserve({ scope, env, signal }) {
     // /newtask resets the ordinary slot but intentionally retains introduction.
     // Fence changes during this attempt, without invalidating a later retry.
     const capturedEpoch = epochOf(state);
+    // History may continue after /newtask, but a reset must prevent the old
+    // introduction ID from becoming the active ordinary conversation again.
+    const activationEpoch = Number.isSafeInteger(row.activationEpoch) ? row.activationEpoch
+      : Number.isSafeInteger(row.capturedEpoch) ? row.capturedEpoch : capturedEpoch;
     const cwd = await selectedCwd(state, env, workspace);
     if (capturedProject !== state.activeProject || capturedEpoch !== epochOf(state) || (row.cwd && row.cwd !== cwd)) {
       lease = { stale: true };
@@ -131,7 +135,8 @@ async function reserve({ scope, env, signal }) {
     if (finish && row.summary) {
       try { summary = parseIntroductionSummary(JSON.stringify(row.summary)); } catch { /* re-extract invalid checkpoint */ }
     }
-    lease = { workspace, profileDir, cwd, capturedProject, capturedEpoch, turns: turns + (finish ? 0 : 1), finish, sessionId, summary, token: randomUUID() };
+    lease = { workspace, profileDir, cwd, capturedProject, capturedEpoch, activationEpoch,
+      turns: turns + (finish ? 0 : 1), finish, sessionId, summary, token: randomUUID() };
     return saveEntry(state, scope, lease);
   }, env, { signal });
   return lease;
@@ -183,7 +188,7 @@ async function complete({ scope, lease, sessionId, finish, summary, env, signal 
       await finishBootstrapWorkspace(lease.workspace, { fallback: finish === 'fallback', signal });
       signal?.throwIfAborted();
       retainIntroductionSession(state, { sessionId, capturedProject: lease.capturedProject,
-        capturedEpoch: lease.capturedEpoch, sameProfile: true,
+        capturedEpoch: lease.activationEpoch, sameProfile: true,
         sameWorkspace: lease.cwd === await fs.realpath(lease.workspace) });
       if (!state.servicesSetupShown && !state.codexServiceSetup) state.codexServiceSetup = { scope };
       return storeEntries(state, Object.fromEntries(Object.entries(entries(state))

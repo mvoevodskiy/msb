@@ -28,7 +28,7 @@ function result(text, id = session) { return {text,providerId:'codex',sessionId:
 async function reserveAtLimit(f, extra = {}) {
   const cwd = await fs.realpath(f.workspace);
   await updateState(s => {s.codexBootstrap = {[scope]: {workspace:f.workspace, profileDir:f.profile,
-    turns:8, sessionId:session, capturedEpoch:2, cwd, ...extra}}; return s;}, f.env);
+    turns:8, sessionId:session, capturedEpoch:2, activationEpoch:2, cwd, ...extra}}; return s;}, f.env);
 }
 test('natural finish privately summarizes the same thread and retains it, keeping original reply', async t => {
   const f=await fixture(t), calls=[];
@@ -125,13 +125,15 @@ test('a changed project during summary fences writes and handoff', async t => {
   assert.equal((await loadState(f.env)).state.ccSessionId,undefined);
   await assert.rejects(fs.stat(path.join(f.workspace,'USER.md')),{code:'ENOENT'});
 });
-test('newtask between introduction turns retains the introduction session for retry', async t => {
+test('newtask between introduction turns keeps history but does not reactivate the old conversation', async t => {
   const f=await fixture(t);await reserveAtLimit(f);
   await resetCliConversation(f.env);
   const out=await runCodexBootstrap({scope,prompt:'ninth',env:f.env,runner:async opts=>{
     assert.equal(opts.sessionId,session);return result(no);}});
   assert.equal(out.bootstrapHandoff,true);
-  assert.equal((await loadState(f.env)).state.ccSessionId,session);
+  const state=(await loadState(f.env)).state;
+  assert.equal(state.ccSessionId,undefined);
+  assert.equal(state.sessionHistory[0].id,session);
 });
 test('newtask while summary runs fences activation until an explicit later retry', async t => {
   const f=await fixture(t);await reserveAtLimit(f);
@@ -139,4 +141,9 @@ test('newtask while summary runs fences activation until an explicit later retry
     await resetCliConversation(f.env);return result(no);}});
   assert.equal(out.ok,false);assert.match(out.text,/изменился/);
   assert.equal((await loadState(f.env)).state.ccSessionId,undefined);
+  const retry=await runCodexBootstrap({scope,prompt:'later',env:f.env,runner:async()=>result(no)});
+  assert.equal(retry.bootstrapHandoff,true);
+  const state=(await loadState(f.env)).state;
+  assert.equal(state.ccSessionId,undefined);
+  assert.equal(state.sessionHistory[0].id,session);
 });
