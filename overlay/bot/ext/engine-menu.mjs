@@ -4,7 +4,8 @@ import { getProvider } from './providers.mjs';
 
 /** Read-only view of existing CLI selection; no second engine state or login probe. */
 export async function buildEngineProviderView(state = {}, env = process.env, home = os.homedir()) {
-  if (env.MSB_CC_ONLY === '1' || env.JARVIS_CC_ONLY === '1') return null;
+  // MSB_CC_ONLY limits the OS engine, not the CLI provider selected inside it.
+  if (env.JARVIS_CC_ONLY === '1') return null;
   const store = await loadStore(env, home);
   const provider = getProvider(store.active) || getProvider('claude');
   const codex = getProvider('codex');
