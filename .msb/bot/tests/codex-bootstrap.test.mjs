@@ -273,8 +273,11 @@ test('the attempt limit does not overwrite the shipped identity or existing owne
   assert.equal(result.bootstrapComplete, true);
   assert.deepEqual(await fs.readFile(soul), original);
   assert.equal(await fs.readFile(path.join(f.workspace, 'USER.md'), 'utf8'), 'Owner note during introduction');
-  assert.equal((await f.calls()).length, 1);
-  assert.equal(result.bootstrapHandoff, true);
+  const calls = await f.calls();
+  assert.equal(calls.length, 2, 'summary once, then the original user input once');
+  assert.match(calls[1].prompt, /fixture attempt limit/);
+  assert.equal(result.ok, true);
+  assert.equal(result.bootstrap, undefined);
   await fs.stat(path.join(f.workspace, '.iia-bootstrapped'));
 });
 
@@ -357,18 +360,19 @@ test('the attempt cap completes the workspace and hands off the ninth input with
   await saveState({ ...state, codexBootstrap: { [scope]: {
     workspace: f.workspace, profileDir: f.profile, turns: 8, sessionId: 'ext:codex:' + introduction,
   } } });
-  const store = await fs.readFile(f.storeFile, 'utf8');
   const output = await runAgentTurn({ prompt: 'fixture ninth answer', bootstrapScope: scope });
-  assert.equal(output.bootstrapComplete, true);
-  assert.equal(output.bootstrapHandoff, true);
-  assert.equal((await f.calls()).length, 1);
+  assert.equal(output.ok, true);
+  assert.equal(output.bootstrap, undefined);
+  const calls = await f.calls();
+  assert.equal(calls.length, 2);
+  assert.equal((calls[1].prompt.match(/fixture ninth answer/g) || []).length, 1);
+  assert.equal(calls[1].cwd, await fs.realpath(f.project));
   assert.equal(await fs.readFile(path.join(f.workspace, 'USER.md'), 'utf8'), 'Owner file already present');
   assert.equal(await fs.readFile(path.join(f.workspace, 'CLAUDE.md'), 'utf8'), 'Rules already present');
   await fs.stat(path.join(f.workspace, 'SOUL.md'));
   await fs.stat(path.join(f.workspace, '.iia-bootstrapped'));
-  assert.equal(await fs.readFile(f.storeFile, 'utf8'), store);
-  // The introduction runs in the base workspace; do not auto-resume it in a different project cwd.
-  assert.equal((await loadState()).state.ccSessionId, undefined);
+  // A different project starts an ordinary turn rather than resuming the introduction.
+  assert.equal(calls[1].resumed, null);
 });
 
 test('a failed defaults write can be retried without another native introduction turn', async t => {
@@ -390,11 +394,11 @@ test('a failed defaults write can be retried without another native introduction
   assert.equal((await loadState()).state.codexBootstrap[scope].finish, 'profile');
   const output = await runAgentTurn({ prompt: 'fixture retry defaults', bootstrapScope: scope });
   assert.equal(output.bootstrapComplete, true);
-  assert.equal(output.bootstrapHandoff, true);
-  assert.equal((await f.calls()).length, 2);
+  assert.equal(output.ok, true);
+  assert.equal((await f.calls()).length, 3);
+  assert.match((await f.calls())[2].prompt, /fixture retry defaults/);
   await fs.stat(path.join(f.workspace, 'MEMORY.md'));
   await fs.stat(path.join(f.workspace, '.iia-bootstrapped'));
-  assert.equal(await fs.readFile(f.storeFile, 'utf8'), store);
 });
 
 test('newtask leaves the introduction resume available, and clear fences a late reply', async t => {
@@ -453,4 +457,83 @@ test('Telegram delivers the introduction, offers services once, and then opens t
   await f.message('/start');
   assert.match(f.messages.at(-1), hub);
   assert.equal(f.messages.filter(text => text.startsWith('<b>Какие сервисы подключить?</b>')).length, 1);
+});
+
+async function prepareNinth(f) {
+  const { state } = await loadState();
+  await saveState({ ...state, codexBootstrap: { [scope]: {
+    workspace: f.workspace, profileDir: f.profile, turns: 8, sessionId: 'ext:codex:' + introduction,
+  } } });
+}
+async function assertOrdinaryAndCard(f, distinctive) {
+  await waitFor(() => f.edits.some(text => text.includes('fixture native reply')));
+  await waitFor(async () => (await loadState()).state.servicesSetupShown === true);
+  const calls = await f.calls();
+  assert.equal(calls.length, 2, 'one private summary and one ordinary execution');
+  assert.match(calls[0].prompt, /Верни только один JSON-объект строго вида/);
+  assert.equal(calls[0].resumed, introduction);
+  assert.ok(calls[1].prompt.includes(distinctive), 'the prepared ninth input reached the real native CLI path');
+  assert.equal(calls[1].prompt.split(distinctive).length - 1, 1, 'input appears once');
+  assert.equal(calls[1].cwd, await fs.realpath(f.project));
+  assert.equal(calls[1].resumed, null, 'the introduction cwd must not be resumed in a different project');
+  const output = f.edits.find(text => text.includes('fixture native reply'));
+  assert.match(output, /<blockquote>⏱/);
+  assert.equal(f.messages.filter(text => text.startsWith('<b>Какие сервисы подключить?</b>')).length, 1);
+  await f.message('/start');
+  assert.equal(f.messages.filter(text => text.startsWith('<b>Какие сервисы подключить?</b>')).length, 1);
+}
+
+test('ninth Telegram text runs once through the ordinary native turn, footer and one service card', async t => {
+  const f = await nativeFixture(t); await prepareNinth(f);
+  const text = 'Проверь уникальную девятую задачу А-984';
+  await f.message(text);
+  await assertOrdinaryAndCard(f, text);
+});
+
+test('ninth Telegram document is downloaded once and its prepared content reaches the ordinary native turn', async t => {
+  const f = await nativeFixture(t); await prepareNinth(f);
+  const body = 'Уникальное содержимое документа B-371';
+  let downloads = 0, getFileCalls = 0;
+  t.mock.method(f.bot.api, 'getFile', async () => { getFileCalls++; return {file_path:'owned-test-document.txt'}; });
+  t.mock.method(globalThis, 'fetch', async url => {
+    assert.match(String(url), /^https:\/\/api\.telegram\.org\/file\//);
+    downloads++; return {ok:true, arrayBuffer:async()=>new TextEncoder().encode(body).buffer};
+  });
+  await f.bot.handleUpdate({ message: {message_id:81,date:1,chat:{id:42},from:{id:42},
+    document:{file_id:'owned-doc',file_name:'note.txt',mime_type:'text/plain',file_size:body.length}, caption:'Проверь документ' } });
+  await assertOrdinaryAndCard(f, body);
+  assert.equal(downloads, 1); assert.equal(getFileCalls, 1);
+  const calls = await f.calls(); assert.match(calls[1].prompt, /Проверь документ/);
+  assert.match(calls[1].prompt, /\.media\//);
+});
+
+test('ninth Telegram voice is downloaded and transcribed once before the ordinary native turn', async t => {
+  const f = await nativeFixture(t); await prepareNinth(f);
+  process.env.DEEPGRAM_API_KEY = 'synthetic-stt-key'; delete process.env.STT_COMMAND;
+  const transcript = 'Озвученная задача C-736'; let downloads = 0, transcriptions = 0;
+  t.mock.method(f.bot.api, 'getFile', async () => ({file_path:'owned-test-voice.ogg',file_size:4}));
+  t.mock.method(globalThis, 'fetch', async url => {
+    if (String(url).startsWith('https://api.deepgram.com/')) {
+      transcriptions++; return {ok:true,json:async()=>({results:{channels:[{alternatives:[{transcript}]}]}})};
+    }
+    assert.match(String(url), /^https:\/\/api\.telegram\.org\/file\//);
+    downloads++;return {ok:true,arrayBuffer:async()=>Uint8Array.from([79,103,103,83]).buffer};
+  });
+  await f.bot.handleUpdate({ message:{message_id:82,date:1,chat:{id:42},from:{id:42},voice:{file_id:'voice',duration:2}} });
+  await assertOrdinaryAndCard(f, transcript);
+  assert.equal(downloads, 1); assert.equal(transcriptions, 1);
+});
+
+test('/stop interrupts the ninth ordinary native turn after summary without replay or service card', async t => {
+  const f = await nativeFixture(t); await prepareNinth(f);
+  await f.message('fixture wait for stop');
+  await waitFor(() => fs.access(f.started).then(() => true, () => false));
+  await f.message('/stop');
+  await waitFor(() => f.edits.some(text => text.includes('Моя остановочка')));
+  await f.bot.stop();
+  const calls = await f.calls();
+  assert.equal(calls.length, 2);
+  assert.match(calls[0].prompt, /Верни только один JSON-объект строго вида/);
+  assert.equal((calls[1].prompt.match(/fixture wait for stop/g) || []).length, 1);
+  assert.equal(f.messages.filter(text => text.startsWith('<b>Какие сервисы подключить?</b>')).length, 0);
 });

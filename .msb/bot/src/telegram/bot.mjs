@@ -683,6 +683,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       if (media.items.length) {
         await sendMediaQueue(ctx.api, chatId, media.items, { threadId: thread, cwd: out.cwd });
       }
+      if (out.bootstrapComplete) await deliverBootstrapServices(ctx);
     } catch (err) {
       await progress?.stop();
       if (signal.aborted) await stopped().catch(() => {});

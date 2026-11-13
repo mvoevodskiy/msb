@@ -72,9 +72,15 @@ export async function runAgentTurn({
 } = {}) {
   const aborted = () => ({ ok: false, error: 'aborted', text: 'Остановлено.' });
   if (signal?.aborted) return aborted();
+  let bootstrapComplete = false;
   if (bootstrapScope && !autonomy && !isAutoTurn) {
     const introduction = await runCodexBootstrap({ scope: bootstrapScope, prompt, env, signal, onStatus });
-    if (introduction) return introduction;
+    if (introduction?.bootstrapHandoff) {
+      // The already-prepared owner input belongs to Codex and must pass the
+      // normal runner exactly once, with the same cancellation signal.
+      bootstrapComplete = introduction.bootstrapComplete === true;
+      requireCodex = true;
+    } else if (introduction) return introduction;
   }
   let state, firstSession, baseWorkspace, contextNow, skillInstall, mcpInstall, mcp;
   await updateState(s => {
@@ -232,6 +238,7 @@ export async function runAgentTurn({
   const canInstallMcp=result.text && (!result.isError || claudePartial);
   const display = result.errorDisplay;
   return { ok: !result.isError, text: display ? display.before + text + display.after : text, result, cwd, skillInstall,
+    ...(bootstrapComplete ? { bootstrapComplete: true } : {}),
     ...(display ? { modelText: text } : {}),
     ...(partialReply ? { partialReply } : {}),
     ...(claudeFailure && !claudePartial ? { terminalNotice: true } : {}),
