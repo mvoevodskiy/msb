@@ -734,7 +734,9 @@ test('a known pre-launch failure restores prepared state and tells the owner not
 
 test('a missing actual launcher leaves the request prepared instead of claiming it ran', async t => {
   const f=await fixture(t,runAgentTurn);
-  process.env.PATH='/usr/bin:/bin';
+  // Debian can have a real Claude CLI in /usr/bin. Point to a nonexistent
+  // fixture directory so this test proves pre-spawn ENOENT on every host.
+  process.env.PATH=path.join(f.home,'missing-bin');
   const {state}=await loadState();
   await saveState({...state,ccSessionId:undefined,sessionEpoch:0});
   await fs.writeFile(path.join(f.workspace,'.iia-bootstrapped'),'done');
