@@ -1,0 +1,11 @@
+{
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["version", "save", "user", "memory"],
+  "properties": {
+    "version": { "type": "integer" },
+    "save": { "type": "boolean" },
+    "user": { "type": "array", "items": { "type": "string" } },
+    "memory": { "type": "array", "items": { "type": "string" } }
+  }
+}
