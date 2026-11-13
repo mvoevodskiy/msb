@@ -79,6 +79,15 @@ if (profileScenario) {
 // never let a regression submit an OS-helper request or execute a system CLI.
 const forbiddenEffects = [];
 if (engineMenuScenario) {
+  const readFile = fs.readFile.bind(fs);
+  fs.readFile = function (file, ...args) {
+    if (String(file) === '/run/msb-engine/state.json') {
+      const error = new Error('Isolated fixture has no OS helper state');
+      error.code = 'ENOENT';
+      return Promise.reject(error);
+    }
+    return readFile(file, ...args);
+  };
   const checkPath = (value, method) => {
     const file = value instanceof URL ? fileURLToPath(value) : String(value);
     const resolved = path.resolve(file);
@@ -197,6 +206,12 @@ if (engineMenuScenario) {
     ...(relativeProfile ? { activeProject: scenario.endsWith('-missing') ? 'missing' : 'alpha' } : {}),
     ...(alreadyCodex ? { extAuthBypass: 'codex', ccSessionId: session } : {}),
     ...(openClaw ? { ocModel: 'openai/reference', ocSessionId: 'reference-oc-session' } : {}) };
+  if (process.env.REFERENCE_NO_ENGINE === '1') delete selectedState.engine;
+  if (process.env.REFERENCE_BOOTSTRAP === '1') {
+    delete selectedState.ccSessionId;
+    selectedState.codexBootstrap = { '42:42:0': { workspace, profileDir: path.dirname(authFile),
+      sessionId: session, turns: 1, token: 'synthetic-introduction-lease' } };
+  }
   await writeJSON(stateFile, selectedState);
   await writeJSON(storeFile, selectedStore);
   const f = await hookedBot({ coreRouter: true });

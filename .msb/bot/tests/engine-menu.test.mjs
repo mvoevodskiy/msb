@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { enginesScreen } from '../src/telegram/screens.mjs';
+import { nativeEnginesScreen } from '../src/engines/screen.mjs';
 import { buildEngineProviderView, registerEngineProviderView } from '../../../overlay/bot/ext/engine-menu.mjs';
 
 async function fixture(t, active = 'codex') {
@@ -29,6 +30,23 @@ test('engine view reads canonical CLI selection without modifying settings or as
   assert.equal(oc.activeTitle, 'OpenClaw');
   assert.equal(oc.choices[0].text, '🧠 Codex');
   assert.equal(await buildEngineProviderView({}, { ...env, JARVIS_CC_ONLY: '1' }, home), null);
+});
+
+test('clean install allows the selected Codex while the strict Claude-only flag still hides it', async t => {
+  const { home, env } = await fixture(t);
+  const state = { extAuthBypass: 'codex' };
+  const provider = await buildEngineProviderView(state, { ...env, MSB_CC_ONLY: '1' }, home);
+  assert.equal(provider?.activeTitle, 'Codex');
+  const screen = nativeEnginesScreen(state, { error: 'NO_STATE' }, provider);
+  assert.match(screen.text, /Сейчас отвечает: <b>Codex<\/b>/);
+  assert.ok(screen.keyboard.inline_keyboard.flat().some(b => b.text === '🧠 Codex ✓'));
+
+  for (const msbFlag of [undefined, '0', '1']) {
+    const strict = await buildEngineProviderView(state, { ...env, MSB_CC_ONLY: msbFlag, JARVIS_CC_ONLY: '1' }, home);
+    assert.equal(strict, null);
+    const strictScreen = nativeEnginesScreen(state, { error: 'NO_STATE' }, strict);
+    assert.ok(!strictScreen.keyboard.inline_keyboard.flat().some(b => b.callback_data === 'ext:conn:set:codex'));
+  }
 });
 
 test('engine screen preserves baseline controls and renders the same optional Codex row with helper snapshots', async t => {
