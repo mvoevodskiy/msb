@@ -8,6 +8,7 @@ import profile from '../../shared/profile.cjs';
 import { findBin, runCli } from './run-cli.mjs';
 import { codexChildEnvironment } from '../codex-auth-env.mjs';
 import {prepareCodexMcp} from '../codex-mcp-launch.mjs';
+import {prepareIntroductionSummary} from '../intro-summary-policy.mjs';
 import { decodeExtSession, getSelectedModel, getSelectedEffort } from '../store.mjs';
 import { enrichPath, ensureProviderCli } from '../ensure-cli.mjs';
 import {
@@ -85,17 +86,18 @@ export function parseCodexStdout(stdout) {
   };
 }
 
-export function buildCodexExecArgs({ model, effort, resumeId, forceHttp = true, httpProviderId, mcpArgs=[] }) {
+export function buildCodexExecArgs({ model, effort, resumeId, forceHttp = true, httpProviderId, mcpArgs=[], summaryArgs=null }) {
   const args = [
     'exec',
     '--json',
     '--sandbox',
-    'danger-full-access',
+    summaryArgs ? 'read-only' : 'danger-full-access',
     '--skip-git-repo-check',
     '-c',
     'approval_policy="never"',
     ...codexHttpProviderOverrides(forceHttp, httpProviderId),
     ...mcpArgs,
+    ...(summaryArgs || []),
   ];
   if (model) {
     args.push('-m', model);
@@ -153,9 +155,10 @@ async function execOnce({
   forceHttp,
   httpProviderId,
   mcpArgs,
+  summaryArgs,
   onThreadStarted,
 }) {
-  const args = buildCodexExecArgs({ model, effort, resumeId, forceHttp, httpProviderId, mcpArgs });
+  const args = buildCodexExecArgs({ model, effort, resumeId, forceHttp, httpProviderId, mcpArgs, summaryArgs });
   let threadAnnounced = false;
   const res = await runCli(bin, args, {
     cwd,
@@ -267,6 +270,7 @@ export function finalizeParsed({ res, parsedOut, model, resumeRequested }) {
 }
 
 export async function runCodexTurn({ prompt, parsed, cwd, env = process.env, home = env.HOME || os.homedir(), onThreadStarted }) {
+  const introSummary = env.MSB_CODEX_INTRO_SUMMARY === '1';
   const envPath = { ...env, PATH: enrichPath(env, home) };
   let bin = findBin('codex', envPath);
   if (!bin) {
@@ -288,7 +292,7 @@ export async function runCodexTurn({ prompt, parsed, cwd, env = process.env, hom
   // CODEX_HOME owns its transport and must not be edited by an ordinary turn.
   let httpProviderId = profile.resolveProfile(env, home).codexHttpProviderId;
   let forceHttp = auth.profileDir === codexHome(home);
-  if (forceHttp) {
+  if (forceHttp && !introSummary) {
     try {
       const tr = await ensureCodexStableTransport(home, env);
       httpProviderId = tr.providerId;
@@ -302,6 +306,8 @@ export async function runCodexTurn({ prompt, parsed, cwd, env = process.env, hom
       console.error('[msb/ext/codex] ensure transport failed:', err?.message || err);
     }
   }
+  // A private summary uses the existing profile as-is, without rewriting its transport.
+  if (introSummary) forceHttp = false;
 
   const nativeConfig = await readCodexNativeConfig(home, auth.profileDir);
   const preferred = await getSelectedModel('codex', env, home);
@@ -309,10 +315,22 @@ export async function runCodexTurn({ prompt, parsed, cwd, env = process.env, hom
   const model = resolveCodexModel(parsed?.model, nativeConfig, preferred);
   const effort = preferredEffort || resolveCodexEffort(nativeConfig);
 
-  const {env:childEnv,args:mcpArgs,blocked,error:mcpError}=await prepareCodexMcp(bin,cwd,auth.env);
-  if(blocked)return {ok:false,text:'Codex: '+mcpError};
-
   const { resumeId: resumeRequested } = resolveResumeId(parsed);
+  if (introSummary && !resumeRequested) return {ok:false,text:'Codex: нет сессии знакомства для подведения итогов.'};
+  let childEnv, mcpArgs, summaryArgs=null;
+  if (introSummary) {
+    const policy = await prepareIntroductionSummary({command:bin,cwd,env:auth.env,schemaFile:env.MSB_CODEX_INTRO_SCHEMA});
+    if (!policy.ok) return {ok:false,text:policy.error};
+    childEnv = {...auth.env};
+    delete childEnv.MSB_TURN_MCP_TEMPLATES;
+    delete childEnv.MSB_TURN_MCP_REMOVE;
+    delete childEnv.MSB_TURN_MCP_CUSTOM;
+    mcpArgs=[]; summaryArgs=policy.args;
+  } else {
+    const prepared=await prepareCodexMcp(bin,cwd,auth.env);
+    if(prepared.blocked)return {ok:false,text:'Codex: '+prepared.error};
+    childEnv=prepared.env; mcpArgs=prepared.args;
+  }
 
   const run = (resumeId) =>
     execOnce({
@@ -326,6 +344,7 @@ export async function runCodexTurn({ prompt, parsed, cwd, env = process.env, hom
       forceHttp,
       httpProviderId,
       mcpArgs,
+      summaryArgs,
       onThreadStarted: parsed?.resume ? undefined : onThreadStarted,
     });
 

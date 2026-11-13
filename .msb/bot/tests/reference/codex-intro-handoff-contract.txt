@@ -1,0 +1,50 @@
+Codex introduction: durable profile and handoff contract
+
+Status: implementation target, not a claim of release or old-core parity.
+Authorised scope: preserve the Telegram interface, real credentials, selected
+model/settings, profiles and other providers. Synthetic fixture facts must never
+be written to a real bot workspace. No old code is copied wholesale.
+
+Reference: old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+readable blob 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11. Read using
+  git cat-file blob 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba | sed -n '56549,56603p;56639,56652p;56732,56829p;56843,56855p;110572,110590p;110885,110897p;56010,56019p'
+Old q1A counts introduction attempts and substitutes a fixed completion reply
+on the ninth; its conversation uses ccBootstrapSessionId, while ordinary
+Claude uses a different ccSessionId. The model was instructed to write eight
+owner files; fallback M1A creates only generic missing files, never USER.md.
+Nothing in that old route guarantees durable factual summary, native session
+handoff, or processing the ninth input. Those three outcomes below are explicit
+owner-requested improvements, not assertions about old behaviour.
+
+Contract:
+- Work for the same captured bot/chat/topic, Codex profile and base workspace;
+  preserve strict Claude-only routing and the existing native Claude path.
+- On natural completion or at the old cap, obtain a bounded summary through the
+  existing introduction conversation. Keep only facts and preferences the owner
+  permits storing. Do not store credentials, temporary/test instructions or facts
+  the owner asked not to retain. Model-produced output must be validated; failure
+  cannot be presented as a completed or accurate profile.
+- Safely preserve existing owner content: add permitted facts to USER.md and/or
+  MEMORY.md, whose normal context loader reads them. Never blindly rewrite or
+  replace existing SOUL.md/CLAUDE.md. Publish recoverably and avoid duplicates on
+  retry; mark introduction completed only after the required profile is durable.
+- Preserve the introduction's native Codex conversation and relevant ledger
+  metadata. Make it active only when it belongs to the captured Codex provider,
+  profile and workspace and no newer/ordinary session supersedes it. Otherwise
+  retain existing active/parked sessions and make genuine history available for
+  explicit selection. Respect /newtask vs /clear, project/provider changes,
+  per-provider sessions, sessionEpoch and late-result fences.
+- On reaching the cap, retain the original prepared input and, after successful
+  finalisation, run it once through the existing ordinary turn and Telegram
+  delivery pipeline. Do not call media transcription/download a second time,
+  bypass ordinary actions/footer or change the service card's existing role.
+- Keep a private, scoped, recoverable pending input during the transition. After
+  a restart a request known not to have started may be resumed; once execution
+  could have caused side effects, do not replay it automatically. /stop and
+  explicit reset must not revive a cancelled request. Report finalisation failure
+  without a false success or discarding the user input.
+- Check natural completion and 8->9, text and synthetic media, owner files,
+  same/different provider/profile/project, existing ordinary session, switch,
+  /stop,/newtask,/clear, write/model failures, crash boundaries and duplicate
+  delivery. Verify with isolated fixtures and actual JAR1 Linux release tests;
+  live acceptance must not pollute the owner's profile with test facts.

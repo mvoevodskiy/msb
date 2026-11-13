@@ -2,6 +2,8 @@
  * One FIFO worker for supported Telegram text/voice; forwarded collector reserves
  * its place immediately. Text context → [reply formatter](./reply-context.mjs).
  * [Scheduled turns](../autonomy/legacy-dispatch.mjs) enter as reserved text.
+ * Already-prepared introduction recovery stays a separate item; source update
+ * IDs of merged text are retained for [Telegram handoff](./bot.mjs).
  * Publish them after the timer file is committed. No provider/session state here.
  */
 import { buildReplyContext } from './reply-context.mjs';
@@ -43,15 +45,17 @@ export function createInbox({ run, status, cancel, canRun = () => true, onError 
     if (closed || active || !canRun() || !queue[0]?.ready) return;
     const entry = queue.shift();
     // The old worker merges adjacent, already waiting text, never voices/batches/attachments.
-    if (!entry.items && !entry.voice && !entry.attachment) {
+    if (!entry.recovered && !entry.items && !entry.voice && !entry.attachment) {
       const texts = [entry.text], prompts = [textPrompt(entry)]; let chars = prompts[0].length;
+      const updates = [entry.ctx.update?.update_id].filter(Number.isSafeInteger);
       let isAutoTurn = Boolean(entry.scheduled);
       while (texts.length < 20) {
         const next = queue[0];
-        if (!next?.ready || next.items || next.voice || next.attachment || keyOf(next) !== keyOf(entry)) break;
+        if (!next?.ready || next.recovered || next.items || next.voice || next.attachment || keyOf(next) !== keyOf(entry)) break;
         const prompt = textPrompt(next);
         if (chars + prompt.length > 1_000_000) break;
         queue.shift(); chars += prompt.length; texts.push(next.text); prompts.push(prompt);
+        if (Number.isSafeInteger(next.ctx.update?.update_id)) updates.push(next.ctx.update.update_id);
         isAutoTurn &&= Boolean(next.scheduled);
         if (next.scheduled) entry.scheduled = true;
         // Mark the consumed queue status, keeping one thinking/final status.
@@ -60,6 +64,7 @@ export function createInbox({ run, status, cancel, canRun = () => true, onError 
       }
       entry.text = mergeTexts(texts);
       entry.prompt = mergeTexts(prompts);
+      entry.sourceUpdateIds = updates;
       if (entry.scheduled) entry.isAutoTurn = isAutoTurn;
     }
     active = entry;
@@ -70,8 +75,8 @@ export function createInbox({ run, status, cancel, canRun = () => true, onError 
   }
   function push(item) {
     if (closed) return;
-    const key = keyOf(item), forwarded = isForwarded(item.ctx.message);
-    let batch = collectors.get(key);
+    const key = keyOf(item), forwarded = !item.recovered && isForwarded(item.ctx.message);
+    let batch = item.recovered ? undefined : collectors.get(key);
     if (forwarded || batch) {
       if (!batch) {
         batch = { ctx: item.ctx, key, items: [], startedAt: now(), ready: false };
