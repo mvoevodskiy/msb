@@ -6,18 +6,34 @@
  * [Tests](../../tests/codex-bootstrap.test.mjs).
  */
 import fs from 'node:fs/promises';
+import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { loadState, updateState, NO_STATE_WRITE } from '../state.mjs';
-import { projectLocations } from '../projects/paths.mjs';
+import { projectLocations, resolveProjectCwd } from '../projects/paths.mjs';
+import { botRoot } from '../paths.mjs';
+import { parseIntroductionSummary, saveIntroductionSummary } from './intro-memory.mjs';
+import { retainIntroductionSession } from './intro-session.mjs';
 import { resolveSelectedCodexProfileDir } from '../../shared/codex-profile.mjs';
 import { isProviderSession } from '../../shared/session-starts.mjs';
 import { runClaudeTurn } from './claude.mjs';
 import { captureCodexProfile } from './context.mjs';
-import { bootstrapIdentityExists, bootstrapMarkerExists, bootstrapWorkspaceReady, finishBootstrapWorkspace } from './bootstrap-workspace.mjs';
+import { bootstrapIdentityExists, bootstrapWorkspaceReady, finishBootstrapWorkspace } from './bootstrap-workspace.mjs';
 
 export const BOOTSTRAP_GREETING = 'Меня только что подключили к твоему серверу. Давай настроюсь — как тебя зовут и чем занимаешься?';
 const finished = 'Знакомство завершено! Если хочешь что-то уточнить — пиши, я уже работаю.';
 const attemptLimit = 8;
+const summaryPrompt = [
+  'Верни только один JSON-объект строго вида {"version":1,"save":true,"user":[],"memory":[]}.',
+  'В массивы включи только факты и предпочтения, которые владелец явно сообщил во время знакомства.',
+  'Учитывай его прямые просьбы не сохранять личные сведения и не сохраняй то, что он запретил записывать.',
+  'Не сохраняй тестовые данные, примеры, контрольные фразы, секреты, ключи, токены или пароли.',
+  'Не делай выводов и не придумывай. Если владелец отказался от сохранения или допустимых фактов нет, верни {"version":1,"save":false,"user":[],"memory":[]}.',
+  'Не вызывай инструменты и не меняй файлы. Не добавляй markdown, объяснения или другой текст.',
+].join('\n');
+const epochOf = state => Number.isSafeInteger(state.sessionEpoch) ? state.sessionEpoch : 0;
+async function selectedCwd(state, env, workspace) {
+  return fs.realpath(await resolveProjectCwd(state, env, workspace));
+}
 const introPrompt = [
   'Ты проводишь первую настройку с новым владельцем. Познакомься с ним в нескольких коротких сообщениях.',
   'Сначала узнай имя и чем он занимается. Уточни его цели, задачи, рабочие инструменты, стиль общения и ограничения.',
@@ -93,16 +109,29 @@ async function reserve({ scope, env, signal }) {
       same = previous.profileDir === profileDir;
     }
     const ready = await bootstrapWorkspaceReady(workspace, { introductionActive: same });
-    if (ready && (!previous?.finish || await bootstrapMarkerExists(workspace))) return NO_STATE_WRITE;
+    if (ready && !previous?.finish) return NO_STATE_WRITE;
     profileDir ??= await resolveSelectedCodexProfileDir(state, env);
     if (!same && (ready || established)) return NO_STATE_WRITE;
     const row = same ? previous : {};
+    const capturedProject = Object.hasOwn(row, 'capturedProject') ? row.capturedProject : state.activeProject;
+    // /newtask resets the ordinary slot but intentionally retains introduction.
+    // Fence changes during this attempt, without invalidating a later retry.
+    const capturedEpoch = epochOf(state);
+    const cwd = await selectedCwd(state, env, workspace);
+    if (capturedProject !== state.activeProject || capturedEpoch !== epochOf(state) || (row.cwd && row.cwd !== cwd)) {
+      lease = { stale: true };
+      return NO_STATE_WRITE;
+    }
     const turns = Number.isSafeInteger(row.turns) && row.turns >= 0 ? row.turns : 0;
     const retry = row.finish === 'fallback' || row.finish === 'profile' ? row.finish : undefined;
     const finish = retry || (turns >= attemptLimit ? 'fallback' : undefined);
     const sessionId = isProviderSession(row.sessionId, 'codex') ? row.sessionId : undefined;
     if (signal?.aborted) return NO_STATE_WRITE;
-    lease = { workspace, profileDir, turns: turns + (finish ? 0 : 1), finish, sessionId, token: randomUUID() };
+    let summary;
+    if (finish && row.summary) {
+      try { summary = parseIntroductionSummary(JSON.stringify(row.summary)); } catch { /* re-extract invalid checkpoint */ }
+    }
+    lease = { workspace, profileDir, cwd, capturedProject, capturedEpoch, turns: turns + (finish ? 0 : 1), finish, sessionId, summary, token: randomUUID() };
     return saveEntry(state, scope, lease);
   }, env, { signal });
   return lease;
@@ -110,41 +139,68 @@ async function reserve({ scope, env, signal }) {
 
 async function currentLease(state, scope, lease, env) {
   if (!enabled(state, env) || entries(state)[scope]?.token !== lease.token ||
-      projectLocations(env).workspace !== lease.workspace) return false;
-  return await resolveSelectedCodexProfileDir(state, env).catch(() => null) === lease.profileDir;
+      projectLocations(env).workspace !== lease.workspace || state.activeProject !== lease.capturedProject ||
+      epochOf(state) !== lease.capturedEpoch) return false;
+  return await resolveSelectedCodexProfileDir(state, env).catch(() => null) === lease.profileDir &&
+    await selectedCwd(state, env, lease.workspace).catch(() => null) === lease.cwd;
 }
 
-async function publish({ scope, lease, result, env, signal }) {
-  let current = false, complete = false, failure;
+// Checkpoint the finish before the private summary call; retries never replay the
+// final user message through the introduction model.
+async function checkpoint({ scope, lease, result, env, signal }) {
+  let current = false, finish, sessionId;
   await updateState(async state => {
     if (signal?.aborted || !await currentLease(state, scope, lease, env)) return NO_STATE_WRITE;
     current = true;
     if (result?.isError) return NO_STATE_WRITE;
-    const finish = lease.finish || (await bootstrapIdentityExists(lease.workspace) ? 'profile' : undefined);
-    const sessionId = isProviderSession(result?.sessionId, 'codex') ? result.sessionId : lease.sessionId;
-    const row = { ...lease, sessionId, finish };
-    if (!finish) return saveEntry(state, scope, row);
-
-    try {
-      await finishBootstrapWorkspace(lease.workspace, { fallback: finish === 'fallback', signal });
-    } catch (error) {
-      failure = error;
-      return saveEntry(state, scope, row);
-    }
-    complete = true;
-    // The Telegram card is delivered after the final reply, outside the state queue.
-    if (!state.servicesSetupShown && !state.codexServiceSetup) state.codexServiceSetup = { scope };
-    const remaining = Object.fromEntries(Object.entries(entries(state))
-      .filter(([, value]) => value?.workspace !== lease.workspace));
-    return storeEntries(state, remaining);
+    finish = lease.finish || (await bootstrapIdentityExists(lease.workspace) ? 'profile' : undefined);
+    sessionId = isProviderSession(result?.sessionId, 'codex') ? result.sessionId : lease.sessionId;
+    return saveEntry(state, scope, { ...lease, sessionId, finish });
   }, env);
-  if (failure && !signal?.aborted) throw failure;
-  return { current, complete };
+  return { current, finish, sessionId };
 }
 
-export async function runCodexBootstrap({ scope, prompt, env, signal, onStatus }) {
+// Persist a validated summary before touching either owner file: a partial
+// publication retry must never ask the model to rephrase already-saved facts.
+async function checkpointSummary({ scope, lease, summary, env, signal }) {
+  let current = false;
+  await updateState(async state => {
+    if (signal?.aborted || !await currentLease(state, scope, lease, env)) return NO_STATE_WRITE;
+    current = true;
+    return saveEntry(state, scope, { ...entries(state)[scope], summary });
+  }, env, { signal });
+  return current;
+}
+
+async function complete({ scope, lease, sessionId, finish, summary, env, signal }) {
+  let current = false, failure;
+  await updateState(async state => {
+    if (signal?.aborted || !await currentLease(state, scope, lease, env)) return NO_STATE_WRITE;
+    current = true;
+    try {
+      await saveIntroductionSummary({ workspace: lease.workspace,
+        backupDir: path.join(botRoot(env), 'backups', 'intro-memory'), summary, signal });
+      await finishBootstrapWorkspace(lease.workspace, { fallback: finish === 'fallback', signal });
+      signal?.throwIfAborted();
+      retainIntroductionSession(state, { sessionId, capturedProject: lease.capturedProject,
+        capturedEpoch: lease.capturedEpoch, sameProfile: true,
+        sameWorkspace: lease.cwd === await fs.realpath(lease.workspace) });
+      if (!state.servicesSetupShown && !state.codexServiceSetup) state.codexServiceSetup = { scope };
+      return storeEntries(state, Object.fromEntries(Object.entries(entries(state))
+        .filter(([, value]) => value?.workspace !== lease.workspace)));
+    } catch (error) {
+      failure = error;
+      return NO_STATE_WRITE;
+    }
+  }, env);
+  if (failure && !signal?.aborted) throw new Error('Не удалось завершить знакомство. Попробуй ещё раз.');
+  return current && !failure && !signal?.aborted;
+}
+
+export async function runCodexBootstrap({ scope, prompt, env, signal, onStatus, runner = runClaudeTurn }) {
   const lease = await reserve({ scope, env, signal });
   if (!lease) return null;
+  if (lease.stale) return { ok: false, bootstrap: true, text: 'Контекст знакомства изменился.' };
   const aborted = result => ({ ok: false, error: 'aborted', text: 'Остановлено.', bootstrap: true, result });
   if (signal?.aborted) return aborted();
   let result;
@@ -157,7 +213,7 @@ export async function runCodexBootstrap({ scope, prompt, env, signal, onStatus }
     }
     const profile = captureCodexProfile(env);
     if (profile.CODEX_HOME) profile.CODEX_HOME = lease.profileDir;
-    result = await runClaudeTurn({ prompt, signal, providerId: 'codex', cwd: lease.workspace,
+    result = await runner({ prompt, signal, providerId: 'codex', cwd: lease.workspace,
       sessionId: lease.sessionId, codexProfile: profile, codexBootstrap: true,
       systemPrompt: lease.sessionId ? undefined : introPrompt,
       onEvent: event => {
@@ -171,10 +227,42 @@ export async function runCodexBootstrap({ scope, prompt, env, signal, onStatus }
   if (result && !result.isError && result.providerId !== 'codex') {
     return { ok: false, bootstrap: true, text: 'Codex не подтвердил запуск знакомства.', result };
   }
-  const completion = await publish({ scope, lease, result, env, signal });
+  const checkpointed = await checkpoint({ scope, lease, result, env, signal });
   if (signal?.aborted) return aborted(result);
-  if (!completion.current) return { ok: false, bootstrap: true, text: 'Контекст знакомства изменился.', result };
-  const text = result?.text || (completion.complete ? finished
-    : result?.isError ? 'Не получилось продолжить знакомство.' : 'Настройка...');
-  return { ok: !result?.isError, text, result, bootstrap: true, bootstrapComplete: completion.complete };
+  if (!checkpointed.current) return { ok: false, bootstrap: true, text: 'Контекст знакомства изменился.' };
+  if (!checkpointed.finish) return { ok: !result?.isError,
+    text: result?.text || (result?.isError ? 'Не получилось продолжить знакомство.' : 'Настройка...'),
+    result, bootstrap: true, bootstrapComplete: false };
+  if (!isProviderSession(checkpointed.sessionId, 'codex')) {
+    throw new Error('Не удалось завершить знакомство. Попробуй ещё раз.');
+  }
+  const beforeSummary = (await loadState(env)).state;
+  if (!await currentLease(beforeSummary, scope, lease, env)) {
+    return { ok: false, bootstrap: true, text: 'Контекст знакомства изменился.' };
+  }
+  let summary = lease.summary;
+  if (!summary) {
+    const profile = captureCodexProfile(env);
+    if (profile.CODEX_HOME) profile.CODEX_HOME = lease.profileDir;
+    try {
+      const extracted = await runner({ prompt: summaryPrompt, signal, providerId: 'codex', cwd: lease.workspace,
+        sessionId: checkpointed.sessionId, codexProfile: profile, codexBootstrap: true, codexIntroSummary: true });
+      if (signal?.aborted || extracted?.aborted) return aborted();
+      if (extracted?.isError || extracted?.providerId !== 'codex' || extracted?.sessionId !== checkpointed.sessionId) throw Error();
+      summary = parseIntroductionSummary(extracted.text);
+      if (!await checkpointSummary({ scope, lease, summary, env, signal })) {
+        return { ok: false, bootstrap: true, text: 'Контекст знакомства изменился.' };
+      }
+    } catch {
+      if (signal?.aborted) return aborted();
+      throw new Error('Не удалось завершить знакомство. Попробуй ещё раз.');
+    }
+  }
+  const completed = await complete({ scope, lease, sessionId: checkpointed.sessionId,
+    finish: checkpointed.finish, summary, env, signal });
+  if (signal?.aborted) return aborted();
+  if (!completed) return { ok: false, bootstrap: true, text: 'Контекст знакомства изменился.' };
+  // A retry receives a new user message; it must not be swallowed either.
+  if (lease.finish) return { ok: true, bootstrapHandoff: true, bootstrapComplete: true };
+  return { ok: true, text: result?.text || finished, result, bootstrap: true, bootstrapComplete: true };
 }

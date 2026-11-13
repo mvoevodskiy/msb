@@ -175,6 +175,13 @@ async function nativeFixture(t, { ordinarySession = false, seed = false } = {}) 
   const fake = '#!' + process.execPath + '\n' + [
     'const fs = require("node:fs");',
     'const path = require("node:path");',
+    'if (process.argv[2] === "app-server") {',
+    '  require("node:readline").createInterface({input:process.stdin}).on("line", line => {',
+    '    const req = JSON.parse(line);',
+    '    if (req.id === 1) console.log(JSON.stringify({id:1,result:{}}));',
+    '    if (req.id === 2) console.log(JSON.stringify({id:2,result:{config:{mcp_servers:{}}}}));',
+    '  });',
+    '} else {',
     'const chunks = [];',
     '(async () => {',
     '  for await (const data of process.stdin) chunks.push(data);',
@@ -199,6 +206,10 @@ async function nativeFixture(t, { ordinarySession = false, seed = false } = {}) 
     '    fs.writeFileSync("memory/intro-note.md", "Fixture memory\\n");',
     '    fs.writeFileSync("knowledge/intro-note.md", "Fixture knowledge\\n");',
     '  }',
+    '  if (prompt.includes("Верни только один JSON-объект строго вида")) {',
+    '    console.log(JSON.stringify({type:"item.completed",item:{type:"agent_message",text:JSON.stringify({version:1,save:false,user:[],memory:[]})}}));',
+    '    console.log(JSON.stringify({type:"turn.completed",usage:{input_tokens:8,output_tokens:2}})); return;',
+    '  }',
     '  const finished = prompt.includes("fixture finish the introduction");',
     '  if (finished) {',
     '    fs.appendFileSync("SOUL.md", "\\n# Fixture identity\\n");',
@@ -208,6 +219,7 @@ async function nativeFixture(t, { ordinarySession = false, seed = false } = {}) 
     '  console.log(JSON.stringify({type:"item.completed",item:{type:"agent_message",text}}));',
     '  console.log(JSON.stringify({type:"turn.completed",usage:{input_tokens:8,output_tokens:2}}));',
     '})();',
+    '}',
   ].join('\n');
   await fs.writeFile(path.join(bin, 'codex'), fake, { mode: 0o700 });
   const calls = async () => (await fs.readFile(trace, 'utf8')).trim().split('\n').map(JSON.parse);
@@ -245,7 +257,7 @@ test('the shipped seed and stock flag permit multiple Codex introduction turns w
   const prior = f.messages.length;
   await f.message('/start');
   assert.ok(f.messages.slice(prior).some(text => hub.test(text)), 'the completed workspace opens the hub');
-  assert.deepEqual((await f.calls()).map(row => row.resumed), [null, introduction, introduction]);
+  assert.deepEqual((await f.calls()).map(row => row.resumed), [null, introduction, introduction, introduction]);
 });
 
 test('the attempt limit does not overwrite the shipped identity or existing owner notes', async t => {
@@ -261,7 +273,8 @@ test('the attempt limit does not overwrite the shipped identity or existing owne
   assert.equal(result.bootstrapComplete, true);
   assert.deepEqual(await fs.readFile(soul), original);
   assert.equal(await fs.readFile(path.join(f.workspace, 'USER.md'), 'utf8'), 'Owner note during introduction');
-  await assert.rejects(f.calls, { code: 'ENOENT' });
+  assert.equal((await f.calls()).length, 1);
+  assert.equal(result.bootstrapHandoff, true);
   await fs.stat(path.join(f.workspace, '.iia-bootstrapped'));
 });
 
@@ -309,8 +322,8 @@ test('Codex uses a separate introduction session in the base directory and resum
   const ordinaryTurn = await runAgentTurn({ prompt: 'fixture ordinary task', bootstrapScope: scope });
   assert.equal(ordinaryTurn.ok, true);
   assert.equal(ordinaryTurn.bootstrap, undefined);
-  const [firstCall, finishCall, regular] = await f.calls();
-  assert.deepEqual([firstCall.resumed, finishCall.resumed, regular.resumed], [null, introduction, ordinary]);
+  const [firstCall, finishCall, summaryCall, regular] = await f.calls();
+  assert.deepEqual([firstCall.resumed, finishCall.resumed, summaryCall.resumed, regular.resumed], [null, introduction, introduction, ordinary]);
   assert.equal(firstCall.cwd, await fs.realpath(f.workspace));
   assert.equal(finishCall.cwd, firstCall.cwd);
   assert.equal(regular.cwd, await fs.realpath(f.project));
@@ -336,7 +349,7 @@ test('Codex introduction goes through Telegram /stop without replacing its ordin
 });
 
 
-test('the old attempt cap completes the workspace without a ninth native call or overwriting owner files', async t => {
+test('the attempt cap completes the workspace and hands off the ninth input without overwriting owner files', async t => {
   const f = await nativeFixture(t);
   const { state } = await loadState();
   await fs.writeFile(path.join(f.workspace, 'USER.md'), 'Owner file already present');
@@ -347,13 +360,14 @@ test('the old attempt cap completes the workspace without a ninth native call or
   const store = await fs.readFile(f.storeFile, 'utf8');
   const output = await runAgentTurn({ prompt: 'fixture ninth answer', bootstrapScope: scope });
   assert.equal(output.bootstrapComplete, true);
-  assert.match(output.text, /^Знакомство завершено!/);
-  await assert.rejects(f.calls, { code: 'ENOENT' });
+  assert.equal(output.bootstrapHandoff, true);
+  assert.equal((await f.calls()).length, 1);
   assert.equal(await fs.readFile(path.join(f.workspace, 'USER.md'), 'utf8'), 'Owner file already present');
   assert.equal(await fs.readFile(path.join(f.workspace, 'CLAUDE.md'), 'utf8'), 'Rules already present');
   await fs.stat(path.join(f.workspace, 'SOUL.md'));
   await fs.stat(path.join(f.workspace, '.iia-bootstrapped'));
   assert.equal(await fs.readFile(f.storeFile, 'utf8'), store);
+  // The introduction runs in the base workspace; do not auto-resume it in a different project cwd.
   assert.equal((await loadState()).state.ccSessionId, undefined);
 });
 
@@ -370,13 +384,14 @@ test('a failed defaults write can be retried without another native introduction
     return link(source, target);
   });
   await assert.rejects(runAgentTurn({ prompt: 'fixture finish the introduction', bootstrapScope: scope }),
-    /fixture interrupted defaults publication/);
+    /Не удалось завершить знакомство/);
   assert.equal(injected, true);
   await assert.rejects(fs.stat(path.join(f.workspace, '.iia-bootstrapped')), { code: 'ENOENT' });
   assert.equal((await loadState()).state.codexBootstrap[scope].finish, 'profile');
   const output = await runAgentTurn({ prompt: 'fixture retry defaults', bootstrapScope: scope });
   assert.equal(output.bootstrapComplete, true);
-  assert.equal((await f.calls()).length, 1);
+  assert.equal(output.bootstrapHandoff, true);
+  assert.equal((await f.calls()).length, 2);
   await fs.stat(path.join(f.workspace, 'MEMORY.md'));
   await fs.stat(path.join(f.workspace, '.iia-bootstrapped'));
   assert.equal(await fs.readFile(f.storeFile, 'utf8'), store);
