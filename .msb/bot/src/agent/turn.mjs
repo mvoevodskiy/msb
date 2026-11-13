@@ -10,6 +10,8 @@ import { readClaudeVersion } from './claude-version.mjs';
 import { claudeAutoTurnModel } from './models.mjs';
 import { runClaudeTurn } from './claude.mjs';
 import { runCodexBootstrap } from './codex-bootstrap.mjs';
+import { createIntroPendingJournal } from './intro-pending.mjs';
+import { introductionPendingCurrent } from './intro-pending-scope.mjs';
 import { readClaudeQuotaEvent, saveClaudeQuota } from './claude-quota.mjs';
 import { runOpenClawTurn } from './openclaw-turn.mjs';
 import { conversationalModePrompt } from './mode-prompt.mjs';
@@ -38,6 +40,8 @@ export function supportsCodexAttachments(state, env = process.env) {
  * runAgentTurn: prompt/signal → выбранный CLI → результат и guarded session/usage.
  * Вызывают [Telegram](../telegram/bot.mjs) и [autonomy](../autonomy/scheduler.mjs).
  * Cold owner Codex introduction → [bootstrap](./codex-bootstrap.mjs), before ordinary session reservation.
+ * A prepared ninth input is claimed through [pending](./intro-pending.mjs) after the
+ * captured profile/project [scope check](./intro-pending-scope.mjs), before launch.
  * OpenClaw ordinary turn → [named acpx](./openclaw-turn.mjs), before Claude auth.
  * Аргументы/stream/abort → [runClaudeTurn](./claude.mjs) → существующий PATH shim;
  * native dispatch → [provider runner](../../../../overlay/bot/ext/shim/run-turn.mjs).
@@ -67,25 +71,43 @@ export async function runAgentTurn({
   checkSavedCodex,
   checkSavedCursor,
   bootstrapScope,
+  introPending,
+  introPendingCancelled,
+  onIntroPendingClaimed,
+  onIntroPendingLaunched,
   requireCodex = false,
   env = process.env,
 } = {}) {
   const aborted = () => ({ ok: false, error: 'aborted', text: 'Остановлено.' });
   if (signal?.aborted) return aborted();
   let bootstrapComplete = false;
+  let pendingId = introPending?.status === 'prepared' ? introPending.id : undefined;
+  if (pendingId) { bootstrapComplete = true; requireCodex = true; }
   if (bootstrapScope && !autonomy && !isAutoTurn) {
-    const introduction = await runCodexBootstrap({ scope: bootstrapScope, prompt, env, signal, onStatus });
+    const introduction = await runCodexBootstrap({ scope: bootstrapScope, prompt, env, signal, onStatus,
+      pending: introPending, pendingCancelled: introPendingCancelled });
     if (introduction?.bootstrapHandoff) {
       // The already-prepared owner input belongs to Codex and must pass the
       // normal runner exactly once, with the same cancellation signal.
       bootstrapComplete = introduction.bootstrapComplete === true;
+      pendingId = introduction.pendingId || pendingId;
       requireCodex = true;
     } else if (introduction) return introduction;
   }
-  let state, firstSession, baseWorkspace, contextNow, skillInstall, mcpInstall, mcp;
-  await updateState(s => {
+  let state, firstSession, baseWorkspace, contextNow, skillInstall, mcpInstall, mcp, pendingClaimed, pendingWait;
+  await updateState(async s => {
     state = { ...s };
     if (requireCodex && !supportsCodexAttachments(state, env)) return NO_STATE_WRITE;
+    if (pendingId) {
+      if (signal?.aborted) return NO_STATE_WRITE;
+      if (s.pendingCcSessionStarts?.codex) { pendingWait = true; return NO_STATE_WRITE; }
+      const journal = createIntroPendingJournal(env);
+      const pending = (await journal.list()).find(item => item.id === pendingId);
+      if (!pending || !await introductionPendingCurrent(pending, s, env) || signal?.aborted) return NO_STATE_WRITE;
+      pendingClaimed = await journal.claim(pendingId);
+      if (!pendingClaimed) return NO_STATE_WRITE;
+      onIntroPendingClaimed?.();
+    }
     skillInstall=captureSkillInstallTarget(state,env);
     if(!autonomy)mcpInstall=captureMcpInstallTarget(state,env);
     baseWorkspace = projectLocations(env).workspace;
@@ -96,6 +118,10 @@ export async function runAgentTurn({
   }, env);
   try {
   if (signal?.aborted) return aborted();
+  if (pendingId && !pendingClaimed) return pendingWait
+    ? { ok: false, error: 'intro_pending_wait', text: 'Запрос сохранён. Дождусь завершения текущего хода и продолжу при следующем сообщении; повторно отправлять запрос не нужно.' }
+    : { ok: false, error: 'intro_pending_changed',
+      text: 'Контекст предыдущего запроса изменился. Проверь выбранную беседу и отправь сообщение заново.' };
   if (requireCodex && !supportsCodexAttachments(state, env)) {
     return { ok: false, error: 'provider_changed', text: 'Движок сменился. Выбери Codex и отправь вложение заново.' };
   }
@@ -169,6 +195,7 @@ export async function runAgentTurn({
     cwd,
     signal,
     autonomy,
+    onSpawn: pendingId ? onIntroPendingLaunched : undefined,
     onEvent(ev) {
       if (ev.type === 'system' && typeof ev.provider_id === 'string') streamProvider = ev.provider_id;
       if (ev.type === 'system' && ev.subtype === 'provider') {

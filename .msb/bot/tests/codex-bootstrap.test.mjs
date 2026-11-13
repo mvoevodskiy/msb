@@ -10,6 +10,8 @@ import { fileURLToPath } from 'node:url';
 import { fixture } from './helpers/menu-fixture.mjs';
 import { loadState, saveState } from '../src/state.mjs';
 import { runAgentTurn } from '../src/agent/turn.mjs';
+import { createIntroPendingJournal } from '../src/agent/intro-pending.mjs';
+import { createAttachmentAlbums } from '../src/telegram/attachments.mjs';
 
 const ordinary = '0199a213-81c0-7800-8aa1-bbab2a035a53';
 const introduction = '0299a213-81c0-7800-8aa1-bbab2a035a53';
@@ -158,6 +160,8 @@ async function nativeFixture(t, { ordinarySession = false, seed = false } = {}) 
   const bin = path.join(f.home, 'bin');
   const trace = path.join(f.home, 'codex-bootstrap-trace.jsonl');
   const started = path.join(f.home, 'codex-bootstrap-started');
+  const holdSummary = path.join(f.home, 'codex-bootstrap-hold-summary');
+  const failSummary = path.join(f.home, 'codex-bootstrap-fail-summary');
   const release = path.join(f.home, 'codex-bootstrap-release');
   const resume = 'ext:codex:' + ordinary;
   await fs.mkdir(profile, { recursive: true });
@@ -200,6 +204,10 @@ async function nativeFixture(t, { ordinarySession = false, seed = false } = {}) 
     '    fs.writeFileSync(' + JSON.stringify(started) + ', "started");',
     '    while (!fs.existsSync(' + JSON.stringify(release) + ')) await new Promise(r => setTimeout(r, 10));',
     '  }',
+    '  if (prompt.includes("fixture wait for release")) {',
+    '    fs.writeFileSync(' + JSON.stringify(started) + ', "started");',
+    '    while (!fs.existsSync(' + JSON.stringify(release) + ')) await new Promise(r => setTimeout(r, 10));',
+    '  }',
     '  if (prompt.includes("fixture record owner")) {',
     '    fs.writeFileSync("USER.md", "# Fixture owner\\n");',
     '    fs.mkdirSync("memory", {recursive:true}); fs.mkdirSync("knowledge", {recursive:true});',
@@ -207,6 +215,13 @@ async function nativeFixture(t, { ordinarySession = false, seed = false } = {}) 
     '    fs.writeFileSync("knowledge/intro-note.md", "Fixture knowledge\\n");',
     '  }',
     '  if (prompt.includes("Верни только один JSON-объект строго вида")) {',
+    '    if (fs.existsSync(' + JSON.stringify(failSummary) + ')) {',
+    '      console.log(JSON.stringify({type:"turn.failed",error:{message:"synthetic summary failure"}})); return;',
+    '    }',
+    '    if (fs.existsSync(' + JSON.stringify(holdSummary) + ')) {',
+    '      fs.writeFileSync(' + JSON.stringify(started) + ', "summary started");',
+    '      while (fs.existsSync(' + JSON.stringify(holdSummary) + ')) await new Promise(r => setTimeout(r, 10));',
+    '    }',
     '    console.log(JSON.stringify({type:"item.completed",item:{type:"agent_message",text:JSON.stringify({version:1,save:false,user:[],memory:[]})}}));',
     '    console.log(JSON.stringify({type:"turn.completed",usage:{input_tokens:8,output_tokens:2}})); return;',
     '  }',
@@ -223,7 +238,7 @@ async function nativeFixture(t, { ordinarySession = false, seed = false } = {}) 
   ].join('\n');
   await fs.writeFile(path.join(bin, 'codex'), fake, { mode: 0o700 });
   const calls = async () => (await fs.readFile(trace, 'utf8')).trim().split('\n').map(JSON.parse);
-  return { ...f, profile, project, resume, started, release, calls, config };
+  return { ...f, profile, project, resume, started, holdSummary, failSummary, release, calls, config };
 }
 
 test('the shipped seed and stock flag permit multiple Codex introduction turns without losing the identity', async t => {
@@ -536,4 +551,262 @@ test('/stop interrupts the ninth ordinary native turn after summary without repl
   assert.match(calls[0].prompt, /Верни только один JSON-объект строго вида/);
   assert.equal((calls[1].prompt.match(/fixture wait for stop/g) || []).length, 1);
   assert.equal(f.messages.filter(text => text.startsWith('<b>Какие сервисы подключить?</b>')).length, 0);
+});
+
+async function stagedRecovery(f, {updateId = 2020, prompt = 'prepared owner request'} = {}) {
+  const {state} = await loadState();
+  await saveState({...state, codexBootstrap:{[scope]:{
+    workspace:f.workspace, profileDir:f.profile, turns:8, sessionId:'ext:codex:'+introduction,
+  }}});
+  const journal=createIntroPendingJournal();
+  const record={id:'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',scope,prompt,chatId:42,userId:42,threadId:null,
+    incomingMessageId:99,statusId:777,updateId,sourceUpdateIds:[updateId],requireCodex:true,
+    project:'alpha',epoch:Number.isSafeInteger(state.sessionEpoch)?state.sessionEpoch:0,
+    profileDir:f.profile,workspace:f.workspace,cwd:await fs.realpath(f.project),sessionId:'ext:codex:'+introduction};
+  await journal.stage(record);
+  return {journal, record};
+}
+
+test('restart recovers prepared ninth input without repeating document download or fabricating an update', async t => {
+  const f=await nativeFixture(t);
+  const prompt='prepared document content is already available';
+  const {journal}=await stagedRecovery(f,{prompt});
+  let downloads=0;
+  t.mock.method(globalThis,'fetch',async()=>{downloads++;throw Error('unexpected download');});
+  await f.bot[Symbol.for('msb.recoverIntroPending')]();
+  await waitFor(async()=>f.edits.some(text=>text.includes('fixture native reply')) && (await journal.list()).length===0);
+  const calls=await f.calls();
+  assert.equal(calls.length,2);
+  assert.match(calls[1].prompt,/prepared document content is already available/);
+  assert.equal(calls.filter(call=>call.prompt.includes(prompt)).length,1);
+  assert.equal(downloads,0);
+});
+
+test('restart never replays a started ninth input and reports the uncertain result', async t => {
+  const f=await nativeFixture(t);
+  const {journal,record}=await stagedRecovery(f);
+  assert.equal((await journal.claim(record.id)).status,'started');
+  await f.bot[Symbol.for('msb.recoverIntroPending')]();
+  assert.ok(f.edits.some(text=>text.includes('не удалось определить')));
+  assert.equal((await journal.list()).length,0);
+  await assert.rejects(f.calls,{code:'ENOENT'});
+});
+
+test('a duplicated Telegram update for a prepared input is not preprocessed or sent twice', async t => {
+  const f=await nativeFixture(t);
+  const {journal}=await stagedRecovery(f,{updateId:4444});
+  const previousEdits=f.edits.length;
+  await f.bot.handleUpdate({update_id:4444,message:{message_id:99,chat:{id:42},from:{id:42},voice:{file_id:'fixture-voice',duration:3}}});
+  assert.equal((await journal.list()).length,1);
+  await assert.rejects(f.calls,{code:'ENOENT'});
+  assert.equal(f.edits.length,previousEdits,JSON.stringify(f.edits));
+});
+
+test('reset makes a prepared old-scope request ineligible for automatic recovery', async t => {
+  const f=await nativeFixture(t);
+  const {journal}=await stagedRecovery(f);
+  await f.message('/clear');
+  await f.bot[Symbol.for('msb.recoverIntroPending')]();
+  assert.ok(f.edits.some(text=>text.includes('Контекст предыдущего запроса изменился')));
+  assert.equal((await journal.list()).length,0);
+  await assert.rejects(f.calls,{code:'ENOENT'});
+});
+
+test('/stop cancels a prepared handoff during summary and never resumes the original input', async t => {
+  const f=await nativeFixture(t);
+  const {journal}=await stagedRecovery(f);
+  await fs.writeFile(f.holdSummary,'hold');
+  await f.bot[Symbol.for('msb.recoverIntroPending')]();
+  await waitFor(()=>fs.access(f.started).then(()=>true,()=>false));
+  await f.message('/stop');
+  await waitFor(async()=> (await journal.list()).some(item=>item.status==='cancelled'));
+  const [cancelled]=await journal.list();
+  assert.equal(Object.hasOwn(cancelled,'prompt'),false);
+  await fs.unlink(f.holdSummary);
+  await f.bot[Symbol.for('msb.recoverIntroPending')]();
+  await f.bot.handleUpdate({update_id:2020,message:{message_id:99,text:'prepared owner request',chat:{id:42},from:{id:42}}});
+  const calls=await f.calls();
+  assert.equal(calls.length,1);
+  assert.ok(!calls[0].prompt.includes('prepared owner request'));
+});
+
+test('service shutdown preserves an unstarted handoff and restart processes it once', async t => {
+  const f=await nativeFixture(t);
+  const {journal}=await stagedRecovery(f);
+  await fs.writeFile(f.holdSummary,'hold');
+  await f.bot[Symbol.for('msb.recoverIntroPending')]();
+  await waitFor(()=>fs.access(f.started).then(()=>true,()=>false));
+  await f.bot.stop();
+  assert.equal((await journal.list())[0].status,'prepared');
+  await fs.unlink(f.holdSummary);
+  await f.bot.start();
+  await waitFor(async()=>f.edits.some(text=>text.includes('fixture native reply')) && (await journal.list()).length===0);
+  const calls=await f.calls();
+  assert.equal(calls.filter(call=>call.prompt.includes('prepared owner request')).length,1);
+});
+
+test('concurrent recovery requests enqueue and deliver the pending input only once', async t => {
+  const f=await nativeFixture(t);
+  const {journal}=await stagedRecovery(f);
+  const recover=f.bot[Symbol.for('msb.recoverIntroPending')];
+  await Promise.all([recover(),recover(),recover()]);
+  await waitFor(async()=>f.edits.some(text=>text.includes('fixture native reply')) && (await journal.list()).length===0);
+  const calls=await f.calls();
+  assert.equal(calls.filter(call=>call.prompt.includes('prepared owner request')).length,1);
+  assert.equal(f.edits.filter(text=>text.includes('fixture native reply')).length,1);
+  assert.equal(f.edits.some(text=>text.includes('Контекст предыдущего запроса изменился')),false);
+});
+
+test('a new ordinary session without an epoch bump prevents recovery into the wrong conversation', async t => {
+  const f=await nativeFixture(t);
+  const {journal}=await stagedRecovery(f);
+  const {state}=await loadState();
+  await saveState({...state,ccSessionId:'ext:codex:'+ordinary});
+  await f.bot[Symbol.for('msb.recoverIntroPending')]();
+  assert.ok(f.edits.some(text=>text.includes('Контекст предыдущего запроса изменился')));
+  assert.equal((await journal.list()).length,0);
+  await assert.rejects(f.calls,{code:'ENOENT'});
+});
+
+test('an in-flight first-session reservation is not overwritten by the recovered handoff', async t => {
+  const f=await nativeFixture(t);
+  const {journal}=await stagedRecovery(f);
+  const {state}=await loadState();
+  await saveState({...state,pendingCcSessionStarts:{codex:'another-reservation'}});
+  await f.bot[Symbol.for('msb.recoverIntroPending')]();
+  await waitFor(()=>f.edits.some(text=>text.includes('Запрос сохранён')));
+  const calls=await f.calls();
+  assert.equal(calls.length,1);
+  assert.ok(!calls[0].prompt.includes('prepared owner request'));
+  assert.equal((await journal.list())[0].status,'prepared');
+  assert.equal((await loadState()).state.pendingCcSessionStarts.codex,'another-reservation');
+});
+
+test('summary failure retains the input, explains no repeat is needed, and a repeated text runs only once', async t => {
+  const f=await nativeFixture(t);
+  const prompt='prepared owner request';
+  const {journal}=await stagedRecovery(f,{prompt});
+  await fs.writeFile(f.failSummary,'fail');
+  await f.bot[Symbol.for('msb.recoverIntroPending')]();
+  await waitFor(()=>f.edits.some(text=>text.includes('повторно отправлять его не нужно')));
+  assert.equal((await journal.list())[0].status,'prepared');
+  await fs.unlink(f.failSummary);
+  await f.message(prompt);
+  await waitFor(async()=>f.edits.some(text=>text.includes('fixture native reply')) && (await journal.list()).length===0);
+  const calls=await f.calls();
+  assert.equal(calls.filter(call=>call.prompt.includes(prompt)).length,1);
+});
+
+test('an identical retry while the recovered ordinary model runs is not queued a second time', async t => {
+  const f=await nativeFixture(t);
+  const prompt='fixture wait for release';
+  const {journal}=await stagedRecovery(f,{prompt});
+  await f.bot[Symbol.for('msb.recoverIntroPending')]();
+  await waitFor(()=>fs.access(f.started).then(()=>true,()=>false));
+  assert.equal((await journal.list())[0].status,'started');
+  await f.message(prompt);
+  await fs.writeFile(f.release,'release');
+  await waitFor(async()=>f.edits.some(text=>text.includes('fixture native reply')) && (await journal.list()).length===0);
+  await new Promise(resolve=>setTimeout(resolve,150));
+  const calls=await f.calls();
+  assert.equal(calls.filter(call=>call.prompt.includes(prompt)).length,1);
+});
+
+test('a known pre-launch failure restores prepared state and tells the owner not to resend', async t => {
+  const id='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+  const f=await fixture(t,async options=>{
+    assert.equal((await createIntroPendingJournal().claim(id)).status,'started');
+    options.onIntroPendingClaimed();
+    throw new Error('synthetic preflight failure');
+  });
+  const {state}=await loadState();
+  await saveState({...state,ccSessionId:undefined,sessionEpoch:0});
+  const journal=createIntroPendingJournal();
+  await journal.stage({id,scope,prompt:'owner original',chatId:42,userId:42,threadId:null,
+    incomingMessageId:99,statusId:777,updateId:null,sourceUpdateIds:[],requireCodex:true,
+    project:null,epoch:0,profileDir:path.join(f.home,'.codex'),workspace:f.workspace,
+    cwd:await fs.realpath(f.workspace),sessionId:null,activeSessionId:null});
+  await f.bot[Symbol.for('msb.recoverIntroPending')]();
+  await waitFor(async()=>f.edits.some(text=>text.includes('повторно отправлять его не нужно')) &&
+    (await journal.list())[0]?.status==='prepared');
+  assert.equal((await journal.list())[0].prompt,'owner original');
+});
+
+test('a missing actual launcher leaves the request prepared instead of claiming it ran', async t => {
+  const f=await fixture(t,runAgentTurn);
+  process.env.PATH='/usr/bin:/bin';
+  const {state}=await loadState();
+  await saveState({...state,ccSessionId:undefined,sessionEpoch:0});
+  await fs.writeFile(path.join(f.workspace,'.iia-bootstrapped'),'done');
+  const journal=createIntroPendingJournal();
+  const id='aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee';
+  await journal.stage({id,scope,prompt:'owner never started',chatId:42,userId:42,threadId:null,
+    incomingMessageId:99,statusId:777,updateId:123,sourceUpdateIds:[123],requireCodex:true,
+    project:null,epoch:0,profileDir:path.join(f.home,'.codex'),workspace:f.workspace,
+    cwd:await fs.realpath(f.workspace),sessionId:null,activeSessionId:null});
+  await f.bot[Symbol.for('msb.recoverIntroPending')]();
+  await waitFor(async()=>f.edits.some(text=>text.includes('повторно отправлять его не нужно')) &&
+    (await journal.list())[0]?.status==='prepared');
+  assert.equal((await journal.list())[0].prompt,'owner never started');
+});
+
+test('a new repeat after reset is not swallowed when the old pending input is stale', async t => {
+  let calls=0;
+  const f=await fixture(t,async()=>{calls++;return {ok:true,text:'new request handled'};});
+  const {state}=await loadState();
+  await saveState({...state,ccSessionId:undefined,sessionEpoch:1});
+  const journal=createIntroPendingJournal();
+  await journal.stage({id:'aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee',scope,prompt:'resend after clear',chatId:42,userId:42,
+    threadId:null,incomingMessageId:99,statusId:777,updateId:123,sourceUpdateIds:[123],requireCodex:true,
+    project:null,epoch:0,profileDir:path.join(f.home,'.codex'),workspace:f.workspace,
+    cwd:await fs.realpath(f.workspace),sessionId:null,activeSessionId:null});
+  await f.message('resend after clear');
+  await waitFor(()=>calls===1 && f.edits.some(text=>text.includes('new request handled')));
+  assert.equal((await journal.list()).length,0);
+});
+
+test('/clear during a running recovery does not swallow the next identical message', async t => {
+  const f=await nativeFixture(t);
+  const prompt='prepared owner request';
+  const {journal}=await stagedRecovery(f,{prompt});
+  await fs.writeFile(f.holdSummary,'hold');
+  await f.bot[Symbol.for('msb.recoverIntroPending')]();
+  await waitFor(()=>fs.access(f.started).then(()=>true,()=>false));
+  await f.message('/clear');
+  await f.message(prompt);
+  await fs.unlink(f.holdSummary);
+  await waitFor(async()=>{
+    try { return f.edits.some(text=>text.includes('fixture native reply')) &&
+      (await f.calls()).some(call=>call.prompt.includes(prompt)); } catch { return false; }
+  });
+  const calls=await f.calls();
+  assert.equal(calls.filter(call=>call.prompt.includes(prompt)).length,1);
+  const [old]=await journal.list();
+  assert.equal(old?.status,'cancelled');
+});
+
+test('album collection retains each original Telegram update ID for handoff deduplication', () => {
+  let ready, fire;
+  const albums=createAttachmentAlbums({onReady:entry=>{ready=entry;},setTimer:fn=>(fire=fn,{unref(){}}),clearTimer(){}});
+  const ctx=id=>({update:{update_id:id},message:{message_id:id,chat:{id:42}},chat:{id:42}});
+  albums.addPhoto('fixture-group',{ctx:ctx(1001),photos:[{fileId:'a'}]});
+  albums.addPhoto('fixture-group',{ctx:ctx(1002),photos:[{fileId:'b'}]});
+  fire();
+  assert.deepEqual(ready.sourceUpdateIds,[1001,1002]);
+});
+
+test('an earlier update from a prepared album is not downloaded or submitted again', async t => {
+  const f=await nativeFixture(t);
+  const {journal,record}=await stagedRecovery(f,{updateId:1002});
+  await journal.remove(record.id);
+  await journal.stage({...record,sourceUpdateIds:[1001,1002]});
+  let downloads=0;
+  t.mock.method(globalThis,'fetch',async()=>{downloads++;throw Error('unexpected download');});
+  const previousEdits=f.edits.length;
+  await f.bot.handleUpdate({update_id:1001,message:{message_id:1001,chat:{id:42},from:{id:42},
+    media_group_id:'fixture-group',photo:[{file_id:'fixture',file_size:4}]}});
+  assert.equal(downloads,0);
+  assert.equal(f.edits.length,previousEdits);
+  assert.equal((await journal.list()).length,1);
+  await assert.rejects(f.calls,{code:'ENOENT'});
 });

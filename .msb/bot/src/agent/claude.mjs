@@ -59,6 +59,7 @@ function isolatedEnvironment() {
  * @property {AbortSignal} [signal]
  * @property {string} [cwd]
  * @property {(ev: object) => void} [onEvent]
+ * @property {() => void} [onSpawn] Called after the CLI child actually starts.
  * @property {boolean} [autonomy]
  * @property {number} [maxTurns]
  * @property {{tools: string[], directories: string[], agents?: Record<string, {description: string, prompt: string}>}} [isolated]
@@ -203,6 +204,9 @@ export async function runClaudeTurn(opts) {
       return reject(err);
     }
 
+    child.once('spawn', () => {
+      try { opts.onSpawn?.(); } catch { console.error('[msb/agent-cc] spawn observer failed'); }
+    });
     child.stdin?.on('error', () => {});
     child.stdin?.end(opts.prompt || '');
 

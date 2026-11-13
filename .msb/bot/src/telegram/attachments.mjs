@@ -413,6 +413,7 @@ export function createAttachmentAlbums({ onReady, now = Date.now, setTimer = set
   function addPiece(map, groupId, piece, kind) {
     let entry = map.get(groupId);
     const referent = buildReplyContext(piece.ctx.message, piece.ctx.me?.id);
+    const updateId = piece.ctx.update?.update_id;
     if (!entry) {
       entry = { attachment: 'album', photos: [], videos: [], docs: [], ...piece, referent, startedAt: now() };
       map.set(groupId, entry);
@@ -421,6 +422,9 @@ export function createAttachmentAlbums({ onReady, now = Date.now, setTimer = set
       if (piece.caption) entry.caption = piece.caption;
       if (referent) entry.referent = referent;
       entry.ctx = piece.ctx;
+    }
+    if (Number.isSafeInteger(updateId) && updateId > 0) {
+      entry.sourceUpdateIds = [...new Set([...(entry.sourceUpdateIds || []), updateId])];
     }
     schedule(map, groupId, entry);
     return entry;

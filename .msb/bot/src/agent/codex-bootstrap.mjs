@@ -2,7 +2,8 @@
  * Old cold-workspace conversation for Codex. The existing [CLI launcher](./claude.mjs)
  * receives a separate resume ID. This module owns the scoped attempt in
  * [state](../state.mjs) and commits [workspace defaults](./bootstrap-workspace.mjs).
- * The ordinary session, usage, store and ledger remain on [turn](./turn.mjs).
+ * Allowed facts → [memory](./intro-memory.mjs); session fence → [session](./intro-session.mjs).
+ * The prepared ninth input → [pending](./intro-pending.mjs) → [turn](./turn.mjs).
  * [Tests](../../tests/codex-bootstrap.test.mjs).
  */
 import fs from 'node:fs/promises';
@@ -13,6 +14,7 @@ import { projectLocations, resolveProjectCwd } from '../projects/paths.mjs';
 import { botRoot } from '../paths.mjs';
 import { parseIntroductionSummary, saveIntroductionSummary } from './intro-memory.mjs';
 import { retainIntroductionSession } from './intro-session.mjs';
+import { createIntroPendingJournal } from './intro-pending.mjs';
 import { resolveSelectedCodexProfileDir } from '../../shared/codex-profile.mjs';
 import { isProviderSession } from '../../shared/session-starts.mjs';
 import { runClaudeTurn } from './claude.mjs';
@@ -21,6 +23,7 @@ import { bootstrapIdentityExists, bootstrapWorkspaceReady, finishBootstrapWorksp
 
 export const BOOTSTRAP_GREETING = 'Меня только что подключили к твоему серверу. Давай настроюсь — как тебя зовут и чем занимаешься?';
 const finished = 'Знакомство завершено! Если хочешь что-то уточнить — пиши, я уже работаю.';
+const savedInputNotice = 'Не удалось завершить знакомство. Запрос сохранён; повторно отправлять его не нужно. Попробую продолжить при следующем сообщении.';
 const attemptLimit = 8;
 const summaryPrompt = [
   'Верни только один JSON-объект строго вида {"version":1,"save":true,"user":[],"memory":[]}.',
@@ -95,7 +98,7 @@ function saveEntry(state, scope, value) {
   return storeEntries(state, { ...entries(state), [scope]: value });
 }
 
-async function reserve({ scope, env, signal }) {
+async function reserve({ scope, env, signal, pending, prompt, pendingCancelled }) {
   let lease;
   await updateState(async state => {
     if (signal?.aborted || !enabled(state, env)) return NO_STATE_WRITE;
@@ -137,6 +140,29 @@ async function reserve({ scope, env, signal }) {
     }
     lease = { workspace, profileDir, cwd, capturedProject, capturedEpoch, activationEpoch,
       turns: turns + (finish ? 0 : 1), finish, sessionId, summary, token: randomUUID() };
+    if (finish && pending) {
+      const journal = createIntroPendingJournal(env);
+      const restored = pending.status === 'prepared' && typeof pending.workspace === 'string';
+      if (restored && (pending.scope !== scope || pending.workspace !== workspace ||
+          pending.profileDir !== profileDir || pending.cwd !== cwd ||
+          (pending.project || undefined) !== (capturedProject || undefined) || pending.epoch !== capturedEpoch ||
+          (pending.activeSessionId || null) !== (state.ccSessionId || null) || pending.prompt !== prompt)) {
+        lease = { stale: true };
+        return NO_STATE_WRITE;
+      }
+      const record = { id: pending.id, scope, prompt, chatId: pending.chatId, userId: pending.userId,
+        threadId: pending.threadId, incomingMessageId: pending.incomingMessageId, statusId: pending.statusId,
+        updateId: pending.updateId, sourceUpdateIds: pending.sourceUpdateIds, requireCodex: pending.requireCodex,
+        project: capturedProject || null, epoch: capturedEpoch, profileDir, workspace, cwd,
+        sessionId: sessionId || null, activeSessionId: state.ccSessionId || null };
+      const staged = await journal.stage(record);
+      if (staged.status !== 'prepared') { lease = { stale: true }; return NO_STATE_WRITE; }
+      lease.pendingId = record.id;
+      if (signal?.aborted) {
+        if (pendingCancelled?.()) await journal.cancelId(record.id);
+        return NO_STATE_WRITE;
+      }
+    }
     return saveEntry(state, scope, lease);
   }, env, { signal });
   return lease;
@@ -198,14 +224,15 @@ async function complete({ scope, lease, sessionId, finish, summary, env, signal 
       return NO_STATE_WRITE;
     }
   }, env);
-  if (failure && !signal?.aborted) throw new Error('Не удалось завершить знакомство. Попробуй ещё раз.');
+  if (failure && !signal?.aborted) throw new Error(lease.pendingId ? savedInputNotice : 'Не удалось завершить знакомство. Попробуй ещё раз.');
   return current && !failure && !signal?.aborted;
 }
 
-export async function runCodexBootstrap({ scope, prompt, env, signal, onStatus, runner = runClaudeTurn }) {
-  const lease = await reserve({ scope, env, signal });
+export async function runCodexBootstrap({ scope, prompt, env, signal, onStatus, pending, pendingCancelled, runner = runClaudeTurn }) {
+  const lease = await reserve({ scope, env, signal, pending, prompt, pendingCancelled });
   if (!lease) return null;
-  if (lease.stale) return { ok: false, bootstrap: true, text: 'Контекст знакомства изменился.' };
+  if (lease.stale) return { ok: false, bootstrap: true, ...(pending ? { error: 'intro_pending_changed' } : {}),
+    text: 'Контекст знакомства изменился.' };
   const aborted = result => ({ ok: false, error: 'aborted', text: 'Остановлено.', bootstrap: true, result });
   if (signal?.aborted) return aborted();
   let result;
@@ -239,7 +266,8 @@ export async function runCodexBootstrap({ scope, prompt, env, signal, onStatus, 
     text: result?.text || (result?.isError ? 'Не получилось продолжить знакомство.' : 'Настройка...'),
     result, bootstrap: true, bootstrapComplete: false };
   if (!isProviderSession(checkpointed.sessionId, 'codex')) {
-    throw new Error('Не удалось завершить знакомство. Попробуй ещё раз.');
+    if (lease.pendingId) await createIntroPendingJournal(env).cancelId(lease.pendingId);
+    throw new Error('Не удалось восстановить беседу знакомства. Начни заново через /clear и отправь сообщение ещё раз.');
   }
   const beforeSummary = (await loadState(env)).state;
   if (!await currentLease(beforeSummary, scope, lease, env)) {
@@ -260,7 +288,7 @@ export async function runCodexBootstrap({ scope, prompt, env, signal, onStatus, 
       }
     } catch {
       if (signal?.aborted) return aborted();
-      throw new Error('Не удалось завершить знакомство. Попробуй ещё раз.');
+      throw new Error(lease.pendingId ? savedInputNotice : 'Не удалось завершить знакомство. Попробуй ещё раз.');
     }
   }
   const completed = await complete({ scope, lease, sessionId: checkpointed.sessionId,
@@ -268,6 +296,7 @@ export async function runCodexBootstrap({ scope, prompt, env, signal, onStatus, 
   if (signal?.aborted) return aborted();
   if (!completed) return { ok: false, bootstrap: true, text: 'Контекст знакомства изменился.' };
   // A retry receives a new user message; it must not be swallowed either.
-  if (lease.finish) return { ok: true, bootstrapHandoff: true, bootstrapComplete: true };
+  if (lease.finish) return { ok: true, bootstrapHandoff: true, bootstrapComplete: true,
+    ...(lease.pendingId ? { pendingId: lease.pendingId } : {}) };
   return { ok: true, text: result?.text || finished, result, bootstrap: true, bootstrapComplete: true };
 }

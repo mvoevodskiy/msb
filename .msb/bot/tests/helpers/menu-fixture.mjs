@@ -62,7 +62,7 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
     on(name, fn) { for (const event of Array.isArray(name) ? name : [name]) this.handlers.set(event, fn); }
     async handleUpdate(update) {
       const event = update.callback_query || update.message;
-      const ctx = { from: event.from, chat: event.message?.chat || event.chat, message: update.message,
+      const ctx = { update, from: event.from, chat: event.message?.chat || event.chat, message: update.message,
         callbackQuery: update.callback_query, api: this.api,
         reply: (text, opts, signal) => this.api.sendMessage(ctx.chat.id, text, opts, signal), answerCallbackQuery: async (...args) => { callbackAnswers.push(args); } };
       const text = ctx.message?.text;

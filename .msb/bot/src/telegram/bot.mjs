@@ -1,5 +1,6 @@
 import { beginCommandRender, runCallbackScope, trackCallbackTask, callbackTransportSignal, openCallbackRenders, stopCallbackRenders, cancelCallbackRenders, drainCallbackTasks } from '../../shared/callback-renders.mjs';
 import {resetCliConversation} from '../sessions/selection.mjs';
+import { randomUUID } from 'node:crypto';
 /**
  * createBot собирает входящие Telegram события и lifecycle хода; UI не хранит
  * provider session отдельно. Вход: [main](../main.mjs), owner → [auth](./auth.mjs).
@@ -7,6 +8,8 @@ import {resetCliConversation} from '../sessions/selection.mjs';
  * UI read/delivery lifecycle → [shared callbacks](../../shared/callback-renders.mjs).
  * Кнопки → [router](./router.mjs) → routes/; вид → [screens](./screens.mjs).
  * Карточка после знакомства Codex → [services](./bootstrap-services.mjs).
+ * Prepared ninth input → [private journal](../agent/intro-pending.mjs), resume through
+ * the same inbox using captured Telegram destination, never a fabricated update.
  * Формы → [dispatcher](./forms.mjs); pending в этом процессе; записи → [state](../state.mjs) / [env](../env/store.mjs).
  * Индикация → [progress](./progress.mjs), итог → [response](./response.mjs).
  * Вложения → [attachments](./attachments.mjs); исходящие файлы → [media-markers](./media-markers.mjs) + [send-media](./send-media.mjs).
@@ -58,6 +61,8 @@ import {readOpenClawSkills as nativeOpenClawSkills} from '../skills/openclaw.mjs
 import { beginTurnHistory } from './history.mjs';
 import { runAgentTurn, supportsCodexAttachments } from '../agent/turn.mjs';
 import { BOOTSTRAP_GREETING, codexBootstrapScope, needsCodexIntroduction } from '../agent/codex-bootstrap.mjs';
+import { createIntroPendingJournal } from '../agent/intro-pending.mjs';
+import { introductionPendingCurrent } from '../agent/intro-pending-scope.mjs';
 import { compactSession } from '../agent/compact.mjs';
 import { trySessionOperation } from '../agent/session-operation.mjs';
 import { hasClaudeAuth, loadState, updateState } from '../state.mjs';
@@ -76,6 +81,10 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
 
   /** Active turns outlive the polling handler; keep ownership until delivery finishes. */
   const running = new Map();
+  const introJournal = createIntroPendingJournal();
+  // Records already owned by the current in-process turn or queued recovery.
+  const introOwned = new Set();
+  let introRecovery;
   // Includes completed deliveries whose journal is still flushing after chat unlock.
   const unfinished = new Set();
   /** @type {Map<number, string>} */
@@ -91,7 +100,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       running.set(entry.ctx.chat.id, turn); unfinished.add(turn);
       turn.done = executeTurn(entry.ctx, entry.text || '', turn, entry.voice, entry)
         .catch(() => console.error('[msb/bot] turn delivery failed'))
-        .finally(() => unfinished.delete(turn));
+        .finally(() => { unfinished.delete(turn); if (entry.recovery?.id) introOwned.delete(entry.recovery.id); });
       return turn.done;
     },
   });
@@ -142,7 +151,11 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     if (!stopping) inbox.push({ ctx, text, voice: false });
   } });
   const startPolling = bot.start.bind(bot);
-  bot.start = (...args) => { stopping = false; openCallbackRenders(bot); inbox.open(); return startPolling(...args); };
+  bot.start = async (...args) => {
+    stopping = false; openCallbackRenders(bot); inbox.open();
+    await recoverIntroPending().catch(() => console.error('[msb/bot] introduction recovery unavailable'));
+    return startPolling(...args);
+  };
   const stopPolling = bot.stop.bind(bot);
   bot.stop = async () => {
     stopping = true;
@@ -157,6 +170,14 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   };
 
   bot.use(adminGuard(cfg.adminId));
+  bot.use(async (ctx, next) => {
+    const updateId = ctx.update?.update_id;
+    if (Number.isSafeInteger(updateId)) {
+      const records = await introJournal.list().catch(() => []);
+      if (records.some(record => record.updateId === updateId || record.sourceUpdateIds?.includes(updateId))) return;
+    }
+    return next();
+  });
   bot[Symbol.for('msb.openClawSkillsReader')]=readOpenClawSkills;
   bot[Symbol.for('msb.cancelPendingInput')] = (chatId) => pending.delete(chatId);
   bot.use(async (ctx, next) => {
@@ -268,7 +289,16 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       cancelInboxEntry(entry).catch(() => {});
     }
     const queued = inbox.clear();
-    if (interruptActiveTurns() || queued || collecting.length) {
+    const interrupted = interruptActiveTurns();
+    try {
+      const records = await introJournal.list();
+      const activeIds = new Set([...running.values()].filter(turn => turn.interruptedByUser)
+        .map(turn => turn.pendingId).filter(Boolean));
+      for (const record of records) {
+        if (record.status === 'prepared' || activeIds.has(record.id)) await introJournal.cancelId(record.id);
+      }
+    } catch { console.error('[msb/bot] introduction cancellation unavailable'); }
+    if (interrupted || queued || collecting.length) {
       await ctx.reply('Моя остановочка ✋🏽⛔️');
     } else {
       await ctx.reply('Нечего останавливать 🤷');
@@ -460,6 +490,21 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     }
 
     if (stopping) return;
+    const scope = codexBootstrapScope(ctx.chat.id, ctx.from?.id, ctx.message?.message_thread_id);
+    const prior = !ctx.message?.reply_to_message && !batchInput
+      ? (await introJournal.list().catch(() => [])).find(record =>
+        (record.status === 'prepared' || (record.status === 'started' && introOwned.has(record.id))) &&
+        record.scope === scope && record.prompt === text)
+      : undefined;
+    const recovering = await recoverIntroPending().catch(() => {
+      console.error('[msb/bot] introduction recovery unavailable'); return new Set();
+    });
+    if (prior) {
+      const still = (await introJournal.list().catch(() => [])).find(record => record.id === prior.id);
+      const current = (await loadState()).state;
+      if (await introductionPendingCurrent(still || prior, current, process.env) &&
+          (recovering?.has(prior.id) || introOwned.has(prior.id) || still?.status === 'prepared')) return;
+    }
     inbox.push({ ctx, text, voice: false });
   });
 
@@ -535,7 +580,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   async function executeTurn(ctx, text, turn, voice = false, entry = {}) {
     const chatId = ctx.chat.id;
     const signal = turn.controller.signal;
-    const requireCodex = entry.items?.some(item => item.batchDocument) === true;
+    const requireCodex = entry.recovered || entry.items?.some(item => item.batchDocument) === true;
     let status;
     let progress;
     let transcription;
@@ -625,14 +670,34 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       const paused = Boolean(state.costPaused);
       const bootstrapScope = !entry.scheduled && ctx.message && reminderOwner && state.extAuthBypass === 'codex'
         ? codexBootstrapScope(chatId, reminderOwner, thread) : undefined;
-      const out = paused ? { ok: false, text: SPEND_PAUSED } : await runTurn({ prompt: entry.prompt ?? text, signal,
+      const introPending = bootstrapScope ? entry.recovery || {
+        id: randomUUID(), chatId, userId: reminderOwner, threadId: thread > 1 ? thread : null,
+        incomingMessageId: ctx.message.message_id, statusId: status.message_id,
+        updateId: Number.isSafeInteger(ctx.update?.update_id) && ctx.update.update_id > 0 ? ctx.update.update_id : null,
+        sourceUpdateIds: (entry.items ? entry.items.map(item => item.ctx.update?.update_id)
+          : entry.sourceUpdateIds || []).filter(value => Number.isSafeInteger(value) && value > 0),
+        requireCodex: Boolean(requireCodex),
+      } : undefined;
+      if (introPending) { turn.pendingId = introPending.id; introOwned.add(introPending.id); }
+      let out = paused ? { ok: false, text: SPEND_PAUSED } : await runTurn({ prompt: entry.prompt ?? text, signal,
         ...(requireCodex ? { requireCodex: true } : {}),
         ...(reminderOwner ? { reminderOwner, checkSavedCodex, checkSavedCursor } : {}),
         ...(bootstrapScope ? { bootstrapScope } : {}),
+        ...(introPending ? { introPending } : {}),
+        ...(introPending ? { introPendingCancelled: () => Boolean(turn.interruptedByUser) } : {}),
+        ...(introPending ? { onIntroPendingClaimed: () => { turn.pendingClaimed = true; },
+          onIntroPendingLaunched: () => { turn.pendingLaunched = true; } } : {}),
         ...(entry.isAutoTurn ? { isAutoTurn: true } : {}), onStatus: ev => {
         if (ev.kind === 'provider') history?.provider(ev.providerId);
         progress.onStatus(ev);
       } });
+      if (out.error === 'intro_pending_changed' && turn.pendingId) {
+        await introJournal.cancelId(turn.pendingId);
+        out = { ...out, text: 'Контекст предыдущего запроса изменился. Проверь выбранную беседу и отправь сообщение заново.' };
+      } else if (!out.ok && turn.pendingClaimed && !turn.pendingLaunched) {
+        out = { ...out, text: String(out.text || 'Не удалось начать запрос.') +
+          '\n\nЗапрос сохранён; повторно отправлять его не нужно. Продолжу при следующем сообщении.' };
+      }
       result = out.result;
       outcome = paused ? 'blocked' : out.ok ? 'ok' : 'error';
       await progress.stop();
@@ -695,11 +760,13 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
           const thread = (ctx.message || ctx.callbackQuery?.message)?.message_thread_id;
           await ctx.reply(STT_ONBOARDING.text, { reply_markup: STT_ONBOARDING.reply_markup, ...(thread && thread !== 1 ? { message_thread_id: thread } : {}) });
         } else {
-          const error = voice && !transcribed
+          let error = voice && !transcribed
             ? `❌ Не удалось обработать голосовое: ${String(err.message).slice(0, 200)}\n\nПопробуй ещё раз или напиши текстом.`
             : entry.attachment
               ? `❌ Ошибка: ${String(err.message).slice(0, 200)}`
               : `❌ Ошибка: ${String(err.message).slice(0, 300)}`;
+          if (turn.pendingClaimed && !turn.pendingLaunched) error +=
+            '\n\nЗапрос сохранён; повторно отправлять его не нужно. Продолжу при следующем сообщении.';
           await deliverTurnResponse(ctx, status?.message_id, error, {}, { allowPlan: false });
           deliveredText = error; delivered = true;
         }
@@ -710,14 +777,79 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       turn.completed = true;
       if (running.get(chatId) === turn) running.delete(chatId);
       await history?.finish({ status: signal.aborted ? 'aborted' : outcome, text: deliveredText, delivered, result });
+      if (turn.pendingId) {
+        try {
+          const record = (await introJournal.list()).find(item => item.id === turn.pendingId);
+          if (record && turn.interruptedByUser) await introJournal.cancelId(record.id);
+          else if (record?.status === 'started' && turn.pendingClaimed && !turn.pendingLaunched) await introJournal.release(record.id);
+          else if (record?.status === 'started' && delivered) await introJournal.remove(record.id);
+          else if (record?.status === 'prepared' &&
+              !await introductionPendingCurrent(record, (await loadState()).state, process.env)) {
+            await introJournal.cancelId(record.id);
+          }
+        } finally { introOwned.delete(turn.pendingId); }
+      }
     }
   }
+
+  // Reconstruct only a transport for the captured owner/chat/message IDs. This
+  // never injects a Telegram update, repeats STT or downloads an attachment.
+  function recoveredContext(record) {
+    const options = record.threadId > 1 ? { message_thread_id: record.threadId } : {};
+    return { chat: { id: record.chatId }, from: { id: record.userId },
+      message: { message_id: record.incomingMessageId, ...(record.threadId > 1 ? options : {}) }, api: bot.api,
+      reply: (text, extra = {}, signal) => bot.api.sendMessage(record.chatId, text, { ...options, ...extra }, signal) };
+  }
+
+  async function recoverIntroPending() {
+    if (introRecovery) return introRecovery;
+    introRecovery = recoverIntroPendingOnce();
+    try { return await introRecovery; } finally { introRecovery = undefined; }
+  }
+
+  async function recoverIntroPendingOnce() {
+    const observedStop = stopEpoch;
+    const records = await introJournal.list();
+    const { state } = await loadState();
+    const accepted = new Set();
+    for (const record of records) {
+      if (introOwned.has(record.id)) { accepted.add(record.id); continue; }
+      if (record.status === 'cancelled') continue;
+      if (record.userId !== cfg.adminId) continue;
+      if (record.status === 'started' || !await introductionPendingCurrent(record, state, process.env)) {
+        const text = record.status === 'started'
+          ? 'После перезапуска не удалось определить, завершился ли предыдущий запрос. Проверь результат, прежде чем повторять.'
+          : 'Контекст предыдущего запроса изменился. Проверь выбранную беседу и отправь сообщение заново.';
+        let notified = false;
+        try {
+          await bot.api.editMessageText(record.chatId, record.statusId, text, {}, presentationSignal(AbortSignal.timeout(15_000)));
+          notified = true;
+        } catch {
+          try {
+            await bot.api.sendMessage(record.chatId, text, record.threadId > 1 ? { message_thread_id: record.threadId } : {},
+              presentationSignal(AbortSignal.timeout(15_000)));
+            notified = true;
+          } catch { /* Keep the private record until the owner can be notified. */ }
+        }
+        if (notified) await introJournal.remove(record.id);
+        continue;
+      }
+      if (observedStop !== stopEpoch || stopping || introOwned.has(record.id)) continue;
+      introOwned.add(record.id);
+      accepted.add(record.id);
+      inbox.push({ ctx: recoveredContext(record), text: record.prompt, prompt: record.prompt,
+        recovered: true, recovery: record, status: { message_id: record.statusId }, voice: false });
+    }
+    return accepted;
+  }
+  bot[Symbol.for('msb.recoverIntroPending')] = recoverIntroPending;
 
   bot.on('message:voice', async ctx => {
     const { state } = await loadState();
     if (isSetupMode(state)) { await ctx.reply('Сначала подключи AI: /start'); return; }
     if (stopping) return;
     // Speech never passes through pending text forms or fabricated updates.
+    await recoverIntroPending().catch(() => console.error('[msb/bot] introduction recovery unavailable'));
     inbox.push({ ctx, text: '', voice: true });
   });
 
@@ -728,6 +860,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       return;
     }
     if (stopping) return;
+    await recoverIntroPending().catch(() => console.error('[msb/bot] introduction recovery unavailable'));
     // Keep the Codex document in the reserved forward position, even with a Telegram group ID.
     if (kind === 'document' && supportsCodexAttachments(state) &&
         (isForwarded(ctx.message) || inbox.isCollecting(ctx))) {
