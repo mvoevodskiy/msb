@@ -1,7 +1,15 @@
+"""Consume bounded engine requests; producer and callers are in cli.py/request.mjs.
+
+The request directory belongs to an unprivileged bot. Never open its entries by
+following a symbolic link as root. Reference checks: tests/test_ipc_reference.py.
+"""
+import errno
 import fcntl
 import json
 import os
+import re
 import stat
+import time
 
 from const import (
     ACTIONS,
@@ -19,42 +27,212 @@ from const import (
 from util import Refused, ensure_root_dir, now, read_small, strict_json, uid_of, write_file
 
 
-def take_request(path, expected_uid, name=REQUEST_NAME, limit=REQUEST_MAX):
-    """Атомарно забрать request: прочитать и удалить. None если нет файла."""
-    req_path = os.path.join(path, name)
+def _open_request_dir(path):
+    """Hold the actual directory while refusing symlinks at every path component."""
+    if not os.path.isabs(path):
+        raise OSError(errno.EINVAL, "request directory must be absolute")
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    fd = os.open(os.path.sep, flags)
     try:
-        st = os.lstat(req_path)
+        for component in (part for part in path.split(os.path.sep) if part):
+            child = os.open(component, flags, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
+
+
+def _discard_claim(directory):
+    """Remove a claimed entry; keep a non-empty directory without descending."""
+    try:
+        os.unlink("claimed", dir_fd=directory)
+        return True
+    except FileNotFoundError:
+        return True
+    except OSError as e:
+        if e.errno not in (errno.EISDIR, errno.EPERM, errno.EACCES):
+            return False
+    try:
+        os.rmdir("claimed", dir_fd=directory)
+        return True
+    except OSError:
+        return False
+
+
+def _new_claim_dir(directory):
+    """Create and hold a private same-filesystem claim directory."""
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    for _ in range(3):
+        name = ".request.claim." + os.urandom(12).hex()
+        try:
+            os.mkdir(name, 0o700, dir_fd=directory)
+            break
+        except FileExistsError:
+            continue
+    else:
+        raise OSError(errno.EEXIST, "no claim directory name available")
+    claim = os.open(name, flags, dir_fd=directory)
+    try:
+        st = os.fstat(claim)
+        if st.st_uid != os.geteuid() or st.st_mode & 0o077:
+            raise OSError(errno.EACCES, "untrusted claim directory")
+    except BaseException:
+        os.close(claim)
+        raise
+    return name, claim
+
+
+def cleanup_claims(path, expected_uid):
+    """Drop abandoned private claims after a crash; caller holds the engine lock.
+
+    A claimed regular request may already have been consumed before the crash:
+    do not replay it. Client-owned quarantines and anything unexpected are left
+    intact. When the source user is root there is no trustworthy ownership
+    distinction, so there is no automatic cleanup.
+    """
+    if expected_uid is None or expected_uid == os.geteuid():
+        return
+    try:
+        directory = _open_request_dir(path)
+    except OSError:
+        return
+    try:
+        dst = os.fstat(directory)
+        if dst.st_uid != expected_uid or dst.st_mode & 0o022:
+            return
+        for name in os.listdir(directory):
+            if not re.fullmatch(r"\.request\.claim\.[0-9a-f]{24}", name):
+                continue
+            try:
+                claim = os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC,
+                                dir_fd=directory)
+            except OSError:
+                continue
+            try:
+                st = os.fstat(claim)
+                if st.st_uid != os.geteuid() or st.st_mode & 0o077:
+                    continue
+                entries = os.listdir(claim)
+                if set(entries) - {"claimed"}:
+                    continue
+                if "claimed" in entries:
+                    item = os.stat("claimed", dir_fd=claim, follow_symlinks=False)
+                    if stat.S_ISDIR(item.st_mode):
+                        continue
+                    os.unlink("claimed", dir_fd=claim)
+                here = os.stat(name, dir_fd=directory, follow_symlinks=False)
+                if (here.st_dev, here.st_ino) == (st.st_dev, st.st_ino):
+                    os.rmdir(name, dir_fd=directory)
+            except OSError:
+                continue
+            finally:
+                os.close(claim)
+    finally:
+        os.close(directory)
+
+
+def take_request(path, expected_uid, name=REQUEST_NAME, limit=REQUEST_MAX):
+    """Atomically claim one slot; never delete a later publication from it."""
+    try:
+        directory = _open_request_dir(path)
     except FileNotFoundError:
         return None
-    except OSError as e:
-        return Refused("BAD_REQUEST", detail={"reason": "STAT", "errno": e.errno})
-    if not stat.S_ISREG(st.st_mode):
-        try:
-            os.unlink(req_path)
-        except OSError:
-            pass
-        return Refused("BAD_REQUEST", detail={"reason": "NOT_REG"})
-    if expected_uid is not None and st.st_uid != expected_uid:
-        try:
-            os.unlink(req_path)
-        except OSError:
-            pass
-        return Refused("BAD_REQUEST", detail={"reason": "OWNER"})
-    if st.st_size > limit:
-        try:
-            os.unlink(req_path)
-        except OSError:
-            pass
-        return Refused("BAD_REQUEST", detail={"reason": "TOO_BIG"})
+    except OSError:
+        return Refused("BAD_REQUEST", detail={"reason": "REQUEST_DIR"})
     try:
-        with open(req_path, "rb") as f:
-            data = f.read(limit + 1)
-        os.unlink(req_path)
-    except OSError as e:
-        return Refused("BAD_REQUEST", detail={"reason": "READ", "errno": e.errno})
-    if len(data) > limit:
-        return Refused("BAD_REQUEST", detail={"reason": "TOO_BIG"})
-    return data
+        dst = os.fstat(directory)
+        if expected_uid is None or dst.st_uid != expected_uid or dst.st_mode & 0o022:
+            return Refused("BAD_REQUEST", detail={"reason": "REQUEST_DIR"})
+        try:
+            # Avoid creating a claim directory for an empty slot.
+            os.stat(name, dir_fd=directory, follow_symlinks=False)
+        except FileNotFoundError:
+            return None
+        except OSError:
+            return Refused("BAD_REQUEST", detail={"reason": "REQUEST_STAT"})
+        try:
+            claim_name, claim = _new_claim_dir(directory)
+        except OSError:
+            return Refused("BAD_REQUEST", detail={"reason": "REQUEST_CLAIM_DIR"})
+        preserve = False
+
+        def quarantine(reason):
+            # Invalid directories and other unremovable entries are never
+            # recursively removed. Hand the private container to its owner.
+            try:
+                os.fchown(claim, dst.st_uid, dst.st_gid)
+                return Refused("BAD_REQUEST", detail={"reason": reason, "quarantine": claim_name})
+            except OSError:
+                return Refused("BAD_REQUEST", detail={"reason": "REQUEST_QUARANTINE_OWNER",
+                                                       "original_reason": reason,
+                                                       "quarantine": claim_name})
+
+        try:
+            # Claim the actual name, not an inode checked earlier. Another writer
+            # can publish a new request immediately after this rename.
+            try:
+                os.rename(name, "claimed", src_dir_fd=directory, dst_dir_fd=claim)
+            except FileNotFoundError:
+                return None
+            except OSError:
+                return Refused("BAD_REQUEST", detail={"reason": "REQUEST_CLAIM"})
+            try:
+                fd = os.open(
+                    "claimed",
+                    os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK | os.O_NOCTTY | os.O_CLOEXEC,
+                    dir_fd=claim,
+                )
+            except OSError:
+                preserve = not _discard_claim(claim)
+                if preserve:
+                    return quarantine("REQUEST_NOT_FILE")
+                return Refused("BAD_REQUEST", detail={"reason": "REQUEST_NOT_FILE"})
+            try:
+                preserve = not _discard_claim(claim)
+                if preserve:
+                    return quarantine("REQUEST_REMOVE")
+                st = os.fstat(fd)
+                # The bot publishes with link(tmp, request), then removes tmp.
+                # Retain the previous 0.5 s allowance for the temporary link.
+                for _ in range(10):
+                    if st.st_nlink == 0:
+                        break
+                    time.sleep(0.05)
+                    st = os.fstat(fd)
+                if not stat.S_ISREG(st.st_mode):
+                    return Refused("BAD_REQUEST", detail={"reason": "REQUEST_NOT_FILE"})
+                if st.st_uid != expected_uid:
+                    return Refused("BAD_REQUEST", detail={"reason": "REQUEST_FOREIGN_OWNER"})
+                if st.st_nlink:
+                    return Refused("BAD_REQUEST", detail={"reason": "REQUEST_LINKED"})
+                data = bytearray()
+                while len(data) <= limit:
+                    chunk = os.read(fd, limit + 1 - len(data))
+                    if not chunk:
+                        break
+                    data.extend(chunk)
+                if len(data) > limit:
+                    return Refused("BAD_REQUEST", detail={"reason": "REQUEST_SIZE"})
+                return bytes(data)
+            except OSError:
+                return Refused("BAD_REQUEST", detail={"reason": "REQUEST_READ"})
+            finally:
+                os.close(fd)
+        finally:
+            if not preserve:
+                # Never recursively remove anything if the name was replaced.
+                try:
+                    here = os.stat(claim_name, dir_fd=directory, follow_symlinks=False)
+                    held = os.fstat(claim)
+                    if (here.st_dev, here.st_ino) == (held.st_dev, held.st_ino):
+                        os.rmdir(claim_name, dir_fd=directory)
+                except OSError:
+                    pass
+            os.close(claim)
+    finally:
+        os.close(directory)
 
 
 def parse_request(data):
