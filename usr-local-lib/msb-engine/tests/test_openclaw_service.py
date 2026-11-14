@@ -349,6 +349,22 @@ class OpenClawServiceTest(unittest.TestCase):
         wake.assert_called_once_with(['second'], False, 'tick')
         start.assert_not_called()
 
+    def test_pending_adoption_is_not_offered_or_started_by_tick(self):
+        service = self.module()
+        info = {'installed': True, 'enabled': True, 'unit': 'openclaw.service',
+                'scope': 'system', 'adoption_pending': True}
+        self.assertEqual(state.available_actions({'installed': False}, info)['client'], ['status'])
+        with patch.object(cli, 'need_root'), patch.object(cli, 'locked', return_value=999), \
+             patch.object(cli, 'ensure_run_dirs'), patch.object(cli, 'cleanup_claims'), \
+             patch.object(cli, 'uid_of', return_value=None), patch.object(cli, 'write_state'), \
+             patch.object(cli, 'compute_state', return_value={}), patch.object(cli.os, 'close'), \
+             patch.object(state, 'bot_ids', return_value=[]), patch.object(state, 'sleep_marks', return_value=set()), \
+             patch.object(state, 'openclaw_info', return_value=info), \
+             patch.object(state, 'openclaw_off_paths', return_value=[]), \
+             patch.object(service, 'word', return_value='inactive'), patch.object(service, 'ok') as start:
+            self.assertEqual(cli.cmd_tick([]), 0)
+        start.assert_not_called()
+
 
 if __name__ == '__main__':
     unittest.main()

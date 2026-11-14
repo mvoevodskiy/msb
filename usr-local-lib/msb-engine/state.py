@@ -15,6 +15,7 @@ from const import (
     CLIENT_ROOT,
     CODES,
     HELPER_VERSION,
+    LEGACY_ADOPTION_PENDING,
     LEGACY_OC_MARKER,
     LEGACY_OC_OFF,
     MARKS_DIR,
@@ -29,7 +30,7 @@ from const import (
     STATE_DIR,
 )
 from openclaw_service import discover as discover_oc_service, word as oc_service_word
-from openclaw_readiness import incomplete as openclaw_incomplete
+from openclaw_readiness import incomplete as openclaw_incomplete, legacy_adopted
 from archive_service import list_trash
 from util import (
     cc_cli_version,
@@ -150,9 +151,9 @@ def detect_oc_unit():
 
 def openclaw_off_paths(scope):
     paths = [OC_OFF]
-    # Old helper managed only the user unit. Preserve its explicit off intent
-    # even if a new marker exists; do not apply it to a separate system unit.
-    if scope == 'user':
+    # Before adoption retain old off intent. Once adoption has copied that
+    # intent, the new marker is authoritative and old data remains inert.
+    if scope == 'user' and not legacy_adopted(OC_MARKER):
         paths.append(LEGACY_OC_OFF)
     return [path for path in paths if os.path.lexists(path)]
 
@@ -165,6 +166,7 @@ def openclaw_info():
     scope = service.get('scope') if service else None
     legacy = scope == 'user' and os.path.lexists(LEGACY_OC_MARKER)
     off = bool(openclaw_off_paths(scope))
+    pending = os.path.lexists(LEGACY_ADOPTION_PENDING)
     if scope in ('unknown', 'ambiguous'):
         return {
             "installed": True if marker or scope == 'ambiguous' else None,
@@ -177,6 +179,7 @@ def openclaw_info():
             "frozen": None,
             "unit": None,
             "scope": scope,
+            "adoption_pending": pending,
         }
     if not marker and not legacy and not home and not service:
         return {
@@ -190,6 +193,7 @@ def openclaw_info():
             "frozen": None,
             "unit": None,
             "scope": scope,
+            "adoption_pending": pending,
         }
     gateway = "unknown"
     if unit:
@@ -207,6 +211,7 @@ def openclaw_info():
         "frozen": None,
         "unit": unit,
         "scope": scope,
+        "adoption_pending": pending,
     }
 
 
@@ -223,7 +228,7 @@ def available_actions(j, o, p=None, trash=None):
     acts = ["status"]
     if trash:
         acts.append("restore")
-    if o["installed"] and o.get("scope") in ("system", "user") and isinstance(o.get("enabled"), bool):
+    if o["installed"] and not o.get("adoption_pending") and o.get("scope") in ("system", "user") and isinstance(o.get("enabled"), bool):
         acts.append("disable-openclaw" if o["enabled"] else "enable-openclaw")
         if o["enabled"]:
             acts.append("update-openclaw")

@@ -18,6 +18,8 @@ def _service(info):
 
 def act_enable_openclaw(source, req, progress):
     o = openclaw_info()
+    if o.get('adoption_pending'):
+        raise Refused('NOT_AVAILABLE', detail={'reason': 'ADOPTION_PENDING'})
     if o["installed"] is None or o["enabled"] is None:
         raise Refused("NOT_AVAILABLE", detail={"reason": "OC_STATE_UNKNOWN"})
     if not o["installed"]:

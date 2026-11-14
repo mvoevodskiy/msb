@@ -19,10 +19,14 @@ if _LIB not in sys.path:
 from actions import ACTS  # noqa: E402
 from const import (  # noqa: E402
     HELPER_VERSION,
+    LEGACY_ADOPTION_PENDING,
+    LEGACY_OC_MARKER,
     REQUEST_NAME,
     SOURCE_ACTIONS,
     SOURCES,
     STUCK_SLEEP,
+    OC_HOME,
+    STATE_DIR,
 )
 from ipc import cleanup_claims, locked, parse_request, spend, take_request  # noqa: E402
 from state import (  # noqa: E402
@@ -143,7 +147,7 @@ def cmd_tick(_args):
                 set_sleep(sorted(asleep), False, "tick")
             except Refused:
                 log("could not wake sleeping bots")
-        if o["installed"] and o["enabled"] and not off:
+        if o["installed"] and o["enabled"] and not off and not o.get('adoption_pending'):
             unit = o.get("unit")
             service = {"unit": unit, "scope": o.get("scope")}
             status = oc_service_word(service, "is-active") if unit else ""
@@ -195,18 +199,45 @@ def cmd_setup(_args):
     return 0
 
 
+def cmd_adopt_legacy(_args):
+    """Operator-only migration of facts; never starts services or reads auth."""
+    need_root()
+    lock = locked()
+    try:
+        if not os.path.lexists(LEGACY_OC_MARKER):
+            if os.path.lexists(LEGACY_ADOPTION_PENDING):
+                raise Refused('NOT_AVAILABLE', detail={'reason': 'ADOPTION_SOURCE_MISSING'})
+            log('legacy facts: absent')
+            return 0
+        from legacy_adoption import adopt
+        from legacy_gate import acquire_old_lock, assert_quiet
+        from openclaw_service import discover
+        assert_quiet()
+        old_lock = acquire_old_lock('/run/jarvis-engine')
+        try:
+            assert_quiet()
+            result = adopt('/var/lib/jarvis-engine', STATE_DIR, OC_HOME, discover(), uid_of('openclaw'))
+            log(f'legacy facts: {result}')
+            return 0
+        finally:
+            os.close(old_lock)
+    finally:
+        os.close(lock)
+
+
 COMMANDS = {
     "run": cmd_run,
     "tick": cmd_tick,
     "status": cmd_status,
     "setup": cmd_setup,
+    "adopt-legacy": cmd_adopt_legacy,
 }
 
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv or argv[0] in ("-h", "--help"):
-        print("usage: msb-engine {run|tick|status|setup}", file=sys.stderr)
+        print("usage: msb-engine {run|tick|status|setup|adopt-legacy}", file=sys.stderr)
         return 2
     cmd = argv[0]
     if cmd not in COMMANDS:

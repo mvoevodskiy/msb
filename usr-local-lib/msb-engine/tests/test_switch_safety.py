@@ -71,6 +71,10 @@ class ReadinessTest(unittest.TestCase):
         self.assertFalse(self.status('user')['enabled'])
         self.marker.write_text('invalid')
         self.assertFalse(self.status('user')['enabled'])
+        self.marker.write_text(f'complete=1\ninstallation_id={IID}\nadopted_legacy=1\n')
+        self.assertTrue(self.status('user')['enabled'], 'adopted state does not resurrect old off')
+        self.off.write_text('off')
+        self.assertFalse(self.status('user')['enabled'])
 
     def test_malformed_or_other_setup_record_is_unknown(self):
         self.marker.write_text(f'complete=1\ninstallation_id={IID}\n')

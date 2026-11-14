@@ -89,6 +89,7 @@ OC_MARKER = "/var/lib/msb-engine/openclaw.installed"
 OC_SETUP = "/var/lib/msb-engine/openclaw.setup"
 LEGACY_OC_MARKER = "/var/lib/jarvis-engine/openclaw.installed"
 LEGACY_OC_OFF = "/var/lib/jarvis-engine/openclaw.off"
+LEGACY_ADOPTION_PENDING = "/var/lib/msb-engine/openclaw-adoption.pending"
 OC_UNITS = (
     "openclaw-gateway.service",
     "openclaw.service",
