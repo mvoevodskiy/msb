@@ -1,3 +1,8 @@
+"""Read engine and bot facts into state.json for cli.py and the Telegram client.
+
+OpenClaw service scope is selected by openclaw_service.py; request results
+remain in this module. Regressions: tests/test_openclaw_service.py.
+"""
 import json
 import os
 
@@ -12,13 +17,13 @@ from const import (
     OC_HOME,
     OC_MARKER,
     OC_OFF,
-    OC_UNITS,
     RUN_DIR,
     SLEEP_PREFIX,
     SOURCE_ACTIONS,
     SOURCES,
     STATE_DIR,
 )
+from openclaw_service import discover as discover_oc_service, word as oc_service_word
 from util import (
     cc_cli_version,
     disk,
@@ -131,20 +136,32 @@ def jarvis_info():
 
 
 def detect_oc_unit():
-    for u in OC_UNITS:
-        for base in ("/etc/systemd/system", "/usr/lib/systemd/system", "/lib/systemd/system"):
-            if os.path.lexists(f"{base}/{u}"):
-                return u
-    return None
+    """Compatibility accessor; use discover_oc_service for its required scope."""
+    service = discover_oc_service()
+    return service.get('unit') if service else None
 
 
 def openclaw_info():
-    marker = os.path.lexists(OC_MARKER) or os.path.isdir(
-        os.path.join(OC_HOME, ".openclaw")
-    )
-    unit = detect_oc_unit()
+    marker = os.path.lexists(OC_MARKER)
+    home = os.path.isdir(os.path.join(OC_HOME, ".openclaw"))
+    service = discover_oc_service()
+    unit = service.get('unit') if service else None
+    scope = service.get('scope') if service else None
     off = os.path.lexists(OC_OFF)
-    if not marker and not unit:
+    if scope in ('unknown', 'ambiguous'):
+        return {
+            "installed": True if marker or scope == 'ambiguous' else None,
+            "enabled": None,
+            "incomplete": None,
+            "gateway": "unknown",
+            "plugin": None,
+            "plugin_alive": False,
+            "version": None,
+            "frozen": None,
+            "unit": None,
+            "scope": scope,
+        }
+    if not marker and not home and not service:
         return {
             "installed": False,
             "enabled": False,
@@ -155,21 +172,24 @@ def openclaw_info():
             "version": None,
             "frozen": None,
             "unit": None,
+            "scope": scope,
         }
     gateway = "unknown"
     if unit:
-        st = systemctl_word("is-active", unit)
-        gateway = st if st else "inactive"
+        st = oc_service_word(service, "is-active")
+        gateway = st if st else "unknown"
     return {
         "installed": True,
         "enabled": not off,
         "incomplete": False,
-        "gateway": gateway if not off else "inactive",
+        # The off marker is intent, not evidence that systemd has stopped.
+        "gateway": gateway,
         "plugin": None,
         "plugin_alive": False,
         "version": None,
         "frozen": None,
         "unit": unit,
+        "scope": scope,
     }
 
 
@@ -184,7 +204,7 @@ def way_back(o):
 
 def available_actions(j, o, p=None):
     acts = ["status"]
-    if o["installed"]:
+    if o["installed"] and o.get("scope") in ("system", "user") and isinstance(o.get("enabled"), bool):
         acts.append("disable-openclaw" if o["enabled"] else "enable-openclaw")
         if o["enabled"]:
             acts.append("update-openclaw")

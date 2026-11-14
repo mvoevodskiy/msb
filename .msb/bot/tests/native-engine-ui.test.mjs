@@ -13,6 +13,27 @@ test('optional native OS screen retains helper controls and provider view', () =
     ['settings:engine:set:cc', 'ext:conn:set:codex', 'eng:status', 'eng:oc:on', 'eng:oc:off', 'menu:settings']);
 });
 
+test('unknown OpenClaw installation is not shown as absent', () => {
+  for (const openclaw of [{ installed: null, gateway: 'unknown' },
+    { installed: true, enabled: null, gateway: 'unknown' }]) {
+    const view = nativeEnginesScreen({ engine: 'cc' }, { openclaw });
+    assert.match(view.text, /OpenClaw: нет данных/);
+    assert.doesNotMatch(view.text, /OpenClaw: <b>не установлен<\/b>/);
+  }
+});
+
+test('an off request with a still active gateway is not shown as completed', () => {
+  const view = nativeEnginesScreen({ engine: 'cc' },
+    { openclaw: { installed: true, enabled: false, gateway: 'active' } });
+  assert.match(view.text, /OpenClaw: <b>выключение не завершено<\/b>/);
+});
+
+test('an off request with an unknown gateway is not shown as completed', () => {
+  const view = nativeEnginesScreen({ engine: 'cc' },
+    { openclaw: { installed: true, enabled: false, gateway: 'unknown' } });
+  assert.match(view.text, /OpenClaw: <b>состояние неизвестно<\/b>/);
+});
+
 test('optional OS dispatcher leaves ordinary menu callbacks untouched', async () => {
   assert.equal(await handleNativeEngineCallback({ data: 'settings:back', state: {},
     show() { throw Error('unexpected UI action'); }, providerView() { throw Error('unexpected provider read'); } }), false);

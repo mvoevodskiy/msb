@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""msb-engine CLI: run | tick | status | setup"""
+"""msb-engine CLI: run | tick | status | setup.
+
+IPC is in ipc.py, state in state.py and OpenClaw's system/user target is selected
+in openclaw_service.py. Isolated checks: tests/test_openclaw_service.py.
+"""
 
 from __future__ import annotations
 
@@ -128,14 +132,27 @@ def cmd_tick(_args):
                 log(f"revived {unit}")
         # OpenClaw revive if installed and not OC_OFF
         from const import OC_OFF
-        from state import detect_oc_unit, openclaw_info
+        from openclaw_service import ok as oc_service_ok, word as oc_service_word
+        from state import openclaw_info
 
         o = openclaw_info()
+        if asleep and os.path.lexists(OC_OFF):
+            # Retry a failed wake after an attempted stop; never revive OC here.
+            from actions.bots import set_sleep
+            try:
+                set_sleep(sorted(asleep), False, "tick")
+            except Refused:
+                log("could not wake sleeping bots")
         if o["installed"] and o["enabled"] and not os.path.lexists(OC_OFF):
-            unit = o.get("unit") or detect_oc_unit()
-            if unit and systemctl_word("is-active", unit) != "active":
-                systemctl_ok("start", unit)
-                log(f"revived {unit}")
+            unit = o.get("unit")
+            service = {"unit": unit, "scope": o.get("scope")}
+            status = oc_service_word(service, "is-active") if unit else ""
+            if status in ("inactive", "failed"):
+                reset = status != "failed" or oc_service_ok(service, "reset-failed")
+                if reset and oc_service_ok(service, "start"):
+                    log(f"revived {unit}")
+                else:
+                    log(f"revive failed {unit}")
         write_state(compute_state())
     finally:
         os.close(lock)
