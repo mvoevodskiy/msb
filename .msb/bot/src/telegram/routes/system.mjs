@@ -85,9 +85,9 @@ export async function handleSystemRoute({ data, show, chatId, bot, pending, sign
       // Deferred input exit belongs to router admission, before any await.
       try {
         const { result, snapshot } = await refreshEngineStatus({ signal });
-        if (!result) return showPult('Обновление статуса не подтверждено: нет ответа помощника.', { pult: null });
+        if (!result) return showPult('Обновление статуса не подтверждено: нет ответа системной службы.', { pult: null });
         if (result.code !== 'OK') return showPult(`Не удалось обновить статус: <code>${escapeHtml(result.code)}</code>.`, { pult: null });
-        if (!parsePultStatus(snapshot.pult).known) return showPult('Помощник не вернул полный статус Пульта.', { pult: null });
+        if (!parsePultStatus(snapshot.pult).known) return showPult('Системная служба не вернула полный статус Пульта.', { pult: null });
         return showPult('', snapshot);
       } catch (err) {
         if (signal?.aborted) return;
@@ -105,7 +105,7 @@ export async function handleSystemRoute({ data, show, chatId, bot, pending, sign
           ? `${action}: <code>${escapeHtml(result.code)}</code>${
               result.detail?.hint ? `\n${escapeHtml(String(result.detail.hint))}` : ''
             }${result.detail?.reason ? ` (${escapeHtml(String(result.detail.reason))})` : ''}`
-          : `⚠️ ${action}: нет ответа helper`;
+          : `⚠️ ${action}: нет ответа системной службы`;
         return showPult(note);
       } catch (err) {
         return showPult(`${action} ошибка: ${escapeHtml(err.message)}`);

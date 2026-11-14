@@ -20,7 +20,7 @@ export function newRequestId() { return randomBytes(12).toString('hex'); }
 /** Success means published, not executed. Busy means this ID was never published. */
 export async function submitRequest(action, params = {}, env = process.env, { publishTimeoutMs = 5_000, pollMs = 50, signal } = {}) {
   if (!Number.isFinite(publishTimeoutMs) || publishTimeoutMs < 0 || !Number.isFinite(pollMs) || pollMs <= 0) {
-    throw new TypeError('Invalid helper publication timeout');
+    throw new TypeError('Invalid engine publication timeout');
   }
   signal?.throwIfAborted();
   const dir = engineDir(env);
@@ -42,7 +42,7 @@ export async function submitRequest(action, params = {}, env = process.env, { pu
         if (err.code !== 'EEXIST') throw err;
         const remaining = deadline - performance.now();
         if (remaining <= 0) {
-          throw Object.assign(new Error('Предыдущая заявка ещё не принята помощником. Повтори действие позже.'), { code: 'ENGINE_REQUEST_BUSY' });
+          throw Object.assign(new Error('Предыдущая заявка ещё не принята системной службой. Повтори действие позже.'), { code: 'ENGINE_REQUEST_BUSY' });
         }
         await delay(Math.min(pollMs, remaining), undefined, { signal });
       }

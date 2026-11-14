@@ -20,7 +20,7 @@ export async function handleNativeEngineCallback({ data, state, show, providerVi
       const { result, snapshot: snap } = await refreshEngineStatus({ signal });
       const note = result
         ? `\n\nЗаявка <code>${result.code}</code> (${result.result})`
-        : '\n\n⚠️ Нет ответа helper за 20с';
+        : '\n\n⚠️ Системная служба не ответила за 20с';
       const screen = await engineMenu(snap);
       return show({ text: screen.text + note, keyboard: screen.keyboard });
     } catch (err) {

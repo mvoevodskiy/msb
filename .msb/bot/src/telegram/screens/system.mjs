@@ -48,7 +48,7 @@ export function pultScreen(pultSnap = null, cfg = {}, note = '') {
   const on = p.enabled;
   const active = p.active;
   let status;
-  if (!p.known) status = 'нет данных от помощника — нажми «Обновить»';
+  if (!p.known) status = 'нет данных от системной службы — нажми «Обновить»';
   else if (!installed) status = `полная установка Пульта не найдена (${p.root}) — проверь ядро и службы`;
   else if (on && active) status = 'включён, службы работают';
   else if (on) status = 'включён, но службы не active — journalctl -u pult-web';
