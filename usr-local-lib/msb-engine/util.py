@@ -45,25 +45,55 @@ def gid_of(name):
 
 
 def ensure_root_dir(path, mode):
+    """Create/check the private system directory without following its final link."""
     os.makedirs(path, mode=mode, exist_ok=True)
-    os.chmod(path, mode)
+    fd = os.open(path, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+    try:
+        st = os.fstat(fd)
+        if not stat.S_ISDIR(st.st_mode) or st.st_uid != os.geteuid():
+            raise Refused("ROOT_DIR", "failed")
+        if stat.S_IMODE(st.st_mode) != mode:
+            os.fchmod(fd, mode)
+    finally:
+        os.close(fd)
 
 
 def write_file(path, data, mode=0o600):
+    """Replace a file atomically without changing its already-prepared parent."""
     if isinstance(data, str):
         data = data.encode()
-    d = os.path.dirname(path)
-    if d:
-        ensure_root_dir(d, 0o755)
-    tmp = path + ".tmp"
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_CLOEXEC, mode)
+    directory = os.path.dirname(path) or "."
+    tmp = path + "." + os.urandom(8).hex() + ".tmp"
+    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW | os.O_CLOEXEC, mode)
     try:
-        os.write(fd, data)
-        os.fsync(fd)
-    finally:
-        os.close(fd)
-    os.chmod(tmp, mode)
-    os.replace(tmp, path)
+        try:
+            remaining = memoryview(data)
+            while remaining:
+                written = os.write(fd, remaining)
+                if written <= 0:
+                    raise OSError("short write")
+                remaining = remaining[written:]
+            os.fchmod(fd, mode)
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+        os.replace(tmp, path)
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
+    try:
+        parent = os.open(directory, os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+        try:
+            os.fsync(parent)
+        finally:
+            os.close(parent)
+    except OSError as e:
+        # replace already committed the visible file: report durability trouble
+        # but let its caller finish the matching operation, not a false rollback.
+        log(f"write_file: published, directory fsync failed errno={e.errno}")
 
 
 def read_small(path, limit=4096):
