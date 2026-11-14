@@ -1,8 +1,9 @@
 /**
  * Publish one existing helper request without replacing an unconsumed slot.
  * Re-exported by [client](./client.mjs); paths share the selected runtime profile.
- * [Helper consumer](../../../../usr-local-lib/msb-engine/ipc.py) take_request reads then unlinks.
- * No-replace publication also protects that read→unlink interval; the helper is unchanged.
+ * [Helper consumer](../../../../usr-local-lib/msb-engine/ipc.py) claims the slot,
+ * reads the held file and waits for the publisher to drop its temporary hard link.
+ * No-replace publication keeps a later request from replacing an occupied slot.
  * [Checks](../../tests/engines-publication.test.mjs), [caller protocol](../../tests/engines-client.test.mjs).
  */
 import fs from 'node:fs/promises';

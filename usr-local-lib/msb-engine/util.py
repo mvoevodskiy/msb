@@ -106,8 +106,19 @@ def strict_json(data, code):
         raise Refused(code)
     if len(data) > 1 << 20:
         raise Refused(code)
+
+    def reject_duplicates(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise Refused(code)
+            result[key] = value
+        return result
+
     try:
-        return json.loads(data.decode("utf-8"))
+        return json.loads(data.decode("utf-8"), object_pairs_hook=reject_duplicates)
+    except Refused:
+        raise
     except Exception:
         raise Refused(code)
 

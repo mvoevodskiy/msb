@@ -20,7 +20,7 @@ from const import (  # noqa: E402
     SOURCES,
     STUCK_SLEEP,
 )
-from ipc import locked, parse_request, spend, take_request  # noqa: E402
+from ipc import cleanup_claims, locked, parse_request, spend, take_request  # noqa: E402
 from state import (  # noqa: E402
     compute_state,
     ensure_run_dirs,
@@ -75,7 +75,13 @@ def cmd_run(_args):
     lock = locked()
     try:
         ensure_run_dirs()
-        todo = [(n, take_request(p, uid_of(u))) for n, p, u in SOURCES if uid_of(u) is not None]
+        todo = []
+        for name, path, user in SOURCES:
+            uid = uid_of(user)
+            if uid is None:
+                continue
+            cleanup_claims(path, uid)
+            todo.append((name, take_request(path, uid)))
         for name, got in todo:
             if got is None:
                 continue
@@ -99,6 +105,8 @@ def cmd_tick(_args):
         return 0
     try:
         ensure_run_dirs()
+        for _name, path, user in SOURCES:
+            cleanup_claims(path, uid_of(user))
         # health: failed msb-bot@* → reset-failed (не трогаем masked/sleep)
         from state import bot_ids, bot_unit, sleep_marks
         from util import systemctl_ok, systemctl_word
