@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""msb-engine CLI: run | tick | status | setup"""
+"""msb-engine CLI: run | tick | status | setup.
+
+IPC is in ipc.py, state in state.py. Bot off-marker checks:
+tests/test_bot_off_marker.py.
+"""
 
 from __future__ import annotations
 
@@ -107,13 +111,13 @@ def cmd_tick(_args):
         ensure_run_dirs()
         for _name, path, user in SOURCES:
             cleanup_claims(path, uid_of(user))
-        # health: failed msb-bot@* → reset-failed (не трогаем masked/sleep)
-        from state import bot_ids, bot_unit, sleep_marks
+        # health: failed msb-bot@* → reset-failed (не трогаем off/sleep)
+        from state import bot_ids, bot_mark, bot_unit, sleep_marks
         from util import systemctl_ok, systemctl_word
 
         asleep = sleep_marks()
         for b in bot_ids():
-            if b in asleep:
+            if b in asleep or os.path.lexists(bot_mark(b, "off")):
                 continue
             unit = bot_unit(b)
             if systemctl_word("is-failed", unit) == "failed":

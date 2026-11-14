@@ -1,7 +1,12 @@
+"""Wake/sleep selected MSB bots; invoked by cli.handle through actions.ACTS.
+
+The sleep marker is written by client. Off state belongs to state.bot_mark;
+checks: tests/test_bot_off_marker.py.
+"""
 import os
 
 from const import SLEEP_PREFIX, SOURCES
-from state import bot_unit, jarvis_info, sleep_marks
+from state import bot_mark, bot_unit, jarvis_info, sleep_marks
 from util import Refused, as_client_touch, systemctl_ok, systemctl_word
 
 
@@ -20,7 +25,13 @@ def start_bots(ids):
     ok = True
     for b in ids:
         systemctl_ok("unmask", bot_unit(b))
-        if not systemctl_ok("enable", "--now", bot_unit(b), timeout=120):
+        if systemctl_ok("enable", "--now", bot_unit(b), timeout=120):
+            # The off mark records intent until this particular bot starts.
+            try:
+                os.unlink(bot_mark(b, "off"))
+            except FileNotFoundError:
+                pass
+        else:
             ok = False
     if not ok:
         raise Refused("FAILED", "failed", {"reason": "MSB_START"})
