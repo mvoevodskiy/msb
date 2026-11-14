@@ -8,7 +8,7 @@ observed directory replacements fail, but the entire merge is not atomic.
 Checks: tests/test_archive_restore.py.
 """
 import calendar
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 import errno
 import json
 import os
@@ -60,10 +60,10 @@ def list_trash(root):
             except (OSError, ValueError):
                 continue
             if stat.S_ISDIR(st.st_mode):
-                result.append((calendar.timegm(stamp.utctimetuple()), name,
-                               (stamp + timedelta(days=1)).strftime('%Y-%m-%dT%H:%M:%SZ')))
+                result.append((calendar.timegm(stamp.utctimetuple()), name))
         result.sort(reverse=True)
-        return [{'archive': name, 'erase_after': expiry} for _, name, expiry in result[:16]]
+        # Owner chose manual retention, so no 24-hour automatic expiry is claimed.
+        return [{'archive': name, 'erase_after': None} for _, name in result[:16]]
     finally:
         os.close(trash)
         os.close(archive)

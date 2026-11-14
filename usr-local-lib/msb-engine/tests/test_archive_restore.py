@@ -196,7 +196,8 @@ class ArchiveRestoreTest(unittest.TestCase):
         (self.trash / 'invalid').mkdir()
         (self.trash / 'jarvis-20261012T123456Z').symlink_to(self.source, target_is_directory=True)
         items = worker.list_trash(str(self.root))
-        self.assertEqual(items, [{'archive': NAME, 'erase_after': '2026-10-13T12:34:56Z'}])
+        self.assertEqual(items, [{'archive': NAME, 'erase_after': None}])
+        self.assertTrue(self.source.exists(), 'listing an old entry must not remove it')
 
     def test_restore_is_offered_only_for_an_observed_trash_entry(self):
         jarvis = {'installed': False}
