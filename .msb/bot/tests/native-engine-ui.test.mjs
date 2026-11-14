@@ -4,6 +4,16 @@ import fs from 'node:fs/promises';
 import { nativeEnginesScreen } from '../src/engines/screen.mjs';
 import { handleNativeEngineCallback } from '../src/engines/telegram.mjs';
 
+test('bot status shows the refreshed state while Codex remains selected', () => {
+  const provider = { activeTitle: 'Codex', choices: [{ text: '🧠 Codex ✓', callback_data: 'ext:conn:set:codex' }] };
+  for (const status of ['disabled', 'active']) {
+    const view = nativeEnginesScreen({ engine: 'cc' }, { msb: { state: status } }, provider);
+    assert.ok(view.text.includes(`MSB-бот: <b>${status}</b>`));
+    assert.match(view.text, /Сейчас отвечает: <b>Codex<\/b>/);
+    assert.ok(view.keyboard.inline_keyboard.flat().some(button => button.callback_data === 'ext:conn:set:codex'));
+  }
+});
+
 test('optional native OS screen retains helper controls and provider view', () => {
   const view = nativeEnginesScreen({ engine: 'cc' }, { helper: 'fixture', msb: { state: 'running' }, openclaw: { installed: false } },
     { activeTitle: 'Codex', choices: [{ text: '🧠 Codex ✓', callback_data: 'ext:conn:set:codex' }] });

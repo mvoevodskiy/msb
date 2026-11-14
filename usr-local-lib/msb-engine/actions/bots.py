@@ -1,12 +1,13 @@
 """Wake/sleep selected MSB bots; invoked by cli.handle through actions.ACTS.
 
 OpenClaw readiness is supplied by state.openclaw_info. The marker writer runs as
-client via util.as_client_touch. Checks: tests/test_switch_safety.py.
+client via util.as_client_touch. Bot off state belongs to state.bot_mark;
+checks: tests/test_bot_off_marker.py and tests/test_switch_safety.py.
 """
 import os
 
 from const import SLEEP_PREFIX, SOURCES
-from state import bot_unit, jarvis_info, openclaw_info, sleep_marks
+from state import bot_mark, bot_unit, jarvis_info, openclaw_info, sleep_marks
 from util import Refused, as_client_touch, systemctl_ok, systemctl_word
 
 
@@ -28,7 +29,13 @@ def start_bots(ids):
     ok = True
     for b in ids:
         systemctl_ok("unmask", bot_unit(b))
-        if not systemctl_ok("enable", "--now", bot_unit(b), timeout=120):
+        if systemctl_ok("enable", "--now", bot_unit(b), timeout=120):
+            # The off mark records intent until this particular bot starts.
+            try:
+                os.unlink(bot_mark(b, "off"))
+            except FileNotFoundError:
+                pass
+        else:
             ok = False
     if not ok:
         raise Refused("FAILED", "failed", {"reason": "MSB_START"})
