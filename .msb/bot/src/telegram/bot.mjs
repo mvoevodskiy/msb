@@ -25,6 +25,7 @@ import { randomUUID } from 'node:crypto';
  * Skills command read options/OC loading → [read presentation](./skills-read.mjs), native OC reader is injectable.
  * Проверки: [inbox lifecycle](../../tests/inbox-lifecycle.test.mjs),
  * [polling/stop](../../tests/turn-lifecycle.test.mjs), [forms/menu](../../tests/menu-handlers.test.mjs),
+ * [engine sleep ingress/queue](../../tests/engine-sleep.test.mjs),
  * [attachments](../../tests/attachments.test.mjs), [media-markers](../../tests/media-markers.test.mjs).
  */
 import { Bot } from 'grammy';
@@ -72,6 +73,7 @@ import { HELP_CC, HELP_OC, commandsForEngine } from './commands.mjs';
 import { handleCallback } from './router.mjs';
 import { costScreen, hubScreen, monitorScreen, setupScreen, settingsScreen } from './screens.mjs';
 import { SPEND_PAUSED } from '../billing/owner-spend.mjs';
+import { createEngineSleep } from '../engines/sleep.mjs';
 
 /**
  * @param {ReturnType<import('../config.mjs').readConfig>} cfg
@@ -89,13 +91,23 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   const unfinished = new Set();
   /** @type {Map<number, string>} */
   const pending = new PendingInputs({ now });
+  const engineSleep = createEngineSleep({ bot, pending, now, onWake: () => recoverIntroAfterWake() });
+  bot[Symbol.for('msb.engineSleep')] = engineSleep;
 
   // Every supported agent input enters one worker; commands/forms remain immediate.
   const inbox = createInbox({
     canRun: () => !stopping && running.size === 0,
     status: showInboxStatus,
     cancel: cancelInboxEntry,
-    run: (entry) => {
+    run: async (entry) => {
+      if (await engineSleep.queued(entry)) {
+        if (entry.recovery?.id) {
+          introOwned.delete(entry.recovery.id);
+          // A wake may have raced the queue guard while this id was owned.
+          if (!await engineSleep.sleeping()) await recoverIntroPending().catch(() => {});
+        }
+        return;
+      }
       const turn = { controller: new AbortController(), completed: false, done: null };
       running.set(entry.ctx.chat.id, turn); unfinished.add(turn);
       turn.done = executeTurn(entry.ctx, entry.text || '', turn, entry.voice, entry)
@@ -178,6 +190,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     }
     return next();
   });
+  bot.use(engineSleep.middleware);
   bot[Symbol.for('msb.openClawSkillsReader')]=readOpenClawSkills;
   bot[Symbol.for('msb.cancelPendingInput')] = (chatId) => pending.delete(chatId);
   bot.use(async (ctx, next) => {
@@ -807,7 +820,17 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     try { return await introRecovery; } finally { introRecovery = undefined; }
   }
 
+  async function recoverIntroAfterWake() {
+    // A recovery already deciding to defer for sleep may be finishing now.
+    // Wait for that decision to retire, then start a fresh recovery once awake.
+    while (introRecovery) await introRecovery.catch(() => {});
+    if (!stopping) return recoverIntroPending();
+  }
+
   async function recoverIntroPendingOnce() {
+    // Preserve prepared, started and stale handoffs while another engine owns
+    // the conversation. Reconcile without recursively starting recovery.
+    if (await engineSleep.sleeping({ resumeOnWake: false })) return new Set();
     const observedStop = stopEpoch;
     const records = await introJournal.list();
     const { state } = await loadState();

@@ -14,6 +14,7 @@
 | Показать состояние helper | [screen.mjs](screen.mjs): `nativeEnginesScreen` |
 | Прочитать snapshot / запросить свежий status / дождаться результата | [client.mjs](client.mjs): `engineStatusSnapshot`, `refreshEngineStatus`, `waitRequestResult` |
 | Опубликовать request без замены чужого slot | [request.mjs](request.mjs): `submitRequest` (совместимый re-export в client) |
+| Пауза/пробуждение одного бота и вход очереди | [sleep.mjs](sleep.mjs) → [bot](../telegram/bot.mjs) / [callback](../telegram/routes/engines.mjs); Python-запись использует тот же SQLite lock в `usr-local-lib/msb-engine/client_markers.py` |
 
 Профиль `msb` по умолчанию включает native routes; `jar1` сохраняет legacy UI и запрещает
 включение native OS-engine через profile initialization. IPC native helper:
@@ -22,6 +23,10 @@ Status read возвращает callback polling сразу; [общая UI-г�
 отменяет obsolete read/retry, но дожидается уже отправленной Telegram доставки.
 Mutation actions не отменяются простой навигацией. `stop` бота дожидается tracked
 status/delivery work. [Проверка](../../tests/callback-refresh.test.mjs).
+При sleep marker новые сообщения и ожидающие ходы не попадают в модель;
+настройки и открытые формы сохраняют доступ. Подготовленный handoff знакомства
+остаётся в своём журнале и восстанавливается после пробуждения.
+[Проверки](../../tests/engine-sleep.test.mjs).
 
 Реализация OS-слоя и её границы: [TDR](../../../../docs/tdr/msb-engine-os-replace.md),
 [runbook rollback](../../../../docs/runbooks/msb-engine-rollback.md).

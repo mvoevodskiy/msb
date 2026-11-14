@@ -6,6 +6,11 @@ import { handleNativeEngineCallback } from '../../engines/telegram.mjs';
 import { UNHANDLED } from './shared.mjs';
 
 export async function handleEnginesRoute({ data, state, show, bot, engineMenu, signal }) {
+  if (data === 'eng:wake') {
+    const ok = await bot[Symbol.for('msb.engineSleep')]?.wake();
+    if (!ok) return show({ text: 'Не получилось переключить бота. Попробуй ещё раз.', keyboard: (await engineMenu()).keyboard });
+    return show(await engineMenu());
+  }
   if (process.env.MSB_OS_ENGINE === 'native' && await handleNativeEngineCallback({
     data, state, show, signal, providerView: () => bot[Symbol.for('msb.engineProviderView')]?.(state),
   })) return;
