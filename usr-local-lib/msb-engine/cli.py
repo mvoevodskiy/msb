@@ -131,19 +131,19 @@ def cmd_tick(_args):
                 systemctl_ok("start", unit)
                 log(f"revived {unit}")
         # OpenClaw revive if installed and not OC_OFF
-        from const import OC_OFF
         from openclaw_service import ok as oc_service_ok, word as oc_service_word
-        from state import openclaw_info
+        from state import openclaw_info, openclaw_off_paths
 
         o = openclaw_info()
-        if asleep and os.path.lexists(OC_OFF):
+        off = bool(openclaw_off_paths(o.get("scope")))
+        if asleep and off:
             # Retry a failed wake after an attempted stop; never revive OC here.
             from actions.bots import set_sleep
             try:
                 set_sleep(sorted(asleep), False, "tick")
             except Refused:
                 log("could not wake sleeping bots")
-        if o["installed"] and o["enabled"] and not os.path.lexists(OC_OFF):
+        if o["installed"] and o["enabled"] and not off:
             unit = o.get("unit")
             service = {"unit": unit, "scope": o.get("scope")}
             status = oc_service_word(service, "is-active") if unit else ""

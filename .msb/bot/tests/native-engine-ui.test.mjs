@@ -34,6 +34,20 @@ test('an off request with an unknown gateway is not shown as completed', () => {
   assert.match(view.text, /OpenClaw: <b>состояние неизвестно<\/b>/);
 });
 
+test('a running gateway does not imply its setup is complete', () => {
+  for (const [incomplete, label] of [[true, /установка не завершена/], [null, /готовность неизвестна/]]) {
+    const view = nativeEnginesScreen({ engine: 'cc' },
+      { openclaw: { installed: true, enabled: true, gateway: 'active', incomplete } });
+    assert.match(view.text, label);
+  }
+});
+
+test('failed stopping remains visible even if the setup was incomplete', () => {
+  const view = nativeEnginesScreen({ engine: 'cc' },
+    { openclaw: { installed: true, enabled: false, gateway: 'active', incomplete: true } });
+  assert.match(view.text, /выключение не завершено/);
+});
+
 test('optional OS dispatcher leaves ordinary menu callbacks untouched', async () => {
   assert.equal(await handleNativeEngineCallback({ data: 'settings:back', state: {},
     show() { throw Error('unexpected UI action'); }, providerView() { throw Error('unexpected provider read'); } }), false);

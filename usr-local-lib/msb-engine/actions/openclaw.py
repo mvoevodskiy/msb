@@ -7,7 +7,7 @@ import os
 
 from const import OC_OFF, STATE_DIR
 from openclaw_service import ok as oc_service_ok, wait_stopped, word as oc_service_word
-from state import jarvis_info, openclaw_info, sleep_marks
+from state import jarvis_info, openclaw_info, openclaw_off_paths, sleep_marks
 from util import Refused, ensure_root_dir, now, write_file
 from .bots import set_sleep
 
@@ -28,7 +28,8 @@ def act_enable_openclaw(source, req, progress):
     if not unit:
         raise Refused("NOT_AVAILABLE", detail={"reason": "NO_OC_UNIT"})
     progress("start")
-    was_off = os.path.lexists(OC_OFF)
+    off_paths = openclaw_off_paths(o.get('scope'))
+    was_off = bool(off_paths)
     if not oc_service_ok(_service(o), "enable", "--now", timeout=120):
         if was_off:
             oc_service_ok(_service(o), "disable", "--now", "--no-block", timeout=30)
@@ -40,10 +41,22 @@ def act_enable_openclaw(source, req, progress):
         raise Refused("FAILED", "failed", {"reason": "OC_NOT_ACTIVE", "gateway": gateway})
     if was_off:
         try:
-            os.unlink(OC_OFF)
+            for marker in off_paths:
+                try:
+                    os.unlink(marker)
+                except FileNotFoundError:
+                    pass
         except OSError:
+            # A partial removal must retain a local off intent.
+            restored = False
+            try:
+                ensure_root_dir(STATE_DIR, 0o700)
+                write_file(OC_OFF, f"off_at={now()}\n".encode(), 0o600)
+                restored = True
+            except (OSError, Refused):
+                pass
             oc_service_ok(_service(o), "disable", "--now", "--no-block", timeout=30)
-            raise Refused("FAILED", "failed", {"reason": "OC_OFF_MARKER"})
+            raise Refused("FAILED", "failed", {"reason": "OC_OFF_MARKER", "off_restored": restored})
     return {"gateway": gateway, "unit": unit}
 
 

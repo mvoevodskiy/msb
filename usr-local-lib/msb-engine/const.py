@@ -83,6 +83,9 @@ BOT_TEMPLATE = "/etc/systemd/system/" + CLIENT_NAMESPACE + "-bot@.service"
 MARKS_DIR = "/etc/msb-engine/bots"
 OC_OFF = "/var/lib/msb-engine/openclaw.off"
 OC_MARKER = "/var/lib/msb-engine/openclaw.installed"
+OC_SETUP = "/var/lib/msb-engine/openclaw.setup"
+LEGACY_OC_MARKER = "/var/lib/jarvis-engine/openclaw.installed"
+LEGACY_OC_OFF = "/var/lib/jarvis-engine/openclaw.off"
 OC_UNITS = (
     "openclaw-gateway.service",
     "openclaw.service",

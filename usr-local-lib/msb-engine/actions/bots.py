@@ -1,7 +1,12 @@
+"""Wake/sleep selected MSB bots; invoked by cli.handle through actions.ACTS.
+
+OpenClaw readiness is supplied by state.openclaw_info. The marker writer runs as
+client via util.as_client_touch. Checks: tests/test_switch_safety.py.
+"""
 import os
 
 from const import SLEEP_PREFIX, SOURCES
-from state import bot_unit, jarvis_info, sleep_marks
+from state import bot_unit, jarvis_info, openclaw_info, sleep_marks
 from util import Refused, as_client_touch, systemctl_ok, systemctl_word
 
 
@@ -56,7 +61,20 @@ def act_disable_jarvis(source, req, progress):
         raise Refused("NOT_INSTALLED", detail={"bot_id": bot})
     if b["sleeping"] or not b["enabled"]:
         raise Refused("ALREADY_DISABLED", detail={"bot_id": bot})
-    # sleep без требования OC в v1 — иначе на боксе без OC нельзя «усыпить»
+    other = openclaw_info()
+    if not (other.get("installed") is True and other.get("enabled") is True and
+            other.get("incomplete") is False and other.get("gateway") == "active"):
+        if other.get("installed") is False:
+            reason = "absent"
+        elif other.get("incomplete") is True:
+            reason = "incomplete"
+        elif other.get("enabled") is False:
+            reason = "disabled"
+        elif other.get("incomplete") is None:
+            reason = "unknown"
+        else:
+            reason = other.get("gateway") or "unknown"
+        raise Refused("LAST_ENGINE", detail={"other": reason})
     progress("sleep")
     set_sleep([bot], True, req["id"])
     active = systemctl_word("is-active", bot_unit(bot)) == "active"

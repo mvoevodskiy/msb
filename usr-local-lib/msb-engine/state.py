@@ -1,7 +1,8 @@
 """Read engine and bot facts into state.json for cli.py and the Telegram client.
 
-OpenClaw service scope is selected by openclaw_service.py; request results
-remain in this module. Regressions: tests/test_openclaw_service.py.
+OpenClaw scope is selected by openclaw_service.py and root-owned setup facts by
+openclaw_readiness.py; request results remain here. Checks: tests/test_switch_safety.py
+and tests/test_openclaw_service.py.
 """
 import json
 import os
@@ -13,10 +14,13 @@ from const import (
     CLIENT_ROOT,
     CODES,
     HELPER_VERSION,
+    LEGACY_OC_MARKER,
+    LEGACY_OC_OFF,
     MARKS_DIR,
     OC_HOME,
     OC_MARKER,
     OC_OFF,
+    OC_SETUP,
     RUN_DIR,
     SLEEP_PREFIX,
     SOURCE_ACTIONS,
@@ -24,6 +28,7 @@ from const import (
     STATE_DIR,
 )
 from openclaw_service import discover as discover_oc_service, word as oc_service_word
+from openclaw_readiness import incomplete as openclaw_incomplete
 from util import (
     cc_cli_version,
     disk,
@@ -141,13 +146,23 @@ def detect_oc_unit():
     return service.get('unit') if service else None
 
 
+def openclaw_off_paths(scope):
+    paths = [OC_OFF]
+    # Old helper managed only the user unit. Preserve its explicit off intent
+    # even if a new marker exists; do not apply it to a separate system unit.
+    if scope == 'user':
+        paths.append(LEGACY_OC_OFF)
+    return [path for path in paths if os.path.lexists(path)]
+
+
 def openclaw_info():
     marker = os.path.lexists(OC_MARKER)
     home = os.path.isdir(os.path.join(OC_HOME, ".openclaw"))
     service = discover_oc_service()
     unit = service.get('unit') if service else None
     scope = service.get('scope') if service else None
-    off = os.path.lexists(OC_OFF)
+    legacy = scope == 'user' and os.path.lexists(LEGACY_OC_MARKER)
+    off = bool(openclaw_off_paths(scope))
     if scope in ('unknown', 'ambiguous'):
         return {
             "installed": True if marker or scope == 'ambiguous' else None,
@@ -161,7 +176,7 @@ def openclaw_info():
             "unit": None,
             "scope": scope,
         }
-    if not marker and not home and not service:
+    if not marker and not legacy and not home and not service:
         return {
             "installed": False,
             "enabled": False,
@@ -181,7 +196,7 @@ def openclaw_info():
     return {
         "installed": True,
         "enabled": not off,
-        "incomplete": False,
+        "incomplete": openclaw_incomplete(OC_MARKER, OC_SETUP),
         # The off marker is intent, not evidence that systemd has stopped.
         "gateway": gateway,
         "plugin": None,

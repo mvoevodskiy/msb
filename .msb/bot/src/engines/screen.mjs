@@ -11,9 +11,11 @@ export function nativeEnginesScreen(state, engineSnap = null, providerView = nul
   const jLine = j
     ? `MSB-бот: <b>${escapeHtml(j.state)}</b>${j.bots?.length ? ` (${j.bots.length})` : ''}`
     : 'MSB-бот: нет данных helper';
-  const oStatus = o?.enabled ? o.gateway || 'on'
-    : ['active', 'activating', 'deactivating'].includes(o?.gateway) ? 'выключение не завершено'
-      : ['inactive', 'failed'].includes(o?.gateway) ? 'off' : 'состояние неизвестно';
+  const oStatus = !o?.enabled
+    ? ['active', 'activating', 'deactivating'].includes(o?.gateway) ? 'выключение не завершено'
+      : ['inactive', 'failed'].includes(o?.gateway) ? 'off' : 'состояние неизвестно'
+    : o.incomplete === true ? 'установка не завершена'
+      : o.incomplete === null ? 'готовность неизвестна' : o.gateway || 'on';
   const oLine = o && typeof o.installed === 'boolean' && (o.installed === false || typeof o.enabled === 'boolean')
     ? `OpenClaw: <b>${o.installed ? oStatus : 'не установлен'}</b>`
     : 'OpenClaw: нет данных';

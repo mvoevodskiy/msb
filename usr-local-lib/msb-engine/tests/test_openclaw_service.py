@@ -201,6 +201,7 @@ class OpenClawServiceTest(unittest.TestCase):
                 info = {'installed': True, 'enabled': False, 'unit': unit, 'scope': 'system'}
                 with self.subTest(unit=unit), patch.object(openclaw, 'OC_OFF', str(marker)), \
                      patch.object(openclaw, 'openclaw_info', return_value=info), \
+                     patch.object(openclaw, 'openclaw_off_paths', return_value=[str(marker)]), \
                      patch.object(openclaw, 'oc_service_ok', return_value=False):
                     with self.assertRaises(Refused):
                         openclaw.act_enable_openclaw('client', {'params': {}}, lambda *_: None)
@@ -213,11 +214,49 @@ class OpenClawServiceTest(unittest.TestCase):
             info = {'installed': True, 'enabled': False, 'unit': 'openclaw.service', 'scope': 'system'}
             with patch.object(openclaw, 'OC_OFF', str(marker)), \
                  patch.object(openclaw, 'openclaw_info', return_value=info), \
+                 patch.object(openclaw, 'openclaw_off_paths', return_value=[str(marker)]), \
                  patch.object(openclaw, 'oc_service_ok', return_value=True), \
                  patch.object(openclaw, 'oc_service_word', return_value='active'):
                 result = openclaw.act_enable_openclaw('client', {'params': {}}, lambda *_: None)
             self.assertEqual(result['gateway'], 'active')
             self.assertFalse(marker.exists())
+
+    def test_legacy_off_intent_is_cleared_only_after_confirmed_user_start(self):
+        with tempfile.TemporaryDirectory() as root:
+            marker = Path(root) / 'legacy.off'
+            marker.write_bytes(b'off')
+            info = {'installed': True, 'enabled': False, 'unit': 'openclaw-gateway.service', 'scope': 'user'}
+            with patch.object(openclaw, 'openclaw_info', return_value=info), \
+                 patch.object(openclaw, 'openclaw_off_paths', return_value=[str(marker)]), \
+                 patch.object(openclaw, 'oc_service_ok', return_value=True), \
+                 patch.object(openclaw, 'oc_service_word', return_value='active'):
+                result = openclaw.act_enable_openclaw('client', {'params': {}}, lambda *_: None)
+            self.assertEqual(result['gateway'], 'active')
+            self.assertFalse(marker.exists())
+
+    def test_partial_off_marker_removal_restores_local_off_intent(self):
+        with tempfile.TemporaryDirectory() as root:
+            current, legacy = Path(root) / 'current.off', Path(root) / 'legacy.off'
+            current.write_bytes(b'off')
+            legacy.write_bytes(b'off')
+            info = {'installed': True, 'enabled': False, 'unit': 'openclaw-gateway.service', 'scope': 'user'}
+            original = openclaw.os.unlink
+            def fail_legacy(path, *args, **kwargs):
+                if str(path) == str(legacy):
+                    raise PermissionError('synthetic')
+                return original(path, *args, **kwargs)
+            with patch.object(openclaw, 'OC_OFF', str(current)), patch.object(openclaw, 'STATE_DIR', root), \
+                 patch.object(openclaw, 'openclaw_info', return_value=info), \
+                 patch.object(openclaw, 'openclaw_off_paths', return_value=[str(current), str(legacy)]), \
+                 patch.object(openclaw, 'oc_service_ok', return_value=True) as run, \
+                 patch.object(openclaw, 'oc_service_word', return_value='active'), \
+                 patch.object(openclaw.os, 'unlink', side_effect=fail_legacy):
+                with self.assertRaises(Refused) as refused:
+                    openclaw.act_enable_openclaw('client', {'params': {}}, lambda *_: None)
+            self.assertTrue(refused.exception.detail['off_restored'])
+            self.assertTrue(current.exists())
+            self.assertTrue(legacy.exists())
+            self.assertEqual(run.call_args_list[-1].args[1:], ('disable', '--now', '--no-block'))
 
     def test_failed_stop_can_be_retried_when_off_marker_exists_but_gateway_runs(self):
         info = {'installed': True, 'enabled': False, 'gateway': 'active',
