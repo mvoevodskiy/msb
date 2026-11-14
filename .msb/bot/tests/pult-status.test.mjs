@@ -8,7 +8,7 @@ import { loadState } from '../src/state.mjs';
 import { readEnvMap } from '../src/env/store.mjs';
 
 const TASKS = Symbol.for('msb.callbackTasks');
-const UNKNOWN = /нет данных.*помощник/i;
+const UNKNOWN = /нет данных.*служб/i;
 const ON = { installed: true, enabled: true, active: true, root: '/fixture/.iia/pult' };
 async function statusFixture(t, { initial = null, outcome = 'OK', fresh = ON, held = false } = {}) {
   let turnEntered;
@@ -72,8 +72,19 @@ for (const [label, options, expected] of [
   if (options.outcome === 'TIMEOUT') { let clock = 0;t.mock.method(Date, 'now', () => clock += 21_000); }
   await f.refresh();
   assert.match(f.edits.at(-1), UNKNOWN);assert.match(f.edits.at(-1), expected);
+  assert.doesNotMatch(f.edits.at(-1), /helper|помощник/i);
   assert.doesNotMatch(f.edits.at(-1), /включён, службы работают/);
   assert.equal((await readEnvMap()).map.size, 0);
+});
+
+test('Pult switch timeout names the system service and preserves existing controls', async t => {
+  const f = await statusFixture(t, { initial: ON, outcome: 'TIMEOUT' });
+  let clock = 0;
+  t.mock.method(Date, 'now', () => clock += 100_000);
+  await f.callback('settings:pult:off');
+  assert.match(f.edits.at(-1), /нет ответа системной службы/);
+  assert.doesNotMatch(f.edits.at(-1), /helper|помощник/i);
+  assert.ok(f.editOptions.at(-1).reply_markup.inline_keyboard.flat().some(b => b.callback_data === 'settings:pult:refresh'));
 });
 
 test('Pult status: Refresh leaves Pult input before asynchronous work and the next task is not consumed as a value', async t => {

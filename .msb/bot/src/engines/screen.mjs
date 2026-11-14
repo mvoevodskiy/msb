@@ -10,7 +10,7 @@ export function nativeEnginesScreen(state, engineSnap = null, providerView = nul
   const helper = engineSnap?.helper ? String(engineSnap.helper) : '—';
   const jLine = j
     ? `MSB-бот: <b>${escapeHtml(j.state)}</b>${j.bots?.length ? ` (${j.bots.length})` : ''}`
-    : 'MSB-бот: нет данных helper';
+    : 'MSB-бот: нет данных';
   const oLine = o
     ? `OpenClaw: <b>${o.installed ? (o.enabled ? o.gateway || 'on' : 'off') : 'не установлен'}</b>`
     : 'OpenClaw: нет данных';
@@ -23,7 +23,7 @@ export function nativeEnginesScreen(state, engineSnap = null, providerView = nul
     text: `<b>⚙️ Движки</b>
 
 Сейчас отвечает: <b>${escapeHtml(eng)}</b>
-Helper: <code>${escapeHtml(helper)}</code>
+Системная служба: <code>${escapeHtml(helper)}</code>
 
 ${jLine}
 ${oLine}${err}
@@ -31,7 +31,7 @@ ${oLine}${err}
 Установка OpenClaw из меню — в v1.1. Сейчас: статус / вкл-выкл, если OC уже на боксе.
 ${BLANK}`,
     keyboard: keyboard
-      .text('🔄 Статус helper', 'eng:status')
+      .text('🔄 Статус', 'eng:status')
       .row()
       .text('▶️ OC', 'eng:oc:on')
       .text('⏸ OC', 'eng:oc:off')
