@@ -439,8 +439,10 @@ enable_services() {
       rm -f "/etc/systemd/system/$u"
     done
     rm -f /usr/local/sbin/jarvis-engine /etc/sudoers.d/jarvis-client
-    rm -rf /usr/local/lib/jarvis-engine /etc/jarvis-engine /var/lib/jarvis-engine \
-      /run/jarvis-engine /var/lib/jarvis-runtime /etc/jarvis-runtime-enrolled
+    # Persistent state can contain the old root-only deletion trash. Keep it
+    # until the owner removes it manually; keep the old lock for adoption too.
+    rm -rf /usr/local/lib/jarvis-engine /etc/jarvis-engine \
+      /var/lib/jarvis-runtime /etc/jarvis-runtime-enrolled
     rm -f "$MSB_HOME/bot/vendor/index.closed.js" "$MSB_HOME/bot/vendor/deobfuscated.js"
     systemctl daemon-reload || true
   fi
