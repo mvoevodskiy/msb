@@ -39,6 +39,7 @@ with patch('state.os.path.lexists', return_value=True) as exists:
 assert pult.PULT_ROOT == root + '/pult'
 env_path = root + '/bots/default/.env'
 assert pult._bot_env_path('default') == env_path
+assert pult._bot_env_path('second_bot') == root + '/bots/second_bot/.env'
 with patch('actions.pult.os.path.isfile', side_effect=lambda p: p == env_path), \
      patch('builtins.open', mock_open(read_data='PULT_PASSWORD=synthetic-test-password\nADMIN_ID=42\n')) as opened:
     values = pult._load_bot_env('default')

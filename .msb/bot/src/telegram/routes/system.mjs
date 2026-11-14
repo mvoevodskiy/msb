@@ -15,6 +15,7 @@ import {
   updatesScreen,
 } from '../screens.mjs';
 import { parsePultStatus } from '../../pult/status.mjs';
+import { botId } from '../../paths.mjs';
 import { cancelPultInput } from '../forms/pult.mjs';
 import { escapeHtml } from '../edit.mjs';
 import {
@@ -66,7 +67,7 @@ export async function handleSystemRoute({ data, show, chatId, bot, pending, sign
     const reloadIfNeeded = async () => {
       try {
         const { id } = await submitRequest('reload-pult', {
-          bot_id: process.env.MSB_BOT_ID || 'default',
+          bot_id: botId(),
         });
         const result = await waitRequestResult(id, { timeoutMs: 90_000 });
         return result?.code === 'OK'
@@ -98,7 +99,7 @@ export async function handleSystemRoute({ data, show, chatId, bot, pending, sign
       const action = data === 'settings:pult:on' ? 'enable-pult' : 'disable-pult';
       try {
         const { id } = await submitRequest(action, {
-          bot_id: process.env.MSB_BOT_ID || 'default',
+          bot_id: botId(),
         });
         const result = await waitRequestResult(id, { timeoutMs: 90_000 });
         const note = result

@@ -1,4 +1,8 @@
-"""enable/disable Пульта: pult-web + pult-collector в выбранном client root."""
+"""Pult lifecycle through cli.handle, using the requested bot's client-root env.
+
+Validated bot_id arrives in ipc.parse_request's params; missing ID uses default.
+Isolated dispatcher and per-bot routing checks: tests/test_pult_routing.py.
+"""
 import os
 import subprocess
 
@@ -60,7 +64,7 @@ def act_enable_pult(source, req, progress):
     if info["enabled"] and info["active"]:
         raise Refused("ALREADY_ENABLED")
 
-    bot_id = (req.get("bot_id") or "default").strip() or "default"
+    bot_id = req["params"].get("bot_id", "default")
     _write_secrets(bot_id, progress)
 
     progress("start")
@@ -139,7 +143,7 @@ def act_reload_pult(source, req, progress):
     info = pult_info()
     if not info["installed"]:
         raise Refused("NOT_INSTALLED", detail={"reason": "NO_PULT_CODE"})
-    bot_id = (req.get("bot_id") or "default").strip() or "default"
+    bot_id = req["params"].get("bot_id", "default")
     _write_secrets(bot_id, progress)
     if not info["enabled"] and not info["active"]:
         return {"reloaded": "secrets-only", "running": False}
