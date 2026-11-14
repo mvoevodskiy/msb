@@ -23,27 +23,44 @@ const KEY_PATTERNS = [
 export function createEngineSleep({ bot, pending, now = Date.now, onWake = async () => {} }) {
   const lastNotice = new Map();
   const marker = () => path.join(msbRoot(), 'engine', `sleep.${botId()}`);
-  const markerInfo = async () => fs.lstat(marker()).catch(() => null);
+  const markerInfo = async () => {
+    try { return await fs.lstat(marker()); }
+    catch (err) { if (err.code === 'ENOENT') return null; throw err; }
+  };
 
-  async function wake({ resume = true } = {}) {
-    if (await markerInfo()) {
-      try {
-        const cleared = await withFileLock(marker(), async () => {
+  async function wakeAttempt({ resume = true } = {}) {
+    let outcome = { ok: true };
+    try {
+      if (await markerInfo()) {
+        outcome = await withFileLock(marker(), async () => {
+          let mark;
+          try { mark = await fs.lstat(marker(), { bigint: true }); }
+          catch (err) { if (err.code === 'ENOENT') return { ok: true }; throw err; }
+          const revision = `${mark.dev}:${mark.ino}:${mark.ctimeNs}`;
           try { await fs.unlink(marker()); }
-          catch (err) { if (err.code !== 'ENOENT') return false; }
-          return !await markerInfo();
+          catch (err) { if (err.code !== 'ENOENT') return { ok: false, revision }; }
+          return { ok: !await markerInfo() };
         });
-        if (!cleared) return false;
-      } catch { return false; }
-    }
-    if (resume) await onWake().catch(() => {});
-    return true;
+      }
+    } catch { return { ok: false }; }
+    if (outcome.ok && resume) await onWake().catch(() => {});
+    return outcome;
+  }
+
+  async function wake(options) { return (await wakeAttempt(options)).ok; }
+
+  async function resumeIfAwake() {
+    let awake;
+    try { awake = await withFileLock(marker(), async () => !await markerInfo()); }
+    catch { return false; }
+    if (awake) await onWake().catch(() => {});
+    return awake;
   }
 
   async function sleeping({ resumeOnWake = true } = {}) {
-    if (!await markerInfo()) return false;
     let result;
     try {
+      if (!await markerInfo()) return false;
       result = await withFileLock(marker(), async () => {
         const mark = await markerInfo();
         if (!mark) return { asleep: false, cleared: false };
@@ -118,5 +135,5 @@ export function createEngineSleep({ bot, pending, now = Date.now, onWake = async
     return true;
   }
 
-  return { middleware, queued, wake, sleeping };
+  return { middleware, queued, wake, wakeAttempt, resumeIfAwake, sleeping };
 }

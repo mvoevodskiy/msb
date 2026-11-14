@@ -27,9 +27,9 @@ SOURCE_ACTIONS = {
 REQUEST_KEYS = {
     "status": ("bot_id",),
     "restore": ("archive", "bot_id"),
-    "enable-msb": ("bot_id",),
+    "enable-msb": ("bot_id", "sleep_revision"),
     "disable-msb": ("bot_id",),
-    "enable-jarvis": ("bot_id",),
+    "enable-jarvis": ("bot_id", "sleep_revision"),
     "disable-jarvis": ("bot_id",),
     "enable-openclaw": ("bot_id",),
     "disable-openclaw": ("bot_id",),

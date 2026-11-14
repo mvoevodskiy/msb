@@ -15,7 +15,11 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from client_fs import open_dir  # noqa: E402
 
 
-def change(path, data):
+class StaleMarker(Exception):
+    pass
+
+
+def change(path, data, expected=None):
     directory, name = os.path.split(path)
     if not re.fullmatch(r'sleep\.[a-zA-Z0-9_-]{1,32}', name):
         raise ValueError('invalid marker')
@@ -24,6 +28,8 @@ def change(path, data):
     try:
         dfd = open_dir(directory)
     except FileNotFoundError:
+        if expected is not None:
+            raise StaleMarker()
         if data is None:
             return
         raise
@@ -40,6 +46,14 @@ def change(path, data):
             db.execute('BEGIN IMMEDIATE')
             try:
                 if data is None:
+                    if expected is not None:
+                        try:
+                            st = os.stat(name, dir_fd=dfd, follow_symlinks=False)
+                        except FileNotFoundError:
+                            raise StaleMarker()
+                        current = f'{st.st_dev}:{st.st_ino}:{st.st_ctime_ns}'
+                        if current != expected:
+                            raise StaleMarker()
                     try:
                         os.unlink(name, dir_fd=dfd)
                     except FileNotFoundError:
@@ -75,13 +89,19 @@ def change(path, data):
 
 
 def main():
-    if len(sys.argv) != 3 or sys.argv[2] not in ('write', 'remove'):
+    if len(sys.argv) not in (3, 4) or sys.argv[2] not in ('write', 'remove', 'compare-remove'):
+        return 2
+    expected = sys.argv[3] if len(sys.argv) == 4 else None
+    if (sys.argv[2] == 'compare-remove') != (expected is not None) or \
+            (expected is not None and not re.fullmatch(r'[0-9]{1,20}:[0-9]{1,20}:[0-9]{1,20}', expected)):
         return 2
     data = sys.stdin.buffer.read(4097) if sys.argv[2] == 'write' else None
     if data is not None and len(data) > 4096:
         return 2
     try:
-        change(sys.argv[1], data)
+        change(sys.argv[1], data, expected)
+    except StaleMarker:
+        return 3
     except (OSError, ValueError, sqlite3.Error):
         return 1
     return 0

@@ -166,6 +166,135 @@ test('wake failure keeps the marker and the selected provider', async t => {
   assert.equal(after.ccSessionId, before.ccSessionId);
 });
 
+test('Telegram wake falls back to the real request publisher and resumes Codex after an OK result', async t => {
+  let turns = 0, request, result;
+  const f = await fixture(t, async () => { turns++; return { ok: true, text: 'fixture-answer' }; });
+  const before = (await loadState()).state;
+  const marker = await sleepMarker();
+  const original = { readFile: fs.readFile, unlink: fs.unlink, link: fs.link };
+  let failLocal = true;
+  fs.readFile = async (file, ...args) => String(file) === '/run/msb-engine/state.json'
+    ? JSON.stringify({ helper: 'msb-engine', host_ready: true, actions: { client: ['enable-msb'] },
+      requests: result ? { [request.id]: result } : {} }) : original.readFile(file, ...args);
+  fs.unlink = async (file, ...args) => {
+    if (String(file) === marker && failLocal) { failLocal = false; throw Object.assign(Error('fixture'), { code: 'EACCES' }); }
+    return original.unlink(file, ...args);
+  };
+  fs.link = async (source, destination) => {
+    await original.link(source, destination);
+    if (String(destination) !== path.join(process.env.MSB_RUNTIME_ROOT, 'engine', 'request')) return;
+    request = JSON.parse(await original.readFile(source, 'utf8'));
+    await original.unlink(destination); // synthetic system worker claims the request
+    await original.unlink(marker);
+    result = { id: request.id, result: 'done', code: 'OK' };
+  };
+  t.after(() => Object.assign(fs, original));
+  await f.callback('eng:wake');
+  assert.equal(request.action, 'enable-msb');
+  assert.equal(request.bot_id, 'default');
+  assert.match(request.sleep_revision, /^\d+:\d+:\d+$/);
+  assert.equal(await fs.stat(marker).then(() => true, () => false), false);
+  const after = (await loadState()).state;
+  assert.equal(after.extAuthBypass, before.extAuthBypass);
+  assert.equal(after.ccSessionId, before.ccSessionId);
+  await f.message('после системного пробуждения');
+  await until(() => turns === 1, 'the resumed Codex turn');
+});
+
+test('a later sleep before the system consumes wake wins over the older request', async t => {
+  const f = await fixture(t);
+  const marker = await sleepMarker();
+  const original = { readFile: fs.readFile, unlink: fs.unlink, link: fs.link };
+  let failLocal = true, request, result;
+  fs.readFile = async (file, ...args) => String(file) === '/run/msb-engine/state.json'
+    ? JSON.stringify({ helper: 'msb-engine', host_ready: true, actions: { client: ['enable-msb'] },
+      requests: result ? { [request.id]: result } : {} }) : original.readFile(file, ...args);
+  fs.unlink = async (file, ...args) => {
+    if (String(file) === marker && failLocal) { failLocal = false; throw Object.assign(Error('fixture'), { code: 'EACCES' }); }
+    return original.unlink(file, ...args);
+  };
+  fs.link = async (source, destination) => {
+    await original.link(source, destination);
+    if (String(destination) !== path.join(process.env.MSB_RUNTIME_ROOT, 'engine', 'request')) return;
+    request = JSON.parse(await original.readFile(source, 'utf8'));
+    await original.unlink(destination);
+    await original.unlink(marker);
+    await fs.writeFile(marker, 'later sleep');
+    const info = await fs.lstat(marker, { bigint: true });
+    const revision = `${info.dev}:${info.ino}:${info.ctimeNs}`;
+    if (request.sleep_revision === revision) await original.unlink(marker);
+    result = { id: request.id, result: 'refused', code: 'BUSY' };
+  };
+  t.after(() => Object.assign(fs, original));
+  await f.callback('eng:wake');
+  assert.equal(await fs.readFile(marker, 'utf8'), 'later sleep');
+  assert.match(f.edits.at(-1), /Не получилось переключить/);
+});
+
+test('Node marker revisions are compared by the real Python system worker', async t => {
+  await fixture(t);
+  const marker = await sleepMarker();
+  const info = await fs.lstat(marker, { bigint: true });
+  const old = `${info.dev}:${info.ino}:${info.ctimeNs}`;
+  const newer = `${marker}.replacement`;
+  await fs.writeFile(newer, 'later sleep');
+  await fs.rename(newer, marker);
+  const script = fileURLToPath(new URL('../../../usr-local-lib/msb-engine/client_markers.py', import.meta.url));
+  const physicalMarker = await fs.realpath(marker); // macOS /var is a symlink
+  const run = revision => new Promise((resolve, reject) => {
+    const child = spawn('python3', ['-IS', script, physicalMarker, 'compare-remove', revision], { stdio: 'ignore' });
+    child.once('error', reject);
+    child.once('exit', code => resolve(code));
+  });
+  assert.equal(await run(old), 3);
+  assert.equal(await fs.readFile(marker, 'utf8'), 'later sleep');
+  const current = await fs.lstat(marker, { bigint: true });
+  assert.equal(await run(`${current.dev}:${current.ino}:${current.ctimeNs}`), 0);
+  assert.equal(await fs.stat(marker).then(() => true, () => false), false);
+});
+
+test('a new sleep marker after the helper wake is not erased by the older callback', async t => {
+  const f = await fixture(t);
+  const marker = await sleepMarker();
+  const original = { readFile: fs.readFile, unlink: fs.unlink, link: fs.link };
+  let failLocal = true, request, result;
+  fs.readFile = async (file, ...args) => String(file) === '/run/msb-engine/state.json'
+    ? JSON.stringify({ helper: 'msb-engine', host_ready: true, actions: { client: ['enable-msb'] },
+      requests: result ? { [request.id]: result } : {} }) : original.readFile(file, ...args);
+  fs.unlink = async (file, ...args) => {
+    if (String(file) === marker && failLocal) { failLocal = false; throw Object.assign(Error('fixture'), { code: 'EACCES' }); }
+    return original.unlink(file, ...args);
+  };
+  fs.link = async (source, destination) => {
+    await original.link(source, destination);
+    if (String(destination) !== path.join(process.env.MSB_RUNTIME_ROOT, 'engine', 'request')) return;
+    request = JSON.parse(await original.readFile(source, 'utf8'));
+    await original.unlink(destination);
+    await original.unlink(marker); // the helper wakes the first sleep
+    await fs.writeFile(marker, 'later sleep'); // a subsequent system action puts it back
+    result = { id: request.id, result: 'done', code: 'OK' };
+  };
+  t.after(() => Object.assign(fs, original));
+  await f.callback('eng:wake');
+  assert.equal(await fs.readFile(marker, 'utf8'), 'later sleep');
+  assert.match(f.edits.at(-1), /Не получилось переключить/);
+});
+
+test('an unreadable sleep marker is not mistaken for an awake bot', async t => {
+  let turns = 0;
+  const f = await fixture(t, async () => { turns++; return { ok: true, text: 'unexpected' }; });
+  const marker = await sleepMarker();
+  const original = fs.lstat;
+  fs.lstat = async (file, ...args) => String(file) === marker
+    ? Promise.reject(Object.assign(Error('fixture'), { code: 'EACCES' })) : original(file, ...args);
+  t.after(() => { fs.lstat = original; });
+  await f.message('не запускать');
+  await f.callback('eng:wake');
+  assert.equal(turns, 0);
+  assert.match(f.edits.at(-1), /Не получилось переключить/);
+  assert.equal(await fs.readFile(marker, 'utf8'), 'fixture');
+});
+
 test('known removed OpenClaw clears a stale sleep marker; unknown status does not', async t => {
   let turns = 0;
   const f = await fixture(t, async () => { turns++; return { ok: true, text: 'fixture-answer' }; });

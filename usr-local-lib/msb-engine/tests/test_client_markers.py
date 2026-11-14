@@ -40,6 +40,35 @@ class ClientMarkerTest(unittest.TestCase):
         self.assertFalse(self.mark.exists())
         self.assertEqual(self.directory.stat().st_uid, self.uid)
 
+    def test_conditional_wake_preserves_a_new_marker(self):
+        as_client_touch(str(self.mark), b'at=first\n')
+        info = self.mark.lstat()
+        revision = f'{info.st_dev}:{info.st_ino}:{info.st_ctime_ns}'
+        as_client_touch(str(self.mark), b'at=second\n')
+        with self.assertRaises(Refused) as refused:
+            as_client_touch(str(self.mark), None, expected=revision)
+        self.assertEqual(refused.exception.code, 'BUSY')
+        self.assertEqual(self.mark.read_bytes(), b'at=second\n')
+        current = self.mark.lstat()
+        as_client_touch(str(self.mark), None, expected=f'{current.st_dev}:{current.st_ino}:{current.st_ctime_ns}')
+        self.assertFalse(self.mark.exists())
+
+    def test_enable_action_does_not_clear_a_sleep_newer_than_its_request(self):
+        as_client_touch(str(self.mark), b'at=first\n')
+        old = self.mark.lstat()
+        revision = f'{old.st_dev}:{old.st_ino}:{old.st_ctime_ns}'
+        as_client_touch(str(self.mark), b'at=second\n')
+        j = {'installed': True, 'state': 'asleep', 'bots': [
+            {'id': 'default', 'removed': False, 'enabled': True, 'masked': False, 'sleeping': True}]}
+        req = {'id': 'fixture-id', 'params': {'bot_id': 'default', 'sleep_revision': revision}}
+        with patch.object(bots, 'SOURCES', (('client', str(self.directory), 'client'),)), \
+             patch.object(bots, 'jarvis_info', return_value=j), \
+             patch.object(bots, 'sleep_marks', return_value={'default'}):
+            with self.assertRaises(Refused) as refused:
+                bots.act_enable_jarvis('client', req, lambda *_: None)
+        self.assertEqual(refused.exception.code, 'BUSY')
+        self.assertEqual(self.mark.read_bytes(), b'at=second\n')
+
     def test_existing_sleep_action_changes_only_requested_bot(self):
         with patch.object(bots, 'SOURCES', (('client', str(self.directory), 'client'),)):
             bots.set_sleep(['default'], True, 'synthetic-id')

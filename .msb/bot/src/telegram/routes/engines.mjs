@@ -3,11 +3,13 @@
  * Навигация: [Telegram](../README.md).
  */
 import { handleNativeEngineCallback } from '../../engines/telegram.mjs';
+import { wakeWithFallback } from '../../engines/wake.mjs';
+import { botId } from '../../paths.mjs';
 import { UNHANDLED } from './shared.mjs';
 
 export async function handleEnginesRoute({ data, state, show, bot, engineMenu, signal }) {
   if (data === 'eng:wake') {
-    const ok = await bot[Symbol.for('msb.engineSleep')]?.wake();
+    const ok = await wakeWithFallback(bot[Symbol.for('msb.engineSleep')], { botId: botId(), signal });
     if (!ok) return show({ text: 'Не получилось переключить бота. Попробуй ещё раз.', keyboard: (await engineMenu()).keyboard });
     return show(await engineMenu());
   }

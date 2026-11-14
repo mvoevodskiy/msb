@@ -10,7 +10,7 @@ from state import bot_unit, jarvis_info, openclaw_info, sleep_marks
 from util import Refused, as_client_touch, systemctl_ok, systemctl_word
 
 
-def set_sleep(ids, on, rid=""):
+def set_sleep(ids, on, rid="", expected=None):
     eng = SOURCES[0][1]
     for bot in ids:
         path = os.path.join(eng, f"{SLEEP_PREFIX}{bot}")
@@ -18,7 +18,10 @@ def set_sleep(ids, on, rid=""):
             body = f"at={rid or 'manual'}\n".encode()
             as_client_touch(path, body)
         else:
-            as_client_touch(path, None)
+            if expected is None:
+                as_client_touch(path, None)
+            else:
+                as_client_touch(path, None, expected=expected)
 
 
 def start_bots(ids):
@@ -45,7 +48,13 @@ def act_enable_jarvis(source, req, progress):
         raise Refused("ALREADY_ENABLED")
     progress("start")
     marks = sleep_marks()
-    set_sleep([b["id"] for b in live if b["id"] in marks], False, req["id"])
+    revision = req["params"].get("sleep_revision")
+    if revision is not None:
+        if not want or want not in marks:
+            raise Refused('BUSY', detail={'reason': 'SLEEP_CHANGED'})
+        set_sleep([want], False, req["id"], expected=revision)
+    else:
+        set_sleep([b["id"] for b in live if b["id"] in marks], False, req["id"])
     if off:
         start_bots(off)
     return {"bots": sorted(set(off) | set(asleep)), "woken": asleep, "started": off}

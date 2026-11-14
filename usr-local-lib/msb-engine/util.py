@@ -153,20 +153,27 @@ def strict_json(data, code):
         raise Refused(code)
 
 
-def as_client_touch(path, content=b""):
+def as_client_touch(path, content=b"", expected=None):
     """Change a sleep marker after dropping to client UID/GID, never as root."""
     uid, gid = uid_of("client"), gid_of("client")
     if uid is None or gid is None:
         raise Refused("HOST_NOT_READY", detail={"reason": "NO_CLIENT"})
     try:
+        command = [sys.executable, '-IS', os.path.join(os.path.dirname(__file__), 'client_markers.py'),
+                   path, 'compare-remove' if expected is not None else 'remove' if content is None else 'write']
+        if expected is not None:
+            if content is not None:
+                raise ValueError('revision is only valid for removal')
+            command.append(expected)
         result = subprocess.run(
-            [sys.executable, '-IS', os.path.join(os.path.dirname(__file__), 'client_markers.py'),
-             path, 'remove' if content is None else 'write'],
+            command,
             input=content if content is not None else b'', capture_output=True,
             user=uid, group=gid, extra_groups=(), timeout=30, check=False,
         )
     except (OSError, subprocess.TimeoutExpired) as e:
         raise Refused("FAILED", "failed", {"reason": "CLIENT_STEP"}) from e
+    if result.returncode == 3:
+        raise Refused("BUSY", detail={"reason": "SLEEP_CHANGED"})
     if result.returncode:
         raise Refused("FAILED", "failed", {"reason": "CLIENT_STEP"})
 

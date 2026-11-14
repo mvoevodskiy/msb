@@ -14,7 +14,7 @@
 | Показать состояние helper | [screen.mjs](screen.mjs): `nativeEnginesScreen` |
 | Прочитать snapshot / запросить свежий status / дождаться результата | [client.mjs](client.mjs): `engineStatusSnapshot`, `refreshEngineStatus`, `waitRequestResult` |
 | Опубликовать request без замены чужого slot | [request.mjs](request.mjs): `submitRequest` (совместимый re-export в client) |
-| Пауза/пробуждение одного бота и вход очереди | [sleep.mjs](sleep.mjs) → [bot](../telegram/bot.mjs) / [callback](../telegram/routes/engines.mjs); Python-запись использует тот же SQLite lock в `usr-local-lib/msb-engine/client_markers.py` |
+| Пауза/пробуждение одного бота и вход очереди | [sleep.mjs](sleep.mjs) → [bot](../telegram/bot.mjs) / [callback](../telegram/routes/engines.mjs); при сбое локального wake [wake.mjs](wake.mjs) использует существующую системную заявку. Python-запись использует тот же SQLite lock в `usr-local-lib/msb-engine/client_markers.py` |
 
 Профиль `msb` по умолчанию включает native routes; `jar1` сохраняет legacy UI и запрещает
 включение native OS-engine через profile initialization. IPC native helper:
@@ -32,5 +32,6 @@ status/delivery work. [Проверка](../../tests/callback-refresh.test.mjs).
 [runbook rollback](../../../../docs/runbooks/msb-engine-rollback.md).
 Проверки: [engines-client](../../tests/engines-client.test.mjs),
 [native-engine-ui](../../tests/native-engine-ui.test.mjs), [runtime-profile](../../tests/runtime-profile.test.mjs).
-Native service enable/disable не означает наличие OpenClaw runner в общем ходе;
-его ветвь в [agent/turn.mjs](../agent/turn.mjs) пока возвращает ошибку подключения.
+Native service enable/disable относится к системному OpenClaw другого пользователя.
+Runner в [agent/turn.mjs](../agent/turn.mjs) использует отдельный профиль бота;
+подтверждение одного маршрута не подтверждает работу другого.

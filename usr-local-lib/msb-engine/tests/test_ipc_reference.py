@@ -220,6 +220,18 @@ class RequestIntakeTest(unittest.TestCase):
         with self.assertRaises(Refused):
             parse_request(b'{"v":true,"id":"abcdefgh","action":"status"}')
 
+    def test_conditional_wake_revision_is_bounded_and_scoped_to_one_bot(self):
+        base = {'v': 1, 'id': 'abcdefgh', 'action': 'enable-msb', 'bot_id': 'default',
+                'sleep_revision': '1:2:3'}
+        self.assertEqual(parse_request(json.dumps(base).encode())['params']['sleep_revision'], '1:2:3')
+        variants = [{**base, 'sleep_revision': '1:../../x:3'}, {**base, 'sleep_revision': '1:2'},
+                    {**base, 'sleep_revision': '1' * 21 + ':2:3'},
+                    {**base, 'action': 'disable-msb'},
+                    {key: value for key, value in base.items() if key != 'bot_id'}]
+        for payload in variants:
+            with self.subTest(payload=payload), self.assertRaises(Refused):
+                parse_request(json.dumps(payload).encode())
+
     @unittest.skipUnless(shutil.which('node'), 'node is required for the actual bot publisher')
     def test_actual_bot_publisher_reaches_consumer(self):
         repo = Path(__file__).resolve().parents[3]

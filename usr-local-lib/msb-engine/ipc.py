@@ -271,6 +271,12 @@ def parse_request(data):
         if not isinstance(bid, str) or not BOT_ID_RE.fullmatch(bid):
             raise bad("BAD_REQUEST", "BOT_ID")
         out["bot_id"] = bid
+    if "sleep_revision" in params:
+        revision = params["sleep_revision"]
+        if 'bot_id' not in out or not isinstance(revision, str) or not re.fullmatch(
+                r'[0-9]{1,20}:[0-9]{1,20}:[0-9]{1,20}', revision):
+            raise bad("BAD_REQUEST", "SLEEP_REVISION")
+        out['sleep_revision'] = revision
     return {"id": rid, "action": action, "params": out}
 
 
