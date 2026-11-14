@@ -11,21 +11,8 @@ import re
 import sqlite3
 import sys
 
-
-def open_dir(path):
-    if not os.path.isabs(path):
-        raise ValueError('expected absolute path')
-    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
-    fd = os.open('/', flags)
-    try:
-        for part in (part for part in path.split('/') if part):
-            child = os.open(part, flags, dir_fd=fd)
-            os.close(fd)
-            fd = child
-        return fd
-    except BaseException:
-        os.close(fd)
-        raise
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from client_fs import open_dir  # noqa: E402
 
 
 def change(path, data):

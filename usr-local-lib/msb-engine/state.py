@@ -2,7 +2,8 @@
 
 OpenClaw scope is selected by openclaw_service.py and root-owned setup facts by
 openclaw_readiness.py; request results remain here. Checks: tests/test_switch_safety.py
-and tests/test_openclaw_service.py.
+and tests/test_openclaw_service.py. Deletion trash is read as client via
+archive_service.py; tests/test_archive_restore.py covers its state contract.
 """
 import json
 import os
@@ -29,6 +30,7 @@ from const import (
 )
 from openclaw_service import discover as discover_oc_service, word as oc_service_word
 from openclaw_readiness import incomplete as openclaw_incomplete
+from archive_service import list_trash
 from util import (
     cc_cli_version,
     disk,
@@ -217,8 +219,10 @@ def way_back(o):
     )
 
 
-def available_actions(j, o, p=None):
+def available_actions(j, o, p=None, trash=None):
     acts = ["status"]
+    if trash:
+        acts.append("restore")
     if o["installed"] and o.get("scope") in ("system", "user") and isinstance(o.get("enabled"), bool):
         acts.append("disable-openclaw" if o["enabled"] else "enable-openclaw")
         if o["enabled"]:
@@ -263,6 +267,7 @@ def compute_state():
     j = jarvis_info()
     o = openclaw_info()
     p = pult_info()
+    trash = list_trash()
     return {
         "v": 1,
         "helper_version": HELPER_VERSION,
@@ -271,7 +276,7 @@ def compute_state():
         "managed": True,
         "hold": False,
         "host_ready": True,
-        "actions": available_actions(j, o, p),
+        "actions": available_actions(j, o, p, trash),
         "codes": list(CODES),
         # `jarvis` — совместимое имя блока MSB-ботов (контракт UI/старых экранов).
         # `msb` — канонический алиас без бренда создателя.
@@ -294,7 +299,7 @@ def compute_state():
         "puller": {"timer_enabled": False, "timer_active": False},
         "base_pulse": {"installed": False, "timer_active": False},
         "usage": {"day": time_day(), "jarvis_sessions": 0, "openclaw_sessions": 0},
-        "trash": [],
+        "trash": trash,
         "openclaw_version_offered": None,
         "update": None,
         "snapshot": None,

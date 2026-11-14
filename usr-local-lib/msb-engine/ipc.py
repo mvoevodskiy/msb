@@ -13,6 +13,7 @@ import time
 
 from const import (
     ACTIONS,
+    ARCHIVE_RE,
     BOT_ID_RE,
     ID_RE,
     RATE_WINDOW,
@@ -260,6 +261,11 @@ def parse_request(data):
     ) <= set(params):
         raise bad("BAD_REQUEST", "KEYS")
     out = {}
+    if "archive" in params:
+        archive = params["archive"]
+        if not isinstance(archive, str) or not ARCHIVE_RE.fullmatch(archive):
+            raise bad("BAD_REQUEST", "ARCHIVE")
+        out["archive"] = archive
     if "bot_id" in params:
         bid = params["bot_id"]
         if not isinstance(bid, str) or not BOT_ID_RE.fullmatch(bid):
