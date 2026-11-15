@@ -1,6 +1,7 @@
 /**
  * Per-bot sleep marker transaction shared by [sleep policy](./sleep.mjs).
- * The caller supplies any provider-specific reconciliation and wake recovery.
+ * The caller supplies provider-specific reconciliation and wake recovery;
+ * revision-aware wake never removes a newer marker written during a switch.
  * [Checks](../../tests/sleep-marker.test.mjs) cover marker and lock behavior.
  */
 import fs from 'node:fs/promises';
@@ -12,15 +13,26 @@ export function createSleepMarker({ marker, onWake = async () => {}, shouldClear
     catch (err) { if (err.code === 'ENOENT') return null; throw err; }
   };
 
-  async function wakeAttempt({ resume = true } = {}) {
+  async function revision() {
+    try {
+      const mark = await fs.lstat(marker(), { bigint: true });
+      return `${mark.dev}:${mark.ino}:${mark.ctimeNs}`;
+    } catch (error) {
+      if (error.code === 'ENOENT') return null;
+      throw error;
+    }
+  }
+
+  async function wakeAttempt({ resume = true, expectedRevision } = {}) {
     let outcome = { ok: true };
     try {
-      if (await info()) {
+      if (expectedRevision !== undefined || await info()) {
         outcome = await withFileLock(marker(), async () => {
           let mark;
           try { mark = await fs.lstat(marker(), { bigint: true }); }
           catch (err) { if (err.code === 'ENOENT') return { ok: true }; throw err; }
           const revision = `${mark.dev}:${mark.ino}:${mark.ctimeNs}`;
+          if (expectedRevision !== undefined && expectedRevision !== revision) return { ok: false, stale: true };
           try { await fs.unlink(marker()); }
           catch (err) { if (err.code !== 'ENOENT') return { ok: false, revision }; }
           return { ok: !await info() };
@@ -60,5 +72,5 @@ export function createSleepMarker({ marker, onWake = async () => {}, shouldClear
     return result.asleep;
   }
 
-  return { wake, wakeAttempt, resumeIfAwake, sleeping };
+  return { wake, wakeAttempt, resumeIfAwake, sleeping, revision };
 }

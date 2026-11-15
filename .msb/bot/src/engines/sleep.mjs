@@ -79,5 +79,7 @@ export function createEngineSleep({ bot, pending, now = Date.now, onWake = async
     return true;
   }
   const gate = createSleepGate({ pending, sleeping, notify, allowStop: codex.allowStop });
-  return { ...gate, ...markerState, sleeping };
+  return { ...gate, ...markerState, sleeping,
+    allowStop: codex.allowStop, captureCodexPause: codex.captureCodexPause,
+    wakeCapturedCodexPause: codex.wakeCapturedCodexPause };
 }

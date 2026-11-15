@@ -6,6 +6,8 @@
  * Saved Codex admission and execution → [adapter](../adapters/saved-codex.mjs).
  * Saved Cursor admission and execution → [adapter](../adapters/saved-cursor.mjs).
  * Engine sleep admission stays in the core [gate](../../../../.msb/bot/src/engines/sleep.mjs).
+ * A Claude selection captures [Codex pause intent](../codex-pause-switch.mjs)
+ * before asynchronous callback work; other callbacks retain their old gate.
  * Навигация: [Обвязка](../README.md).
  */
 import { beginCallbackRender, runCallbackScope } from '../../shared/callback-renders.mjs';
@@ -21,6 +23,7 @@ import { clearPendingLocalIp, getPendingLocalIp } from '../local-ssh.mjs';
 import { runLocalExtCallback } from '../local-ext.mjs';
 import { handleCallback } from './callbacks.mjs';
 import { handleAuthMessage } from './text-input.mjs';
+import { captureCodexPause } from '../codex-pause-switch.mjs';
 import { EXT_MARKER } from './shared.mjs';
 
 export function installUpdateHook(BotClass, env = process.env) {
@@ -41,6 +44,13 @@ export function installUpdateHook(BotClass, env = process.env) {
     if (!Number.isFinite(ownerId) || ownerId <= 0 || Number(event?.from?.id) !== ownerId) {
       return origHandleUpdate.call(this, update, webhookReplyEnvelope);
     }
+    const selectingClaude = !closedCore && update?.callback_query &&
+      ['settings:engine:set:cc', 'settings:conn:set:cc', 'ext:conn:set:claude'].includes(event.data);
+    let pauseCapture;
+    if (selectingClaude) {
+      try { pauseCapture = { captured: true, intent: await captureCodexPause(this) }; }
+      catch { pauseCapture = { captured: true, error: true }; }
+    }
     try {
       const sleep = this[Symbol.for('msb.engineSleep')];
       if (sleep && await sleep.sleeping()) {
@@ -51,7 +61,9 @@ export function installUpdateHook(BotClass, env = process.env) {
           (getPendingAuth(event.from.id, { chatId, includeExpired: true }) ||
            getPendingLocalIp(event.from.id, { chatId, includeExpired: true }));
         const settings = /^\/settings(?:@\w+)?(?:\s|$)/.test(text);
-        const allowedCallback = typeof data === 'string' && (data.startsWith('eng:') || data.startsWith('settings:'));
+        const selectClaude = data === 'ext:conn:set:claude' &&
+          (Boolean(pauseCapture?.intent) || await sleep.allowStop?.());
+        const allowedCallback = typeof data === 'string' && (data.startsWith('eng:') || data.startsWith('settings:') || selectClaude);
         if (!inputOpen && !settings && !allowedCallback) return origHandleUpdate.call(this, update, webhookReplyEnvelope);
       }
       if (update?.callback_query) {
@@ -72,7 +84,7 @@ export function installUpdateHook(BotClass, env = process.env) {
             if (!serviceForm) this[Symbol.for('msb.cancelPendingInput')]?.(chatId);
           }
         }
-        const handled = await runCallbackScope(render, () => handleCallback(this, event, closedCore));
+        const handled = await runCallbackScope(render, () => handleCallback(this, event, closedCore, pauseCapture));
         if (handled) return;
         // После штатной обвязки: локальные пакеты владельца (новые callback_data).
         const localHandled = await runCallbackScope(render, () => runLocalExtCallback({

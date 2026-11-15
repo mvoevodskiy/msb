@@ -7,6 +7,7 @@ import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { createSleepMarker } from '../src/engines/sleep-marker.mjs';
+import { withFileLock } from '../shared/file-lock.mjs';
 
 async function fixture(t, options = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-sleep-marker-'));
@@ -29,6 +30,47 @@ test('a paused bot wakes by removing only its own marker and resumes its deferre
   assert.equal(await fs.readFile(other, 'utf8'), 'another bot');
   assert.equal(f.wakes(), 1);
   assert.equal(await f.control.sleeping(), false);
+});
+
+test('a provider switch removes only the captured marker, never a newer pause', async t => {
+  const f = await fixture(t);
+  await fs.writeFile(f.marker, 'first');
+  const previous = await f.control.revision();
+  await fs.writeFile(path.join(f.root, 'next'), 'newer');
+  await fs.rename(path.join(f.root, 'next'), f.marker);
+  assert.deepEqual(await f.control.wakeAttempt({ expectedRevision: previous, resume: false }), { ok: false, stale: true });
+  assert.equal(await fs.readFile(f.marker, 'utf8'), 'newer');
+  const current = await f.control.revision();
+  assert.deepEqual(await f.control.wakeAttempt({ expectedRevision: current, resume: false }), { ok: true });
+  await assert.rejects(fs.stat(f.marker), { code: 'ENOENT' });
+  assert.equal(f.wakes(), 0, 'Switching providers must not launch a deferred Codex introduction.');
+});
+
+test('revision-aware wake waits for a concurrent new marker even when initially absent', async t => {
+  const f = await fixture(t);
+  await fs.writeFile(f.marker, 'first');
+  const previous = await f.control.revision();
+  await fs.unlink(f.marker);
+  let ready, release;
+  const held = new Promise(resolve => { ready = resolve; });
+  const continueWriter = new Promise(resolve => { release = resolve; });
+  const writer = withFileLock(f.marker, async () => {
+    ready();
+    await continueWriter;
+    await fs.writeFile(f.marker, 'newer');
+  });
+  t.after(() => release());
+  await held;
+  const waking = f.control.wakeAttempt({ expectedRevision: previous, resume: false });
+  const passedWriter = await Promise.race([
+    waking.then(() => true), new Promise(resolve => setTimeout(() => resolve(false), 50)),
+  ]);
+  release();
+  await writer;
+  const result = await waking;
+  assert.equal(passedWriter, false, 'The captured revision must be checked under the writer lock.');
+  assert.deepEqual(result, { ok: false, stale: true });
+  assert.equal(await fs.readFile(f.marker, 'utf8'), 'newer');
 });
 
 test('an unreadable marker fails closed, and a failed wake does not resume', async t => {

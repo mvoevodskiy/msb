@@ -4,7 +4,8 @@
  * mechanics; [wake route](../telegram/routes/engines.mjs) changes no provider.
  * [Checks](../../tests/codex-engine-sleep.test.mjs), [notice](../../tests/codex-sleep.test.mjs) and
  * [handoff/stop](../../tests/codex-sleep-flow.test.mjs) use synthetic I/O;
- * allowStop admits the existing stop paths only for selected Codex.
+ * allowStop admits existing stop paths only for selected Codex; provider
+ * selection captures a revision for [overlay](../../../../overlay/bot/ext/codex-pause-switch.mjs).
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -43,6 +44,19 @@ export function createCodexSleep({ pending, now = Date.now, onWake = async () =>
     catch { return false; }
   }
 
+  async function captureCodexPause() {
+    let revision, markerError, state;
+    try { revision = await markerState.revision(); } catch (error) { markerError = error; }
+    try { state = (await loadState()).state; } catch { return null; }
+    if (!isCodexSelected(state)) return null;
+    if (markerError) throw markerError;
+    return revision ? { revision, sourceEpoch: Number.isSafeInteger(state.sessionEpoch) ? state.sessionEpoch : 0 } : null;
+  }
+
+  async function wakeCapturedCodexPause(revision) {
+    return markerState.wakeAttempt({ expectedRevision: revision, resume: false });
+  }
+
   async function notify(ctx, suffix = '') {
     const chat = ctx.chat?.id;
     if (!chat) return;
@@ -55,5 +69,6 @@ export function createCodexSleep({ pending, now = Date.now, onWake = async () =>
     await ctx.reply(`Codex на паузе.\n⠀${suffix}`, { parse_mode: 'HTML', reply_markup: keyboard }).catch(() => {});
   }
 
-  return { ...markerState, ...createSleepGate({ pending, sleeping, notify, allowStop }), sleeping, wake, notify, allowStop };
+  return { ...markerState, ...createSleepGate({ pending, sleeping, notify, allowStop }), sleeping, wake, notify, allowStop,
+    captureCodexPause, wakeCapturedCodexPause };
 }

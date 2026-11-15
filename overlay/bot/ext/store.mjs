@@ -85,6 +85,18 @@ export async function setActive(providerId, env = process.env, home = env.HOME |
   return updateStore(env, home, store => { store.active = providerId; });
 }
 
+/** Publish a provider only if another selection has not replaced the snapshot. */
+export async function setActiveIf(providerId, expected, env = process.env, home = env.HOME || os.homedir()) {
+  if (!isProviderId(providerId) || !isProviderId(expected)) throw new Error('unknown provider');
+  return withStoreLock(storePath(env, home), async () => {
+    const store = await loadStore(env, home);
+    if (store.active !== expected) return false;
+    store.active = providerId;
+    await writeStore(store, env, home);
+    return true;
+  });
+}
+
 export async function setSession(providerId, sessionId, env = process.env, home = env.HOME || os.homedir()) {
   if (!isProviderId(providerId)) throw new Error(`unknown provider: ${providerId}`);
   return updateStore(env, home, store => {
