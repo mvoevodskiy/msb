@@ -14,7 +14,7 @@
 | Показать состояние helper | [screen.mjs](screen.mjs): `nativeEnginesScreen` |
 | Прочитать snapshot / запросить свежий status / дождаться результата | [client.mjs](client.mjs): `engineStatusSnapshot`, `refreshEngineStatus`, `waitRequestResult` |
 | Опубликовать request без замены чужого slot | [request.mjs](request.mjs): `submitRequest` (совместимый re-export в client) |
-| Пауза выбранного Codex | [sleep](sleep.mjs) → [marker](sleep-marker.mjs) / [gate](sleep-gate.mjs) → [bot](../telegram/bot.mjs) / [wake](../telegram/routes/engines.mjs) |
+| Пауза выбранного Codex | [sleep](sleep.mjs) → общая [Codex policy](codex-sleep.mjs) → [marker](sleep-marker.mjs) / [gate](sleep-gate.mjs) → [bot](../telegram/bot.mjs) / [wake](../telegram/routes/engines.mjs) |
 
 На этом выпуске sleep-маркер блокирует только выбранный Codex. Сообщение
 «Codex на паузе» и прежняя кнопка пробуждения не зависят от другого движка;
