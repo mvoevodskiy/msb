@@ -1,0 +1,975 @@
+TAP version 13
+# Subtest: a due background task waits for compaction and runs on the next scheduler tick
+ok 1 - a due background task waits for compaction and runs on the next scheduler tick
+  ---
+  duration_ms: 187.504551
+  type: 'test'
+  ...
+# Subtest: timer list: empty store shows the old empty message and Back without creating a file
+ok 2 - timer list: empty store shows the old empty message and Back without creating a file
+  ---
+  duration_ms: 184.701333
+  type: 'test'
+  ...
+# Subtest: timer list: reads only this bot, shows old once, daily and weekly rows in file order
+ok 3 - timer list: reads only this bot, shows old once, daily and weekly rows in file order
+  ---
+  duration_ms: 94.710183
+  type: 'test'
+  ...
+# Subtest: timer card: shows once type, active status, bounded prompt and the old action callbacks
+ok 4 - timer card: shows once type, active status, bounded prompt and the old action callbacks
+  ---
+  duration_ms: 66.916607
+  type: 'test'
+  ...
+# Subtest: timer card: a stale callback shows the old missing warning and returns to the timer list
+ok 5 - timer card: a stale callback shows the old missing warning and returns to the timer list
+  ---
+  duration_ms: 62.795026
+  type: 'test'
+  ...
+# Subtest: timer toggle: returns to the list and changes only enabled, retaining the one-shot execution stamp
+ok 6 - timer toggle: returns to the list and changes only enabled, retaining the one-shot execution stamp
+  ---
+  duration_ms: 138.156251
+  type: 'test'
+  ...
+# Subtest: timer delete: removes the selected legacy row and shows the old post-delete empty list
+ok 7 - timer delete: removes the selected legacy row and shows the old post-delete empty list
+  ---
+  duration_ms: 79.03563
+  type: 'test'
+  ...
+# Subtest: timer list: follows the legacy session parent override and safely renders stored markup
+ok 8 - timer list: follows the legacy session parent override and safely renders stored markup
+  ---
+  duration_ms: 214.884216
+  type: 'test'
+  ...
+# [msb/autonomy] Could not update saved timer: SyntaxError
+# [msb/autonomy] Could not read saved timers: SyntaxError
+# Subtest: timer change: corrupted JSON is not replaced with an empty list
+ok 9 - timer change: corrupted JSON is not replaced with an empty list
+  ---
+  duration_ms: 67.458468
+  type: 'test'
+  ...
+# Subtest: timer changes: concurrent callbacks do not undo each other
+ok 10 - timer changes: concurrent callbacks do not undo each other
+  ---
+  duration_ms: 135.504012
+  type: 'test'
+  ...
+# Subtest: timer change: a pre-existing temporary symlink cannot redirect the write
+ok 11 - timer change: a pre-existing temporary symlink cannot redirect the write
+  ---
+  duration_ms: 58.323853
+  type: 'test'
+  ...
+# Subtest: timer change: a linked schedules file keeps the link and updates its target
+ok 12 - timer change: a linked schedules file keeps the link and updates its target
+  ---
+  duration_ms: 58.762676
+  type: 'test'
+  ...
+# [msb/agent-cc] Spawning: claude -p --output-format stream-json... (session=ext:code, model=default, prompt=23B)
+# [msb/agent-cc] Process closed: code=0, signal=-, tools=0, stderr=[msb/ext/shim] turn via codex (prompt=3681ch)
+# [msb/agent-cc] Spawning: claude -p --output-format stream-json... (session=ext:code, model=default, prompt=28B)
+# [msb/agent-cc] Process closed: code=0, signal=-, tools=0, stderr=[msb/ext/shim] turn via codex (prompt=3686ch)
+# Subtest: Codex resumes its selected conversation after the sleep gate
+ok 13 - Codex resumes its selected conversation after the sleep gate
+  ---
+  duration_ms: 2996.598999
+  type: 'test'
+  ...
+# [msb/ext/setup-bypass] clear-bypass-flag
+# [msb/ext] active provider → claude
+# [msb/ext/setup-bypass] bypass:codex
+# [msb/ext] codex transport → msb_http
+# Subtest: settings:engine:set:cc wakes the bot and preserves both CLI conversations
+ok 14 - settings:engine:set:cc wakes the bot and preserves both CLI conversations
+  ---
+  duration_ms: 655.840447
+  type: 'test'
+  ...
+# [msb/ext/setup-bypass] clear-bypass-flag
+# [msb/ext] active provider → claude
+# [msb/ext/setup-bypass] bypass:codex
+# [msb/ext] codex transport → msb_http
+# Subtest: ext:conn:set:claude wakes the bot and preserves both CLI conversations
+ok 15 - ext:conn:set:claude wakes the bot and preserves both CLI conversations
+  ---
+  duration_ms: 320.556703
+  type: 'test'
+  ...
+# Subtest: an unconfigured Claude selection leaves Codex and its sleep marker intact
+ok 16 - an unconfigured Claude selection leaves Codex and its sleep marker intact
+  ---
+  duration_ms: 87.242952
+  type: 'test'
+  ...
+# [msb/ext/setup-bypass] clear-bypass-flag
+# [msb/ext] active provider → claude
+# Subtest: a newer pause written during Claude selection is preserved
+ok 17 - a newer pause written during Claude selection is preserved
+  ---
+  duration_ms: 109.519381
+  type: 'test'
+  ...
+# [msb/ext/setup-bypass] clear-bypass-flag
+# [msb/ext] active provider → claude
+# Subtest: a pause changed during Telegram acknowledgement is newer than the selected pause
+ok 18 - a pause changed during Telegram acknowledgement is newer than the selected pause
+  ---
+  duration_ms: 93.714566
+  type: 'test'
+  ...
+# Subtest: a provider change during initial pause capture cannot be reported as the same switch
+ok 19 - a provider change during initial pause capture cannot be reported as the same switch
+  ---
+  duration_ms: 56.180861
+  type: 'test'
+  ...
+# Subtest: a transient state read failure cannot bypass paused Codex selection
+ok 20 - a transient state read failure cannot bypass paused Codex selection
+  ---
+  duration_ms: 75.829882
+  type: 'test'
+  ...
+# [msb/ext/setup-bypass] clear-bypass-flag
+# [msb/ext] active provider → claude
+# [msb/ext] active provider → claude
+# Subtest: a failed wake can be retried through settings:engine:set:cc after process restart
+ok 21 - a failed wake can be retried through settings:engine:set:cc after process restart
+  ---
+  duration_ms: 162.806824
+  type: 'test'
+  ...
+# [msb/ext/setup-bypass] clear-bypass-flag
+# [msb/ext] active provider → claude
+# [msb/ext] active provider → claude
+# Subtest: a failed wake can be retried through ext:conn:set:claude after process restart
+ok 22 - a failed wake can be retried through ext:conn:set:claude after process restart
+  ---
+  duration_ms: 136.0387
+  type: 'test'
+  ...
+# [msb/ext] handleUpdate error: fixture store failure
+# [msb/ext/setup-bypass] clear-bypass-flag
+# [msb/ext] active provider → claude
+# Subtest: a failed provider-store publication keeps Codex paused and an explicit retry can finish
+ok 23 - a failed provider-store publication keeps Codex paused and an explicit retry can finish
+  ---
+  duration_ms: 109.12558
+  type: 'test'
+  ...
+# [msb/ext/setup-bypass] clear-bypass-flag
+# [msb/ext] handleUpdate error: fixture state failure
+# [msb/ext/setup-bypass] clear-bypass-flag
+# [msb/ext] active provider → claude
+# Subtest: startup after store-only publication preserves Codex until Claude credentials are usable
+ok 24 - startup after store-only publication preserves Codex until Claude credentials are usable
+  ---
+  duration_ms: 117.035322
+  type: 'test'
+  ...
+# [msb/ext/setup-bypass] clear-bypass-flag
+# Subtest: a newer provider choice prevents a delayed Claude selection from clearing the marker
+ok 25 - a newer provider choice prevents a delayed Claude selection from clearing the marker
+  ---
+  duration_ms: 91.130576
+  type: 'test'
+  ...
+# [msb/ext/setup-bypass] clear-bypass-flag
+# [msb/ext] active provider → claude
+# [msb/ext] active provider → claude
+# Subtest: a replaced marker after a failed wake stays intact on retry
+ok 26 - a replaced marker after a failed wake stays intact on retry
+  ---
+  duration_ms: 106.72548
+  type: 'test'
+  ...
+# [msb/ext/setup-bypass] clear-bypass-flag
+# [msb/ext] active provider → claude
+# [msb/ext] active provider → claude
+# Subtest: a retry can finish after wake succeeded but intent cleanup failed
+ok 27 - a retry can finish after wake succeeded but intent cleanup failed
+  ---
+  duration_ms: 169.920191
+  type: 'test'
+  ...
+# [msb/ext/setup-bypass] bypass:codex
+# Subtest: a confirmed re-selection of Codex cancels a stale pending Claude switch
+ok 28 - a confirmed re-selection of Codex cancels a stale pending Claude switch
+  ---
+  duration_ms: 53.967916
+  type: 'test'
+  ...
+# Subtest: a Claude credential not available to the running process cannot clear the Codex pause
+ok 29 - a Claude credential not available to the running process cannot clear the Codex pause
+  ---
+  duration_ms: 95.458221
+  type: 'test'
+  ...
+# [msb/ext] active provider → claude
+# Subtest: an unreadable marker cannot block ordinary Claude reselection
+ok 30 - an unreadable marker cannot block ordinary Claude reselection
+  ---
+  duration_ms: 65.990957
+  type: 'test'
+  ...
+# Subtest: Codex selection follows the current CLI provider state
+ok 31 - Codex selection follows the current CLI provider state
+  ---
+  duration_ms: 10.366098
+  type: 'test'
+  ...
+# Subtest: an active Codex turn accepts command stop while the bot is asleep
+ok 32 - an active Codex turn accepts command stop while the bot is asleep
+  ---
+  duration_ms: 362.904698
+  type: 'test'
+  ...
+# Subtest: an active Codex turn accepts command-with-username stop while the bot is asleep
+ok 33 - an active Codex turn accepts command-with-username stop while the bot is asleep
+  ---
+  duration_ms: 119.05274
+  type: 'test'
+  ...
+# Subtest: an active Codex turn accepts reply stop while the bot is asleep
+ok 34 - an active Codex turn accepts reply stop while the bot is asleep
+  ---
+  duration_ms: 117.44812
+  type: 'test'
+  ...
+# Subtest: a queued Codex turn is not started when sleep begins before admission
+ok 35 - a queued Codex turn is not started when sleep begins before admission
+  ---
+  duration_ms: 334.235517
+  type: 'test'
+  ...
+# Subtest: a prepared Codex introduction handoff stays in the journal until wake
+ok 36 - a prepared Codex introduction handoff stays in the journal until wake
+  ---
+  duration_ms: 206.952257
+  type: 'test'
+  ...
+# Subtest: waking while recovery is leaving the sleep gate does not strand the handoff
+ok 37 - waking while recovery is leaving the sleep gate does not strand the handoff
+  ---
+  duration_ms: 240.076912
+  type: 'test'
+  ...
+# Subtest: a failed direct Codex wake reports the error without publishing a system request
+ok 38 - a failed direct Codex wake reports the error without publishing a system request
+  ---
+  duration_ms: 1.98492
+  type: 'test'
+  ...
+# Subtest: stop command cancels a turn while sleep admission is still pending
+ok 39 - stop command cancels a turn while sleep admission is still pending
+  ---
+  duration_ms: 73.013814
+  type: 'test'
+  ...
+# Subtest: shutdown cancels a turn while sleep admission is still pending
+ok 40 - shutdown cancels a turn while sleep admission is still pending
+  ---
+  duration_ms: 35.785925
+  type: 'test'
+  ...
+# Subtest: stop command during handoff admission never launches the recovered Codex turn
+ok 41 - stop command during handoff admission never launches the recovered Codex turn
+  ---
+  duration_ms: 118.941512
+  type: 'test'
+  ...
+# Subtest: shutdown during handoff admission never launches the recovered Codex turn
+ok 42 - shutdown during handoff admission never launches the recovered Codex turn
+  ---
+  duration_ms: 47.308089
+  type: 'test'
+  ...
+# Subtest: the Codex pause notice keeps existing injected buttons and the switch action
+ok 43 - the Codex pause notice keeps existing injected buttons and the switch action
+  ---
+  duration_ms: 7.545338
+  type: 'test'
+  ...
+# Subtest: an unavailable optional button never hides the wake action
+ok 44 - an unavailable optional button never hides the wake action
+  ---
+  duration_ms: 2.326912
+  type: 'test'
+  ...
+# Subtest: inbox: text and voice received during a turn are retained in arrival order
+ok 45 - inbox: text and voice received during a turn are retained in arrival order
+  ---
+  duration_ms: 619.560297
+  type: 'test'
+  ...
+# Subtest: inbox: six forwarded voices and two texts become one ordered prompt after all STT
+ok 46 - inbox: six forwarded voices and two texts become one ordered prompt after all STT
+  ---
+  duration_ms: 2814.607938
+  type: 'test'
+  ...
+# Subtest: inbox: stop cancels the current turn and drops queued text and an open forwarded batch
+ok 47 - inbox: stop cancels the current turn and drops queued text and an open forwarded batch
+  ---
+  duration_ms: 156.225322
+  type: 'test'
+  ...
+# Subtest: inbox: a failed voice keeps its position, later voices and the closing comment
+ok 48 - inbox: a failed voice keeps its position, later voices and the closing comment
+  ---
+  duration_ms: 2663.450503
+  type: 'test'
+  ...
+# Subtest: inbox: a forwarded scheduling marker remains batch data, never a new autonomous task
+ok 49 - inbox: a forwarded scheduling marker remains batch data, never a new autonomous task
+  ---
+  duration_ms: 2557.798835
+  type: 'test'
+  ...
+# Subtest: inbox: neighboring queued texts merge in order and do not swallow a voice
+ok 50 - inbox: neighboring queued texts merge in order and do not swallow a voice
+  ---
+  duration_ms: 96.329066
+  type: 'test'
+  ...
+# Subtest: inbox: shutdown cancels an open collector without STT, model turn or late timers
+ok 51 - inbox: shutdown cancels an open collector without STT, model turn or late timers
+  ---
+  duration_ms: 2644.997238
+  type: 'test'
+  ...
+# Subtest: inbox: owner guard ignores foreign forwarded input before opening a collector
+ok 52 - inbox: owner guard ignores foreign forwarded input before opening a collector
+  ---
+  duration_ms: 30.476834
+  type: 'test'
+  ...
+# Subtest: .msb/bot/tests/inbox-lifecycle.test.mjs
+not ok 7 - .msb/bot/tests/inbox-lifecycle.test.mjs
+  ---
+  duration_ms: 15021.429336
+  type: 'test'
+  location: '/var/tmp/msb-pause-test-20261115.Zvgd0xa2/src/.msb/bot/tests/inbox-lifecycle.test.mjs:1:1'
+  failureType: 'testTimeoutFailure'
+  error: 'test timed out after 15000ms'
+  code: 'ERR_TEST_FAILURE'
+  ...
+# Subtest: legacy timer conversation lists old once daily and weekly phrases in file order
+ok 54 - legacy timer conversation lists old once daily and weekly phrases in file order
+  ---
+  duration_ms: 169.464826
+  type: 'test'
+  ...
+# Subtest: legacy timer conversation lists an absent file without creating schedules
+ok 55 - legacy timer conversation lists an absent file without creating schedules
+  ---
+  duration_ms: 59.01597
+  type: 'test'
+  ...
+# Subtest: legacy timer conversation reports a corrupt schedule without rewriting or claiming it is empty
+ok 56 - legacy timer conversation reports a corrupt schedule without rewriting or claiming it is empty
+  ---
+  duration_ms: 119.096663
+  type: 'test'
+  ...
+# Subtest: legacy timer conversation chooses exact ID before matching names and updates the existing menu
+ok 57 - legacy timer conversation chooses exact ID before matching names and updates the existing menu
+  ---
+  duration_ms: 126.462073
+  type: 'test'
+  ...
+# Subtest: legacy timer conversation reports name ambiguity and ignores prompt or partial ID matches
+ok 58 - legacy timer conversation reports name ambiguity and ignores prompt or partial ID matches
+  ---
+  duration_ms: 90.648973
+  type: 'test'
+  ...
+# Subtest: legacy timer conversation applies list then off then on before asking for deletion
+ok 59 - legacy timer conversation applies list then off then on before asking for deletion
+  ---
+  duration_ms: 111.908905
+  type: 'test'
+  ...
+# Subtest: legacy timer conversation off after group STOP becomes manual and survives global resume
+ok 60 - legacy timer conversation off after group STOP becomes manual and survives global resume
+  ---
+  duration_ms: 128.756983
+  type: 'test'
+  ...
+# Subtest: legacy timer conversation can enable one timer under STOP without rearming a consumed one-off
+ok 61 - legacy timer conversation can enable one timer under STOP without rearming a consumed one-off
+  ---
+  duration_ms: 210.797407
+  type: 'test'
+  ...
+# Subtest: legacy timer conversation enables a record whose old enabled flag is missing only on explicit ON
+ok 62 - legacy timer conversation enables a record whose old enabled flag is missing only on explicit ON
+  ---
+  duration_ms: 68.689565
+  type: 'test'
+  ...
+# Subtest: legacy timer conversation group pause and resume cannot arm a timer with a missing flag
+ok 63 - legacy timer conversation group pause and resume cannot arm a timer with a missing flag
+  ---
+  duration_ms: 168.438065
+  type: 'test'
+  ...
+# Subtest: legacy timer conversation OFF invalidates a due snapshot before dispatch reserves it
+ok 64 - legacy timer conversation OFF invalidates a due snapshot before dispatch reserves it
+  ---
+  duration_ms: 100.617746
+  type: 'test'
+  ...
+# Subtest: legacy timer conversation Keep closes only its question and later delete cannot remove the timer
+ok 65 - legacy timer conversation Keep closes only its question and later delete cannot remove the timer
+  ---
+  duration_ms: 100.489173
+  type: 'test'
+  ...
+# Subtest: legacy timer conversation rejects a same-ID replacement and physical schedule swap
+ok 66 - legacy timer conversation rejects a same-ID replacement and physical schedule swap
+  ---
+  duration_ms: 160.676365
+  type: 'test'
+  ...
+# Subtest: legacy timer conversation uses a bounded full reference for long Unicode IDs
+ok 67 - legacy timer conversation uses a bounded full reference for long Unicode IDs
+  ---
+  duration_ms: 127.858039
+  type: 'test'
+  ...
+# Subtest: legacy timer conversation can retry when atomic removal fails before publication
+ok 68 - legacy timer conversation can retry when atomic removal fails before publication
+  ---
+  duration_ms: 233.461357
+  type: 'test'
+  ...
+# [msb/autonomy] Could not retire timer deletion question: Error
+# [msb/autonomy] Could not retire timer deletion question: Error
+# Subtest: legacy timer conversation cannot replay a completed removal after a retirement failure
+ok 69 - legacy timer conversation cannot replay a completed removal after a retirement failure
+  ---
+  duration_ms: 284.593507
+  type: 'test'
+  ...
+# (node:248231) ExperimentalWarning: SQLite is an experimental feature and might change at any time
+# (Use `node --trace-warnings ...` to show where the warning was created)
+# [msb/autonomy] Could not release timer lock after deletion: Error
+# Subtest: legacy timer conversation cannot rearm a delete after the schedule lock fails to release
+ok 70 - legacy timer conversation cannot rearm a delete after the schedule lock fails to release
+  ---
+  duration_ms: 126.498683
+  type: 'test'
+  ...
+# Subtest: legacy timer conversation accepts the old line break before and after the selector
+ok 71 - legacy timer conversation accepts the old line break before and after the selector
+  ---
+  duration_ms: 104.101328
+  type: 'test'
+  ...
+# Subtest: legacy timer conversation treats a literal quote in the selector as timer data
+ok 72 - legacy timer conversation treats a literal quote in the selector as timer data
+  ---
+  duration_ms: 77.999189
+  type: 'test'
+  ...
+# Subtest: legacy timer conversation keeps quoted and nested doors out of the writer
+ok 73 - legacy timer conversation keeps quoted and nested doors out of the writer
+  ---
+  duration_ms: 250.997111
+  type: 'test'
+  ...
+# Subtest: legacy timer conversation leaves timer syntax inside original saved work data
+ok 74 - legacy timer conversation leaves timer syntax inside original saved work data
+  ---
+  duration_ms: 71.850843
+  type: 'test'
+  ...
+# [msb/agent-cc] Spawning: claude -p --output-format stream-json... (session=ext:code, model=opus, prompt=48B)
+# [msb/agent-cc] Process closed: code=0, signal=-, tools=0, stderr=
+# Subtest: claude legacy timer conversation prompt and owner turn reach the shared schedule
+ok 75 - claude legacy timer conversation prompt and owner turn reach the shared schedule
+  ---
+  duration_ms: 1441.906651
+  type: 'test'
+  ...
+# [msb/agent-cc] Spawning: claude -p --output-format stream-json... (session=ext:code, model=default, prompt=48B)
+# [msb/agent-cc] Process closed: code=0, signal=-, tools=0, stderr=[msb/ext/shim] turn via codex (prompt=6224ch)
+# Subtest: codex legacy timer conversation prompt and owner turn reach the shared schedule
+ok 76 - codex legacy timer conversation prompt and owner turn reach the shared schedule
+  ---
+  duration_ms: 1159.959467
+  type: 'test'
+  ...
+# Subtest: legacy once: emits the old prompt to the saved owner chat and consumes it exactly once
+ok 77 - legacy once: emits the old prompt to the saved owner chat and consumes it exactly once
+  ---
+  duration_ms: 785.169246
+  type: 'test'
+  ...
+# Subtest: legacy due entry is stamped while queued and /stop cancels it without repeating
+ok 78 - legacy due entry is stamped while queued and /stop cancels it without repeating
+  ---
+  duration_ms: 312.674111
+  type: 'test'
+  ...
+# Subtest: legacy recurring: daily and Sunday weekly use the owner clock and stay enabled
+ok 79 - legacy recurring: daily and Sunday weekly use the owner clock and stay enabled
+  ---
+  duration_ms: 299.857974
+  type: 'test'
+  ...
+# Subtest: legacy timer dispatch honors the old per-bot sleep marker
+ok 80 - legacy timer dispatch honors the old per-bot sleep marker
+  ---
+  duration_ms: 119.653821
+  type: 'test'
+  ...
+# Subtest: sleep defers the reserved once, daily and weekly timers
+ok 81 - sleep defers the reserved once, daily and weekly timers
+  ---
+  duration_ms: 305.358296
+  type: 'test'
+  ...
+# Subtest: sleep defers the reserved once, daily and weekly timers across restart
+ok 82 - sleep defers the reserved once, daily and weekly timers across restart
+  ---
+  duration_ms: 323.105075
+  type: 'test'
+  ...
+# Subtest: sleep after the first worker check defers the timer, then /stop consumes it without replay
+ok 83 - sleep after the first worker check defers the timer, then /stop consumes it without replay
+  ---
+  duration_ms: 150.346535
+  type: 'test'
+  ...
+# Subtest: the timer waits for a provider transition and honors sleep on the newly selected Codex
+ok 84 - the timer waits for a provider transition and honors sleep on the newly selected Codex
+  ---
+  duration_ms: 142.791174
+  type: 'test'
+  ...
+# [msb/bot] legacy timer cancellation unavailable
+# Subtest: a failed /stop write reports it and holds the prepared timer until a successful retry
+ok 85 - a failed /stop write reports it and holds the prepared timer until a successful retry
+  ---
+  duration_ms: 348.720062
+  type: 'test'
+  ...
+# Subtest: a started timer is never replayed by a fresh bot over the same profile
+ok 86 - a started timer is never replayed by a fresh bot over the same profile
+  ---
+  duration_ms: 117.992828
+  type: 'test'
+  ...
+# Subtest: two workers cannot claim one durable timer occurrence
+ok 87 - two workers cannot claim one durable timer occurrence
+  ---
+  duration_ms: 107.781429
+  type: 'test'
+  ...
+# Subtest: an ordinary Claude reservation keeps its previous attempt semantics
+ok 88 - an ordinary Claude reservation keeps its previous attempt semantics
+  ---
+  duration_ms: 190.170394
+  type: 'test'
+  ...
+# Subtest: a due Codex interval stays due while asleep and runs once after wake
+ok 89 - a due Codex interval stays due while asleep and runs once after wake
+  ---
+  duration_ms: 103.665172
+  type: 'test'
+  ...
+# Subtest: a Codex-only interval guard does not suspend the selected Claude provider
+ok 90 - a Codex-only interval guard does not suspend the selected Claude provider
+  ---
+  duration_ms: 60.313897
+  type: 'test'
+  ...
+# Subtest: a timer queued under Claude survives a switch to sleeping Codex
+ok 91 - a timer queued under Claude survives a switch to sleeping Codex
+  ---
+  duration_ms: 200.350544
+  type: 'test'
+  ...
+# Subtest: a timer blocked by Codex sleep survives returning to Claude before deferral
+ok 92 - a timer blocked by Codex sleep survives returning to Claude before deferral
+  ---
+  duration_ms: 235.584032
+  type: 'test'
+  ...
+# Subtest: a timer blocked by Codex sleep survives returning to Claude before deferral with a failed marker read
+ok 93 - a timer blocked by Codex sleep survives returning to Claude before deferral with a failed marker read
+  ---
+  duration_ms: 255.379338
+  type: 'test'
+  ...
+# Subtest: late Codex sleep preserves only the Claude timer parts across restart
+ok 94 - late Codex sleep preserves only the Claude timer parts across restart
+  ---
+  duration_ms: 275.885011
+  type: 'test'
+  ...
+# Subtest: late Codex sleep preserves only the Claude timer parts until /stop
+ok 95 - late Codex sleep preserves only the Claude timer parts until /stop
+  ---
+  duration_ms: 396.343266
+  type: 'test'
+  ...
+# Subtest: legacy timers do not overlap the existing interval runner in the same profile
+ok 96 - legacy timers do not overlap the existing interval runner in the same profile
+  ---
+  duration_ms: 118.023352
+  type: 'test'
+  ...
+# Subtest: legacy dispatch requires both a saved destination and the configured owner
+ok 97 - legacy dispatch requires both a saved destination and the configured owner
+  ---
+  duration_ms: 74.631872
+  type: 'test'
+  ...
+# Subtest: legacy once keeps future, disabled, missing-date and already-run records untouched
+ok 98 - legacy once keeps future, disabled, missing-date and already-run records untouched
+  ---
+  duration_ms: 49.378502
+  type: 'test'
+  ...
+# Subtest: legacy auto-only turn consumes the once if Telegram cannot send its initial status
+ok 99 - legacy auto-only turn consumes the once if Telegram cannot send its initial status
+  ---
+  duration_ms: 104.10703
+  type: 'test'
+  ...
+# Subtest: failed timer file publication drops the reservation before the model, and permits the next tick
+ok 100 - failed timer file publication drops the reservation before the model, and permits the next tick
+  ---
+  duration_ms: 101.955595
+  type: 'test'
+  ...
+# Subtest: timer dispatch rechecks the record after a concurrent delete and preserves the other row
+ok 101 - timer dispatch rechecks the record after a concurrent delete and preserves the other row
+  ---
+  duration_ms: 95.999947
+  type: 'test'
+  ...
+# Subtest: timer text merges with already queued owner text and uses ordinary model policy
+ok 102 - timer text merges with already queued owner text and uses ordinary model policy
+  ---
+  duration_ms: 190.18461
+  type: 'test'
+  ...
+# Subtest: a changed reservation is dropped without losing the user text or other timers
+ok 103 - a changed reservation is dropped without losing the user text or other timers
+  ---
+  duration_ms: 190.840454
+  type: 'test'
+  ...
+# Subtest: the admitted timer stays bound to its original physical schedule source
+ok 104 - the admitted timer stays bound to its original physical schedule source
+  ---
+  duration_ms: 139.33081
+  type: 'test'
+  ...
+# Subtest: legacy recurring local-day stamp suppresses a repeat across the UTC date boundary
+ok 105 - legacy recurring local-day stamp suppresses a repeat across the UTC date boundary
+  ---
+  duration_ms: 117.400541
+  type: 'test'
+  ...
+# Subtest: shutdown drains the stamp and leaves a prepared timer for restart
+ok 106 - shutdown drains the stamp and leaves a prepared timer for restart
+  ---
+  duration_ms: 71.950259
+  type: 'test'
+  ...
+# Subtest: /stop closes the current admission pass while retaining a later due record for the next tick
+ok 107 - /stop closes the current admission pass while retaining a later due record for the next tick
+  ---
+  duration_ms: 132.024362
+  type: 'test'
+  ...
+# Subtest: /stop aborts the initial status request for a scheduled timer
+ok 108 - /stop aborts the initial status request for a scheduled timer
+  ---
+  duration_ms: 129.022658
+  type: 'test'
+  ...
+# Subtest: awake inputs pass through; sleeping inputs do not reach the model
+ok 109 - awake inputs pass through; sleeping inputs do not reach the model
+  ---
+  duration_ms: 3.604242
+  type: 'test'
+  ...
+# Subtest: settings, engine callbacks and an already open form stay accessible
+ok 110 - settings, engine callbacks and an already open form stay accessible
+  ---
+  duration_ms: 0.919897
+  type: 'test'
+  ...
+# Subtest: the default sleep gate still blocks stop for other providers
+ok 111 - the default sleep gate still blocks stop for other providers
+  ---
+  duration_ms: 2.584602
+  type: 'test'
+  ...
+# Subtest: the Codex stop exception does not admit lookalike input
+ok 112 - the Codex stop exception does not admit lookalike input
+  ---
+  duration_ms: 1.505113
+  type: 'test'
+  ...
+# Subtest: key-like input is removed if possible and failure is reported without echoing it
+ok 113 - key-like input is removed if possible and failure is reported without echoing it
+  ---
+  duration_ms: 1.651777
+  type: 'test'
+  ...
+# Subtest: queued ordinary input is stopped and its status removed; recovered and automatic turns stay quiet
+ok 114 - queued ordinary input is stopped and its status removed; recovered and automatic turns stay quiet
+  ---
+  duration_ms: 0.78347
+  type: 'test'
+  ...
+# Subtest: a paused bot wakes by removing only its own marker and resumes its deferred work
+ok 115 - a paused bot wakes by removing only its own marker and resumes its deferred work
+  ---
+  duration_ms: 62.962249
+  type: 'test'
+  ...
+# Subtest: a provider switch removes only the captured marker, never a newer pause
+ok 116 - a provider switch removes only the captured marker, never a newer pause
+  ---
+  duration_ms: 29.601165
+  type: 'test'
+  ...
+# Subtest: revision-aware wake waits for a concurrent new marker even when initially absent
+ok 117 - revision-aware wake waits for a concurrent new marker even when initially absent
+  ---
+  duration_ms: 69.610386
+  type: 'test'
+  ...
+# Subtest: an unreadable marker fails closed, and a failed wake does not resume
+ok 118 - an unreadable marker fails closed, and a failed wake does not resume
+  ---
+  duration_ms: 9.039405
+  type: 'test'
+  ...
+# Subtest: reconciliation can clear a marker without recursively starting recovery
+ok 119 - reconciliation can clear a marker without recursively starting recovery
+  ---
+  duration_ms: 8.638956
+  type: 'test'
+  ...
+# Subtest: a later Python marker write survives reconciliation under the shared lock
+not ok 120 - a later Python marker write survives reconciliation under the shared lock
+  ---
+  duration_ms: 105.501785
+  type: 'test'
+  location: '/var/tmp/msb-pause-test-20261115.Zvgd0xa2/src/.msb/bot/tests/sleep-marker.test.mjs:99:1'
+  failureType: 'unhandledRejection'
+  error: |-
+    writer 1/null: Traceback (most recent call last):
+      File "<string>", line 13, in <module>
+        module.change(sys.argv[2], b'newer')
+        ~~~~~~~~~~~~~^^^^^^^^^^^^^^^^^^^^^^^
+      File "/var/tmp/msb-pause-test-20261115.Zvgd0xa2/src/usr-local-lib/msb-engine/client_markers.py", line 38, in change
+        dfd = open_dir(directory)
+      File "/var/tmp/msb-pause-test-20261115.Zvgd0xa2/src/usr-local-lib/msb-engine/client_markers.py", line 22, in open_dir
+        child = os.open(part, flags, dir_fd=fd)
+    PermissionError: [Errno 13] Permission denied: 'msb-pause-test-20261115.Zvgd0xa2'
+
+  code: 'ERR_TEST_FAILURE'
+  stack: |-
+    ChildProcess.<anonymous> (file:///var/tmp/msb-pause-test-20261115.Zvgd0xa2/src/.msb/bot/tests/sleep-marker.test.mjs:130:74)
+    Object.onceWrapper (node:events:634:26)
+    ChildProcess.emit (node:events:519:28)
+    ChildProcess._handle.onexit (node:internal/child_process:293:12)
+  ...
+# Subtest: .msb/bot/tests/turn-lifecycle.test.mjs
+not ok 12 - .msb/bot/tests/turn-lifecycle.test.mjs
+  ---
+  duration_ms: 15093.249968
+  type: 'test'
+  location: '/var/tmp/msb-pause-test-20261115.Zvgd0xa2/src/.msb/bot/tests/turn-lifecycle.test.mjs:1:1'
+  failureType: 'testTimeoutFailure'
+  error: 'test timed out after 15000ms'
+  code: 'ERR_TEST_FAILURE'
+  ...
+# Subtest: input admission: failed auth expiry warning cannot forward its consumed text
+ok 122 - input admission: failed auth expiry warning cannot forward its consumed text
+  ---
+  duration_ms: 165.858389
+  type: 'test'
+  ...
+# Subtest: input admission: failed ip expiry warning cannot forward its consumed text
+ok 123 - input admission: failed ip expiry warning cannot forward its consumed text
+  ---
+  duration_ms: 70.237961
+  type: 'test'
+  ...
+# Subtest: input admission: failed auth save and failed error warning cannot forward the key
+ok 124 - input admission: failed auth save and failed error warning cannot forward the key
+  ---
+  duration_ms: 179.845758
+  type: 'test'
+  ...
+# Subtest: input admission: invalid IP with a failed warning cannot become a model task
+ok 125 - input admission: invalid IP with a failed warning cannot become a model task
+  ---
+  duration_ms: 107.267583
+  type: 'test'
+  ...
+# Subtest: input callback scope: menu:settings in another chat preserves the auth input
+ok 126 - input callback scope: menu:settings in another chat preserves the auth input
+  ---
+  duration_ms: 49.302594
+  type: 'test'
+  ...
+# Subtest: input callback scope: settings:env in another chat preserves the auth input
+ok 127 - input callback scope: settings:env in another chat preserves the auth input
+  ---
+  duration_ms: 34.47318
+  type: 'test'
+  ...
+# Subtest: input callback scope: settings:pult:password in another chat preserves the auth input
+ok 128 - input callback scope: settings:pult:password in another chat preserves the auth input
+  ---
+  duration_ms: 28.44677
+  type: 'test'
+  ...
+# Subtest: input callback scope: menu:settings in another chat preserves the ip input
+ok 129 - input callback scope: menu:settings in another chat preserves the ip input
+  ---
+  duration_ms: 26.831159
+  type: 'test'
+  ...
+# Subtest: input callback scope: settings:env in another chat preserves the ip input
+ok 130 - input callback scope: settings:env in another chat preserves the ip input
+  ---
+  duration_ms: 31.25099
+  type: 'test'
+  ...
+# Subtest: input callback scope: settings:pult:password in another chat preserves the ip input
+ok 131 - input callback scope: settings:pult:password in another chat preserves the ip input
+  ---
+  duration_ms: 25.961019
+  type: 'test'
+  ...
+# Subtest: input admission control: an unrelated command still reaches core when no form owns it
+ok 132 - input admission control: an unrelated command still reaches core when no form owns it
+  ---
+  duration_ms: 35.395163
+  type: 'test'
+  ...
+# Subtest: a slash command in another chat keeps expired auth input scoped to its origin
+ok 133 - a slash command in another chat keeps expired auth input scoped to its origin
+  ---
+  duration_ms: 32.894325
+  type: 'test'
+  ...
+# Subtest: a slash command in another chat keeps expired ip input scoped to its origin
+ok 134 - a slash command in another chat keeps expired ip input scoped to its origin
+  ---
+  duration_ms: 34.461909
+  type: 'test'
+  ...
+# Subtest: input scope: provider input in chat A is not cancelled by an owner command in chat B
+ok 135 - input scope: provider input in chat A is not cancelled by an owner command in chat B
+  ---
+  duration_ms: 49.586889
+  type: 'test'
+  ...
+# Subtest: input scope: local IP input in chat A is not cancelled by an owner command in chat B
+ok 136 - input scope: local IP input in chat A is not cancelled by an owner command in chat B
+  ---
+  duration_ms: 17.617546
+  type: 'test'
+  ...
+# Subtest: input scope: stale Codex secret prompt belongs only to its originating chat
+ok 137 - input scope: stale Codex secret prompt belongs only to its originating chat
+  ---
+  duration_ms: 17.08596
+  type: 'test'
+  ...
+# Subtest: input expiry: auth consumes late originating text instead of falling into the model
+ok 138 - input expiry: auth consumes late originating text instead of falling into the model
+  ---
+  duration_ms: 17.602357
+  type: 'test'
+  ...
+# Subtest: input expiry: ip consumes late originating text instead of falling into the model
+ok 139 - input expiry: ip consumes late originating text instead of falling into the model
+  ---
+  duration_ms: 18.843862
+  type: 'test'
+  ...
+# Subtest: input expiry: another chat does not discard the expired auth notice for its owner
+ok 140 - input expiry: another chat does not discard the expired auth notice for its owner
+  ---
+  duration_ms: 12.663354
+  type: 'test'
+  ...
+# Subtest: input expiry: another chat does not discard the expired ip notice for its owner
+ok 141 - input expiry: another chat does not discard the expired ip notice for its owner
+  ---
+  duration_ms: 16.30903
+  type: 'test'
+  ...
+# Subtest: input scope control: originating Codex guidance still consumes input without storing a key
+ok 142 - input scope control: originating Codex guidance still consumes input without storing a key
+  ---
+  duration_ms: 25.697541
+  type: 'test'
+  ...
+# Subtest: cross-process session completion cannot revert a concurrent provider selection
+ok 143 - cross-process session completion cannot revert a concurrent provider selection
+  ---
+  duration_ms: 1502.841111
+  type: 'test'
+  ...
+# Subtest: concurrent writes in one process preserve unrelated provider settings
+ok 144 - concurrent writes in one process preserve unrelated provider settings
+  ---
+  duration_ms: 67.309169
+  type: 'test'
+  ...
+# Subtest: only one conditional provider selection can replace the same snapshot
+ok 145 - only one conditional provider selection can replace the same snapshot
+  ---
+  duration_ms: 79.897692
+  type: 'test'
+  ...
+# Subtest: a killed writer does not strand the next store update
+ok 146 - a killed writer does not strand the next store update
+  ---
+  duration_ms: 451.674727
+  type: 'test'
+  ...
+# Subtest: waiting for another process does not block the bot event loop
+ok 147 - waiting for another process does not block the bot event loop
+  ---
+  duration_ms: 565.002896
+  type: 'test'
+  ...
+# Subtest: failed store update releases its lock for the next writer
+ok 148 - failed store update releases its lock for the next writer
+  ---
+  duration_ms: 56.617787
+  type: 'test'
+  ...
+1..148
+# tests 148
+# suites 0
+# pass 145
+# fail 1
+# cancelled 2
+# skipped 0
+# todo 0
+# duration_ms 78165.350347

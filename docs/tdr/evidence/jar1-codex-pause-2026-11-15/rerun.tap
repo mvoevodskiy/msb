@@ -1,0 +1,202 @@
+TAP version 13
+# Subtest: inbox: text and voice received during a turn are retained in arrival order
+ok 1 - inbox: text and voice received during a turn are retained in arrival order
+  ---
+  duration_ms: 453.071782
+  type: 'test'
+  ...
+# Subtest: inbox: six forwarded voices and two texts become one ordered prompt after all STT
+ok 2 - inbox: six forwarded voices and two texts become one ordered prompt after all STT
+  ---
+  duration_ms: 2801.44387
+  type: 'test'
+  ...
+# Subtest: inbox: stop cancels the current turn and drops queued text and an open forwarded batch
+ok 3 - inbox: stop cancels the current turn and drops queued text and an open forwarded batch
+  ---
+  duration_ms: 128.534314
+  type: 'test'
+  ...
+# Subtest: inbox: a failed voice keeps its position, later voices and the closing comment
+ok 4 - inbox: a failed voice keeps its position, later voices and the closing comment
+  ---
+  duration_ms: 2611.729872
+  type: 'test'
+  ...
+# Subtest: inbox: a forwarded scheduling marker remains batch data, never a new autonomous task
+ok 5 - inbox: a forwarded scheduling marker remains batch data, never a new autonomous task
+  ---
+  duration_ms: 2549.282387
+  type: 'test'
+  ...
+# Subtest: inbox: neighboring queued texts merge in order and do not swallow a voice
+ok 6 - inbox: neighboring queued texts merge in order and do not swallow a voice
+  ---
+  duration_ms: 83.249295
+  type: 'test'
+  ...
+# Subtest: inbox: shutdown cancels an open collector without STT, model turn or late timers
+ok 7 - inbox: shutdown cancels an open collector without STT, model turn or late timers
+  ---
+  duration_ms: 2626.646884
+  type: 'test'
+  ...
+# Subtest: inbox: owner guard ignores foreign forwarded input before opening a collector
+ok 8 - inbox: owner guard ignores foreign forwarded input before opening a collector
+  ---
+  duration_ms: 13.662409
+  type: 'test'
+  ...
+# Subtest: inbox: stop during batch STT fences a late result and never starts the next voice or CLI
+ok 9 - inbox: stop during batch STT fences a late result and never starts the next voice or CLI
+  ---
+  duration_ms: 2547.066251
+  type: 'test'
+  ...
+# Subtest: inbox: clear resets the session but keeps the open forwarded collector
+ok 10 - inbox: clear resets the session but keeps the open forwarded collector
+  ---
+  duration_ms: 2551.991643
+  type: 'test'
+  ...
+# Subtest: inbox: stop while a promoted voice waits for its preparation status retires its queue status
+ok 11 - inbox: stop while a promoted voice waits for its preparation status retires its queue status
+  ---
+  duration_ms: 72.651928
+  type: 'test'
+  ...
+# Subtest: inbox parity: ordinary text reply forwards the selected untrusted quote to the common runner
+ok 12 - inbox parity: ordinary text reply forwards the selected untrusted quote to the common runner
+  ---
+  duration_ms: 57.441744
+  type: 'test'
+  ...
+# Subtest: inbox parity: each queued text keeps its own reply context after neighboring messages merge
+ok 13 - inbox parity: each queued text keeps its own reply context after neighboring messages merge
+  ---
+  duration_ms: 81.660141
+  type: 'test'
+  ...
+# Subtest: reply stop parity: replying стоп aborts active work but retains the waiting queue
+ok 14 - reply stop parity: replying стоп aborts active work but retains the waiting queue
+  ---
+  duration_ms: 72.523029
+  type: 'test'
+  ...
+# Subtest: reply stop parity: idle reply стоп is consumed silently, while plain стоп remains an agent input
+ok 15 - reply stop parity: idle reply стоп is consumed silently, while plain стоп remains an agent input
+  ---
+  duration_ms: 66.457157
+  type: 'test'
+  ...
+# Subtest: reply stop parity: an open forward collector survives reply-stop without collecting the command
+ok 16 - reply stop parity: an open forward collector survives reply-stop without collecting the command
+  ---
+  duration_ms: 2563.459981
+  type: 'test'
+  ...
+# Subtest: a paused bot wakes by removing only its own marker and resumes its deferred work
+ok 17 - a paused bot wakes by removing only its own marker and resumes its deferred work
+  ---
+  duration_ms: 172.681125
+  type: 'test'
+  ...
+# Subtest: a provider switch removes only the captured marker, never a newer pause
+ok 18 - a provider switch removes only the captured marker, never a newer pause
+  ---
+  duration_ms: 35.287291
+  type: 'test'
+  ...
+# Subtest: revision-aware wake waits for a concurrent new marker even when initially absent
+ok 19 - revision-aware wake waits for a concurrent new marker even when initially absent
+  ---
+  duration_ms: 102.988261
+  type: 'test'
+  ...
+# Subtest: an unreadable marker fails closed, and a failed wake does not resume
+ok 20 - an unreadable marker fails closed, and a failed wake does not resume
+  ---
+  duration_ms: 19.927386
+  type: 'test'
+  ...
+# Subtest: reconciliation can clear a marker without recursively starting recovery
+ok 21 - reconciliation can clear a marker without recursively starting recovery
+  ---
+  duration_ms: 30.582083
+  type: 'test'
+  ...
+# Subtest: a later Python marker write survives reconciliation under the shared lock
+ok 22 - a later Python marker write survives reconciliation under the shared lock
+  ---
+  duration_ms: 286.276702
+  type: 'test'
+  ...
+# Subtest: turn lifecycle: early stop avoids spawn; failed initial status does not strand the next turn
+ok 23 - turn lifecycle: early stop avoids spawn; failed initial status does not strand the next turn
+  ---
+  duration_ms: 5562.131322
+  type: 'test'
+  ...
+# Subtest: turn lifecycle: an in-flight progress edit finishes before the terminal stopped edit
+ok 24 - turn lifecycle: an in-flight progress edit finishes before the terminal stopped edit
+  ---
+  duration_ms: 2597.764059
+  type: 'test'
+  ...
+# Subtest: turn lifecycle: stop holds the lock through delayed CLI close, then admits exactly one next turn
+ok 25 - turn lifecycle: stop holds the lock through delayed CLI close, then admits exactly one next turn
+  ---
+  duration_ms: 2891.498277
+  type: 'test'
+  ...
+# Subtest: turn lifecycle: an aborted CLI session never replaces or creates the saved conversation
+ok 26 - turn lifecycle: an aborted CLI session never replaces or creates the saved conversation
+  ---
+  duration_ms: 5395.28176
+  type: 'test'
+  ...
+# Subtest: turn lifecycle: claude-stop-partial keeps the pre-abort text and context in Telegram
+ok 27 - turn lifecycle: claude-stop-partial keeps the pre-abort text and context in Telegram
+  ---
+  duration_ms: 2520.558069
+  type: 'test'
+  ...
+# Subtest: turn lifecycle: claude-reply-stop-partial keeps the pre-abort text and context in Telegram
+ok 28 - turn lifecycle: claude-reply-stop-partial keeps the pre-abort text and context in Telegram
+  ---
+  duration_ms: 2824.215411
+  type: 'test'
+  ...
+# Subtest: turn lifecycle: newtask during the first turn prevents its late session ID from returning
+ok 29 - turn lifecycle: newtask during the first turn prevents its late session ID from returning
+  ---
+  duration_ms: 2781.939758
+  type: 'test'
+  ...
+# Subtest: turn lifecycle: a late turn cannot replace the session after switching away and back
+ok 30 - turn lifecycle: a late turn cannot replace the session after switching away and back
+  ---
+  duration_ms: 2695.202568
+  type: 'test'
+  ...
+# Subtest: turn lifecycle: /newtask stays reset across provider switches and a late turn
+ok 31 - turn lifecycle: /newtask stays reset across provider switches and a late turn
+  ---
+  duration_ms: 2748.378783
+  type: 'test'
+  ...
+# Subtest: turn lifecycle: /clear stays reset across provider switches and a late turn
+ok 32 - turn lifecycle: /clear stays reset across provider switches and a late turn
+  ---
+  duration_ms: 3172.874923
+  type: 'test'
+  ...
+1..32
+# tests 32
+# suites 0
+# pass 32
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 56052.211502

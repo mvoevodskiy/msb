@@ -1,0 +1,29 @@
+Installed reference: 03a69ef181c24fcc2e6345818a100b907d47e3a9
+Working fix checkpoint: c38e9d8fbc07b373da192f49ea6beebeeaa4d1e3
+Selective files below are from the fix checkpoint except the documented Telegram header.
+sleep.mjs and all other files remain at installed reference; no OpenClaw source from the working branch is included.
+Checks skip the mixed-route-only wake test and the OpenClaw owner-bound test.
+
+64fce0da8d9ec123f2c58bb838aee6d5b7b6ad26f2429a447babf3130de2291a  .msb/bot/src/autonomy/scheduler.mjs
+b88b3781304b883cf150cab43bff7ef18c0e3dbcb74f5f16bf2c9543a3d615f9  .msb/bot/src/autonomy/legacy-dispatch.mjs
+9a66c74265055ab01bcfa076cb837351f4210fcfc23dada6da26681041693912  .msb/bot/src/autonomy/legacy-timer-actions.mjs
+bea6a255a224bc5c1de9ac523a5bf0721d8f23c0be5c00dabb337e00af45aeb4  .msb/bot/src/autonomy/legacy-timers.mjs
+71c503509b59a5004f3d3f71e65d6c90e62a8cd1b360fbc77105fd65a9ee5375  .msb/bot/src/engines/codex-sleep.mjs
+642cf9990c9223ea02a0b64a6f0fba01f4d044eab9662b904e2165aee0bf782b  .msb/bot/src/engines/sleep-gate.mjs
+aa5c80dd8f8e6375a70256e0974b5da05b8fc5d5d5f755e76bbf4b529939239c  .msb/bot/src/engines/sleep-marker.mjs
+34c7d3c7ef532be85c4b81bb4eeab540350a5641aae6d91643ec5452db5b2a01  .msb/bot/src/telegram/bot.mjs
+d03e1f0d42de1cbe91fc73c421559640a9d10bfda35e996e1952667f468784de  .msb/bot/src/telegram/inbox.mjs
+5774467e12291f79532aaf29ac09ea8af710520b1569fa8f2c0f0d606ed85b62  .msb/bot/tests/codex-pause-switch.test.mjs
+80ef3a0e10d633e8114b1a678e724a60391c42e42f6c87b2ed3f7a422b121625  .msb/bot/tests/codex-sleep-flow.test.mjs
+1ac323aa3381bec168bee86e9d960fcaf0e0e9cb5830a181c467c5c58f1234d8  .msb/bot/tests/sleep-gate.test.mjs
+8f783df81a15a8ea01a360e5f5f1f9717ba3779e54e420eec7b1cd64961215c0  .msb/bot/tests/sleep-marker.test.mjs
+48eb148a8844b9f6f45a3f76db7fcb43b07d5c41ec434c41a5a508dc4d407648  .msb/bot/tests/legacy-timer-dispatch.test.mjs
+80bd75a958a6c4a4fa3150db9d22017d00e51418970d57b1f0e72e16cf372644  .msb/bot/tests/legacy-timer-conversation.test.mjs
+32f878aad1e042b3633e122d1fa8fd5cf8c18376a16b21202e6f2c6aa098b2a8  .msb/bot/tests/reference/parity-autonomy-contract.txt
+a9f7a9a8eb77d681ac347ca5f67149eb3e3b375f10deb9687724c29fc4ff3b06  overlay/bot/ext/codex-pause-switch.mjs
+1988f9944b1e4664a3c5b3ae36e04591b99357a949f34546e814891c6f6f8688  overlay/bot/ext/integration/callbacks.mjs
+85278e493fb0f9d7e48d9fee03aaec6b333d055cee9618810802cf499750300a  overlay/bot/ext/integration/update-hook.mjs
+8df50ef2272e7d1a756c1e98e421b528678b86798a22f8ab4b379af68ebd8017  overlay/bot/ext/setup-bypass.mjs
+89bbcfa991aee0ec325cf357c3ed69921f4d106c7a657b2bc4fe73d48deb1f29  overlay/bot/ext/store.mjs
+54707b48c24cf3e4854834cee6fea1be47d0e36d643f273fa89ca56c676a2ad2  overlay/bot/ext/tests/store-concurrency.test.mjs
+c24784e4a2dd4f1dffdcd327937719f34edda4215cdc7efd9de6bf035129cea1  overlay/bot/ext/README.md
