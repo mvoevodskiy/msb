@@ -6,19 +6,56 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { botId, msbRoot } from '../paths.mjs';
-import { loadState } from '../state.mjs';
-import { legacyTimerSnapshot, publishLegacyTimerRun } from './legacy-timers.mjs';
+import { loadState, NO_STATE_WRITE, updateState } from '../state.mjs';
+import { isCodexSelected } from '../engines/codex-active.mjs';
+import { withFileLock } from '../../shared/file-lock.mjs';
+import { claimLegacyTimerRuns, legacyTimerSnapshot, pendingLegacyTimerRun, publishLegacyTimerRun } from './legacy-timers.mjs';
 
 const weekdays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+const markerPath = env => path.join(msbRoot(env), 'engine', 'sleep.' + botId(env));
+const destinationKey = ({ chatId, userId }) => `${chatId}:${userId}`;
 
 async function isSleeping(env) {
   try {
-    await fs.lstat(path.join(msbRoot(env), 'engine', 'sleep.' + botId(env)));
+    await fs.lstat(markerPath(env));
     return true;
   } catch (error) {
     if (error?.code === 'ENOENT') return false;
     throw error;
   }
+}
+
+/** The worker commits only an awake admission. False leaves all reservations prepared. */
+export async function admitLegacyTimerRuns(runs, signal, { blocked = false, blockedByCodexSleep = false, env = process.env } = {}) {
+  if (blocked && !blockedByCodexSleep) return false;
+  if (!blocked && runs.every(run => !pendingLegacyTimerRun(run.timer))) {
+    const state = await updateState(() => {
+      signal?.throwIfAborted();
+      return NO_STATE_WRITE;
+    }, env);
+    // Ordinary stamped timers need no further schedule-file validation when
+    // Codex is not selected, just as on the original queue path.
+    if (!isCodexSelected(state)) return new Set(runs);
+  }
+  return claimLegacyTimerRuns(runs, { env, signal, admit: async commit => {
+    let admitted;
+    // Timer commands already acquire schedules before state. With the same
+    // order, provider selection and the writer cannot cross this admission.
+    await updateState(async state => {
+      signal?.throwIfAborted();
+      const destination = destinationKey(state);
+      // A provider switch after queue rejection does not invalidate the
+      // observed Codex sleep decision. Only the matching timer can be saved.
+      admitted = isCodexSelected(state) || blockedByCodexSleep
+        ? await withFileLock(markerPath(env), async () => {
+          signal?.throwIfAborted();
+          return commit(destination, blockedByCodexSleep || await isSleeping(env));
+        })
+        : await commit(destination);
+      return NO_STATE_WRITE;
+    }, env);
+    return admitted;
+  } });
 }
 
 function ownerClock(timeZone) {
@@ -59,11 +96,11 @@ export async function dispatchLegacyTimers({ scheduledTurns, timezone, now, isIn
   const local = date => (formatClock ??= ownerClock(state.timezone || timezone))(date);
   for (const timer of timers) {
     if (isInterrupted()) return;
-    if (!isDue(timer, instant, local)) continue;
+    if (!pendingLegacyTimerRun(timer) && !isDue(timer, instant, local)) continue;
     const text = '⏰ Таймер "' + timer.name + '":\n' + timer.prompt;
     await publishLegacyTimerRun(file, timer, {
-      env, now,
-      reserve: () => isInterrupted() ? null : scheduledTurns.reserve({ chatId, userId, text }),
+      env, now, recoverable: isCodexSelected(state), destination: destinationKey(state),
+      reserve: legacyRun => isInterrupted() ? null : scheduledTurns.reserve({ chatId, userId, text, legacyRun }),
     });
   }
 }

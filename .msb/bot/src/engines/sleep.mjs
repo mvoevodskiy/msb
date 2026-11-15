@@ -67,11 +67,11 @@ export function createEngineSleep({ bot, pending, now = Date.now, onWake = async
     await ctx.reply(`${text}\n⠀${suffix}`, { parse_mode: 'HTML', reply_markup: keyboard }).catch(() => {});
   }
 
-  async function sleeping(options) {
+  async function sleeping(options, onCodexBlock) {
     if (!await markerState.sleeping(options)) return false;
     try {
       if (isCodexSelected((await loadState()).state)) {
-        if (await codex.sleeping(options)) return true;
+        if (await codex.sleeping(options, onCodexBlock)) return true;
         // Selection or marker may have changed while awaiting the Codex gate.
         return markerState.sleeping(options);
       }

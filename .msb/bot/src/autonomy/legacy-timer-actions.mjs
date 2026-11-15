@@ -22,7 +22,7 @@ function selectTimer(timers, selector) {
 }
 
 function definition(timer) {
-  const { enabled, disabledBy, lastRunAt, ...stable } = timer;
+  const { enabled, disabledBy, lastRunAt, legacyPendingRun, ...stable } = timer;
   return createHash('sha256').update(JSON.stringify(stable)).digest('hex');
 }
 
@@ -39,6 +39,7 @@ export async function setTimerFromTurn(selector, enabled, context) {
     const wasEnabled = Boolean(timer.enabled);
     if (enabled && wasEnabled) return { timer, wasEnabled };
     const next = { ...timer, enabled };
+    delete next.legacyPendingRun;
     if (enabled) delete next.disabledBy;
     else next.disabledBy = 'owner';
     if (!isDeepStrictEqual(next, timer)) {

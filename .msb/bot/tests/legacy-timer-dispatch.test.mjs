@@ -9,9 +9,11 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { startScheduler } from '../src/autonomy/scheduler.mjs';
+import { claimLegacyTimerRuns } from '../src/autonomy/legacy-timers.mjs';
 import { addTask, listTasks } from '../src/autonomy/store.mjs';
-import { botRoot, msbRoot } from '../src/paths.mjs';
-import { loadState, saveState } from '../src/state.mjs';
+import { botRoot, msbRoot, statePath } from '../src/paths.mjs';
+import { loadState, saveState, updateState } from '../src/state.mjs';
+import { createBot } from '../src/telegram/bot.mjs';
 import { fixture } from './helpers/menu-fixture.mjs';
 import { withFileLock } from '../shared/file-lock.mjs';
 
@@ -45,10 +47,11 @@ async function until(check, label) {
 
 async function dispatchFixture(t, { timers = [timer], owner = 42, chatId = groupChat, run } = {}) {
   const calls = [], recipients = [];
-  const f = await fixture(t, async args => {
+  const runTimer = async args => {
     calls.push(args);
     return run ? run(args) : normalResult;
-  }, { overlay: false, runtimeProfile: 'jar1' });
+  };
+  const f = await fixture(t, runTimer, { overlay: false, runtimeProfile: 'jar1' });
   for (const key of ['MSB_SESSION_DIR', 'IIA_SESSION_DIR', 'AUTONOMY_DIR']) delete process.env[key];
   process.env.TZ = 'UTC';
   const { state } = await loadState();
@@ -59,21 +62,32 @@ async function dispatchFixture(t, { timers = [timer], owner = 42, chatId = group
   f.bot.api.sendMessage = async (chat, ...args) => { recipients.push(chat); return send(chat, ...args); };
   let time = tick;
   const intervalRuns = [];
-  const scheduler = startScheduler({ api: f.bot.api, adminId: 42, timezone: 'UTC', log() {},
-    scheduledTurns: f.bot[Symbol.for('msb.scheduledTurns')], now: () => time,
+  const start = bot => startScheduler({ api: bot.api, adminId: 42, timezone: 'UTC', log() {},
+    scheduledTurns: bot[Symbol.for('msb.scheduledTurns')], now: () => time,
     runTurn: async args => { intervalRuns.push(args); return { ok: true, text: 'interval answer' }; },
   });
+  const scheduler = start(f.bot);
   t.after(() => scheduler.stop());
   return { ...f, scheduler, file, calls, recipients, intervalRuns, setTime(value) { time = value; },
-    records: async () => JSON.parse(await fs.readFile(file, 'utf8')) };
+    records: async () => JSON.parse(await fs.readFile(file, 'utf8')),
+    async restart() {
+      await scheduler.stop();
+      await f.bot.stop();
+      const bot = createBot({ botToken: 'fake', botId: 'default', adminId: 42, workspace: f.workspace, timezone: 'UTC' },
+        { bot: new f.bot.constructor(), runTurn: runTimer });
+      await bot.start();
+      const fresh = start(bot);
+      return { scheduler: fresh, async close() { await fresh.stop(); await bot.stop(); } };
+    },
+  };
 }
 
 test('legacy once: emits the old prompt to the saved owner chat and consumes it exactly once', async t => {
   const f = await dispatchFixture(t);
   await f.scheduler.tickNow();
-  assert.deepEqual(await f.records(), [{ ...timer, enabled: false, lastRunAt: stamp }]);
 
   await until(() => f.messages.some(text => text.includes('Напоминание готово')), 'timer must deliver through the Telegram turn');
+  assert.deepEqual(await f.records(), [{ ...timer, enabled: false, lastRunAt: stamp }]);
   assert.equal(f.calls.length, 1);
   assert.equal(f.calls[0].prompt, timerPrompt);
   assert.equal(f.calls[0].isAutoTurn, true);
@@ -119,8 +133,8 @@ test('legacy recurring: daily and Sunday weekly use the owner clock and stay ena
 
   f.setTime(tick);
   await f.scheduler.tickNow();
-  assert.deepEqual(await f.records(), [{ ...daily, lastRunAt: stamp }, { ...weekly, lastRunAt: stamp }, wrongDay]);
   await until(() => f.calls.map(call => call.prompt).join('\n').includes('Каждое воскресенье'), 'weekly timer did not dispatch');
+  assert.deepEqual(await f.records(), [{ ...daily, lastRunAt: stamp }, { ...weekly, lastRunAt: stamp }, wrongDay]);
   const prompt = f.calls.map(call => call.prompt).join('\n');
   assert.match(prompt, /⏰ Таймер "Каждый день":/);
   assert.match(prompt, /⏰ Таймер "Каждое воскресенье":/);
@@ -144,7 +158,200 @@ test('legacy timer dispatch honors the old per-bot sleep marker', async t => {
 
   await fs.unlink(marker);
   await f.scheduler.tickNow();
+  await until(() => f.calls.length === 1, 'the awake timer did not run');
   assert.deepEqual(await f.records(), [{ ...timer, enabled: false, lastRunAt: stamp }]);
+});
+
+for (const restart of [false, true]) {
+  test(`sleep defers the reserved once, daily and weekly timers${restart ? ' across restart' : ''}`, async t => {
+    const daily = { ...timer, id: 'daily', name: 'Каждый день', type: 'daily', hour: 9 };
+    const weekly = { ...timer, id: 'weekly', name: 'Каждое воскресенье', type: 'weekly', hour: 9, weekdays: [7] };
+    const first = gate();
+    t.after(first.resolve);
+    const f = await dispatchFixture(t, { timers: [timer, daily, weekly], chatId: 42, run: async ({ prompt }) => {
+      if (prompt === 'Занять очередь') await first.promise;
+      return normalResult;
+    } });
+    const turns = f.bot[Symbol.for('msb.scheduledTurns')];
+    await f.message('Занять очередь');
+    await until(() => f.calls.length === 1, 'manual turn did not start');
+    await f.scheduler.tickNow();
+    await f.scheduler.tickNow();
+    await f.message('Не повторять старое сообщение');
+    const marker = path.join(msbRoot(), 'engine', 'sleep.default');
+    await fs.mkdir(path.dirname(marker), { recursive: true });
+    await fs.writeFile(marker, 'sleep');
+    first.resolve();
+    await until(() => !turns.pending, 'sleep did not settle the queue');
+    assert.equal(f.calls.length, 1);
+
+    const fresh = restart ? await f.restart() : null;
+    const scheduler = fresh?.scheduler ?? f.scheduler;
+    try {
+      f.setTime(tick + 10 * 60_000);
+      await scheduler.tickNow();
+      assert.equal(f.calls.length, 1);
+      await fs.unlink(marker);
+      await scheduler.tickNow();
+      await until(() => f.calls.slice(1).map(call => call.prompt).join('\n').includes(weekly.name), 'reserved timer was lost during sleep');
+      const prompts = f.calls.slice(1).map(call => call.prompt).join('\n');
+      for (const row of [timer, daily, weekly]) assert.equal(prompts.split(row.name).length, 2);
+      assert.ok(!prompts.includes('Не повторять старое сообщение'));
+      assert.ok(f.calls.slice(1).every(call => call.isAutoTurn));
+      const count = f.calls.length;
+      await scheduler.tickNow();
+      assert.equal(f.calls.length, count);
+    } finally { await fresh?.close(); }
+  });
+}
+
+test('sleep after the first worker check defers the timer, then /stop consumes it without replay', async t => {
+  const f = await dispatchFixture(t, { chatId: 42 });
+  const controller = f.bot[Symbol.for('msb.engineSleep')];
+  const queued = controller.queued;
+  const marker = path.join(msbRoot(), 'engine', 'sleep.default');
+  await fs.mkdir(path.dirname(marker), { recursive: true });
+  let paused = false;
+  controller.queued = async entry => {
+    const result = await queued(entry);
+    if (!paused) { paused = true; await fs.writeFile(marker, 'sleep'); }
+    return result;
+  };
+  await f.scheduler.tickNow();
+  await until(() => !f.bot[Symbol.for('msb.scheduledTurns')].pending, 'timer worker did not defer');
+  assert.equal(paused, true);
+  assert.equal(f.calls.length, 0);
+  assert.ok((await f.records())[0].legacyPendingRun);
+  await f.message('/stop');
+  assert.deepEqual(await f.records(), [{ ...timer, enabled: false, lastRunAt: stamp }]);
+  await fs.unlink(marker);
+  await f.scheduler.tickNow();
+  assert.equal(f.calls.length, 0);
+});
+
+test('the timer waits for a provider transition and honors sleep on the newly selected Codex', async t => {
+  const busy = gate(), selected = gate(), release = gate();
+  t.after(busy.resolve);
+  t.after(release.resolve);
+  const f = await dispatchFixture(t, { chatId: 42, run: async ({ prompt }) => {
+    if (prompt === 'Занять очередь') await busy.promise;
+    return normalResult;
+  } });
+  await f.message('Занять очередь');
+  await until(() => f.calls.length === 1, 'manual turn did not start');
+  await f.scheduler.tickNow();
+
+  const { extAuthBypass, ...state } = (await loadState()).state;
+  await saveState({ ...state, authMode: 'subscription', hasSubscriptionAuth: true });
+  const marker = path.join(msbRoot(), 'engine', 'sleep.default');
+  await fs.mkdir(path.dirname(marker), { recursive: true });
+  const controller = f.bot[Symbol.for('msb.engineSleep')];
+  const queued = controller.queued;
+  controller.queued = async entry => {
+    const asleep = await queued(entry);
+    if (entry.legacyParts) await fs.writeFile(marker, 'sleep');
+    return asleep;
+  };
+  const selecting = updateState(async current => {
+    selected.resolve();
+    await release.promise;
+    return { ...current, extAuthBypass };
+  });
+  await selected.promise;
+  const stateQueue = globalThis[Symbol.for('msb.stateUpdates')];
+  const turns = f.bot[Symbol.for('msb.scheduledTurns')];
+  busy.resolve();
+  try {
+    await until(() => stateQueue.get(statePath()) !== selecting || f.calls.length > 1, 'timer did not reach admission');
+    assert.notEqual(stateQueue.get(statePath()), selecting, 'timer ran before the current selection committed');
+    assert.equal(f.calls.length, 1);
+  } finally {
+    release.resolve();
+    await selecting;
+  }
+  await until(() => !turns.pending, 'sleep did not defer the prepared timer');
+  assert.equal(f.calls.length, 1);
+  assert.ok((await f.records())[0].legacyPendingRun);
+});
+
+test('a failed /stop write reports it and holds the prepared timer until a successful retry', async t => {
+  const busy = gate();
+  t.after(busy.resolve);
+  const f = await dispatchFixture(t, { chatId: 42, run: async ({ prompt }) => {
+    if (prompt === 'Занять очередь') await busy.promise;
+    return normalResult;
+  } });
+  await f.message('Занять очередь');
+  await until(() => f.calls.length === 1, 'manual turn did not start');
+  await f.scheduler.tickNow();
+  const file = await fs.realpath(f.file);
+  const rename = fs.rename;
+  fs.rename = async (from, to) => {
+    if (to === file) throw Object.assign(new Error('fixture storage failure'), { code: 'EIO' });
+    return rename(from, to);
+  };
+  try { await f.message('/stop'); }
+  finally { fs.rename = rename; }
+  assert.ok(f.messages.some(text => text.includes('Не удалось сохранить остановку таймеров')));
+  assert.ok((await f.records())[0].legacyPendingRun);
+  busy.resolve();
+  await f.scheduler.tickNow();
+  assert.equal(f.calls.length, 1);
+  assert.equal(f.bot[Symbol.for('msb.scheduledTurns')].pending, false);
+  await f.message('/stop');
+  assert.deepEqual(await f.records(), [{ ...timer, enabled: false, lastRunAt: stamp }]);
+  await f.scheduler.tickNow();
+  assert.equal(f.calls.length, 1);
+});
+
+test('a started timer is never replayed by a fresh bot over the same profile', async t => {
+  const f = await dispatchFixture(t);
+  await f.scheduler.tickNow();
+  await until(() => f.calls.length === 1, 'the first runner was not reached');
+  assert.deepEqual(await f.records(), [{ ...timer, enabled: false, lastRunAt: stamp }]);
+  const fresh = await f.restart();
+  try {
+    await fresh.scheduler.tickNow();
+    assert.equal(f.calls.length, 1);
+  } finally { await fresh.close(); }
+});
+
+test('two workers cannot claim one durable timer occurrence', async t => {
+  const busy = gate();
+  t.after(busy.resolve);
+  const f = await dispatchFixture(t, { chatId: 42, run: async ({ prompt }) => {
+    if (prompt === 'Занять очередь') await busy.promise;
+    return normalResult;
+  } });
+  await f.message('Занять очередь');
+  await until(() => f.calls.length === 1, 'manual turn did not start');
+  await f.scheduler.tickNow();
+  const [prepared] = await f.records();
+  const run = { file: await fs.realpath(f.file), timer: prepared };
+  const claimed = await Promise.all([claimLegacyTimerRuns([run]), claimLegacyTimerRuns([run])]);
+  assert.deepEqual(claimed.map(result => result.size).sort(), [0, 1]);
+  busy.resolve();
+  await until(() => !f.bot[Symbol.for('msb.scheduledTurns')].pending, 'already claimed timer did not settle');
+  assert.equal(f.calls.length, 1);
+  assert.deepEqual(await f.records(), [{ ...timer, enabled: false, lastRunAt: stamp }]);
+});
+
+test('an ordinary Claude reservation keeps its previous attempt semantics', async t => {
+  const busy = gate();
+  t.after(busy.resolve);
+  const f = await dispatchFixture(t, { chatId: 42, run: async ({ prompt, signal }) => {
+    if (prompt === 'Занять очередь') await Promise.race([busy.promise, new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }))]);
+    return normalResult;
+  } });
+  const { extAuthBypass, ...state } = (await loadState()).state;
+  await saveState({ ...state, authMode: 'subscription', hasSubscriptionAuth: true });
+  await f.message('Занять очередь');
+  await until(() => f.calls.length === 1, 'manual turn did not start');
+  await f.scheduler.tickNow();
+  assert.deepEqual(await f.records(), [{ ...timer, enabled: false, lastRunAt: stamp }]);
+  await f.message('/stop');
+  await f.scheduler.tickNow();
+  assert.equal(f.calls.length, 1);
 });
 
 test('a due Codex interval stays due while asleep and runs once after wake', async t => {
@@ -178,6 +385,151 @@ test('a Codex-only interval guard does not suspend the selected Claude provider'
   await f.scheduler.tickNow();
   assert.equal(f.intervalRuns.length, 1);
 });
+
+test('a timer queued under Claude survives a switch to sleeping Codex', async t => {
+  const first = gate();
+  t.after(first.resolve);
+  const f = await dispatchFixture(t, { chatId: 42, run: async ({ prompt }) => {
+    if (prompt === 'Занять очередь') await first.promise;
+    return normalResult;
+  } });
+  const original = (await loadState()).state;
+  const { extAuthBypass, ...state } = original;
+  const claude = { ...state, authMode: 'subscription', hasSubscriptionAuth: true };
+  await saveState(claude);
+  await f.message('Занять очередь');
+  await until(() => f.calls.length === 1, 'manual turn did not start');
+  await f.scheduler.tickNow();
+  assert.equal((await f.records())[0].lastRunAt, stamp);
+  await saveState({ ...claude, extAuthBypass: 'codex' });
+  const marker = path.join(msbRoot(), 'engine', 'sleep.default');
+  await fs.mkdir(path.dirname(marker), { recursive: true });
+  await fs.writeFile(marker, 'sleep');
+  first.resolve();
+  await until(() => !f.bot[Symbol.for('msb.scheduledTurns')].pending, 'sleep did not settle');
+  await fs.unlink(marker);
+  await f.scheduler.tickNow();
+  await until(() => f.calls.some(call => call.prompt === timerPrompt), 'timer was lost after the provider change');
+});
+
+for (const unreadable of [false, true]) {
+  test(`a timer blocked by Codex sleep survives returning to Claude before deferral${unreadable ? ' with a failed marker read' : ''}`, async t => {
+    const first = gate();
+    t.after(first.resolve);
+    const f = await dispatchFixture(t, { chatId: 42, run: async ({ prompt }) => {
+      if (prompt === 'Занять очередь') await first.promise;
+      return normalResult;
+    } });
+    const { extAuthBypass, ...state } = (await loadState()).state;
+    const claude = { ...state, authMode: 'subscription', hasSubscriptionAuth: true };
+    await saveState(claude);
+    await f.message('Занять очередь');
+    await until(() => f.calls.length === 1, 'manual turn did not start');
+    await f.scheduler.tickNow();
+    assert.deepEqual(await f.records(), [{ ...timer, enabled: false, lastRunAt: stamp }]);
+
+    await saveState({ ...claude, extAuthBypass });
+    const marker = path.join(msbRoot(), 'engine', 'sleep.default');
+    await fs.mkdir(path.dirname(marker), { recursive: true });
+    await fs.writeFile(marker, 'sleep');
+    const controller = f.bot[Symbol.for('msb.engineSleep')];
+    const queued = controller.queued;
+    let returned = false;
+    controller.queued = async (entry, ...options) => {
+      const blocked = await queued(entry, ...options);
+      if (blocked && !returned) {
+        returned = true;
+        await saveState(claude);
+        await fs.unlink(marker);
+      }
+      return blocked;
+    };
+    const lstat = fs.lstat;
+    if (unreadable) fs.lstat = async (file, ...options) => {
+      if (String(file) === marker) throw Object.assign(new Error('fixture unreadable marker'), { code: 'EACCES' });
+      return lstat(file, ...options);
+    };
+    try {
+      first.resolve();
+      await until(() => !f.bot[Symbol.for('msb.scheduledTurns')].pending, 'blocked timer did not settle');
+    } finally { fs.lstat = lstat; }
+    assert.equal(returned, true);
+    assert.equal(f.calls.length, 1, 'the dropped turn must not resume directly');
+    assert.ok((await f.records())[0].legacyPendingRun, 'the Codex decision must defer the stamped timer even after Claude wakes');
+
+    await f.scheduler.tickNow();
+    await until(() => f.calls.some(call => call.prompt === timerPrompt), 'the preserved timer did not run');
+    await f.scheduler.tickNow();
+    assert.equal(f.calls.filter(call => call.prompt === timerPrompt).length, 1);
+  });
+}
+
+for (const stop of [false, true]) {
+  test(`late Codex sleep preserves only the Claude timer parts${stop ? ' until /stop' : ' across restart'}`, async t => {
+    const first = gate();
+    t.after(first.resolve);
+    const daily = { ...timer, id: 'daily', name: 'Каждый день', type: 'daily', hour: 9 };
+    const f = await dispatchFixture(t, { timers: [timer, daily], chatId: 42, run: async ({ prompt }) => {
+      if (prompt === 'Занять очередь') await first.promise;
+      return normalResult;
+    } });
+    const { extAuthBypass, ...state } = (await loadState()).state;
+    const claude = { ...state, authMode: 'subscription', hasSubscriptionAuth: true };
+    await saveState(claude);
+    await f.message('Занять очередь');
+    await until(() => f.calls.length === 1, 'manual turn did not start');
+    await f.scheduler.tickNow();
+    const stamped = [{ ...timer, enabled: false, lastRunAt: stamp }, { ...daily, lastRunAt: stamp }];
+    assert.deepEqual(await f.records(), stamped, 'Claude reserves with the original stored fields');
+    await f.message('Не повторять ручной текст');
+    await saveState({ ...claude, extAuthBypass });
+
+    const marker = path.join(msbRoot(), 'engine', 'sleep.default');
+    await fs.mkdir(path.dirname(marker), { recursive: true });
+    const controller = f.bot[Symbol.for('msb.engineSleep')];
+    const queued = controller.queued;
+    let paused = false;
+    controller.queued = async entry => {
+      const blocked = await queued(entry);
+      if (!paused && entry.legacyParts) {
+        assert.equal(blocked, false, 'the mark must arrive after the first check');
+        paused = true;
+        await fs.writeFile(marker, 'sleep');
+      }
+      return blocked;
+    };
+    first.resolve();
+    await until(() => !f.bot[Symbol.for('msb.scheduledTurns')].pending, 'sleep did not settle the queue');
+    assert.equal(paused, true);
+    assert.equal(f.calls.length, 1);
+    const prepared = await f.records();
+    assert.ok(prepared.every(row => row.legacyPendingRun?.id));
+    assert.ok(prepared.every(row => row.lastRunAt === stamp));
+    if (stop) {
+      await f.message('/stop');
+      assert.deepEqual(await f.records(), stamped);
+    }
+
+    const fresh = await f.restart();
+    try {
+      f.setTime(tick + 10 * 60_000);
+      await fs.unlink(marker);
+      await fresh.scheduler.tickNow();
+      if (stop) assert.equal(f.calls.length, 1);
+      else {
+        await until(() => f.calls.slice(1).some(call => call.prompt.includes(daily.name)), 'the deferred daily timer did not run');
+        const prompts = f.calls.slice(1).map(call => call.prompt).join('\n');
+        assert.ok(prompts.includes(timerPrompt));
+        assert.ok(!prompts.includes('Не повторять ручной текст'));
+        assert.ok(f.calls.slice(1).every(call => call.isAutoTurn));
+        assert.deepEqual(await f.records(), stamped);
+        const calls = f.calls.length;
+        await fresh.scheduler.tickNow();
+        assert.equal(f.calls.length, calls);
+      }
+    } finally { await fresh.close(); }
+  });
+}
 
 test('legacy timers do not overlap the existing interval runner in the same profile', async t => {
   const f = await dispatchFixture(t, { run: async ({ signal }) => {
@@ -315,6 +667,55 @@ test('timer text merges with already queued owner text and uses ordinary model p
   assert.equal((await f.records())[0].lastRunAt, stamp);
 });
 
+test('a changed reservation is dropped without losing the user text or other timers', async t => {
+  const second = { ...timer, id: 'two', name: 'Другой таймер' };
+  const first = gate();
+  t.after(first.resolve);
+  const f = await dispatchFixture(t, { timers: [timer, second], chatId: 42, run: async ({ prompt }) => {
+    if (prompt === 'Занять очередь') await first.promise;
+    return normalResult;
+  } });
+  await f.message('Занять очередь');
+  await until(() => f.calls.length === 1, 'manual turn did not start');
+  await f.scheduler.tickNow();
+  await f.message('Ручное продолжение');
+  await f.callback('auto:timer-toggle:one');
+  first.resolve();
+  await until(() => f.calls.length === 2, 'remaining merged work did not run');
+  const [firstRow, secondRow] = await f.records();
+  assert.equal(firstRow.enabled, true);
+  assert.equal(firstRow.legacyPendingRun, undefined);
+  assert.equal(secondRow.legacyPendingRun, undefined);
+  assert.match(f.calls[1].prompt, /Ручное продолжение/);
+  assert.match(f.calls[1].prompt, /Другой таймер/);
+  assert.ok(!f.calls[1].prompt.includes(timerPrompt));
+  assert.notEqual(f.calls[1].isAutoTurn, true);
+});
+
+test('the admitted timer stays bound to its original physical schedule source', async t => {
+  const busy = gate();
+  t.after(busy.resolve);
+  const f = await dispatchFixture(t, { chatId: 42, run: async ({ prompt }) => {
+    if (prompt === 'Занять очередь') await busy.promise;
+    return normalResult;
+  } });
+  await f.message('Занять очередь');
+  await until(() => f.calls.length === 1, 'manual turn did not start');
+  await f.scheduler.tickNow();
+  const original = await fs.readFile(f.file);
+  const other = path.join(f.home, 'other');
+  await fs.mkdir(other);
+  const copied = path.join(other, 'schedules.json');
+  await fs.writeFile(copied, original);
+  process.env.MSB_SESSION_DIR = path.join(other, 'sessions');
+  busy.resolve();
+  await until(() => !f.bot[Symbol.for('msb.scheduledTurns')].pending, 'stale timer did not settle');
+  await f.scheduler.tickNow();
+  assert.equal(f.calls.length, 1);
+  assert.deepEqual(await fs.readFile(f.file), original);
+  assert.deepEqual(await fs.readFile(copied), original);
+});
+
 test('legacy recurring local-day stamp suppresses a repeat across the UTC date boundary', async t => {
   const daily = { ...timer, id: 'daily', type: 'daily', hour: 1 };
   const f = await dispatchFixture(t, { timers: [daily] });
@@ -328,7 +729,7 @@ test('legacy recurring local-day stamp suppresses a repeat across the UTC date b
   assert.equal(f.calls.length, 1);
 });
 
-test('shutdown drains a reserved timer stamp and never starts its cancelled turn', async t => {
+test('shutdown drains the stamp and leaves a prepared timer for restart', async t => {
   const f = await dispatchFixture(t);
   const file = await fs.realpath(f.file);
   const rename = fs.rename;
@@ -355,7 +756,9 @@ test('shutdown drains a reserved timer stamp and never starts its cancelled turn
     release.resolve();
     await Promise.all([dispatch, drain]);
   }
-  assert.deepEqual(await f.records(), [{ ...timer, enabled: false, lastRunAt: stamp }]);
+  const [prepared] = await f.records();
+  assert.ok(prepared.legacyPendingRun?.id);
+  assert.equal(prepared.lastRunAt, stamp);
   assert.equal(f.calls.length, 0);
 });
 
@@ -374,15 +777,19 @@ test('/stop closes the current admission pass while retaining a later due record
     return rename(from, to);
   };
   const dispatch = f.scheduler.tickNow();
+  let stop;
   try {
     await until(() => writing, 'first scheduled write did not reach publication');
-    await f.message('/stop');
-    assert.ok(f.messages.includes('Моя остановочка ✋🏽⛔️'));
+    const turns = f.bot[Symbol.for('msb.scheduledTurns')];
+    const epoch = turns.stopEpoch;
+    stop = f.message('/stop');
+    await until(() => turns.stopEpoch !== epoch, 'stop did not fence the admission pass');
   } finally {
     fs.rename = rename;
     release.resolve();
-    await dispatch;
+    await Promise.all([dispatch, stop]);
   }
+  assert.ok(f.messages.includes('Моя остановочка ✋🏽⛔️'));
   assert.deepEqual(await f.records(), [{ ...timer, enabled: false, lastRunAt: stamp }, second]);
   assert.equal(f.calls.length, 0);
 

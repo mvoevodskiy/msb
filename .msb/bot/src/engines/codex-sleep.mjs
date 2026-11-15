@@ -21,7 +21,7 @@ export function createCodexSleep({ pending, now = Date.now, onWake = async () =>
   const markerState = createSleepMarker({ marker, onWake });
   const notices = new Map();
 
-  async function sleeping(options) {
+  async function sleeping(options, onCodexBlock) {
     let unreadable = false;
     try { await fs.lstat(marker()); }
     catch (error) { if (error.code === 'ENOENT') return false; unreadable = true; }
@@ -29,7 +29,9 @@ export function createCodexSleep({ pending, now = Date.now, onWake = async () =>
     // On an unreadable selected state, fail closed rather than start a turn.
     try { if (!isCodexSelected((await loadState()).state)) return false; }
     catch { return true; }
-    return unreadable || await markerState.sleeping(options);
+    const asleep = unreadable || await markerState.sleeping(options);
+    if (asleep) onCodexBlock?.();
+    return asleep;
   }
 
   async function wake(options) {

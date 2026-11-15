@@ -33,8 +33,8 @@ export function createSleepGate({ pending, sleeping, notify, allowStop = async (
     await notify(ctx, suffix);
   }
 
-  async function queued(entry) {
-    if (!await sleeping()) return false;
+  async function queued(entry, onCodexBlock) {
+    if (!await sleeping(undefined, onCodexBlock)) return false;
     await entry.presentation?.catch(() => {});
     if (!entry.recovered && entry.status?.message_id) {
       await entry.ctx.api.deleteMessage(entry.ctx.chat.id, entry.status.message_id).catch(() => {});

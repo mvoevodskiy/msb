@@ -39,7 +39,7 @@ import { attachmentStatusText, createAttachmentAlbums, prepareAttachment } from 
 import { extractMediaMarkers } from './media-markers.mjs';
 import { sendMediaQueue } from './send-media.mjs';
 import { startTurnProgress } from './progress.mjs';
-import { createInbox, isForwarded } from './inbox.mjs';
+import { createInbox, isForwarded, retainAdmittedTimerParts } from './inbox.mjs';
 import { prepareBatch, batchStatus } from './batch.mjs';
 import { createPlanActions } from './plan-actions.mjs';
 import { parsePlanResponse } from './plan.mjs';
@@ -68,6 +68,8 @@ import { compactSession } from '../agent/compact.mjs';
 import { trySessionOperation } from '../agent/session-operation.mjs';
 import { hasClaudeAuth, loadState, updateState } from '../state.mjs';
 import { addTask, tryParseScheduleMessage } from '../autonomy/store.mjs';
+import { admitLegacyTimerRuns } from '../autonomy/legacy-dispatch.mjs';
+import { cancelPendingLegacyTimerRuns } from '../autonomy/legacy-timers.mjs';
 import { adminGuard, hasCodexSetup, isAdmin, isSetupMode } from './auth.mjs';
 import { HELP_CC, HELP_OC, commandsForEngine } from './commands.mjs';
 import { handleCallback } from './router.mjs';
@@ -111,10 +113,23 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       // Register the turn before the asynchronous sleep check: /stop and
       // shutdown must be able to cancel it before a model process starts.
       turn.done = (async () => {
-        const blocked = await engineSleep.queued(entry);
+        let blockedByCodexSleep = false;
+        const blocked = await engineSleep.queued(entry, () => { blockedByCodexSleep = true; });
         if (cancelled()) {
           if (!blocked && !entry.recovered) await cancelInboxEntry(entry).catch(() => {});
           return;
+        }
+        const runs = entry.legacyParts?.flatMap(part => part.legacyRun ? [part.legacyRun] : []);
+        let admitted;
+        if (runs?.length && (!blocked || runs.some(run => !run.timer.legacyPendingRun))) {
+          admitted = await admitLegacyTimerRuns(runs, turn.controller.signal, { blocked, blockedByCodexSleep }).catch(error => {
+            if (!cancelled()) console.error('[msb/bot] legacy admission failed:', error.code || error.name);
+            return new Set();
+          });
+          if (cancelled()) {
+            if (!blocked) await cancelInboxEntry(entry).catch(() => {});
+            return;
+          }
         }
         if (blocked) {
           if (entry.recovery?.id) {
@@ -126,6 +141,16 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
             }
           }
           return;
+        }
+        if (runs?.length) {
+          if (admitted === false) {
+            if (!await engineSleep.queued(entry)) await cancelInboxEntry(entry, true);
+            return;
+          }
+          if (!retainAdmittedTimerParts(entry, admitted)) {
+            await cancelInboxEntry(entry, true);
+            return;
+          }
         }
         return executeTurn(entry.ctx, entry.text || '', turn, entry.voice, entry);
       })()
@@ -168,16 +193,18 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
 
   let stopping = false;
   let stopEpoch = 0;
+  let legacyCancellations = 0;
+  let legacyCancellationFailed = false;
   bot[Symbol.for('msb.scheduledTurns')] = {
-    reserve({ chatId, userId, text }) {
+    reserve({ chatId, userId, text, legacyRun }) {
       const destination = Number(chatId);
-      if (stopping || !Number.isSafeInteger(destination) || !destination ||
+      if (stopping || legacyCancellations || (legacyRun?.timer.legacyPendingRun && legacyCancellationFailed) || !Number.isSafeInteger(destination) || !destination ||
           !isAdmin({ from: { id: userId } }, cfg.adminId)) return null;
       const ctx = {
         chat: { id: destination }, api: bot.api,
         reply: (...args) => bot.api.sendMessage(destination, ...args),
       };
-      return inbox.reserveScheduled({ ctx, text });
+      return inbox.reserveScheduled({ ctx, text, legacyRun });
     },
     get pending() { return inbox.hasScheduled; },
     get stopEpoch() { return stopEpoch; },
@@ -318,14 +345,27 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   }
 
   bot.command('stop', async (ctx) => {
-    stopEpoch++;
+    const epoch = ++stopEpoch;
     const collecting = albums.clear();
     for (const entry of collecting) {
       entry.cancelled = true;
       cancelInboxEntry(entry).catch(() => {});
     }
+    const legacyInFlight = inbox.hasLegacyScheduled;
     const queued = inbox.clear();
     const interrupted = interruptActiveTurns();
+    let cancelledLegacy = 0;
+    let legacyWarning = '';
+    legacyCancellations++;
+    try {
+      cancelledLegacy = await cancelPendingLegacyTimerRuns(legacyInFlight);
+      if (stopEpoch === epoch) legacyCancellationFailed = false;
+    } catch {
+      if (stopEpoch === epoch) legacyCancellationFailed = true;
+      legacyWarning = '\nНе удалось сохранить остановку таймеров. Повтори /stop.';
+      console.error('[msb/bot] legacy timer cancellation unavailable');
+    }
+    finally { legacyCancellations--; }
     try {
       const records = await introJournal.list();
       const activeIds = new Set([...running.values()].filter(turn => turn.interruptedByUser)
@@ -334,10 +374,10 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         if (record.status === 'prepared' || activeIds.has(record.id)) await introJournal.cancelId(record.id);
       }
     } catch { console.error('[msb/bot] introduction cancellation unavailable'); }
-    if (interrupted || queued || collecting.length) {
-      await ctx.reply('Моя остановочка ✋🏽⛔️');
+    if (interrupted || queued || collecting.length || cancelledLegacy) {
+      await ctx.reply('Моя остановочка ✋🏽⛔️' + legacyWarning);
     } else {
-      await ctx.reply('Нечего останавливать 🤷');
+      await ctx.reply(legacyWarning ? legacyWarning.trim() : 'Нечего останавливать 🤷');
     }
   });
 
