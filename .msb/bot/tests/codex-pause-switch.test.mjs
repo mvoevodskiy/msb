@@ -134,6 +134,29 @@ test('a provider change during initial pause capture cannot be reported as the s
   assert.ok(f.edits.some(text => text.includes('Пауза или движок изменились')));
 });
 
+test('a transient state read failure cannot bypass paused Codex selection', async t => {
+  const f = await fixture(t);
+  process.env.CLAUDE_CODE_OAUTH_TOKEN = 'fixture-only';
+  const marker = await sleepMarker();
+  const stateFile = path.join(f.home, '.msb/bots/default/state.json');
+  const read = fs.readFile;
+  let failed = false;
+  fs.readFile = async (file, ...options) => {
+    if (!failed && String(file) === stateFile) {
+      failed = true;
+      throw Object.assign(Error('fixture transient state read error'), { code: 'EIO' });
+    }
+    return read(file, ...options);
+  };
+  try { await f.callback('settings:engine:set:cc'); }
+  finally { fs.readFile = read; }
+  assert.equal(failed, true);
+  assert.equal((await loadState()).state.extAuthBypass, 'codex');
+  assert.equal((await loadStore()).active, 'codex');
+  assert.equal(await fs.readFile(marker, 'utf8'), 'synthetic');
+  assert.ok(f.edits.some(text => text.includes('Не удалось проверить паузу')));
+});
+
 for (const retrySelection of ['settings:engine:set:cc', 'ext:conn:set:claude']) {
 test(`a failed wake can be retried through ${retrySelection} after process restart`, async t => {
   const f = await fixture(t);

@@ -47,7 +47,13 @@ export function createCodexSleep({ pending, now = Date.now, onWake = async () =>
   async function captureCodexPause() {
     let revision, markerError, state;
     try { revision = await markerState.revision(); } catch (error) { markerError = error; }
-    try { state = (await loadState()).state; } catch { return null; }
+    try { state = (await loadState()).state; }
+    catch (error) {
+      // A known or unreadable marker cannot be treated as "no paused Codex"
+      // when the provider snapshot is temporarily unavailable.
+      if (revision || markerError) throw error;
+      return null;
+    }
     if (!isCodexSelected(state)) return null;
     if (markerError) throw markerError;
     return revision ? { revision, sourceEpoch: Number.isSafeInteger(state.sessionEpoch) ? state.sessionEpoch : 0 } : null;
