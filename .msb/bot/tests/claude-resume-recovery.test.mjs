@@ -90,7 +90,7 @@ for (const mode of ['stderr', 'structured']) {
     const storeBefore = await fs.readFile(f.storeFile, 'utf8');
     const prompt = '  fixture original request  ';
     await f.message(prompt);
-    await waitFor(() => f.edits.some(text => text.startsWith('fixture Claude answer\n\n<blockquote>⏱')));
+    await waitFor(() => f.messages.some(text => text.startsWith('fixture Claude answer\n\n<blockquote>⏱')));
     const [resume, restart] = await f.calls();
     assert.equal((await f.calls()).length, 2);
     assert.deepEqual([resume.id, restart.id], [expired, null]);
@@ -100,7 +100,7 @@ for (const mode of ['stderr', 'structured']) {
     assert.deepEqual([resume.provider, restart.provider], ['claude', 'claude']);
     assert.deepEqual(resume.args.filter((value, index) => index !== resume.args.indexOf('--resume') &&
       index !== resume.args.indexOf('--resume') + 1), restart.args);
-    assert.equal(f.edits.filter(text => text.startsWith('fixture Claude answer')).length, 1);
+    assert.equal(f.messages.filter(text => text.startsWith('fixture Claude answer')).length, 1);
     const { state } = await loadState();
     assert.equal(state.ccSessionId, fresh);
     assert.equal(state.lastCcUsage.sessionId, fresh);
@@ -111,7 +111,7 @@ for (const mode of ['stderr', 'structured']) {
     assert.equal(await fs.readFile(f.storeFile, 'utf8'), storeBefore);
 
     await f.message('fixture next user request');
-    await waitFor(() => f.edits.filter(text => text.startsWith('fixture Claude answer')).length === 2);
+    await waitFor(() => f.messages.filter(text => text.startsWith('fixture Claude answer')).length === 2);
     assert.equal((await f.calls())[2].id, fresh);
     assert.equal((await loadState()).state.sessionHistory[1].messageCount, 2);
   });

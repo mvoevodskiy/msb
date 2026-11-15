@@ -32,17 +32,20 @@ function run(scenario) {
   return report;
 }
 
-function assertAnswerReplacedStatus(report, number) {
+function assertAnswerSentAfterStatus(report, number) {
   const cli = report.cli.find((entry) => entry.number === number);
   assert.ok(cli?.statusMessageId, 'Associate the answer with its own original status message.');
   const answers = report.calls.filter((call) => call.applied && new RegExp(`^success-${number}(?:\\n|$)`).test(call.text));
   assert.equal(answers.length, 1, 'Deliver the completed answer once.');
   const answer = answers[0];
-  assert.equal(answer.method, 'editMessageText');
-  assert.equal(answer.messageId, cli.statusMessageId);
+  assert.equal(answer.method, 'sendMessage');
+  assert.notEqual(answer.messageId, cli.statusMessageId);
   assert.equal(answer.parseMode, 'HTML');
   assert.match(answer.text, new RegExp(`^success-${number}\\n\\n<blockquote>⏱ \\d+\\.\\ds</blockquote>$`));
-  assert.equal(report.finalMessages[cli.statusMessageId], answer.text, 'Late progress must not overwrite the answer.');
+  const removed = report.calls.findIndex(call => call.method === 'deleteMessage' && call.messageId === cli.statusMessageId);
+  assert.ok(removed >= 0 && removed < report.calls.indexOf(answer), 'Remove this turn’s thinking message before the answer.');
+  assert.equal(report.finalMessages[cli.statusMessageId], undefined);
+  assert.equal(report.finalMessages[answer.messageId], answer.text, 'Late progress must not overwrite the new answer.');
 }
 
 test('turn lifecycle: early stop avoids spawn; failed initial status does not strand the next turn', () => {
@@ -55,7 +58,7 @@ test('turn lifecycle: early stop avoids spawn; failed initial status does not st
   const failed = run('status-failure');
   assert.deepEqual(failed.cli.map((call) => call.prompt), ['after failed status']);
   assert.ok(failed.calls.some((call) => call.text?.includes('fixture initial status failed')));
-  assertAnswerReplacedStatus(failed, 1);
+  assertAnswerSentAfterStatus(failed, 1);
 });
 
 test('turn lifecycle: an in-flight progress edit finishes before the terminal stopped edit', () => {
@@ -80,7 +83,7 @@ test('turn lifecycle: stop holds the lock through delayed CLI close, then admits
   assert.equal(r.calls.filter((call) => call.text?.startsWith('Уже работаю')).length, 1, 'Compaction still cannot overlap the replacement CLI.');
   assert.ok(r.events.includes('cli-abort:1'));
   assert.ok(!r.events.includes('cli-abort:2'), 'Finishing the old turn must not disturb the replacement turn.');
-  assertAnswerReplacedStatus(r, 2);
+  assertAnswerSentAfterStatus(r, 2);
 });
 
 test('turn lifecycle: an aborted CLI session never replaces or creates the saved conversation', () => {
@@ -101,7 +104,11 @@ test('turn lifecycle: an aborted CLI session never replaces or creates the saved
 for (const scenario of ['claude-stop-partial', 'claude-reply-stop-partial']) {
   test('turn lifecycle: ' + scenario + ' keeps the pre-abort text and context in Telegram', () => {
     const r = run(scenario);
-    const final = r.finalMessages[r.initialStatusId];
+    const answer = r.calls.find(call => call.applied && call.method === 'sendMessage' && call.text?.startsWith('Первый фрагмент Claude.'));
+    assert.ok(answer);
+    assert.notEqual(answer.messageId, r.initialStatusId);
+    assert.equal(r.finalMessages[r.initialStatusId], undefined);
+    const final = r.finalMessages[answer.messageId];
     assert.match(final, /^Первый фрагмент Claude\.\n\n<blockquote>⏱ \d+\.\ds · ○○○ 10%<\/blockquote>$/);
     assert.equal(r.calls.filter(call => call.applied && call.method === 'sendMessage' && call.text === stopped).length, 1);
     assert.ok(!r.calls.some(call => /Поздний фрагмент|success-1|fixture-private-marker/.test(call.text)));
@@ -120,7 +127,7 @@ test('turn lifecycle: newtask during the first turn prevents its late session ID
   assert.equal(r.state.ccSessionId, undefined);
   assert.equal(r.state.sessionEpoch, 1);
   assert.equal(r.state.fixtureUnrelated, 'preserve-me');
-  assertAnswerReplacedStatus(r, 1);
+  assertAnswerSentAfterStatus(r, 1);
 });
 
 test('turn lifecycle: a late turn cannot replace the session after switching away and back', () => {

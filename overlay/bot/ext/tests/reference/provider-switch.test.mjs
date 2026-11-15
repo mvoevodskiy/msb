@@ -109,10 +109,10 @@ async function partialTurn(t, variant, plan = false) {
   assert.deepEqual(r.diary.map(({status, providerId}) => ({status, providerId})), [{ status: 'error', providerId: 'codex' }]);
   const finals = r.calls.filter(call => call.mode === 'HTML');
   assert.equal(finals.length, 1);
-  assert.equal(finals[0].method, plan ? 'sendMessage' : 'editMessageText');
+  assert.equal(finals[0].method, 'sendMessage');
   assert.equal(finals[0].markup, plan);
   if (plan) assert.ok(finals[0].callbacks.includes('plan:approve'));
-  else assert.equal(finals[0].id, 11);
+  assert.ok(r.calls.some(call => call.method === 'deleteMessage' && call.id === 11));
   return { ...r, final: finals[0].text };
 }
 
