@@ -15,7 +15,7 @@
 | Показать состояние helper | [screen.mjs](screen.mjs): `nativeEnginesScreen` |
 | Прочитать snapshot / запросить свежий status / дождаться результата | [client.mjs](client.mjs): `engineStatusSnapshot`, `refreshEngineStatus`, `waitRequestResult` |
 | Опубликовать request без замены чужого slot | [request.mjs](request.mjs): `submitRequest` (совместимый re-export в client) |
-| Пауза/пробуждение одного бота и вход очереди | [sleep.mjs](sleep.mjs) → общий [marker](sleep-marker.mjs) / [gate](sleep-gate.mjs) → [bot](../telegram/bot.mjs) / [callback](../telegram/routes/engines.mjs); при сбое локального wake [wake.mjs](wake.mjs) использует существующую системную заявку. Python-запись использует тот же SQLite lock в `usr-local-lib/msb-engine/client_markers.py` |
+| Пауза/пробуждение одного бота и вход очереди | [sleep.mjs](sleep.mjs) → общая [Codex policy](codex-sleep.mjs), [marker](sleep-marker.mjs) / [gate](sleep-gate.mjs) → [bot](../telegram/bot.mjs) / [callback](../telegram/routes/engines.mjs); для остальных провайдеров при сбое локального wake [wake.mjs](wake.mjs) использует существующую системную заявку. Python-запись использует тот же SQLite lock в `usr-local-lib/msb-engine/client_markers.py` |
 
 Профиль `msb` по умолчанию включает native routes; `jar1` сохраняет legacy UI и запрещает
 включение native OS-engine через profile initialization. IPC native helper:
@@ -38,7 +38,8 @@ status/delivery work. [Проверка](../../tests/callback-refresh.test.mjs).
 Независимые от провайдера маркер и входной gate проверяют
 [sleep-marker](../../tests/sleep-marker.test.mjs), [sleep-gate](../../tests/sleep-gate.test.mjs);
 выбранная беседа Codex — [codex-engine-sleep](../../tests/codex-engine-sleep.test.mjs),
-очередь и handoff знакомства — [codex-sleep-flow](../../tests/codex-sleep-flow.test.mjs).
+очередь и handoff знакомства — [codex-sleep-flow](../../tests/codex-sleep-flow.test.mjs),
+кнопки сообщения — [codex-sleep](../../tests/codex-sleep.test.mjs).
 
 Реализация OS-слоя и её границы: [TDR](../../../../docs/tdr/msb-engine-os-replace.md),
 [runbook rollback](../../../../docs/runbooks/msb-engine-rollback.md).
