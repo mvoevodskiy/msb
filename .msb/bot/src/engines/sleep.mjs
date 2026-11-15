@@ -13,6 +13,7 @@ import { escapeHtml } from '../telegram/edit.mjs';
 import { engineStatusSnapshot } from './client.mjs';
 import { createSleepMarker } from './sleep-marker.mjs';
 import { createSleepGate } from './sleep-gate.mjs';
+import { isCodexSelected } from './codex-active.mjs';
 
 export function createEngineSleep({ bot, pending, now = Date.now, onWake = async () => {} }) {
   const lastNotice = new Map();
@@ -21,7 +22,7 @@ export function createEngineSleep({ bot, pending, now = Date.now, onWake = async
     shouldClear: async mark => {
       // Codex sleep is explicit: keep the selected conversation paused until
       // the owner wakes this bot, without depending on another engine's state.
-      if ((await loadState()).state.extAuthBypass === 'codex') return false;
+      if (isCodexSelected((await loadState()).state)) return false;
       const snapshot = await engineStatusSnapshot().catch(() => null);
       const oc = snapshot?.openclaw;
       // A snapshot from before sleep was requested cannot prove the newly
@@ -40,7 +41,7 @@ export function createEngineSleep({ bot, pending, now = Date.now, onWake = async
     lastNotice.set(chat, now());
     const state = (await loadState().catch(() => ({ state: {} }))).state;
     const username = /^[A-Za-z0-9_]{5,32}$/.test(state.nativeOc?.username || '') ? state.nativeOc.username : '';
-    if (state.extAuthBypass === 'codex') {
+    if (isCodexSelected(state)) {
       const keyboard = new InlineKeyboard();
       // Keep the already configured external link without querying its status.
       if (username) keyboard.url('🦞 Открыть', `https://t.me/${username}`);

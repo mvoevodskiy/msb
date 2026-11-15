@@ -99,20 +99,43 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     canRun: () => !stopping && running.size === 0,
     status: showInboxStatus,
     cancel: cancelInboxEntry,
-    run: async (entry) => {
-      if (await engineSleep.queued(entry)) {
-        if (entry.recovery?.id) {
-          introOwned.delete(entry.recovery.id);
-          // A wake may have raced the queue guard while this id was owned.
-          if (!await engineSleep.sleeping()) await recoverIntroPending().catch(() => {});
-        }
-        return;
-      }
+    run: (entry) => {
       const turn = { controller: new AbortController(), completed: false, done: null };
       running.set(entry.ctx.chat.id, turn); unfinished.add(turn);
-      turn.done = executeTurn(entry.ctx, entry.text || '', turn, entry.voice, entry)
+      let introReleased = false;
+      const releaseIntro = () => {
+        const id = entry.recovery?.id || turn.pendingId;
+        if (id && !introReleased) { introOwned.delete(id); introReleased = true; }
+      };
+      const cancelled = () => stopping || turn.controller.signal.aborted;
+      // Register the turn before the asynchronous sleep check: /stop and
+      // shutdown must be able to cancel it before a model process starts.
+      turn.done = (async () => {
+        const blocked = await engineSleep.queued(entry);
+        if (cancelled()) {
+          if (!blocked && !entry.recovered) await cancelInboxEntry(entry).catch(() => {});
+          return;
+        }
+        if (blocked) {
+          if (entry.recovery?.id) {
+            releaseIntro();
+            const observedStop = stopEpoch;
+            const asleep = await engineSleep.sleeping();
+            if (!asleep && !cancelled() && observedStop === stopEpoch) {
+              await recoverIntroAfterWake(() => !cancelled() && observedStop === stopEpoch).catch(() => {});
+            }
+          }
+          return;
+        }
+        return executeTurn(entry.ctx, entry.text || '', turn, entry.voice, entry);
+      })()
         .catch(() => console.error('[msb/bot] turn delivery failed'))
-        .finally(() => { unfinished.delete(turn); if (entry.recovery?.id) introOwned.delete(entry.recovery.id); });
+        .finally(() => {
+          turn.completed = true;
+          if (running.get(entry.ctx.chat.id) === turn) running.delete(entry.ctx.chat.id);
+          unfinished.delete(turn);
+          releaseIntro();
+        });
       return turn.done;
     },
   });
@@ -791,16 +814,14 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       if (running.get(chatId) === turn) running.delete(chatId);
       await history?.finish({ status: signal.aborted ? 'aborted' : outcome, text: deliveredText, delivered, result });
       if (turn.pendingId) {
-        try {
-          const record = (await introJournal.list()).find(item => item.id === turn.pendingId);
-          if (record && turn.interruptedByUser) await introJournal.cancelId(record.id);
-          else if (record?.status === 'started' && turn.pendingClaimed && !turn.pendingLaunched) await introJournal.release(record.id);
-          else if (record?.status === 'started' && delivered) await introJournal.remove(record.id);
-          else if (record?.status === 'prepared' &&
-              !await introductionPendingCurrent(record, (await loadState()).state, process.env)) {
-            await introJournal.cancelId(record.id);
-          }
-        } finally { introOwned.delete(turn.pendingId); }
+        const record = (await introJournal.list()).find(item => item.id === turn.pendingId);
+        if (record && turn.interruptedByUser) await introJournal.cancelId(record.id);
+        else if (record?.status === 'started' && turn.pendingClaimed && !turn.pendingLaunched) await introJournal.release(record.id);
+        else if (record?.status === 'started' && delivered) await introJournal.remove(record.id);
+        else if (record?.status === 'prepared' &&
+            !await introductionPendingCurrent(record, (await loadState()).state, process.env)) {
+          await introJournal.cancelId(record.id);
+        }
       }
     }
   }
@@ -820,11 +841,11 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     try { return await introRecovery; } finally { introRecovery = undefined; }
   }
 
-  async function recoverIntroAfterWake() {
+  async function recoverIntroAfterWake(allowed = () => true) {
     // A recovery already deciding to defer for sleep may be finishing now.
     // Wait for that decision to retire, then start a fresh recovery once awake.
     while (introRecovery) await introRecovery.catch(() => {});
-    if (!stopping) return recoverIntroPending();
+    if (!stopping && allowed()) return recoverIntroPending();
   }
 
   async function recoverIntroPendingOnce() {

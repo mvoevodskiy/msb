@@ -10,8 +10,15 @@ import { fixture } from './helpers/menu-fixture.mjs';
 import { loadState } from '../src/state.mjs';
 import { createIntroPendingJournal } from '../src/agent/intro-pending.mjs';
 import { handleEnginesRoute } from '../src/telegram/routes/engines.mjs';
+import { isCodexSelected } from '../src/engines/codex-active.mjs';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+test('Codex selection follows the current CLI provider state', () => {
+  assert.equal(isCodexSelected({ engine: 'cc', extAuthBypass: 'codex' }), true);
+  assert.equal(isCodexSelected({ extAuthBypass: 'codex' }), true);
+  assert.equal(isCodexSelected({ engine: 'cc', extAuthBypass: undefined }), false);
+  assert.equal(isCodexSelected(null), false);
+});
 async function until(predicate, label) {
   for (let i = 0; i < 400; i++) { if (await predicate()) return; await wait(5); }
   throw Error(`Timed out: ${label}`);
@@ -124,3 +131,57 @@ test('a different selected provider retains the existing wake route', async () =
   assert.equal(attempts, 1);
   assert.equal(shown.text, 'existing engine menu');
 });
+
+for (const operation of ['stop command', 'shutdown']) {
+  test(`${operation} cancels a turn while sleep admission is still pending`, async t => {
+    let turns = 0, release, reached;
+    const hold = new Promise(resolve => { release = resolve; });
+    const entered = new Promise(resolve => { reached = resolve; });
+    const f = await fixture(t, async () => { turns++; return { ok: true, text: 'must not run' }; });
+    const controller = f.bot[Symbol.for('msb.engineSleep')];
+    controller.queued = async () => { reached(); await hold; return false; };
+    try {
+      await f.message('задача до остановки');
+      await entered;
+      if (operation === 'stop command') {
+        await f.message('/stop');
+        assert.ok(f.messages.includes('Моя остановочка ✋🏽⛔️'), 'Admission is cancellable work.');
+        release();
+        await wait(30);
+        assert.equal(turns, 0);
+      } else {
+        const closing = f.bot.stop();
+        release();
+        await closing;
+        assert.equal(turns, 0);
+      }
+    } finally { release(); }
+  });
+}
+
+for (const operation of ['stop command', 'shutdown']) {
+  test(`${operation} during handoff admission never launches the recovered Codex turn`, async t => {
+    let turns = 0, release, reached;
+    const hold = new Promise(resolve => { release = resolve; });
+    const entered = new Promise(resolve => { reached = resolve; });
+    const f = await fixture(t, async () => { turns++; return { ok: true, text: 'must not run' }; });
+    const { journal, id } = await stageIntro(f);
+    const controller = f.bot[Symbol.for('msb.engineSleep')];
+    controller.queued = async entry => { if (entry.recovered) { reached(); await hold; } return false; };
+    try {
+      await f.bot.start();
+      await entered;
+      if (operation === 'stop command') {
+        await f.message('/stop');
+        release(); await wait(30);
+        assert.equal((await journal.list()).find(record => record.id === id)?.status, 'cancelled');
+      } else {
+        const closing = f.bot.stop();
+        release(); await closing;
+        assert.equal((await journal.list()).find(record => record.id === id)?.status, 'prepared');
+        assert.ok(!f.deleted.includes(456));
+      }
+      assert.equal(turns, 0);
+    } finally { release(); }
+  });
+}
