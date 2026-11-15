@@ -154,30 +154,21 @@ def strict_json(data, code):
 
 
 def as_client_touch(path, content=b""):
-    """Создать файл от имени client (или удалить, если content is None)."""
+    """Change a sleep marker after dropping to client UID/GID, never as root."""
     uid, gid = uid_of("client"), gid_of("client")
-    if uid is None:
+    if uid is None or gid is None:
         raise Refused("HOST_NOT_READY", detail={"reason": "NO_CLIENT"})
-    if content is None:
-        try:
-            os.unlink(path)
-        except FileNotFoundError:
-            pass
-        return
-    d = os.path.dirname(path)
-    os.makedirs(d, mode=0o700, exist_ok=True)
     try:
-        os.chown(d, uid, gid)
-    except OSError:
-        pass
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | os.O_CLOEXEC, 0o600)
-    try:
-        if content:
-            os.write(fd, content)
-    finally:
-        os.close(fd)
-    os.chown(path, uid, gid)
-    os.chmod(path, 0o600)
+        result = subprocess.run(
+            [sys.executable, '-IS', os.path.join(os.path.dirname(__file__), 'client_markers.py'),
+             path, 'remove' if content is None else 'write'],
+            input=content if content is not None else b'', capture_output=True,
+            user=uid, group=gid, extra_groups=(), timeout=30, check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired) as e:
+        raise Refused("FAILED", "failed", {"reason": "CLIENT_STEP"}) from e
+    if result.returncode:
+        raise Refused("FAILED", "failed", {"reason": "CLIENT_STEP"})
 
 
 def disk():
