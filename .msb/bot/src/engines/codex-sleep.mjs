@@ -3,7 +3,8 @@
  * [Marker](./sleep-marker.mjs) and [gate](./sleep-gate.mjs) contain the shared
  * mechanics; [wake route](../telegram/routes/engines.mjs) changes no provider.
  * [Checks](../../tests/codex-engine-sleep.test.mjs), [notice](../../tests/codex-sleep.test.mjs) and
- * [handoff/stop](../../tests/codex-sleep-flow.test.mjs) use synthetic I/O.
+ * [handoff/stop](../../tests/codex-sleep-flow.test.mjs) use synthetic I/O;
+ * allowStop admits the existing stop paths only for selected Codex.
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -37,6 +38,11 @@ export function createCodexSleep({ pending, now = Date.now, onWake = async () =>
     } catch { return false; }
   }
 
+  async function allowStop() {
+    try { return isCodexSelected((await loadState()).state); }
+    catch { return false; }
+  }
+
   async function notify(ctx, suffix = '') {
     const chat = ctx.chat?.id;
     if (!chat) return;
@@ -49,5 +55,5 @@ export function createCodexSleep({ pending, now = Date.now, onWake = async () =>
     await ctx.reply(`Codex на паузе.\n⠀${suffix}`, { parse_mode: 'HTML', reply_markup: keyboard }).catch(() => {});
   }
 
-  return { ...markerState, ...createSleepGate({ pending, sleeping, notify }), sleeping, wake, notify };
+  return { ...markerState, ...createSleepGate({ pending, sleeping, notify, allowStop }), sleeping, wake, notify, allowStop };
 }

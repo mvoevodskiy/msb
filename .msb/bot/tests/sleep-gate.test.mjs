@@ -30,6 +30,13 @@ test('settings, engine callbacks and an already open form stay accessible', asyn
   assert.deepEqual(f.events, [['next'], ['next'], ['next']]);
 });
 
+test('the default sleep gate still blocks stop for other providers', async () => {
+  const f = fixture();
+  await f.gate.middleware(f.message('/stop'), f.next);
+  await f.gate.middleware({ ...f.message('стоп'), message: { text: 'стоп', reply_to_message: { message_id: 1 } } }, f.next);
+  assert.deepEqual(f.events, [['notice', ''], ['notice', '']]);
+});
+
 test('key-like input is removed if possible and failure is reported without echoing it', async () => {
   for (const failDelete of [false, true]) {
     const f = fixture({ failDelete });

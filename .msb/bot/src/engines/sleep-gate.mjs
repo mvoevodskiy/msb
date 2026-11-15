@@ -1,7 +1,7 @@
 /**
  * Provider-independent admission for a sleeping bot: [policy](./sleep.mjs),
  * [Telegram ingress/queue](../telegram/bot.mjs), [checks](../../tests/sleep-gate.test.mjs).
- * The caller owns the marker decision, wake recovery and existing notice.
+ * The caller owns marker/wake decisions, notices and provider-scoped stop access.
  */
 const KEY_PATTERNS = [
   /(?<!\d)\d{5,12}:[A-Za-z0-9_-]{30,}/,
@@ -11,11 +11,14 @@ const KEY_PATTERNS = [
   /(?<![A-Za-z0-9])xai-[A-Za-z0-9]{20,}/,
 ];
 
-export function createSleepGate({ pending, sleeping, notify }) {
+export function createSleepGate({ pending, sleeping, notify, allowStop = async () => false }) {
   async function middleware(ctx, next) {
     if (!await sleeping()) return next();
     const data = ctx.callbackQuery?.data;
     const text = ctx.message?.text || '';
+    const stopping = /^\/stop(?:@\w+)?(?:\s|$)/.test(text) ||
+      (text.toLowerCase() === 'стоп' && Boolean(ctx.message?.reply_to_message));
+    if (stopping && await allowStop()) return next();
     if (typeof data === 'string' && (data.startsWith('eng:') || data.startsWith('settings:'))) return next();
     if (/^\/settings(?:@\w+)?(?:\s|$)/.test(text)) return next();
     if (pending.has(ctx.chat?.id) && text.trim() && !text.trim().startsWith('/')) return next();

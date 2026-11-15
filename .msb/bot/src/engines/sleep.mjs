@@ -3,7 +3,8 @@
  * [wake callback](../telegram/routes/engines.mjs); no provider/session writes.
  * Marker is owned by the selected runtime profile. Shared [marker](./sleep-marker.mjs)
  * and [admission](./sleep-gate.mjs) are provider-independent; [Codex policy](./codex-sleep.mjs)
- * is shared with a selective release. This adapter retains other existing routes.
+ * is shared with a selective release. This adapter retains other existing routes
+ * while delegating Codex stop admission to that same policy.
  * [Codex checks](../../tests/codex-engine-sleep.test.mjs).
  */
 import path from 'node:path';
@@ -77,6 +78,6 @@ export function createEngineSleep({ bot, pending, now = Date.now, onWake = async
     } catch { return true; }
     return true;
   }
-  const gate = createSleepGate({ pending, sleeping, notify });
+  const gate = createSleepGate({ pending, sleeping, notify, allowStop: codex.allowStop });
   return { ...gate, ...markerState, sleeping };
 }

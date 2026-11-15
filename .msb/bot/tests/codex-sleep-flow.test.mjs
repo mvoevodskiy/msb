@@ -43,6 +43,34 @@ async function stageIntro(f) {
   return { journal, id };
 }
 
+for (const input of ['command', 'reply']) {
+  test(`an active Codex turn accepts ${input} stop while the bot is asleep`, async t => {
+    let started, aborted;
+    const running = new Promise(resolve => { started = resolve; });
+    const interrupted = new Promise(resolve => { aborted = resolve; });
+    const f = await fixture(t, async ({ signal }) => {
+      started();
+      return new Promise(resolve => signal.addEventListener('abort', () => {
+        aborted(); resolve({ ok: false, error: 'aborted' });
+      }, { once: true }));
+    });
+    const before = (await loadState()).state;
+    await f.message('synthetic ongoing request');
+    await running;
+    const marker = await sleepMarker();
+    if (input === 'command') await f.message('/stop');
+    else await f.bot.handleUpdate({ message: { message_id: 100, text: 'стоп',
+      from: { id: 42 }, chat: { id: 42 }, reply_to_message: { message_id: 1 } } });
+    const stopped = await Promise.race([interrupted.then(() => true), wait(500).then(() => false)]);
+    assert.equal(stopped, true, 'The pause must not hide the existing stop path.');
+    assert.ok(f.messages.includes('Моя остановочка ✋🏽⛔️'));
+    assert.equal(await fs.readFile(marker, 'utf8'), 'synthetic', 'Stopping is not waking.');
+    const after = (await loadState()).state;
+    assert.equal(after.ccSessionId, before.ccSessionId);
+    assert.equal(after.extAuthBypass, before.extAuthBypass);
+  });
+}
+
 test('a queued Codex turn is not started when sleep begins before admission', async t => {
   let turns = 0, release, entered;
   const first = new Promise(resolve => { entered = resolve; });
