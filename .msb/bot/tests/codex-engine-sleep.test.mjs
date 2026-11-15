@@ -53,8 +53,18 @@ test('Codex resumes its selected conversation after the sleep gate', async t => 
   const marker = path.join(process.env.MSB_RUNTIME_ROOT, 'engine', 'sleep.default');
   await fs.mkdir(path.dirname(marker), { recursive: true, mode: 0o700 });
   await fs.writeFile(marker, 'fixture');
+  let statusReads = 0;
+  const originalReadFile = fs.readFile;
+  fs.readFile = async (file, ...args) => {
+    if (String(file) === '/run/msb-engine/state.json') { statusReads++; throw Error('unexpected status read'); }
+    return originalReadFile(file, ...args);
+  };
+  t.after(() => { fs.readFile = originalReadFile; });
   await f.message('blocked synthetic message');
   assert.equal((await executions()).length, 1);
+  assert.match(f.messages.at(-1), /^Codex на паузе\./);
+  assert.ok(f.messageOptions.at(-1).reply_markup.inline_keyboard.flat().some(button => button.callback_data === 'eng:wake'));
+  assert.equal(statusReads, 0, 'The Codex gate must not consult another engine status.');
   const during = (await loadState()).state;
   assert.equal(during.ccSessionId, initial.ccSessionId);
   assert.equal(during.extAuthBypass, 'codex');
@@ -68,6 +78,8 @@ test('Codex resumes its selected conversation after the sleep gate', async t => 
   assert.equal((await executions()).length, 1);
   assert.equal((await loadState()).state.ccSessionId, initial.ccSessionId);
   fs.lstat = originalLstat;
+  assert.equal(statusReads, 0);
+  fs.readFile = originalReadFile; // The existing engine screen may load its own status after wake.
 
   await f.callback('eng:wake');
   await assert.rejects(fs.stat(marker), { code: 'ENOENT' });

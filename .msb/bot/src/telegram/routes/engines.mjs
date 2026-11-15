@@ -9,7 +9,12 @@ import { UNHANDLED } from './shared.mjs';
 
 export async function handleEnginesRoute({ data, state, show, bot, engineMenu, signal }) {
   if (data === 'eng:wake') {
-    const ok = await wakeWithFallback(bot[Symbol.for('msb.engineSleep')], { botId: botId(), signal });
+    const sleep = bot[Symbol.for('msb.engineSleep')];
+    // Codex uses the existing local marker directly; do not publish a system
+    // request or involve another engine if local wake fails.
+    const ok = state.extAuthBypass === 'codex'
+      ? await sleep?.wake()
+      : await wakeWithFallback(sleep, { botId: botId(), signal });
     if (!ok) return show({ text: 'Не получилось переключить бота. Попробуй ещё раз.', keyboard: (await engineMenu()).keyboard });
     return show(await engineMenu());
   }
