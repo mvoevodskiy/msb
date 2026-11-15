@@ -25,6 +25,7 @@ import { randomUUID } from 'node:crypto';
  * Skills command read options/OC loading → [read presentation](./skills-read.mjs), native OC reader is injectable.
  * Проверки: [inbox lifecycle](../../tests/inbox-lifecycle.test.mjs),
  * [polling/stop](../../tests/turn-lifecycle.test.mjs), [forms/menu](../../tests/menu-handlers.test.mjs),
+ * [Codex sleep ingress/queue](../../tests/codex-sleep-flow.test.mjs),
  * [attachments](../../tests/attachments.test.mjs), [media-markers](../../tests/media-markers.test.mjs).
  */
 import { Bot } from 'grammy';
@@ -72,6 +73,7 @@ import { HELP_CC, HELP_OC, commandsForEngine } from './commands.mjs';
 import { handleCallback } from './router.mjs';
 import { costScreen, hubScreen, monitorScreen, setupScreen, settingsScreen } from './screens.mjs';
 import { SPEND_PAUSED } from '../billing/owner-spend.mjs';
+import { createEngineSleep } from '../engines/sleep.mjs';
 
 /**
  * @param {ReturnType<import('../config.mjs').readConfig>} cfg
@@ -89,6 +91,8 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   const unfinished = new Set();
   /** @type {Map<number, string>} */
   const pending = new PendingInputs({ now });
+  const engineSleep = createEngineSleep({ bot, pending, now, onWake: () => recoverIntroAfterWake() });
+  bot[Symbol.for('msb.engineSleep')] = engineSleep;
 
   // Every supported agent input enters one worker; commands/forms remain immediate.
   const inbox = createInbox({
@@ -98,9 +102,40 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     run: (entry) => {
       const turn = { controller: new AbortController(), completed: false, done: null };
       running.set(entry.ctx.chat.id, turn); unfinished.add(turn);
-      turn.done = executeTurn(entry.ctx, entry.text || '', turn, entry.voice, entry)
+      let introReleased = false;
+      const releaseIntro = () => {
+        const id = entry.recovery?.id || turn.pendingId;
+        if (id && !introReleased) { introOwned.delete(id); introReleased = true; }
+      };
+      const cancelled = () => stopping || turn.controller.signal.aborted;
+      // Register the turn before the asynchronous sleep check: /stop and
+      // shutdown must be able to cancel it before a model process starts.
+      turn.done = (async () => {
+        const blocked = await engineSleep.queued(entry);
+        if (cancelled()) {
+          if (!blocked && !entry.recovered) await cancelInboxEntry(entry).catch(() => {});
+          return;
+        }
+        if (blocked) {
+          if (entry.recovery?.id) {
+            releaseIntro();
+            const observedStop = stopEpoch;
+            const asleep = await engineSleep.sleeping();
+            if (!asleep && !cancelled() && observedStop === stopEpoch) {
+              await recoverIntroAfterWake(() => !cancelled() && observedStop === stopEpoch).catch(() => {});
+            }
+          }
+          return;
+        }
+        return executeTurn(entry.ctx, entry.text || '', turn, entry.voice, entry);
+      })()
         .catch(() => console.error('[msb/bot] turn delivery failed'))
-        .finally(() => { unfinished.delete(turn); if (entry.recovery?.id) introOwned.delete(entry.recovery.id); });
+        .finally(() => {
+          turn.completed = true;
+          if (running.get(entry.ctx.chat.id) === turn) running.delete(entry.ctx.chat.id);
+          unfinished.delete(turn);
+          releaseIntro();
+        });
       return turn.done;
     },
   });
@@ -178,6 +213,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     }
     return next();
   });
+  bot.use(engineSleep.middleware);
   bot[Symbol.for('msb.openClawSkillsReader')]=readOpenClawSkills;
   bot[Symbol.for('msb.cancelPendingInput')] = (chatId) => pending.delete(chatId);
   bot.use(async (ctx, next) => {
@@ -778,16 +814,14 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       if (running.get(chatId) === turn) running.delete(chatId);
       await history?.finish({ status: signal.aborted ? 'aborted' : outcome, text: deliveredText, delivered, result });
       if (turn.pendingId) {
-        try {
-          const record = (await introJournal.list()).find(item => item.id === turn.pendingId);
-          if (record && turn.interruptedByUser) await introJournal.cancelId(record.id);
-          else if (record?.status === 'started' && turn.pendingClaimed && !turn.pendingLaunched) await introJournal.release(record.id);
-          else if (record?.status === 'started' && delivered) await introJournal.remove(record.id);
-          else if (record?.status === 'prepared' &&
-              !await introductionPendingCurrent(record, (await loadState()).state, process.env)) {
-            await introJournal.cancelId(record.id);
-          }
-        } finally { introOwned.delete(turn.pendingId); }
+        const record = (await introJournal.list()).find(item => item.id === turn.pendingId);
+        if (record && turn.interruptedByUser) await introJournal.cancelId(record.id);
+        else if (record?.status === 'started' && turn.pendingClaimed && !turn.pendingLaunched) await introJournal.release(record.id);
+        else if (record?.status === 'started' && delivered) await introJournal.remove(record.id);
+        else if (record?.status === 'prepared' &&
+            !await introductionPendingCurrent(record, (await loadState()).state, process.env)) {
+          await introJournal.cancelId(record.id);
+        }
       }
     }
   }
@@ -807,7 +841,17 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     try { return await introRecovery; } finally { introRecovery = undefined; }
   }
 
+  async function recoverIntroAfterWake(allowed = () => true) {
+    // A recovery already deciding to defer for sleep may be finishing now.
+    // Wait for that decision to retire, then start a fresh recovery once awake.
+    while (introRecovery) await introRecovery.catch(() => {});
+    if (!stopping && allowed()) return recoverIntroPending();
+  }
+
   async function recoverIntroPendingOnce() {
+    // Preserve prepared, started and stale handoffs while another engine owns
+    // the conversation. Reconcile without recursively starting recovery.
+    if (await engineSleep.sleeping({ resumeOnWake: false })) return new Set();
     const observedStop = stopEpoch;
     const records = await introJournal.list();
     const { state } = await loadState();

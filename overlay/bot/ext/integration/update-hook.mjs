@@ -5,6 +5,7 @@
  * Native MCP metadata → [Codex user catalog](../codex-mcp.mjs).
  * Saved Codex admission and execution → [adapter](../adapters/saved-codex.mjs).
  * Saved Cursor admission and execution → [adapter](../adapters/saved-cursor.mjs).
+ * Engine sleep admission stays in the core [gate](../../../../.msb/bot/src/engines/sleep.mjs).
  * Навигация: [Обвязка](../README.md).
  */
 import { beginCallbackRender, runCallbackScope } from '../../shared/callback-renders.mjs';
@@ -15,8 +16,8 @@ import {registerMcpProvider} from '../codex-mcp.mjs';
 import { runSavedCodexPrompt, savedCodexPromptReady } from '../adapters/saved-codex.mjs';
 import { createSavedCodexQuotaReader } from '../adapters/saved-codex-quota.mjs';
 import { runSavedCursorPrompt, savedCursorPromptReady } from '../adapters/saved-cursor.mjs';
-import { clearPendingAuth } from '../auth.mjs';
-import { clearPendingLocalIp } from '../local-ssh.mjs';
+import { clearPendingAuth, getPendingAuth } from '../auth.mjs';
+import { clearPendingLocalIp, getPendingLocalIp } from '../local-ssh.mjs';
 import { runLocalExtCallback } from '../local-ext.mjs';
 import { handleCallback } from './callbacks.mjs';
 import { handleAuthMessage } from './text-input.mjs';
@@ -41,6 +42,18 @@ export function installUpdateHook(BotClass, env = process.env) {
       return origHandleUpdate.call(this, update, webhookReplyEnvelope);
     }
     try {
+      const sleep = this[Symbol.for('msb.engineSleep')];
+      if (sleep && await sleep.sleeping()) {
+        const data = update?.callback_query?.data;
+        const text = update?.message?.text || '';
+        const chatId = event?.chat?.id;
+        const inputOpen = chatId != null && !text.trim().startsWith('/') && Boolean(text.trim()) &&
+          (getPendingAuth(event.from.id, { chatId, includeExpired: true }) ||
+           getPendingLocalIp(event.from.id, { chatId, includeExpired: true }));
+        const settings = /^\/settings(?:@\w+)?(?:\s|$)/.test(text);
+        const allowedCallback = typeof data === 'string' && (data.startsWith('eng:') || data.startsWith('settings:'));
+        if (!inputOpen && !settings && !allowedCallback) return origHandleUpdate.call(this, update, webhookReplyEnvelope);
+      }
       if (update?.callback_query) {
         const render = beginCallbackRender(this, event);
         const startsForm = [
