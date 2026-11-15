@@ -73,15 +73,15 @@ test('legacy once: emits the old prompt to the saved owner chat and consumes it 
   await f.scheduler.tickNow();
   assert.deepEqual(await f.records(), [{ ...timer, enabled: false, lastRunAt: stamp }]);
 
-  await until(() => f.edits.some(text => text.includes('Напоминание готово')), 'timer must deliver through the Telegram turn');
+  await until(() => f.messages.some(text => text.includes('Напоминание готово')), 'timer must deliver through the Telegram turn');
   assert.equal(f.calls.length, 1);
   assert.equal(f.calls[0].prompt, timerPrompt);
   assert.equal(f.calls[0].isAutoTurn, true);
   assert.notEqual(f.calls[0].autonomy, true);
   assert.ok(f.typingSignals.length > 0);
-  assert.deepEqual(f.recipients, [groupChat]);
+  assert.deepEqual(f.recipients, [groupChat, groupChat], 'The status and new final response target the saved chat.');
   assert.deepEqual(await listTasks(), []);
-  assert.ok(f.edits.some(text => /Напоминание готово.*⏱.*50%/s.test(text)));
+  assert.ok(f.messages.some(text => /Напоминание готово.*⏱.*50%/s.test(text)));
 
   await f.callback('auto:timer-toggle:one');
   assert.equal((await f.records())[0].lastRunAt, stamp);

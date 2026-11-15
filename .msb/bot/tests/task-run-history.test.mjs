@@ -205,10 +205,10 @@ for (const provider of ['claude', 'codex']) {
     await writeRuns(reminderRunPath(), [run('own', Date.now() - 60_000, { name: 'Проверяемый прогон' })]);
     await native.respond(runMarker());
     await f.message('Сколько раз сработало?');
-    await until(() => f.edits.some(text => text.includes('⏱')), 'controlled provider did not finish', 10_000);
+    await until(() => f.messages.some(text => text.includes('⏱')), 'controlled provider did not finish', 10_000);
     const call = (await native.trace()).at(-1);
     const prompt = provider === 'claude' ? call.argv[call.argv.indexOf('--append-system-prompt') + 1] : call.prompt;
     assert.match(prompt, /\[TASK_RUNS\].*\[TASK_RUNS:/s);
-    assert.ok(f.edits.some(text => text.includes('Проверяемый прогон — 1 прогон')));
+    assert.ok(f.messages.some(text => text.includes('Проверяемый прогон — 1 прогон')));
   });
 }

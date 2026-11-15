@@ -43,7 +43,7 @@ try {
   await f.message('Составь синтетический план без инструментов');
   await until(() => f.messageOptions.some(opts => opts?.reply_markup));
   await f.callback('plan:approve', 42, { messageId: 77, threadId: 7 });
-  await until(() => f.edits.some(text => text.startsWith('Продолжение завершено')));
+  await until(() => f.messages.some(text => text.startsWith('Продолжение завершено')));
   await f.bot.stop();
   const diary = (await fs.readFile(path.join(f.home, '.msb/bots/default/chat-diary.jsonl'), 'utf8')).trim().split('\n').map(line => JSON.parse(line));
   console.log('PLAN_TURN=' + JSON.stringify({ calls, state: (await loadState()).state,

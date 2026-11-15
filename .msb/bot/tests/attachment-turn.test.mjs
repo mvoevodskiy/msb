@@ -172,7 +172,7 @@ test('Codex attachment turn sends a relative file from the captured project', as
     from: { id: 42, is_bot: false, first_name: 'Owner' },
     document: { file_id: 'doc', file_name: 'note.txt', file_size: incoming.length, mime_type: 'text/plain' },
   } });
-  await until(() => f.edits.some(text => text.includes('Вложение обработано')), 'Codex attachment answer');
+  await until(() => f.messages.some(text => text.includes('Вложение обработано')), 'Codex attachment answer');
   await f.bot.stop();
   const call = (await native.trace()).find(row => row.kind === 'codex-exec');
   assert.equal(call.cwd, await fs.realpath(project));

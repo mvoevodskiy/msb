@@ -59,10 +59,10 @@ async function profile(t, { output = command(live.id, '+2h'), records = [live], 
       message: { message_id: messageId, chat: { id: chatId }, message_thread_id: 17,
         text: f.messages[messageId - 1] ?? 'Другая карточка' } } });
   const turn = async () => {
-    const start = f.edits.length;
+    const start = f.messages.length;
     await f.request(request);
-    await until(() => f.edits.slice(start).some(text => text.includes('⏱')), 'reschedule reply did not finish');
-    return f.edits.slice(start).find(text => text.includes('⏱'));
+    await until(() => f.messages.slice(start).some(text => text.includes('⏱')), 'reschedule reply did not finish');
+    return f.messages.slice(start).find(text => text.includes('⏱'));
   };
   return { ...f, put, jobFile, journal, stop, question, keyboard, toast, click, turn,
     untouched: async () => assert.deepEqual(await bytes(), before) };
@@ -405,11 +405,11 @@ for (const provider of ['claude', 'codex']) {
     await fs.writeFile(file, before);
     await native.respond(command(live.id, '+2h'));
     await f.message(request);
-    await until(() => f.edits.some(text => text.includes('⏱')), 'provider did not finish', 10_000);
+    await until(() => f.messages.some(text => text.includes('⏱')), 'provider did not finish', 10_000);
     const call = (await native.trace()).at(-1);
     const prompt = provider === 'claude' ? call.argv[call.argv.indexOf('--append-system-prompt') + 1] : call.prompt;
     assert.match(prompt, /\[RESCHEDULE_TASK:/);
-    assert.match(f.edits.at(-1), /Спросил подтверждение ниже — перенесу по кнопке/);
+    assert.match(f.messages.at(-1), /Спросил подтверждение ниже — перенесу по кнопке/);
     assert.equal(await fs.readFile(file, 'utf8'), before);
     assert.ok(f.markupEdits.some(item => item.options.reply_markup.inline_keyboard[0]?.[0]?.callback_data === 'rs:Exact-ID'));
   });

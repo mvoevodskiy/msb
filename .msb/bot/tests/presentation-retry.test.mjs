@@ -145,8 +145,10 @@ test('presentation retry: stop drains late HTTP results without a retry or final
       assert.equal(clock.hasDelay(120_000), false, 'A late 429 must not enter an obsolete autoRetry pause.');
       assert.equal(finishing.settled, true);
       assert.equal(finishing.error, undefined);
-      assert.deepEqual(finishing.value, { method: 'edit', messages: 1 });
+      assert.deepEqual(finishing.value, { method: 'send', messages: 1 });
       assert.equal(f.applied.at(-1).payload.text, 'Финальный ответ\n\n<blockquote>⏱ 13.0s</blockquote>');
+      assert.equal(f.applied.at(-1).method, 'sendMessage');
+      assert.deepEqual(f.calls.slice(-2).map(call => call.method), ['deleteMessage', 'sendMessage']);
       const count = f.calls.length;
       await clock.advance(120_000);
       assert.equal(f.calls.length, count, 'An old request must never retry over the completed answer.');
@@ -162,7 +164,7 @@ test('presentation retry: stop drains late HTTP results without a retry or final
   }
 });
 
-test('presentation retry: final edit and cleanup 429 fall back immediately, while the actual answer send retains autoRetry', async () => {
+test('presentation retry: cleanup 429 does not delay the actual answer send, which retains autoRetry', async () => {
   const clock = fakeClock();
   let sends = 0, delivery;
   const f = fixture(call => {
@@ -173,8 +175,8 @@ test('presentation retry: final edit and cleanup 429 fall back immediately, whil
   try {
     delivery = watch(deliverTurnResponse(f.ctx, 101, 'Финальный ответ', { elapsedMs: 13_000 }));
     await flush();
-    assert.deepEqual(f.calls.map(call => call.method), ['editMessageText', 'deleteMessage', 'sendMessage']);
-    assert.equal(clock.hasDelay(120_000), false, 'Neither failed final edit nor cleanup may delay the send fallback.');
+    assert.deepEqual(f.calls.map(call => call.method), ['deleteMessage', 'sendMessage']);
+    assert.equal(clock.hasDelay(120_000), false, 'A failed cleanup must not delay the answer.');
     assert.equal(clock.hasDelay(2000), true, 'Ordinary answer sends must keep the original retry behavior.');
     assert.equal(delivery.settled, false);
     await clock.advance(1999);
@@ -197,9 +199,9 @@ test('presentation retry: final edit and cleanup 429 fall back immediately, whil
   }
 });
 
-test('presentation retry: client abort must not release a final edit ahead of an accepted remote animation', async () => {
+test('presentation retry: accepted remote animation drains before deleting the status and sending the final answer', async () => {
   const held = gate();
-  let first = true, remoteText = '', remoteApply, progress, finishing;
+  let first = true, remoteText = '', sentText = '', remoteApply, progress, finishing;
   const f = fixture(call => {
     if (call.method === 'editMessageText' && first) {
       first = false;
@@ -214,6 +216,8 @@ test('presentation retry: client abort must not release a final edit ahead of an
       });
     }
     if (call.method === 'editMessageText') remoteText = call.payload.text;
+    if (call.method === 'deleteMessage') remoteText = null;
+    if (call.method === 'sendMessage') sentText = call.payload.text;
     return success(call.payload);
   });
   try {
@@ -226,6 +230,7 @@ test('presentation retry: client abort must not release a final edit ahead of an
     await flush();
     held.resolve(); await remoteApply; await flush(); await finishing.promise;
     assert.equal(finishing.error, undefined);
-    assert.equal(remoteText, 'Моя остановочка ✋🏽⛔️', 'A server-side animation must never overwrite the terminal stop.');
+    assert.equal(remoteText, null, 'The status is deleted only after the accepted animation finishes.');
+    assert.equal(sentText, 'Моя остановочка ✋🏽⛔️', 'The terminal response must be a separate message.');
   } finally { held.resolve(); await progress?.stop(); await finishing?.promise; }
 });

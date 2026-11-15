@@ -100,11 +100,17 @@ test('reference voice: shared Deepgram key, original transcript preview and full
     expectContract(failures, r.cli[0].prompt.endsWith(transcript), 'send the FULL transcript, not the 300-character preview, to the model');
     expectContract(failures, r.cli[0].prompt.includes('Это исходное сообщение для голосового ответа.'), 'preserve the original replied-to message as context');
   }
-  expectContract(failures, messages.some((call) => String(call.payload.text || '').includes(answer)), 'deliver the agent response after transcription');
+  const thinking = messages.find((call) => call.method === 'sendMessage' && call.payload.text === 'Думаю ⏳');
+  const response = messages.findLast((call) => String(call.payload.text || '').includes(answer));
+  const removed = r.api.find(call => call.method === 'deleteMessage' && call.payload.message_id === thinking?.resultMessageId);
+  expectContract(failures, Boolean(thinking) && Boolean(removed), 'remove only the thinking status after transcription');
+  expectContract(failures, !r.api.some(call => call.method === 'deleteMessage' && call.payload.message_id === initial?.resultMessageId), 'retain the transcript preview');
+  expectContract(failures, response?.method === 'sendMessage' && r.api.indexOf(removed) < r.api.indexOf(response), 'send a new response after deleting the thinking status');
+  expectContract(failures, response?.payload.disable_notification !== true, 'do not disable notifications for the response');
   assert.deepEqual(failures, [], `Missing old voice behavior:\n- ${failures.join('\n- ')}`);
 });
 
-test('reference progress: a delayed real text turn keeps typing/rotating status and finishes with the old footer, not a lone checkmark', { timeout: 25_000 }, async (t) => {
+test('reference progress: a delayed text turn keeps old typing/status and sends the answer as a new message', { timeout: 25_000 }, async (t) => {
   const r = await runScenario(t, 'progress');
   assert.equal(r.cli.length, 1, 'The delayed fixture must actually exercise the core CLI path.');
   assert.equal(r.cli[0].prompt, 'Задача для проверки индикации.');
@@ -123,7 +129,11 @@ test('reference progress: a delayed real text turn keeps typing/rotating status 
   expectContract(failures, JSON.stringify(observedFrames.slice(0, 3)) === '[0,1,2]', 'rotate the old «Думаю… ⏳» → «Думаю… ⌛️» → «Соображаю… 🤔» frames while CLI is silent');
   expectContract(failures, !messages.some((call) => String(call.payload.text || '').trim() === '✅'), 'do not leave a separate lone success checkmark');
   expectContract(failures, Boolean(response), 'deliver the model answer');
-  expectContract(failures, response?.method === 'editMessageText' && response.payload.message_id === initial?.resultMessageId, 'replace the same initial status message with the short final answer, instead of sending a second message');
+  // Owner 15.11.2026: intentionally differ from old final-edit behavior so
+  // Telegram can notify on the newly sent answer; progress itself is unchanged.
+  const removed = r.api.find(call => call.method === 'deleteMessage' && call.payload.message_id === initial?.resultMessageId);
+  expectContract(failures, Boolean(removed) && r.api.indexOf(removed) < r.api.indexOf(response), 'delete the initial status before sending the answer');
+  expectContract(failures, response?.method === 'sendMessage' && response.resultMessageId !== initial?.resultMessageId, 'send the short final answer as a new message');
   expectContract(failures, /<blockquote>⏱ \d+\.\ds[^<]*<\/blockquote>\s*$/.test(response?.payload.text || ''), 'append the compact elapsed-time blockquote to the final response');
   expectContract(failures, response?.payload.parse_mode === 'HTML', 'the footer must render as a Telegram blockquote');
   expectContract(failures, r.activeIntervals === 0, 'stop typing/status intervals when the turn finishes');

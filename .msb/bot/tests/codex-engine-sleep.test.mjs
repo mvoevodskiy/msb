@@ -39,7 +39,7 @@ test('Codex resumes its selected conversation after the sleep gate', async t => 
   const initial = (await loadState()).state;
 
   await f.message('first synthetic message');
-  await until(() => f.edits.some(text => text.includes('fixture Codex reply')), 'first Codex reply');
+  await until(() => f.messages.some(text => text.includes('fixture Codex reply')), 'first Codex reply');
   const first = await executions();
   assert.equal(first.length, 1);
   assert.ok(first[0].prompt.includes('first synthetic message'));
@@ -73,7 +73,7 @@ test('Codex resumes its selected conversation after the sleep gate', async t => 
   await assert.rejects(fs.stat(marker), { code: 'ENOENT' });
   await f.message('after wake synthetic message');
   await until(async () => (await executions()).length === 2, 'resumed Codex launch');
-  await until(() => f.edits.filter(text => text.includes('fixture Codex reply')).length === 2, 'resumed Codex reply');
+  await until(() => f.messages.filter(text => text.includes('fixture Codex reply')).length === 2, 'resumed Codex reply');
   const resumed = (await executions())[1];
   assert.ok(resumed.prompt.includes('after wake synthetic message'));
   assert.ok(resumed.argv.includes('resume'));
