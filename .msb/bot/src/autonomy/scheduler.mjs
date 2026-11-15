@@ -6,6 +6,7 @@ import { runAgentTurn } from '../agent/turn.mjs';
 import { listTasks, saveTaskResult } from './store.mjs';
 import { trySessionOperation } from '../agent/session-operation.mjs';
 import { readAutonomyPause, trackAutonomyTurn } from './owner-pause.mjs';
+import { createCodexSleep } from '../engines/codex-sleep.mjs';
 import { createReminderDispatcher } from './reminder-dispatch.mjs';
 import { createOpenClawReminderDispatcher } from './openclaw-reminder-dispatch.mjs';
 import { dispatchLegacyTimers } from './legacy-dispatch.mjs';
@@ -19,6 +20,7 @@ const TICK_MS = 60_000;
  * в [очередь Telegram](../telegram/inbox.mjs), [напоминания](./reminder-dispatch.mjs)
  * отправляются напрямую, интервальные задачи используют [runner](../agent/turn.mjs).
  * [Owner pause](./owner-pause.mjs) blocks admission and interrupts an active interval.
+ * [Codex sleep](../engines/codex-sleep.mjs) also defers a not-yet-started interval.
  * [Store](./store.mjs) условно сохраняет одну неизменённую задачу после каждого хода,
  * не весь старый список; active run не держит lock файла.
  * Проверки: [persistence](../../tests/autonomy-store-concurrency.test.mjs),
@@ -30,6 +32,7 @@ export function startScheduler({ api, adminId, scheduledTurns, timezone, now = D
   let busy = false;
   let legacyTick, reminderTick, openClawTick;
   const shutdown = new AbortController();
+  const codexSleep = createCodexSleep({ pending: new Map() });
   const reminders = createReminderDispatcher({
     api, adminId, timezone, now, log, signal: shutdown.signal,
     runCodexPrompt, runCursorPrompt, readCodexQuota,
@@ -66,7 +69,7 @@ export function startScheduler({ api, adminId, scheduledTurns, timezone, now = D
         const before = { ...current }, task = { ...current };
         if (task.enabled === false) continue;
         if ((task.nextAt || 0) > tickAt) continue;
-        if (!await runTask(task, api, adminId, log, runTurn, () => stopped)) continue;
+        if (!await runTask(task, api, adminId, log, runTurn, () => stopped, codexSleep.sleeping)) continue;
         task.nextAt = tickAt + Math.max(1, task.everyHours || 24) * 3600 * 1000;
         await saveTaskResult(before, task);
       }
@@ -105,22 +108,23 @@ export function startScheduler({ api, adminId, scheduledTurns, timezone, now = D
   };
 }
 
-async function runTask(task, api, adminId, log, runTurn, isStopped) {
+async function runTask(task, api, adminId, log, runTurn, isStopped, codexSleeping) {
   const release = trySessionOperation();
   if (!release) return false;
   try {
-    return await executeTask(task, api, adminId, log, runTurn, isStopped);
+    return await executeTask(task, api, adminId, log, runTurn, isStopped, codexSleeping);
   } finally {
     release();
   }
 }
 
-async function executeTask(task, api, adminId, log, runTurn, isStopped) {
+async function executeTask(task, api, adminId, log, runTurn, isStopped, codexSleeping) {
   const turn = trackAutonomyTurn();
   const { signal } = turn;
   let result;
   try {
-    if ((await readAutonomyPause()).stopped || signal.aborted || isStopped()) return false;
+    if ((await readAutonomyPause()).stopped || signal.aborted || isStopped() ||
+        await codexSleeping({ resumeOnWake: false }) || signal.aborted || isStopped()) return false;
     log('[msb/scheduler] run ' + Date.now() + '-' + task.id.slice(0, 8) + ' task=' + task.title);
     result = await runTurn({
       prompt: [

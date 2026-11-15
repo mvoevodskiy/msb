@@ -147,6 +147,38 @@ test('legacy timer dispatch honors the old per-bot sleep marker', async t => {
   assert.deepEqual(await f.records(), [{ ...timer, enabled: false, lastRunAt: stamp }]);
 });
 
+test('a due Codex interval stays due while asleep and runs once after wake', async t => {
+  const f = await dispatchFixture(t, { timers: [] });
+  const due = tick - 1000;
+  await addTask({ id: 'sleep-interval', title: 'interval', prompt: 'interval', nextAt: due });
+  const directory = path.join(msbRoot(), 'engine');
+  await fs.mkdir(directory, { recursive: true });
+  const marker = path.join(directory, 'sleep.default');
+  await fs.writeFile(marker, 'fixture');
+  await f.scheduler.tickNow();
+  assert.equal(f.intervalRuns.length, 0, 'A sleeping Codex must not launch an interval turn.');
+  assert.equal((await listTasks())[0].nextAt, due, 'A deferred interval must remain due.');
+  await fs.unlink(marker);
+  await f.scheduler.tickNow();
+  assert.equal(f.intervalRuns.length, 1);
+  assert.ok((await listTasks())[0].nextAt > tick);
+  await f.scheduler.tickNow();
+  assert.equal(f.intervalRuns.length, 1);
+});
+
+test('a Codex-only interval guard does not suspend the selected Claude provider', async t => {
+  const f = await dispatchFixture(t, { timers: [] });
+  const { state } = await loadState();
+  const { extAuthBypass, ...claude } = state;
+  await saveState(claude);
+  await addTask({ id: 'claude-interval', title: 'interval', prompt: 'interval', nextAt: tick - 1000 });
+  const directory = path.join(msbRoot(), 'engine');
+  await fs.mkdir(directory, { recursive: true });
+  await fs.writeFile(path.join(directory, 'sleep.default'), 'fixture');
+  await f.scheduler.tickNow();
+  assert.equal(f.intervalRuns.length, 1);
+});
+
 test('legacy timers do not overlap the existing interval runner in the same profile', async t => {
   const f = await dispatchFixture(t, { run: async ({ signal }) => {
     await new Promise(resolve => { if (signal.aborted) resolve(); else signal.addEventListener('abort', resolve, { once: true }); });
