@@ -43,7 +43,7 @@ async function stageIntro(f) {
   return { journal, id };
 }
 
-for (const input of ['command', 'reply']) {
+for (const input of ['command', 'command-with-username', 'reply']) {
   test(`an active Codex turn accepts ${input} stop while the bot is asleep`, async t => {
     let started, aborted;
     const running = new Promise(resolve => { started = resolve; });
@@ -59,6 +59,7 @@ for (const input of ['command', 'reply']) {
     await running;
     const marker = await sleepMarker();
     if (input === 'command') await f.message('/stop');
+    else if (input === 'command-with-username') await f.message('/stop@fixture_bot');
     else await f.bot.handleUpdate({ message: { message_id: 100, text: 'стоп',
       from: { id: 42 }, chat: { id: 42 }, reply_to_message: { message_id: 1 } } });
     const stopped = await Promise.race([interrupted.then(() => true), wait(500).then(() => false)]);

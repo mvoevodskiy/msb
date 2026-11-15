@@ -37,6 +37,16 @@ test('the default sleep gate still blocks stop for other providers', async () =>
   assert.deepEqual(f.events, [['notice', ''], ['notice', '']]);
 });
 
+test('the Codex stop exception does not admit lookalike input', async () => {
+  const f = fixture();
+  const gate = createSleepGate({ pending: new Map(), sleeping: async () => true,
+    notify: async () => { f.events.push(['notice', '']); }, allowStop: async () => true });
+  await gate.middleware(f.message('/stopper'), f.next);
+  await gate.middleware(f.message('стоп'), f.next);
+  await gate.middleware(f.message('/stop@fixture_bot'), f.next);
+  assert.deepEqual(f.events, [['notice', ''], ['notice', ''], ['next']]);
+});
+
 test('key-like input is removed if possible and failure is reported without echoing it', async () => {
   for (const failDelete of [false, true]) {
     const f = fixture({ failDelete });
