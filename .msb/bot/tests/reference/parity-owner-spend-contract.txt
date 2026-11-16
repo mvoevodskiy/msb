@@ -151,3 +151,18 @@ aborted. External effects begun before the check cannot be replayed safely. A st
 source or model error can still be reported before canLaunch; the restoration
 of a claim depends on its successful conditional write. Legacy timers require
 separate inspection; no automatic billing is added.
+
+Legacy timer observation at fb5026f (no new policy applied): old bundle
+73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11:108800–108831 dispatched a due
+legacy schedule and stamped lastRunAt, disabling once; the queued worker
+110354–110362 later returned on costPaused. Read with git show <blob> | nl -ba.
+The current scheduler similarly publishes the record before the Telegram
+worker's foreground pause gate. Four probe cases demonstrate both an initially
+paused once timer and pause added while a timer waits behind a fake active turn,
+with Codex and Claude states. In each, the fake provider is not called for the
+timer, the once record is stamped and disabled, and resuming does not rerun it.
+The script uses synthetic profiles/Telegram and mocks the unrelated dispatcher.
+It passed on macOS Node 26 and isolated Linux Node 22.23.2. This is an
+observation, not a proposed correctness assertion or live JAR1 check. The
+owner was asked whether occurrences due during spend pause should later run
+once or be skipped; changing that policy awaits the answer.
