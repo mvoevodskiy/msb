@@ -38,9 +38,11 @@ class ProfileBackupTests(unittest.TestCase):
             conn.execute('INSERT INTO rows VALUES (?)', ('synthetic',))
             conn.execute('CREATE TABLE threads (id TEXT, rollout_path TEXT)')
             conn.execute('INSERT INTO threads VALUES (?, ?)', (session_id, str(rollout)))
+        conn.close()
         for name in ('thread_history_1.sqlite', 'goals_1.sqlite', 'memories_1.sqlite'):
             with sqlite3.connect(home / '.codex' / name) as conn:
                 conn.execute('CREATE TABLE fixture (value TEXT)')
+            conn.close()
         return home
 
     def test_closed_snapshot_copies_files_sqlite_and_records_symlinks(self):
@@ -60,6 +62,7 @@ class ProfileBackupTests(unittest.TestCase):
             self.assertEqual(manifest['.msb/bots/default/state.json.lock.sqlite']['type'], 'excluded-lock')
             with sqlite3.connect(dest / 'data/.codex/state_5.sqlite') as conn:
                 self.assertEqual(conn.execute('SELECT x FROM rows').fetchall(), [('synthetic',)])
+            conn.close()
             self.assertTrue((dest / 'COMPLETE.json').is_file())
             backup.verify_copy(dest, home, backup.active_session(home, home), require_complete=True)
 
@@ -114,6 +117,7 @@ class ProfileBackupTests(unittest.TestCase):
             home = self.make_home(tmp)
             with sqlite3.connect(home / '.codex/state_5.sqlite') as con:
                 con.execute('DELETE FROM threads')
+            con.close()
             with self.assertRaisesRegex(RuntimeError, 'not unique'):
                 backup.backup_profile(home, Path(tmp).resolve() / 'private', check_writers=lambda _home: None)
             self.assertFalse((Path(tmp).resolve() / 'private/COMPLETE.json').exists())
@@ -172,6 +176,7 @@ class ProfileBackupTests(unittest.TestCase):
                              (home / 'workspace/SOUL.md').read_bytes())
             with sqlite3.connect(restored / '.codex/state_5.sqlite') as con:
                 self.assertEqual(con.execute('PRAGMA quick_check').fetchone(), ('ok',))
+            con.close()
 
 
     def test_empty_truncated_or_wrong_native_session_header_is_rejected(self):
@@ -182,6 +187,52 @@ class ProfileBackupTests(unittest.TestCase):
                 rollout.write_text(content)
                 with self.assertRaisesRegex(RuntimeError, 'header invalid'):
                     backup.backup_profile(home, Path(tmp).resolve() / 'private', check_writers=lambda _home: None)
+
+
+    def test_stable_sqlite_wal_is_copied_without_discarding_committed_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp).resolve(); home = self.make_home(tmp); db = home / '.codex/state_5.sqlite'
+            con = sqlite3.connect(db)
+            try:
+                con.execute('PRAGMA journal_mode=WAL')
+                con.execute('PRAGMA wal_autocheckpoint=0')
+                con.execute('INSERT INTO rows VALUES (?)', ('wal-fixture',)); con.commit()
+                self.assertGreater(Path(str(db) + '-wal').stat().st_size, 0)
+                dest = base / 'private'
+                backup.backup_profile(home, dest, check_writers=lambda _home: None)
+                copied = sqlite3.connect(dest / 'data/.codex/state_5.sqlite')
+                try: self.assertIn(('wal-fixture',), copied.execute('SELECT x FROM rows').fetchall())
+                finally: copied.close()
+            finally: con.close()
+
+    def test_sqlite_sidecar_creation_is_allowed_but_user_file_changes_are_not(self):
+        before = {'dir': {'type':'directory', 'mode': 0o700, 'mtime_ns': 1, 'ctime_ns': 1},
+                  'dir/db.sqlite': {'type':'file', 'size': 10}, 'dir/db.sqlite-wal': None,
+                  'dir/db.sqlite-shm': None, 'dir/data': {'type':'file', 'size': 2}}
+        after = dict(before)
+        after['dir'] = {**before['dir'], 'mtime_ns': 2, 'ctime_ns': 2}
+        after['dir/db.sqlite-wal'] = {'type':'file', 'size': 0}
+        after['dir/db.sqlite-shm'] = {'type':'file', 'size': 32768}
+        self.assertTrue(backup.inventories_match(before, after, {'dir/db.sqlite'}))
+        after['dir/db.sqlite-wal'] = after['dir/db.sqlite-shm'] = None
+        self.assertTrue(backup.inventories_match(before, after, {'dir/db.sqlite'}))
+        after['dir/data'] = {'type':'file', 'size': 3}
+        self.assertFalse(backup.inventories_match(before, after, {'dir/db.sqlite'}))
+
+    def test_changed_nonempty_sqlite_wal_cannot_be_published(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp).resolve(); home = self.make_home(tmp); dest = base / 'private'
+            original = backup.sqlite_journal_state
+            calls = 0
+            def simulate_change(*args):
+                nonlocal calls
+                value = original(*args); calls += 1
+                if calls == 2: value['.codex/state_5.sqlite-wal'] = (7, 'changed-fixture')
+                return value
+            with patch.object(backup, 'sqlite_journal_state', side_effect=simulate_change):
+                with self.assertRaisesRegex(RuntimeError, 'journal changed'):
+                    backup.backup_profile(home, dest, check_writers=lambda _home: None)
+            self.assertFalse((dest / 'COMPLETE.json').exists())
 
 
 if __name__ == '__main__':
