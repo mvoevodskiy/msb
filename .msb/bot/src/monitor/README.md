@@ -19,6 +19,10 @@
 Фоновый тик — 5 минут; дайджест учитывает сохранённую timezone профиля бота.
 Изменения `meta.json` сериализованы по профилю и между процессами: сбор обновляет
 только времена источников, отправка — свою отметку после успешной доставки.
+Автоматическое обновление не заменяет нечитаемые или повреждённые метаданные
+пустым состоянием; отсутствие файла по-прежнему создаёт начальное состояние.
+[Контракт и границы](../../tests/reference/parity-monitor-meta-integrity-contract.txt),
+[проверки](../../tests/monitor-meta-integrity.test.mjs).
 Реальный backend — JSONL. Сохранение значения `sqlite` в UI не создаёт SQLite backend;
 [старое хранилище и граница включения](../../tests/reference/parity-monitor-storage-evidence.txt),
 [синтетический baseline](../../tests/reference/probe-monitor-storage-baseline.mjs) и

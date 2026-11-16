@@ -1,0 +1,48 @@
+Monitor metadata: preserve an unreadable file during automatic updates
+
+Old reference blob 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11:55438-55465,
+55486-55491 and 108257-108265. `git show <blob> | nl -ba` reads the cited
+lines. The old monitor scheduler read its bot state through m(), which returned
+null on read/parse failure; _4Q then returned without scheduled work if state
+was unavailable. This is the relevant data-integrity behavior, not an exact
+match of schemas: the old state was per bot, while new meta.json is separate.
+
+Current monitorDir is the shared msbRoot/monitor. config.json holds source
+settings, items.jsonl holds materials, and meta.json holds lastPollAt and
+lastDigestAt. The digest checks the last local day and writes lastDigestAt
+after a successful send; poll merges source timestamps separately. In c3a6466,
+loadMeta returned fresh defaults on every read or parse error and updateMeta
+always saved those defaults after its callback. A truncated synthetic file
+containing a same-day lastDigestAt therefore produced one fake scheduled send
+and was overwritten; a valid JSON array produced two fake sends on consecutive
+ticks because JSON serialization does not preserve named array properties.
+An injected EIO also ran the mutator and overwrote the original file.
+
+The fix keeps the pre-existing read-only screen fallback but makes updateMeta
+require a readable JSON object before its callback. A genuinely absent file
+(ENOENT) still initializes defaults; read errors, malformed JSON, null and
+non-object roots propagate without invoking the mutator or replacing the file.
+Explicit saveMeta remains an explicit overwrite. No UI, SQLite activation,
+source settings, personal files or server state is changed.
+
+RED on c3a6466: monitor-meta-integrity.test.mjs had 2 pass / 3 fail: the
+truncated file gave delivered=1 and unchanged=false; array gave delivered=2
+and unchanged=false; EIO called the mutator and changed the file. GREEN: all
+5 integrity checks and all 95 monitor tests passed on local macOS Node 26 and
+network-none Linux Node 22.23.2, with synthetic profiles and fake delivery.
+After adding the direct read-only monitor-screen/button assertion, the 5-check
+file was rerun on both runtimes and passed; runtime code was unchanged.
+The initial Linux run under numeric UID 501 had 94/95: a separate-process test
+could not resolve a home for the UID (uv_os_homedir ENOENT). Re-running under
+the existing unprivileged node user passed 95/95. Linux used the node:sqlite
+lock fallback, not the server's native ABI. No live source, Telegram, model,
+JAR1 or unrelated provider was exercised.
+
+This is not full schema validation: existing object fields may still be
+malformed, and the read-only UI still uses its prior fallback on read/parse
+failure. A poll may already have updated source config or items before the
+metadata update fails. A successful external send followed by a metadata-write
+failure can still lead to a later duplicate; no exactly-once delivery is
+claimed. Recovery or migration of a real broken file remains a separate
+operator action. Revert the behavior commit to restore the former fallback;
+later code may rely on these update semantics.
