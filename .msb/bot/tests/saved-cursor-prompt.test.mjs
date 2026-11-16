@@ -125,7 +125,8 @@ test('incompatible cursor task.model becomes modelError, not silent empty plan',
   assert.match(plan.modelError, /не совместима с Cursor/);
 });
 
-test('freshness stale refuses quietly and reports path', async () => {
+test('freshness stale refuses quietly and reports path', async t => {
+  await fixture(t, async () => assert.fail('owner turn must not run'), { overlay: false, runtimeProfile: 'jar1' });
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-fresh-'));
   const feed = path.join(root, 'status.json');
   await fs.writeFile(feed, '{}');
@@ -307,7 +308,10 @@ test('saved Cursor missing key defers if spend pause arrives while credentials a
     await saveState({ ...(await loadState()).state, costPaused: true });
   } finally { release.resolve(); }
   await tick;
-  assert.deepEqual(JSON.parse(await fs.readFile(actionsFile, 'utf8')), [action]);
+  const [deferredAction] = JSON.parse(await fs.readFile(actionsFile, 'utf8'));
+  const { costPausePending, ...restoredAction } = deferredAction;
+  assert.ok(costPausePending);
+  assert.deepEqual(restoredAction, action);
   assert.deepEqual(f.messages, []);
   assert.equal((await loadState()).state.ccSessionId, beforeState.ccSessionId);
   assert.equal(await fs.readFile(path.join(autonomy, 'runs.jsonl'), 'utf8').catch(() => ''), '');

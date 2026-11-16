@@ -424,7 +424,10 @@ test('saved Claude prompt defers when spend pause is set during workspace prepar
   } finally { release.resolve(); }
   await tick;
   assert.deepEqual(await f.calls(), []);
-  assert.deepEqual(await f.actions(), [original]);
+  const [deferredAction] = await f.actions();
+  const { costPausePending, ...restoredAction } = deferredAction;
+  assert.ok(costPausePending);
+  assert.deepEqual(restoredAction, original);
   assert.deepEqual(f.sent, []);
   assert.equal((await loadState()).state.ccSessionId, beforeState.ccSessionId);
   await f.callback('settings:cost:resume');

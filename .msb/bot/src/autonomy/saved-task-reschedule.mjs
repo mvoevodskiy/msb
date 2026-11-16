@@ -5,6 +5,7 @@
  * publishing. [Telegram and scheduler checks](../../tests/task-reschedule.test.mjs).
  */
 import { randomUUID } from 'node:crypto';
+import { hasCostPausePending } from './cost-pause-pending.mjs';
 import { withOwnerTaskUpdate } from './owner-task-update.mjs';
 import { isLocalSavedAction, readNativeJobMap, taskDefinitionFingerprint } from './reminder-store.mjs';
 import { savedTaskSpent } from './reminder-schedule.mjs';
@@ -25,6 +26,7 @@ function rescheduleTrigger(text, now, timezone) {
 function rescheduledAction(action, trigger) {
   const next = { ...action, trigger, enabled: true };
   for (const key of ['lastRunAt', 'lastStatus', 'lastOutcome', 'nextFireAt', 'pendingReschedule']) delete next[key];
+  if (hasCostPausePending(action)) delete next.costPausePending;
   if (['owner', 'spent_once'].includes(next.disabledReason)) delete next.disabledReason;
   return next;
 }

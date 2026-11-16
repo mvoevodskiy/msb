@@ -300,7 +300,10 @@ test('saved Codex prompt defers when spend pause is set during workspace prepara
   } finally { release.resolve(); }
   await tick;
   assert.equal(await f.call(), null);
-  assert.deepEqual(await f.actions(), [original]);
+  const [deferredAction] = await f.actions();
+  const { costPausePending, ...restoredAction } = deferredAction;
+  assert.ok(costPausePending);
+  assert.deepEqual(restoredAction, original);
   assert.deepEqual(f.messages, []);
   assert.deepEqual(await Promise.all(f.files.slice(1).map(file => fs.readFile(file))), protectedBefore);
   assert.equal((await loadState()).state.ccSessionId, beforeState.ccSessionId);

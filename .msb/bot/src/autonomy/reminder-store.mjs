@@ -4,6 +4,7 @@
  * [menu](../telegram/routes/autonomy.mjs), [individual state](./saved-action-control.mjs),
  * [inventory](./saved-task-inspection.mjs), [task removal](./task-removal.mjs),
  * [reschedule](./saved-task-reschedule.mjs), [text edit](./saved-task-text-edit.mjs),
+ * [Spend-pause occurrence](./cost-pause-pending.mjs), [checks](../../tests/saved-spend-pause.test.mjs),
  * [contract](../../tests/reference/parity-autonomy-contract.txt).
  */
 import path from 'node:path';
@@ -13,6 +14,7 @@ import { withFileLock } from '../../shared/file-lock.mjs';
 import { actionRoot } from '../paths.mjs';
 import { physicalRecordPath, readRecordArray, writeRecordArray } from './record-file.mjs';
 import { recordReminderBreaker } from './reminder-breaker.mjs';
+import { hasCostPausePending, markCostPausePending } from './cost-pause-pending.mjs';
 import { readNativeJobMap } from './native-job-map.mjs';
 import { reminderSpacing, savedTaskSpent, spentReminder, validReminderTrigger } from './reminder-schedule.mjs';
 import { taskBodyField } from './saved-task-text.mjs';
@@ -109,6 +111,7 @@ export async function withCurrentSavedAction(file, snapshot, update, env = proce
 export function claimSavedAction(file, snapshot, at, { env = process.env, admit } = {}) {
   return withCurrentSavedAction(file, snapshot, (action, save) => admit(action, refusal => {
     const claimed = { ...action, lastRunAt: at };
+    if (hasCostPausePending(action)) delete claimed.costPausePending;
     if (action.trigger.kind === 'once') {
       claimed.enabled = false;
       claimed.disabledReason = 'spent_once';
@@ -119,6 +122,16 @@ export function claimSavedAction(file, snapshot, at, { env = process.env, admit 
       delete claimed.lastError;
     }
     return save(claimed);
+  }, async notice => {
+    let pending = markCostPausePending(action, at);
+    if (!pending) return { deferred: true, pendingConflict: true };
+    if (notice && pending.costPausePending.notice !== notice) {
+      pending = { ...pending, costPausePending: { ...pending.costPausePending, notice } };
+      await save(pending);
+      return { deferred: true, notice, action: pending };
+    }
+    if (pending !== action) await save(pending);
+    return { deferred: true };
   }), env);
 }
 
@@ -159,7 +172,10 @@ export async function finishSavedAction(file, before, claimed, result, env = pro
         const toggled = current.enabled !== claimed.enabled || current.disabledReason !== claimed.disabledReason;
         const retry = { ...before, task: current.task };
         if (current.taskTextRevision) retry.taskTextRevision = current.taskTextRevision;
-        records[index] = toggled ? { ...current, lastRunAt: before.lastRunAt } : retry;
+        const restored = toggled ? { ...current, lastRunAt: before.lastRunAt,
+          ...(before.costPausePending ? { costPausePending: before.costPausePending } : {}) } : retry;
+        records[index] = result.costPauseDeferred
+          ? markCostPausePending(restored, claimed.lastRunAt) ?? restored : restored;
       }
       await save();
       return;
@@ -218,6 +234,7 @@ const taskFingerprint = action => createHash('sha256').update(JSON.stringify(act
 export function taskDefinitionFingerprint(action) {
   // Scheduler outcomes or an owner's pause do not replace this task.
   const { enabled, disabledReason, lastRunAt, lastStatus, lastOutcome, lastError, ...definition } = action;
+  if (hasCostPausePending(action)) delete definition.costPausePending;
   return taskFingerprint(definition);
 }
 const spentTaskCandidate = action => ({ id: action.id, fingerprint: taskFingerprint(action) });

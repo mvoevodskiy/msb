@@ -34,7 +34,8 @@ const TICK_MS = 60_000;
  * [claim regression](../../tests/autonomy-same-bot-claim.test.mjs),
  * [Telegram stop](../../tests/autonomy-stop-admission.test.mjs),
  * [provider/pause](../../tests/interval-provider-pause.test.mjs),
- * [shared interval probe](../../tests/reference/probe-shared-interval-race.mjs). [Контракт](./README.md).
+ * [shared interval probe](../../tests/reference/probe-shared-interval-race.mjs),
+ * [saved spend/stop](../../tests/saved-spend-pause.test.mjs). [Контракт](./README.md).
  */
 export function startScheduler({ api, adminId, scheduledTurns, timezone, now = Date.now,
   log = console.error, runTurn = runAgentTurn, runCodexPrompt, runCursorPrompt, readCodexQuota } = {}) {
@@ -103,9 +104,12 @@ export function startScheduler({ api, adminId, scheduledTurns, timezone, now = D
 
   function dispatchReminders() {
     // A slow Telegram send must not make the existing timer pass miss its minute.
-    reminderTick ??= reminders(() => stopped).catch(error => {
-      log('[msb/scheduler] reminder error: ' + (error.code || error.name));
-    }).finally(() => { reminderTick = undefined; });
+    if (!reminderTick) {
+      const stopEpoch = scheduledTurns?.stopEpoch;
+      reminderTick = reminders(() => stopped || scheduledTurns?.stopEpoch !== stopEpoch).catch(error => {
+        log('[msb/scheduler] reminder error: ' + (error.code || error.name));
+      }).finally(() => { reminderTick = undefined; });
+    }
     return reminderTick;
   }
 
