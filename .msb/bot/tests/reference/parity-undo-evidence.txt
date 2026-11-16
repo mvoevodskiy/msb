@@ -35,3 +35,25 @@ protection for later changes; explicit tests of cancellation, conflicts and
 concurrency. Do not implement an apparent undo by guessing from model text,
 reversing an incomplete diff or applying git reset. No real files, CLI account,
 network, JAR1 or unrelated engine were touched during this read-only audit.
+
+Local native-protocol follow-up (not JAR1): the installed macOS aarch64 Codex
+CLI package reports 0.169.0-alpha.11.1; binary SHA-256
+3ea20787e106af94573d3d6c19480aed93a1334b0dd32b6b04e2f780ce82cf4b. Its
+experimental app-server JSON Schema associates method `thread/revert` with
+ThreadRevertParams. The exact generated parameter schema is stored as
+codex-thread-revert-0.169.0-alpha.11.1.schema.json (SHA-256
+3a5e85a67906c8ea3ad9f5065559d263d968a28a957739e7a1d9e4e1981e4eb8).
+It requires threadId and beforeTurnId and describes replacing a paginated
+thread's persisted history before that turn. The schema explicitly says local
+file changes are not reverted. It therefore is not a substitute for /undo of
+file edits and must not be called as one; it could remove conversation history.
+
+The schema was generated locally with `codex app-server generate-json-schema
+--experimental --out DIR` in a macOS sandbox denying network and user-home reads
+and allowing writes only in an ephemeral directory. Sandbox application and
+read denial were checked with synthetic files. No app-server method, model,
+account or real conversation was invoked. This is evidence for the installed
+0.169 alpha schema only, not proof of behavior or availability in JAR1's CLI,
+not proof of a complete file-rollback capability elsewhere, and not a decision
+to modify any conversation. See the stored schema rather than relying on a
+future installed version remaining identical.
