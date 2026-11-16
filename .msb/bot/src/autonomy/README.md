@@ -267,6 +267,14 @@ cron на проверенном [Gateway бота](../agent/openclaw-gateway.mj
 сохранённого задания. Обычный профиль разрешает читать и править файлы.
 Узкий профиль с capability `none` оставляет только чтение. [Запуск](./prompt-turn.mjs)
 создаёт отдельный `autonomy/cc-workspace` и выбирает зарегистрированный маршрут.
+Quiet-задачи (`emptyIsValidOutcome`) обрезают ход мысли до маркеров владельца
+(`trimQuietOwnerText`) и помечают `quietOwner` для [доставки](./prompt-delivery.mjs):
+в чат уходит только итог, без шапки «Ничего не опубликовано». То же для
+HTML-digest (make_money и т.п.) с `<b>`/`🟢`/`🔴`, плюс unwrap ` ```html ` в
+[response](../telegram/response.mjs). Проверки:
+[quiet-owner-trim](../../tests/quiet-owner-trim.test.mjs),
+[saved-prompt-action](../../tests/saved-prompt-action.test.mjs),
+[response-delivery](../../tests/response-delivery.test.mjs).
 [Claude CLI](../agent/claude.mjs) использует OAuth или подписку. [Codex](../../../../overlay/bot/ext/adapters/saved-codex.mjs)
 использует подписку в текущем CODEX_HOME и временную беседу. Доставка, журнал
 и предохранитель общие для обоих маршрутов.

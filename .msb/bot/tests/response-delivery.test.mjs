@@ -76,6 +76,21 @@ test('HTML and common Markdown preserve text and escape unsupported or unsafe ma
   assertBalanced(renderResponseHtml('<b>unfinished'));
 });
 
+test('Telegram-HTML fences unwrap to markup; ordinary code fences stay escaped', () => {
+  assert.equal(renderResponseHtml('```html\n<b>A</b>\nAsk: пусто\n```'), '<b>A</b>\nAsk: пусто');
+  assert.equal(
+    renderResponseHtml('Собираю данные…\n```html\n<b>A</b>\n```\n'),
+    'Собираю данные…\n<b>A</b>\n',
+  );
+  assert.equal(renderResponseHtml('```\n<b>Быстрые деньги</b>\n```'), '<b>Быстрые деньги</b>');
+  assert.equal(renderResponseHtml('```js\nconst x = 1\n```'), '<pre><code>const x = 1</code></pre>');
+  assert.equal(renderResponseHtml('<b>A</b>'), '<b>A</b>');
+  assert.equal(
+    renderResponseHtml('```text\n<b>literal tags</b>\n```'),
+    '<pre><code>&lt;b&gt;literal tags&lt;/b&gt;</code></pre>',
+  );
+});
+
 test('old list, mention and filename presentation matches the vendor golden forms', () => {
   assert.equal(
     renderResponseHtml('- @alice проверь report.md\n— **Обзор** и config.yaml\n• `@raw main.py`'),

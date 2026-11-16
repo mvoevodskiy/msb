@@ -1,6 +1,8 @@
 /**
  * Model final -> Telegram HTML/plan/footer; shared pure HTML length/split utilities.
+ * Unwraps Telegram-HTML markdown fences before `<pre><code>`; ordinary code stays fenced.
  * Caller [bot](./bot.mjs); prepared [views](./view-delivery.mjs) use only pure exports.
+ * Saved-prompt digests: [prompt-delivery](../autonomy/prompt-delivery.mjs).
  * [Response checks](../../tests/response-delivery.test.mjs), [plan checks](../../tests/plan-handoff.test.mjs).
  */
 import { parsePlanResponse, planKeyboard } from './plan.mjs';
@@ -43,6 +45,20 @@ function safeTag(raw) {
   return { name, close: false, raw: `<${name}>` };
 }
 
+/** True when a markdown fence holds Telegram-HTML markup, not source code. */
+function isTelegramHtmlFence(lang, inner) {
+  const language = String(lang || '').toLowerCase();
+  const trimmed = String(inner || '').trim();
+  if (!trimmed) return false;
+  const first = trimmed.split(/\n/).find((line) => line.trim()) || '';
+  if (language === 'html') {
+    return /<(?:b|i|u|s|code|pre|blockquote|a|tg-spoiler)\b/i.test(trimmed)
+      || /^(?:🟢|🔴)/.test(first.trimStart());
+  }
+  if (language) return false;
+  return /^\s*(?:<(?:b|i)\b|🟢|🔴)/.test(first);
+}
+
 /** Common old Markdown forms and Telegram HTML; unknown tags remain visible text. */
 export function renderResponseHtml(value) {
   const input = String(value ?? '').toWellFormed();
@@ -54,7 +70,12 @@ export function renderResponseHtml(value) {
     const inner = tag === 'pre' && /^<code(?:\s[^>]*)?>([\s\S]*?)<\/code>$/i.exec(code);
     return hold(inner ? `<pre><code>${escapeText(inner[1])}</code></pre>` : `<${tag}>${escapeText(code)}</${tag}>`);
   });
-  body = body.replace(/```(?:[\w+-]+)?\n([\s\S]*?)```/g, (_all, code) => hold(`<pre><code>${escape(code.trimEnd())}</code></pre>`));
+  // Unwrap ```html / bare Telegram-HTML fences before treating them as code blocks.
+  body = body.replace(/```([\w+-]*)\n([\s\S]*?)```/g, (_all, lang, code) => {
+    const inner = code.trimEnd();
+    if (isTelegramHtmlFence(lang, inner)) return inner.trim();
+    return hold(`<pre><code>${escape(inner)}</code></pre>`);
+  });
   body = body.replace(/`([^`\n]+)`/g, (_all, code) => hold(`<code>${escape(code)}</code>`));
   body = body.replace(/<[^>]*>/g, (raw) => {
     const tag = safeTag(raw);
