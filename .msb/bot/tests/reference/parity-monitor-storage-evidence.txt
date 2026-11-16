@@ -1,0 +1,35 @@
+Monitor storage: old SQLite and the open-core activation boundary
+
+Old readable blob: 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11. Inspect with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | sed -n '6423,6447p;6587,6610p;7410,7440p;108341,108374p;116956,117004p'
+The old factory constructs a better-sqlite3 store with WAL in knowledge.db and
+contains a JSONL fallback on construction failure. The collector calls its
+upsertItems and the digest reads the selected store. The old SQLite table keys
+items by externalId; the new JSONL store uses a hash of source type, source ID,
+external ID and URL. The old UI writes MONITOR_STORAGE and resets the store.
+The readable source exports initialSync (41750-41758); a caller or complete
+history migration is not established by a search for its symbol/name.
+
+New open-core monitorSettingsScreen tells the user SQLite is not connected.
+mon:storage:set only saves cfg.storage in config.json; poll.mjs calls JSONL
+appendItems and digest.mjs calls JSONL listRecentItems regardless of that value.
+Consequently a profile may already contain storage:sqlite while its actual
+history has continued in JSONL. Automatically honoring the saved value after
+an update could switch reads to an empty or stale SQLite database. This is a
+conditional risk from source, not a claim about any particular JAR1 profile.
+
+better-sqlite3 is declared in .msb/bot/package.json. Version 11.10.0 was built
+offline and used for separate local Linux lock tests, not as a working monitor
+backend or a test of the installed server ABI. Node's fallback SQLite in the
+local container is experimental. Old SQLite may contain WAL, FTS and overlapping
+records; neither version's current code proves how to merge or deduplicate both
+histories, preserve source/digest markers or reverse a switch after partial failure.
+
+Before restoring a user-visible backend choose how an already saved sqlite value
+and a new explicit selection behave, and how to preserve the existing JSONL and
+any old database. Tests must cover synthetic old schema/IDs and both histories,
+repeated/partial migration, concurrent poll/digest/writers, unavailable native
+module/open failure, rollback and an unchanged JSONL fallback; SQLite WAL needs
+a consistent copy. Until then do not silently activate or migrate user data.
+No real source, database, credentials, network, JAR1 or unrelated engine was
+read or changed by this audit.

@@ -19,7 +19,8 @@
 Фоновый тик — 5 минут; дайджест учитывает сохранённую timezone профиля бота.
 Изменения `meta.json` сериализованы по профилю и между процессами: сбор обновляет
 только времена источников, отправка — свою отметку после успешной доставки.
-Реальный backend — JSONL. Сохранение значения `sqlite` в UI не создаёт SQLite backend.
+Реальный backend — JSONL. Сохранение значения `sqlite` в UI не создаёт SQLite backend;
+[старое хранилище и граница включения](../../tests/reference/parity-monitor-storage-evidence.txt).
 
 Проверки: [monitor-env](../../tests/monitor-env.test.mjs) — config/storage,
 [menu-handlers](../../tests/menu-handlers.test.mjs) — меню, timezone и отправка;
