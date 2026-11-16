@@ -69,3 +69,25 @@ Existing auth routes, Pult transport, and ledger bytes are preserved.
 Tests use the real Telegram handler, an owned synthetic Claude
 executable, and disposable state. No account charge or live
 provider acceptance is part of this checkpoint.
+
+Observed route discrepancy (policy not yet chosen): with a disposable Codex
+state containing costPaused:true, tests/reference/probe-spend-pause-routes.mjs
+shows the real foreground Telegram route returns the existing pause text
+without calling its fake model; a direct call to currentReminderRefusal also
+returns blocked. The same synthetic profile's direct tasks.json interval calls
+its fake runner and advances nextAt. The flag, selected provider and session
+remain unchanged. The probe observes the current behavior; it is not a passing
+correctness claim for the intended interval policy and does not test a complete
+reminder dispatch or real charges.
+
+The old worker 110354-110362 applies the saved flag before provider dispatch,
+while its screen 52930-52934 describes accounting for Anthropic API and
+excludes subscriptions. No exact old counterpart to the newer tasks.json
+interval schema was established. The accepted c56f30b source has the same
+foreground costPaused gate and a direct interval path with no costPaused check;
+this source comparison does not prove any live JAR1 state or event. The owner
+has been asked which provider/schedule policy is intended before changing it.
+
+The observational probe passed on local Node 26 and isolated Linux arm64 Node
+22.23.2 with synthetic profiles, fake Telegram/runner and unrelated dispatchers
+mocked. Linux had no network. No account, charge, JAR1 or OpenClaw was used.
