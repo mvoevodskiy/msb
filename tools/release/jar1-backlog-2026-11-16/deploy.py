@@ -421,7 +421,7 @@ class Deployment:
            verified.get('source_archive_sha256') != self.manifest['source_archive_sha256']:
             raise ValueError('Candidate has no matching scoped verification')
         required = {'node-0', 'node-1', 'node-2', 'node-3', 'service-labels', 'bot-status-view',
-                    'legacy-timer-conversation-safe', 'backlog-targeted', 'menu-safe', 'test_bot_off_marker', 'test_ipc_reference',
+                    'legacy-timer-conversation-safe', 'backlog-targeted', 'recurring-safe', 'menu-safe', 'test_bot_off_marker', 'test_ipc_reference',
                     'test_private_state', 'test_pult_routing', 'test_client_markers'}
         required.update('syntax-' + item['relative'].replace('/', '_') for item in self.manifest['files'])
         checks = verified.get('checks', [])
@@ -434,7 +434,7 @@ class Deployment:
             raise ValueError('Distinct-UID target skips are not accounted for')
         counts = {item['suite']: item.get('passed') for item in checks}
         if counts['service-labels'] != 3 or counts['bot-status-view'] != 1 or \
-           counts['legacy-timer-conversation-safe'] != 23 or counts['menu-safe'] != 10 or counts['test_bot_off_marker'] != 9:
+           counts['legacy-timer-conversation-safe'] != 23 or counts['backlog-targeted'] != 283 or counts['recurring-safe'] != 8 or counts['menu-safe'] != 10 or counts['test_bot_off_marker'] != 9:
             raise ValueError('Focused verification did not run expected tests')
         if digest(self.stage / 'source.tar.gz') != self.manifest['source_archive_sha256']:
             raise ValueError('Source archive changed')

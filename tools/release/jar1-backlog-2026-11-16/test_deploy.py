@@ -143,7 +143,7 @@ def fixture(failure=None):
         (stage / 'manifest.json').write_text(json.dumps(manifest))
         manifest_sha = deploy.digest(stage / 'manifest.json')
         names = {'node-0', 'node-1', 'node-2', 'node-3', 'service-labels', 'bot-status-view',
-                 'legacy-timer-conversation-safe', 'backlog-targeted', 'menu-safe', 'test_bot_off_marker', 'test_ipc_reference',
+                 'legacy-timer-conversation-safe', 'backlog-targeted', 'recurring-safe', 'menu-safe', 'test_bot_off_marker', 'test_ipc_reference',
                  'test_private_state', 'test_pult_routing', 'test_client_markers'}
         names.update('syntax-' + row['relative'].replace('/', '_') for row in entries)
         report = {'passed': True, 'manifest_sha256': manifest_sha, 'source_commit': 'a' * 40,
@@ -151,9 +151,9 @@ def fixture(failure=None):
                   'environment': {'fixture': 'same-runtime', 'node_sha256': 'fixture-node'},
                   'checks': [{'suite': name, 'exit_code': 0,
                               'tests': 7 if name == 'test_client_markers' else 3 if name == 'service-labels' else
-                                       23 if name == 'legacy-timer-conversation-safe' else 10 if name == 'menu-safe' else 9 if name == 'test_bot_off_marker' else 1,
+                                       23 if name == 'legacy-timer-conversation-safe' else 283 if name == 'backlog-targeted' else 8 if name == 'recurring-safe' else 10 if name == 'menu-safe' else 9 if name == 'test_bot_off_marker' else 1,
                               'passed': 0 if name == 'test_client_markers' else 3 if name == 'service-labels' else
-                                        23 if name == 'legacy-timer-conversation-safe' else 10 if name == 'menu-safe' else 9 if name == 'test_bot_off_marker' else 1,
+                                        23 if name == 'legacy-timer-conversation-safe' else 283 if name == 'backlog-targeted' else 8 if name == 'recurring-safe' else 10 if name == 'menu-safe' else 9 if name == 'test_bot_off_marker' else 1,
                               'skipped': 7 if name == 'test_client_markers' else 0} for name in names]}
         report_path = stage / 'test-home/results/verification.json'
         report_path.write_text(json.dumps(report))
@@ -526,6 +526,17 @@ class DeploymentTest(unittest.TestCase):
                 deploy.Deployment(release.stage, release.backup, roots, host,
                                   deploy.digest(release.stage / 'manifest.json'), deploy.digest(report_path))
             self.assertEqual(host.calls, [])
+
+    def test_recurring_and_backlog_counts_must_be_exact(self):
+        for suite, count in (('recurring-safe', 7), ('backlog-targeted', 282)):
+            with self.subTest(suite=suite), fixture() as (release, host, roots, _, report_path):
+                report = json.loads(report_path.read_text())
+                next(row for row in report['checks'] if row['suite'] == suite)['passed'] = count
+                report_path.write_text(json.dumps(report))
+                with self.assertRaises(ValueError):
+                    deploy.Deployment(release.stage, release.backup, roots, host,
+                                      deploy.digest(release.stage / 'manifest.json'), deploy.digest(report_path))
+                self.assertEqual(host.calls, [])
 
     def test_distinct_uid_skips_are_explicit_and_exact(self):
         with fixture() as (release, host, roots, _, report_path):
