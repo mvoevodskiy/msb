@@ -286,7 +286,7 @@ setup_bots() {
       if ! findmnt -n "$bot_dir/cwd" >/dev/null 2>&1; then
         mount --bind "$WORKSPACE" "$bot_dir/cwd"
       fi
-      local line="$WORKSPACE  $bot_dir/cwd  none  bind,nofail  0  0"
+      local line="$WORKSPACE  $bot_dir/cwd  none  bind,nofail,x-systemd.device-timeout=1s  0  0"
       if ! grep -Fqx "$line" /etc/fstab 2>/dev/null && ! grep -Fqx "$line" "$fstab_snip" 2>/dev/null; then
         echo "$line" >>"$fstab_snip"
       fi

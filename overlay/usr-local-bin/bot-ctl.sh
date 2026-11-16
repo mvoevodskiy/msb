@@ -78,7 +78,8 @@ ensure_multibot_template() {
 
 fstab_line_for() {
   local id="$1"
-  printf '%s  %s/bots/%s/cwd  none  bind,nofail  0  0\n' "$WORKSPACE" "/home/client/.msb" "$id"
+  # nofail: не валит local-fs.target; device-timeout: не держит boot при сбое bind
+  printf '%s  %s/bots/%s/cwd  none  bind,nofail,x-systemd.device-timeout=1s  0  0\n' "$WORKSPACE" "/home/client/.msb" "$id"
 }
 
 add_bot_instance() {

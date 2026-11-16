@@ -3,9 +3,10 @@ Description=Constructor Agent Telegram Bot (%i)
 After=network-online.target
 Wants=network-online.target
 # Стойкость к ребуту: рабочий каталог юнита это bind-mount workspace, который
-# персистится в fstab с опцией nofail (маунт не валит local-fs.target). Раз
-# маунт может тихо не подняться, юнит должен явно ждать именно его, а не
-# стартовать против пустого несмонтированного cwd после холодной загрузки.
+# персистится в fstab с nofail,x-systemd.device-timeout=1s (маунт не валит
+# local-fs.target и не держит boot). Раз маунт может тихо не подняться, юнит
+# должен явно ждать именно его, а не стартовать против пустого
+# несмонтированного cwd после холодной загрузки.
 RequiresMountsFor=/home/client/.msb/bots/%i/cwd
 StartLimitIntervalSec=300
 StartLimitBurst=5
