@@ -95,7 +95,8 @@ test('/stop keeps current turn locked until it finishes and never reports succes
   await new Promise(resolve => setTimeout(resolve, 10));
   await until(() => calls === 2, 'queued turn after stopped process exits');
   await f.message('after exit');
-  await until(() => calls === 3 && f.edits.at(-1) === 'fixture failure');
+  await until(() => calls === 3 && f.messages.filter(text => text === 'fixture failure').length === 2);
+  assert.ok(f.deleted.length >= 2, 'Final errors replace their progress messages with new messages.');
   assert.ok(!f.edits.includes('✅'));
 });
 
