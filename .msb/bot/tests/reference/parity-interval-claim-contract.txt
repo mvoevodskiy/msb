@@ -1,0 +1,51 @@
+Interval tasks: same-bot process claim — evidence and limitations
+
+No exact old equivalent of the new tasks.json interval schema is established.
+Old core blob 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11: use
+git show <blob> | nl -ba; schedules.json dispatch 108800–108835, storage
+18045–18068 and 18259–18282 use different once/daily/weekly records and do
+not establish multi-process exactly-once behavior for the new interval store.
+
+RED evidence: commit cc621f7 uses two separate synthetic scheduler processes
+with fake turns and fake Telegram. Before the fix both processes for the same
+bot entered and notified for one due task. It also showed two different bots
+sharing AUTONOMY_DIR could run that task twice; separate directories were the
+control. Neither observation proves the production server was in that state.
+
+Current route: scheduler -> interval-claim -> tryWithFileLock on a separate
+SQLite lock in the canonical bot root, including when task directories differ.
+An already held claim is skipped without waiting. After acquiring,
+the task is reread and its snapshot, enabled flag and due time rechecked. The
+claim lasts through saveTaskResult; the tasks.json lock remains short. A local
+stop epoch or pending scheduled turn is rechecked before the model starts.
+Tests mock unrelated dispatchers before importing scheduler and use fake turn
+and Telegram. The fixed regression and reference probe demonstrate separate
+processes, symlink aliases, different due tasks, local owner pause, /stop before
+admission (also via the real handler with fake Telegram), edits/deletion,
+process death and lock failure/release.
+
+Not a global exactly-once guarantee: bots sharing a task list still run it
+separately pending the owner's scope decision; nextAt itself is shared. A crash
+after an external action but before save can cause retry. A live hung process
+keeps the claim; lock files are retained. An edit/delete after the final read
+cannot cancel an already admitted turn, though its result cannot overwrite the
+changed row. /stop does not abort an interval already started or signal another
+process. Foreground or compact in a second process is not covered by this
+interval-only claim. No JAR1, real model, Telegram or OpenClaw was exercised.
+
+Local validation (16 November 2026): 114 related Node 26 tests, two task-store
+concurrency tests and one digest/menu test passed; the revised shared interval
+probe also passed with the documented different-bot boundary. In isolated
+Linux arm64 / Node 22.23.2, the 15 interval/stop tests plus six sleep-marker
+checks passed twice: once using Node's SQLite fallback and once with the
+existing better-sqlite3 11.10.0 source built offline. The source tree was
+mounted read-only, the container had no network and temporary output was
+removed with the container. Earlier native staging attempts failed on a noexec
+temporary mount and omitted Python fixture dependencies; the final stage
+contained client_markers.py and client_fs.py and all 21 tests passed.
+
+From .msb/bot with Node 22 and dependencies available:
+  node --test tests/autonomy-same-bot-claim.test.mjs tests/autonomy-stop-admission.test.mjs tests/sleep-marker.test.mjs
+  node tests/reference/probe-shared-interval-race.mjs
+The stop ingress wrapper creates its own test child with module mocks enabled;
+no extra flag is needed for the normal test command.

@@ -10,9 +10,11 @@ Scheduler перечитывает кандидата до запуска, а п
 [persistence regression](../../tests/autonomy-store-concurrency.test.mjs) проверяет
 также независимые процессы. [Контракт old→new](../../tests/reference/parity-autonomy-contract.txt). `saveAllTasks` — явная замена всего списка, не API
 будущих toggle/delete; их read/modify/write должно оставаться в store transaction.
-Lock сериализует запись JSON, не резервирует выполнение задачи между несколькими
-scheduler-процессами. При изменении задачи во время хода CAS отбрасывает старый
-результат; это сохраняет правку, но не даёт гарантии однократных внешних эффектов.
+Lock сериализует запись JSON. Отдельный [interval claim](interval-claim.mjs)
+неблокирующе сериализует интервальные ходы одного бота между scheduler-процессами
+и удерживается до сохранения результата. Claim хранится в корне бота, даже если
+каталоги задач различаются. Lock самого `tasks.json` во время хода свободен. При изменении задачи CAS отбрасывает старый
+результат; после падения процесса уже совершённый внешний эффект может повториться.
 
 Базовые интервальные задачи используют общий `runAgentTurn` и состояние бота.
 Данные — `<profile.root>/autonomy` либо явно заданный `AUTONOMY_DIR`.
@@ -26,19 +28,27 @@ scheduler-процессами. При изменении задачи во вр
 | Разобрать сообщение «каждые N часов …» | [store.mjs](store.mjs): `tryParseScheduleMessage` |
 | Прочитать/сохранить задачи | [store.mjs](store.mjs): `listTasks`, `addTask`, `saveTaskResult` (полная замена — только явный `saveAllTasks`) |
 | Выполнить наступившую задачу и сохранить `runs.jsonl` | [scheduler.mjs](scheduler.mjs): `startScheduler`, внутренний `runTask` |
+| Не запускать интервальные ходы одного бота параллельно | [interval-claim.mjs](interval-claim.mjs): `tryIntervalClaim` → [file lock](../../shared/file-lock.mjs): `tryWithFileLock` |
 | Запустить сохранённый таймер | [legacy-dispatch.mjs](legacy-dispatch.mjs) → [очередь Telegram](../telegram/inbox.mjs) |
-| Не начинать фоновый ход одновременно с `/compact` | [session-operation.mjs](../agent/session-operation.mjs): `trySessionOperation` |
+| Не начинать фоновый ход одновременно с `/compact` в том же процессе | [session-operation.mjs](../agent/session-operation.mjs): `trySessionOperation` |
 | Прочитать журнал и подготовить страницы истории | [history.mjs](history.mjs): `readRecentRuns`, `historyPages` |
 | Показать сводку прогонов из разговора | [saved-task-runs.mjs](saved-task-runs.mjs): `readSavedTaskRunHistory` |
 | Список, карточки и настройки UI | [screens/autonomy](../telegram/screens/autonomy.mjs), [routes/autonomy](../telegram/routes/autonomy.mjs) |
 
-Диагностический [RED-пробник](../../tests/reference/probe-shared-interval-race.mjs)
-воспроизводит два параллельных запуска одной интервальной записи в отдельных
-процессах с общим каталогом. Он намеренно ожидает существующий дефект и не
-входит в обычный test suite; несвязанные dispatchers и исходный turn заменены
-до импорта scheduler, фиктивные модель и Telegram передаются явно. Раздельные
-каталоги служат контролем. Семантика
-владельца и crash recovery ещё требуют решения; это не заявленное исправление.
+Прежний RED-пробник сохранён в commit `cc621f7`; текущий
+[пробник](../../tests/reference/probe-shared-interval-race.mjs) и
+[регрессии](../../tests/autonomy-same-bot-claim.test.mjs) проверяют локальную
+защиту с фиктивными ходами и Telegram. Несвязанные dispatchers заменены до
+импорта scheduler. Два разных бота с общим каталогом по-прежнему могут запустить
+одну запись: выбор принадлежности задач владельцем ещё не сделан. Claim не
+сериализует foreground или `/compact` в другом процессе. Зависший живой процесс
+держит claim до завершения; lock-файл не удаляется автоматически. После падения ОС снимает lock, но именно-один-раз
+для внешних действий не гарантирован. /stop предотвращает ещё не начатый ход
+текущего прохода, но не отменяет уже работающий прямой interval run и не передаёт
+сигнал другому процессу. Локальная owner-пауза прерывает зарегистрированный ход.
+Редактирование или удаление после последней проверки не отменяет уже допущенный
+ход, но старый результат не перезапишет изменённую запись.
+[Границы и old reference](../../tests/reference/parity-interval-claim-contract.txt).
 
 `main` запускает scheduler; его `stop()` снимает таймеры. Отдельная отмена уже
 начатого фонового `runAgentTurn` этим методом не реализована.

@@ -2,6 +2,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { autonomyDir, ensureDir } from '../paths.mjs';
+import { tryIntervalClaim } from './interval-claim.mjs';
 import { runAgentTurn } from '../agent/turn.mjs';
 import { listTasks, saveTaskResult } from './store.mjs';
 import { trySessionOperation } from '../agent/session-operation.mjs';
@@ -22,10 +23,13 @@ const TICK_MS = 60_000;
  * [Owner pause](./owner-pause.mjs) blocks admission and interrupts an active interval.
  * [Codex sleep](../engines/codex-sleep.mjs) also defers a not-yet-started interval.
  * [Store](./store.mjs) условно сохраняет одну неизменённую задачу после каждого хода,
- * не весь старый список; active run не держит lock файла.
+ * не весь старый список; active run не держит lock tasks.json.
+ * [Interval claim](./interval-claim.mjs) сериализует интервалы одного бота до сохранения.
  * Проверки: [persistence](../../tests/autonomy-store-concurrency.test.mjs),
  * [compact guard](../../tests/autonomy-compact-guard.test.mjs),
- * [shared interval RED probe](../../tests/reference/probe-shared-interval-race.mjs). [Контракт](./README.md).
+ * [claim regression](../../tests/autonomy-same-bot-claim.test.mjs),
+ * [Telegram stop](../../tests/autonomy-stop-admission.test.mjs),
+ * [shared interval probe](../../tests/reference/probe-shared-interval-race.mjs). [Контракт](./README.md).
  */
 export function startScheduler({ api, adminId, scheduledTurns, timezone, now = Date.now,
   log = console.error, runTurn = runAgentTurn, runCodexPrompt, runCursorPrompt, readCodexQuota } = {}) {
@@ -53,26 +57,33 @@ export function startScheduler({ api, adminId, scheduledTurns, timezone, now = D
     busy = true;
     const stopEpoch = scheduledTurns?.stopEpoch;
     const isInterrupted = () => stopped || scheduledTurns?.stopEpoch !== stopEpoch;
+    const mayNotStart = () => isInterrupted() || Boolean(scheduledTurns?.pending);
     try {
       if (scheduledTurns) {
         legacyTick = dispatchLegacyTimers({ scheduledTurns, timezone, now, isInterrupted })
           .catch(error => log('[msb/scheduler] legacy timer error: ' + error.message));
         try { await legacyTick; } finally { legacyTick = undefined; }
       }
-      if (isInterrupted() || scheduledTurns?.pending) return;
+      if (mayNotStart()) return;
       const tasks = await listTasks();
       const tickAt = now();
       for (const snapshot of tasks) {
-        if (stopped) break;
-        // Another task can run for minutes; do not execute a since-edited/deleted task.
-        const current = (await listTasks()).find(task => task.id === snapshot.id);
-        if (!current || !isDeepStrictEqual(current, snapshot)) continue;
-        const before = { ...current }, task = { ...current };
-        if (task.enabled === false) continue;
-        if ((task.nextAt || 0) > tickAt) continue;
-        if (!await runTask(task, api, adminId, log, runTurn, () => stopped, codexSleep.sleeping)) continue;
-        task.nextAt = tickAt + Math.max(1, task.everyHours || 24) * 3600 * 1000;
-        await saveTaskResult(before, task);
+        if (mayNotStart()) break;
+        if (snapshot.enabled === false || (snapshot.nextAt || 0) > tickAt) continue;
+        // The claim belongs to this bot, not to tasks.json: it serializes
+        // its interval turns without claiming work for another bot.
+        await tryIntervalClaim(async () => {
+          if (mayNotStart()) return;
+          // Re-read after claiming: another process may have already finished,
+          // or the owner may have edited or removed the task in the meantime.
+          const current = (await listTasks()).find(task => task.id === snapshot.id);
+          if (!current || !isDeepStrictEqual(current, snapshot)) return;
+          const before = { ...current }, task = { ...current };
+          if (task.enabled === false || (task.nextAt || 0) > tickAt) return;
+          if (!await runTask(task, api, adminId, log, runTurn, mayNotStart, codexSleep.sleeping)) return;
+          task.nextAt = tickAt + Math.max(1, task.everyHours || 24) * 3600 * 1000;
+          await saveTaskResult(before, task);
+        });
       }
     } catch (err) {
       log(`[msb/scheduler] tick error: ${err.message}`);

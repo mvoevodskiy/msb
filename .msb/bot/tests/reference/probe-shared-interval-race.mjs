@@ -1,9 +1,8 @@
 /**
- * Diagnostic RED probe, not a passing correctness test: demonstrate the current
- * duplicate interval start with real scheduler/store and two synthetic processes.
+ * Synthetic shared-interval regression probe using the real scheduler/store.
  * Run from iia root with `node .msb/bot/tests/reference/probe-shared-interval-race.mjs`.
- * It intentionally expects the currently observed bug; after a fix replace it
- * with a regression assertion, rather than counting this probe as a PASS.
+ * The original RED reproduction is retained in git commit cc621f7. This
+ * version expects one same-bot start and retains the different-bot control.
  * Worker mocks unrelated dispatchers *before* importing scheduler; their real
  * implementations are not called. No CLI, Telegram, network or owner data.
  * Evidence: scheduler.mjs tick/runTask and store.mjs saveTaskResult; no exact old
@@ -46,7 +45,7 @@ async function scenario(root, names, isolated, expectedEntered) {
   const dirs = names.map((_,index) => path.join(runtime, isolated ? `autonomy-${index}` : 'autonomy'));
   const envFor = (name,index) => ({MSB_RUNTIME_ROOT:runtime,MSB_BOT_ID:name,AUTONOMY_DIR:dirs[index]});
   await addTask({id:'synthetic-due',prompt:'fixture only',everyHours:1,nextAt:Date.now()-1000},envFor(names[0],0));
-  const children=[]; let ready=0, entered=0, done=0; const deliveries=[];
+  const children=[]; let ready=0, entered=0, done=0, released=false; const deliveries=[];
   let deadline;
   const outcome = new Promise((resolve,reject)=>{
     deadline=setTimeout(()=>reject(Error(`timeout: ready=${ready}, entered=${entered}, done=${done}`)),8000);
@@ -63,9 +62,15 @@ async function scenario(root, names, isolated, expectedEntered) {
       child.on('message',message=>{
         if(message.event==='error') return reject(Error(message.error));
         if(message.event==='ready' && ++ready===names.length) children.forEach(c=>c.send('go'));
-        if(message.event==='entered' && ++entered===expectedEntered) children.forEach(c=>c.send('release'));
+        if(message.event==='entered') entered++;
         if(message.event==='delivery') deliveries.push(message.target);
-        if(message.event==='done' && ++done===names.length){clearTimeout(deadline);resolve();}
+        if(message.event==='done') done++;
+        // A same-bot contender must finish without entering before release;
+        // a cross-bot control is released once both turns have entered.
+        if(!released && (entered>=2 || (entered>=1 && done>=1))){
+          released=true;children.forEach(c=>{if(c.connected)c.send('release');});
+        }
+        if(done===names.length){clearTimeout(deadline);resolve();}
       });
     });
   });
@@ -95,13 +100,14 @@ async function scenario(root, names, isolated, expectedEntered) {
 async function main() {
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'jarvis-interval-race-'));
   try {
-    const sameBot=await scenario(path.join(root,'same-bot'),['same','same'],false,2);
+    const sameBot=await scenario(path.join(root,'same-bot'),['same','same'],false,1);
     const twoBots=await scenario(path.join(root,'two-bots'),['first','second'],false,2);
     const isolated=await scenario(path.join(root,'isolated'),['first','second'],true,1);
-    assert.deepEqual(sameBot.deliveries,[101,101]);
+    assert.deepEqual(sameBot.deliveries,[101]);
     assert.deepEqual(twoBots.deliveries,[101,102]);
     assert.deepEqual(isolated.deliveries,[101]);
-    console.log('RED REPRODUCED: one due interval task started twice in separate processes, both for the same bot and for two bots sharing a task directory.');
+    console.log('PASS: one due interval task starts once for two processes of the same bot.');
+    console.log('BOUNDARY: two different bots sharing a task directory still start it twice pending an ownership decision.');
     console.log('CONTROL: a second bot with a separate task directory did not execute the first bot\'s fixture task.');
     console.log('Only synthetic files, fake runTurn and fake Telegram were used; unrelated dispatchers were mocked before scheduler import.');
   } finally {await fs.rm(root,{recursive:true,force:true});}
