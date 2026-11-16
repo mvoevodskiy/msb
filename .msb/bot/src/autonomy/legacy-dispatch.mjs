@@ -1,7 +1,8 @@
 /**
  * Check saved legacy timer eligibility and reserve the ordinary Telegram turn.
  * [Scheduler](./scheduler.mjs), [records](./legacy-timers.mjs), [inbox](../telegram/inbox.mjs),
- * [old contract](../../tests/reference/parity-autonomy-contract.txt), [ingress test](../../tests/legacy-timer-dispatch.test.mjs).
+ * [old contract](../../tests/reference/parity-autonomy-contract.txt), [spend pause](../../tests/reference/parity-owner-spend-contract.txt),
+ * [ingress test](../../tests/legacy-timer-dispatch.test.mjs).
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -96,10 +97,13 @@ export async function dispatchLegacyTimers({ scheduledTurns, timezone, now, isIn
   const local = date => (formatClock ??= ownerClock(state.timezone || timezone))(date);
   for (const timer of timers) {
     if (isInterrupted()) return;
-    if (!pendingLegacyTimerRun(timer) && !isDue(timer, instant, local)) continue;
+    const pending = pendingLegacyTimerRun(timer);
+    const due = isDue(timer, instant, local);
+    if ((!pending && !due) || (pending && state.costPaused)) continue;
     const text = '⏰ Таймер "' + timer.name + '":\n' + timer.prompt;
     await publishLegacyTimerRun(file, timer, {
-      env, now, recoverable: isCodexSelected(state), destination: destinationKey(state),
+      env, now, recoverable: isCodexSelected(state) || Boolean(state.costPaused), destination: destinationKey(state),
+      deferOnly: Boolean(state.costPaused), coalesceAt: pending && due ? instant.getTime() : undefined,
       reserve: legacyRun => isInterrupted() ? null : scheduledTurns.reserve({ chatId, userId, text, legacyRun }),
     });
   }

@@ -3,7 +3,7 @@
  * [Telegram management](../telegram/routes/autonomy.mjs), [profile paths](../paths.mjs),
  * [storage lock](../../shared/file-lock.mjs), [parity checks](../../tests/autonomy-timers.test.mjs).
  * [Conversation](./legacy-timer-actions.mjs) and [dispatcher](./legacy-dispatch.mjs) share the writer.
- * A Codex reservation keeps its old attempt stamp and a pending ID until inbox admission.
+ * A Codex reservation and a spend-paused occurrence keep their attempt stamp and a pending ID until inbox admission.
  * [Interval tasks](./store.mjs) are separate.
  */
 import fs from 'node:fs/promises';
@@ -35,6 +35,17 @@ function runDefinition({ legacyPendingRun, ...timer }) {
 
 function pendingMark({ id, file, timer, destination }) {
   return { id, file, destination, definition: runDefinition(timer) };
+}
+
+function sameDestinationOwner(left, right) {
+  const parse = value => {
+    const match = /^(-?\d+):(\d+)$/.exec(value || '');
+    if (!match) return;
+    const [chat, owner] = match.slice(1).map(Number);
+    return Number.isSafeInteger(chat) && chat !== 0 && Number.isSafeInteger(owner) && owner > 0 ? owner : undefined;
+  };
+  const owner = parse(left);
+  return owner !== undefined && owner === parse(right);
 }
 
 async function physicalTimersPath(env) {
@@ -123,13 +134,17 @@ export async function changeStoppedLegacyTimers(stop, env = process.env) {
   })) ?? 0;
 }
 
-export async function publishLegacyTimerRun(file, timer, { reserve, now, env, recoverable, destination }) {
+export async function publishLegacyTimerRun(file, timer, { reserve, now, env, recoverable, destination, deferOnly = false, coalesceAt }) {
   await withLegacyTimerUpdate(env, async (records, save) => {
     const index = records.findIndex(row => row?.id === timer.id);
     if (index < 0 || !isDeepStrictEqual(records[index], timer)) return;
     const pending = pendingLegacyTimerRun(timer);
     let next = timer;
-    if (pending && (timer.legacyPendingRun.file !== file || timer.legacyPendingRun.destination !== destination)) return;
+    if (pending && timer.legacyPendingRun.file !== file) return;
+    const rebind = pending && timer.legacyPendingRun.destination !== destination &&
+      timer.legacyPendingRun.reason === 'cost_pause' && sameDestinationOwner(timer.legacyPendingRun.destination, destination);
+    if (pending && timer.legacyPendingRun.destination !== destination && !rebind) return;
+    if (pending && deferOnly) return;
     if (pending && timer.legacyPendingRun.definition !== runDefinition(timer)) {
       delete records[index].legacyPendingRun;
       await save();
@@ -138,14 +153,18 @@ export async function publishLegacyTimerRun(file, timer, { reserve, now, env, re
     if (!pending) {
       next = { ...timer, lastRunAt: new Date(now()).toISOString() };
       if (timer.type === 'once') next.enabled = false;
+    } else if (rebind || (coalesceAt !== undefined && timer.legacyPendingRun.reason === 'cost_pause')) {
+      next = { ...timer, ...(coalesceAt !== undefined ? { lastRunAt: new Date(coalesceAt).toISOString() } : {}) };
+      next.legacyPendingRun = { ...timer.legacyPendingRun,
+        ...pendingMark({ id: timer.legacyPendingRun.id, file, timer: next, destination }) };
     }
     const run = { id: pending ? timer.legacyPendingRun.id : randomUUID(), file, timer: next, destination };
-    if (!pending && recoverable) next.legacyPendingRun = pendingMark(run);
+    if (!pending && recoverable) next.legacyPendingRun = { ...pendingMark(run), ...(deferOnly ? { reason: 'cost_pause' } : {}) };
     const finishReservation = reserve(run);
     if (!finishReservation) return;
 
     try {
-      if (!pending) {
+      if (!pending || next !== timer) {
         records[index] = next;
         await save();
       }

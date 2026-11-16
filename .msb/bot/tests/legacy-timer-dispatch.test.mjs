@@ -825,3 +825,127 @@ test('/stop aborts the initial status request for a scheduled timer', async t =>
   assert.equal(f.calls.length, 0);
   assert.deepEqual(await f.records(), [{ ...timer, enabled: false, lastRunAt: stamp }]);
 });
+
+
+for (const provider of ['codex', 'claude']) {
+  test('legacy due while spend paused survives restart and runs once on ' + provider, async t => {
+    const f = await dispatchFixture(t, { chatId: 42 });
+    const state = { ...(await loadState()).state, costPaused: true };
+    if (provider === 'claude') { delete state.extAuthBypass; state.authMode = 'subscription'; state.hasSubscriptionAuth = true; }
+    await saveState(state);
+    const session = state.ccSessionId;
+    await f.scheduler.tickNow();
+    await until(() => f.messages.some(text => text.includes('Дневной лимит достигнут')), 'paused notice did not finish');
+    await f.scheduler.tickNow();
+    assert.ok(f.typingSignals.length > 0, 'the ordinary typing indication is preserved');
+    const [prepared] = await f.records();
+    assert.ok(prepared.legacyPendingRun);
+    assert.equal(prepared.enabled, false);
+    assert.equal(prepared.lastRunAt, stamp);
+    assert.equal(f.calls.length, 0);
+    const fresh = await f.restart();
+    try {
+      f.setTime(tick + 10 * 60_000);
+      await fresh.scheduler.tickNow();
+      assert.equal(f.calls.length, 0);
+      await saveState({ ...(await loadState()).state, costPaused: false });
+      await fresh.scheduler.tickNow();
+      await until(() => f.calls.length === 1, 'deferred timer was not dispatched');
+      assert.equal(f.calls[0].prompt, timerPrompt);
+      assert.equal((await loadState()).state.ccSessionId, session);
+      await fresh.scheduler.tickNow();
+      assert.equal(f.calls.length, 1);
+      assert.equal((await f.records())[0].legacyPendingRun, undefined);
+    } finally { await fresh.close(); }
+  });
+}
+
+test('paused legacy daily and weekly timers coalesce missed slots and a current slot', async t => {
+  const daily = { ...timer, id: 'daily-spend', name: 'Каждый день', type: 'daily', hour: 9 };
+  const weekly = { ...timer, id: 'weekly-spend', name: 'Воскресенье', type: 'weekly', hour: 9, weekdays: [7] };
+  const f = await dispatchFixture(t, { timers: [daily, weekly], chatId: 42 });
+  await saveState({ ...(await loadState()).state, costPaused: true });
+  await f.scheduler.tickNow();
+  assert.ok((await f.records()).every(row => row.legacyPendingRun));
+  f.setTime(tick + 7 * 86_400_000);
+  await f.scheduler.tickNow();
+  assert.equal(f.calls.length, 0);
+  await saveState({ ...(await loadState()).state, costPaused: false });
+  await f.scheduler.tickNow();
+  await until(() => f.calls.map(call => call.prompt).join('\n').includes(weekly.name), 'deferred recurring timers did not run');
+  const prompts = f.calls.map(call => call.prompt).join('\n');
+  assert.equal(prompts.split(daily.name).length - 1, 1);
+  assert.equal(prompts.split(weekly.name).length - 1, 1);
+  const count = f.calls.length;
+  await f.scheduler.tickNow();
+  assert.equal(f.calls.length, count);
+  assert.ok((await f.records()).every(row => row.lastRunAt === new Date(tick + 7 * 86_400_000).toISOString()));
+});
+
+test('/stop cancels an already deferred legacy once timer', async t => {
+  const f = await dispatchFixture(t, { chatId: 42 });
+  await saveState({ ...(await loadState()).state, costPaused: true });
+  await f.scheduler.tickNow();
+  await until(() => f.messages.some(text => text.includes('Дневной лимит достигнут')), 'paused notice did not finish');
+  assert.ok((await f.records())[0].legacyPendingRun);
+  await f.message('/stop');
+  assert.equal((await f.records())[0].legacyPendingRun, undefined);
+  await saveState({ ...(await loadState()).state, costPaused: false });
+  await f.scheduler.tickNow();
+  assert.equal(f.calls.length, 0);
+});
+
+test('/stop during publication of a spend-paused legacy timer cancels its pending run', async t => {
+  const f = await dispatchFixture(t, { chatId: 42 });
+  await saveState({ ...(await loadState()).state, costPaused: true });
+  const file = await fs.realpath(f.file);
+  const rename = fs.rename.bind(fs), entered = gate(), release = gate();
+  t.after(release.resolve);
+  let held = false;
+  t.mock.method(fs, 'rename', async (from, to, ...options) => {
+    if (to === file && !held) { held = true; entered.resolve(); await release.promise; }
+    return rename(from, to, ...options);
+  });
+  const tickRun = f.scheduler.tickNow();
+  let stop;
+  try {
+    await Promise.race([entered.promise, tickRun.then(() => assert.fail('expected timer publication'))]);
+    const turns = f.bot[Symbol.for('msb.scheduledTurns')];
+    const epoch = turns.stopEpoch;
+    stop = f.message('/stop');
+    await until(() => turns.stopEpoch !== epoch, '/stop did not start');
+  } finally { release.resolve(); }
+  await Promise.all([tickRun, stop]);
+  assert.equal((await f.records())[0].legacyPendingRun, undefined);
+  await saveState({ ...(await loadState()).state, costPaused: false });
+  await f.scheduler.tickNow();
+  assert.equal(f.calls.length, 0);
+});
+
+test('a spend-paused timer follows the same owner to the newly saved chat', async t => {
+  const f = await dispatchFixture(t, { chatId: 42 });
+  await saveState({ ...(await loadState()).state, costPaused: true });
+  await f.scheduler.tickNow();
+  await until(() => f.messages.some(text => text.includes('Дневной лимит достигнут')), 'paused notice did not finish');
+  await saveState({ ...(await loadState()).state, costPaused: false, chatId: groupChat, userId: 42 });
+  await f.scheduler.tickNow();
+  await until(() => f.calls.length === 1, 'deferred timer did not follow its owner');
+  assert.equal(f.calls[0].prompt, timerPrompt);
+  assert.equal(f.recipients.at(-1), groupChat);
+  await f.scheduler.tickNow();
+  assert.equal(f.calls.length, 1);
+});
+
+test('a different saved owner cannot receive a spend-paused timer', async t => {
+  const f = await dispatchFixture(t, { chatId: 42 });
+  await saveState({ ...(await loadState()).state, costPaused: true });
+  await f.scheduler.tickNow();
+  await until(() => f.messages.some(text => text.includes('Дневной лимит достигнут')), 'paused notice did not finish');
+  await saveState({ ...(await loadState()).state, costPaused: false, chatId: groupChat, userId: 99 });
+  await f.scheduler.tickNow();
+  assert.equal(f.calls.length, 0);
+  assert.ok((await f.records())[0].legacyPendingRun);
+  await saveState({ ...(await loadState()).state, chatId: 42, userId: 42 });
+  await f.scheduler.tickNow();
+  await until(() => f.calls.length === 1, 'timer was not preserved for the original owner');
+});

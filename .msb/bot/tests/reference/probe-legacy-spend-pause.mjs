@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-// Observation on fb5026f, not a statement of the desired post-pause policy.
+// Queued cases still observe the unresolved fb5026f boundary; initial-pause cases check the new policy.
 // [Old source and outcome](./parity-owner-spend-contract.txt).
 const repo = fileURLToPath(new URL('../../../../', import.meta.url));
 const moduleUrl = name => pathToFileURL(path.join(repo, name)).href;
@@ -58,7 +58,7 @@ for (const provider of ['codex', 'claude']) {
 
 
 for (const provider of ['codex', 'claude']) {
-  test('observe due legacy timer when spend already paused: ' + provider, async t => {
+  test('initially paused legacy timer stays pending until resume: ' + provider, async t => {
     const calls = [];
     const f = await fixture(t, async args => { calls.push(args); return {ok:true,text:'fixture result'}; },
       { overlay:false, runtimeProfile:'jar1' });
@@ -77,9 +77,11 @@ for (const provider of ['codex', 'claude']) {
     const [saved]=JSON.parse(await fs.readFile(file,'utf8'));
     assert.equal(saved.enabled,false);
     assert.equal(saved.lastRunAt,new Date(instant).toISOString());
-    assert.equal(saved.legacyPendingRun,undefined);
+    assert.equal(saved.legacyPendingRun?.reason,'cost_pause');
     await f.callback('settings:cost:resume');
     await scheduler.tickNow();
-    assert.equal(calls.length,0);
+    await until(()=>calls.length===1);
+    await scheduler.tickNow();
+    assert.equal(calls.length,1);
   });
 }

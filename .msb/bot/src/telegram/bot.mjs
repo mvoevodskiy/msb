@@ -19,6 +19,7 @@ import { randomUUID } from 'node:crypto';
  * Лимиты автономки из ответа → [limit markers](./limit-markers.mjs) → [подтверждение](./limit-confirmation.mjs).
  * журнал Пульта → [history](./history.mjs), STT → [voice](./voice.mjs).
  * /cost → [saved spend view](./screens/spend.mjs); saved owner pause gates the model turn.
+ * Due timers observed during that pause retain [pending](../autonomy/legacy-timers.mjs) while the usual status runs.
  * Final [reminder](./reminder-markers.mjs) and [owner pause](./pause-markers.mjs), then installation markers.
  * Model skill markers → [processor](../skills/response-markers.mjs) before plan/delivery/history, never UI metadata.
  * Prepared skills views/chunks → [view delivery](./view-delivery.mjs), context reply retained.
@@ -120,8 +121,14 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
           return;
         }
         const runs = entry.legacyParts?.flatMap(part => part.legacyRun ? [part.legacyRun] : []);
+        // A newly due timer captured during the saved spend pause keeps its
+        // pending occurrence while using the ordinary paused status/response.
+        if (!blocked && runs?.length && runs.every(run => run.timer.legacyPendingRun?.reason === 'cost_pause')) {
+          entry.forceSpendPaused = Boolean((await loadState()).state.costPaused);
+          if (cancelled()) { await cancelInboxEntry(entry).catch(() => {}); return; }
+        }
         let admitted;
-        if (runs?.length && (!blocked || runs.some(run => !run.timer.legacyPendingRun))) {
+        if (!entry.forceSpendPaused && runs?.length && (!blocked || runs.some(run => !run.timer.legacyPendingRun))) {
           admitted = await admitLegacyTimerRuns(runs, turn.controller.signal, { blocked, blockedByCodexSleep }).catch(error => {
             if (!cancelled()) console.error('[msb/bot] legacy admission failed:', error.code || error.name);
             return new Set();
@@ -142,7 +149,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
           }
           return;
         }
-        if (runs?.length) {
+        if (runs?.length && !entry.forceSpendPaused) {
           if (admitted === false) {
             if (!await engineSleep.queued(entry)) await cancelInboxEntry(entry, true);
             return;
@@ -743,7 +750,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       const checkSavedCursor = cursorAvailable ? bot[Symbol.for('msb.savedCursorPromptReady')] : undefined;
       const { state } = await loadState();
       signal.throwIfAborted();
-      const paused = Boolean(state.costPaused);
+      const paused = Boolean(state.costPaused || entry.forceSpendPaused);
       const bootstrapScope = !entry.scheduled && ctx.message && reminderOwner && state.extAuthBypass === 'codex'
         ? codexBootstrapScope(chatId, reminderOwner, thread) : undefined;
       const introPending = bootstrapScope ? entry.recovery || {
