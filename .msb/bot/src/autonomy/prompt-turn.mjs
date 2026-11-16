@@ -4,6 +4,8 @@
  * or the Cursor adapter. [Freshness](./prompt-freshness.mjs) refuses before spawn.
  * [Saved roles](./prompt-team.mjs) use the same tool boundary and claimed action.
  * [Dispatcher](./reminder-dispatch.mjs) owns cancellation, delivery and history.
+ * Saved cost pause is checked before launch; [tests](../../tests/saved-codex-prompt-action.test.mjs)
+ * and [contract](../../tests/reference/parity-owner-spend-contract.txt) describe its limits.
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -123,7 +125,7 @@ export async function runSavedPrompt(action, plan, { signal, isCurrent, runCodex
   const canLaunch = async () => {
     if (signal.aborted || await fs.realpath(logical) !== cwd || !await isCurrent()) return false;
     const { state } = await loadState(env);
-    return !signal.aborted && isDeepStrictEqual(
+    return !signal.aborted && !state.costPaused && isDeepStrictEqual(
       savedPromptPlan(action, state, env, Boolean(runCodexPrompt), Boolean(runCursorPrompt)),
       plan,
     );

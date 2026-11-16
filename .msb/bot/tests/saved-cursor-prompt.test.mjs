@@ -14,6 +14,8 @@ import { createReminderDispatcher } from '../src/autonomy/reminder-dispatch.mjs'
 import { actionRoot } from '../src/paths.mjs';
 import { loadState, saveState } from '../src/state.mjs';
 import { fixture } from './helpers/menu-fixture.mjs';
+import { runSavedCursorPrompt } from '../../../overlay/bot/ext/adapters/saved-cursor.mjs';
+import { botEnvPath } from '../../../overlay/bot/ext/env.mjs';
 
 const owner = -100777;
 const now = Date.parse('2026-11-11T12:00:00.000Z');
@@ -246,4 +248,72 @@ test('due prompt without plan logs skip reason once per tick', async t => {
   });
   await dispatch(() => false);
   assert.ok(logs.some(line => line.includes('skip ' + blocked.id) && line.includes('reason=no-plan')));
+});
+
+test('saved Cursor prelaunch defers while spend pause is set and runs after resume', async t => {
+  await fixture(t, async () => assert.fail('owner turn must not run'), { overlay: false, runtimeProfile: 'jar1' });
+  const state = { ...(await loadState()).state, ...cursorState(), costPaused: true };
+  await saveState(state);
+  const plan = savedPromptPlan(editorial, state, process.env, false, true);
+  assert.equal(plan?.provider, 'cursor');
+  let calls = 0;
+  const runCursorPrompt = async ({ canLaunch }) => {
+    if (!await canLaunch()) return;
+    calls++;
+    return { providerId: 'cursor', text: 'fixture', assistantTextObserved: true, isError: false,
+      usage: { inputTokens: 1, cacheReadTokens: 0, cacheCreationTokens: 0, outputTokens: 1 } };
+  };
+  const options = { signal: new AbortController().signal, isCurrent: async () => true, runCursorPrompt };
+  assert.equal((await runSavedPrompt(editorial, plan, options)).status, 'deferred');
+  assert.equal(calls, 0);
+  await saveState({ ...state, costPaused: false });
+  assert.equal((await runSavedPrompt(editorial, plan, options)).status, 'ok');
+  assert.equal(calls, 1);
+});
+
+
+test('saved Cursor missing key defers if spend pause arrives while credentials are read', async t => {
+  const f = await fixture(t, async () => assert.fail('owner turn must not run'),
+    { overlay: false, runtimeProfile: 'jar1' });
+  process.env.AUTONOMY_ENABLED = '1';
+  delete process.env.CURSOR_API_KEY;
+  await saveState({ ...(await loadState()).state, ...cursorState() });
+  const beforeState = (await loadState()).state;
+  const root = actionRoot();
+  const autonomy = path.join(root, 'autonomy');
+  await fs.mkdir(autonomy, { recursive: true });
+  const action = { ...editorial, trigger: { kind: 'once', at: new Date(now).toISOString() } };
+  const actionsFile = path.join(root, 'actions.json');
+  await fs.writeFile(actionsFile, JSON.stringify([action]));
+  const readFile = fs.readFile.bind(fs);
+  const waiting = Promise.withResolvers(), release = Promise.withResolvers();
+  let readingKey = false, held = false;
+  t.mock.method(fs, 'readFile', async (file, ...args) => {
+    if (readingKey && file === botEnvPath() && !held) {
+      held = true; waiting.resolve(); await release.promise;
+    }
+    return readFile(file, ...args);
+  });
+  const dispatch = createReminderDispatcher({ api: f.bot.api, adminId: 42, timezone: 'Europe/Moscow',
+    now: () => now, log() {}, signal: AbortSignal.timeout(30_000),
+    runCursorPrompt: async (...args) => {
+      readingKey = true;
+      try { return await runSavedCursorPrompt(...args); } finally { readingKey = false; }
+    },
+  });
+  const tick = dispatch(() => false);
+  try {
+    await Promise.race([waiting.promise, tick.then(() => assert.fail('Expected credential read'))]);
+    await saveState({ ...(await loadState()).state, costPaused: true });
+  } finally { release.resolve(); }
+  await tick;
+  assert.deepEqual(JSON.parse(await fs.readFile(actionsFile, 'utf8')), [action]);
+  assert.deepEqual(f.messages, []);
+  assert.equal((await loadState()).state.ccSessionId, beforeState.ccSessionId);
+  assert.equal(await fs.readFile(path.join(autonomy, 'runs.jsonl'), 'utf8').catch(() => ''), '');
+  await f.callback('settings:cost:resume');
+  await dispatch(() => false);
+  const [after] = JSON.parse(await fs.readFile(actionsFile, 'utf8'));
+  assert.equal(after.lastStatus, 'error');
+  assert.ok(f.messages.some(message => String(message).includes('CURSOR_API_KEY')));
 });

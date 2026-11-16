@@ -118,7 +118,36 @@ both platforms. This checks arguments, not real OS privileges or JAR1.
 The state queue is process-local and the final read and provider spawn are not
 one atomic transaction; a pause saved after the final read may not block an
 already admitted turn. The wrapper itself may do asynchronous preparation.
-The user did not request aborting an already started turn. Saved prompts and
-legacy timer paths require separate inspection and fixes; this stage alone is
-not a claim that every route or a live provider is covered. No automatic cost
-accounting is added and no real credentials, service or JAR1 were accessed.
+The user did not request aborting an already started turn. The interval stage
+alone is not a claim that every route or a live provider is covered. No automatic
+cost accounting is added and no real credentials, service or JAR1 were accessed.
+
+Saved prompt follow-up: the existing admission already blocks costPaused. If
+the flag is saved after admission while the workspace is prepared, canLaunch
+now re-reads it before handing off to the selected provider. Its existing
+deferred result restores the claimed action when no file effect has begun. The
+original initial-admission refusal can still skip an occurrence, including a
+once action; this follow-up does not change that separate existing policy.
+
+RED on 45030d8: owned fake Codex and Claude CLIs were launched after the pause
+was set during workspace preparation. A further RED on the actual Cursor adapter
+showed a missing key reported as an error and the once action consumed when the
+pause arrived during the key read. The adapter now checks canLaunch immediately
+after that read; after resume the existing missing-key error is still reported.
+A preliminary Claude fixture invocation
+failed because its cleared PATH lacked Node; it was rerun with a usable PATH
+and reproduced the provider launch. GREEN: 45 saved-prompt tests passed on macOS
+Node 26 and isolated network-none Linux Node 22.23.2. These include scheduler,
+storage, fake provider, resume, retained session and existing permission flags
+for Codex and Claude. Cursor coverage includes a fake adapter invoking canLaunch
+and the real adapter through the dispatcher with a missing key; it does not
+launch a real Cursor CLI. One selected reminder admission test
+passed on both platforms. Unrelated dispatchers were mocked; no real service,
+credentials, cost, JAR1 or OpenClaw was exercised.
+
+The read and actual provider spawn are not atomic. A pause saved after the final
+check may not prevent an already admitted launch, and a started turn is not
+aborted. External effects begun before the check cannot be replayed safely. A stale
+source or model error can still be reported before canLaunch; the restoration
+of a claim depends on its successful conditional write. Legacy timers require
+separate inspection; no automatic billing is added.
