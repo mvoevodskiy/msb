@@ -153,15 +153,23 @@ def verify(stage, home, dependencies, tmp_dir=None):
     common += [str(fixtures / file) for file in ('legacy-timer-without-openclaw.mjs',
         'saved-spend-without-engine-dispatch.mjs', 'saved-claude-without-engine-dispatch.mjs',
         'saved-codex-without-engine-dispatch.mjs', 'saved-spend-regression-without-engine-dispatch.mjs',
-        'recurring-without-engine-dispatch.mjs', 'codex-pause-without-engine-status.mjs',
+        'codex-pause-without-engine-status.mjs',
         'codex-sleep-flow-without-engine-status.mjs')]
     common += [str(bot_tests / file) for file in ('autonomy-same-bot-claim.test.mjs',
         'autonomy-stop-admission.test.mjs', 'codex-stop-lock.test.mjs',
         'interval-provider-pause.test.mjs', 'interval-spend-pause.test.mjs')]
     common += [str(bot_tests / 'reference/probe-legacy-spend-pause.mjs')]
     run('backlog-targeted', ['node', '--experimental-test-module-mocks', '--no-warnings',
-        '--test', '--test-concurrency=1', *common],
-        expected_names=('eight approved common recurring reminder checks',))
+        '--test', '--test-concurrency=1', *common], expected_pass=283,
+        expected_names=('paused Codex accepts all stop inputs',))
+    # The approved eight cases run directly under this runner's longer suite
+    # timeout. The old nested fixture's ten-second child timeout is too short
+    # on a loaded target, and must not change the provider exclusion.
+    recurring_pattern = r'^(?:a saved interval follows|saved cron matches|the repeated local|old frequency|a non-pause budget|the existing task card|one slow send|owner Off)'
+    recurring = wrapper('recurring-safe.mjs', bot_tests / 'recurring-reminder.test.mjs')
+    run('recurring-safe', ['node', '--experimental-test-module-mocks', '--no-warnings',
+        '--test', '--test-name-pattern', recurring_pattern, recurring], expected_pass=8,
+        expected_names=('a saved interval follows', 'owner Off during an admitted recurring send'))
     legacy_pattern = r'^(?:legacy timer conversation (?:lists |reports |chooses |applies |off after |can enable |enables |group pause |OFF invalidates |Keep closes |rejects |uses |can retry |cannot |accepts |treats |keeps |leaves )|(?:codex|claude) legacy timer conversation prompt and owner turn reach the shared schedule$)'
     legacy = wrapper('legacy-conversation.mjs', bot_tests / 'legacy-timer-conversation.test.mjs')
     run('legacy-timer-conversation-safe', ['node', '--experimental-test-module-mocks', '--no-warnings',
