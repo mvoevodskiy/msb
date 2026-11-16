@@ -1,0 +1,37 @@
+Undo: old file-operation snapshot and the Codex evidence gap
+
+Old readable blob: 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11. Inspect with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | rg -n '\bwQA\b|\bAK\b'
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | sed -n '41960,42005p;42213,42260p;114294,114325p;122186,122208p'
+
+wQA records one in-memory global snapshot (filePath, previousContent,
+timestamp). The only calls found in this readable blob are pOA/write_file and
+lOA/edit_file, both through the old tool dispatcher. Shell and other modifications
+not routed through these two operations are not covered by those callers.
+The snapshot is taken before the write/edit; for edit_file it can be recorded
+even if the requested old string is subsequently not found. A read error for
+any reason sets previousContent to null, indistinguishable there from a new file.
+
+/undo accepts the last snapshot for one hour, then clears it; it writes the old
+UTF-8 content or unlinks when previousContent is null. The qa:undo callback uses
+the same snapshot without the /undo time check. Neither path checks whether a
+file changed after the recorded operation before overwriting/removing it. These
+are observations of historical behavior, not a safe contract for arbitrary
+Codex work or a recommendation to reproduce destructive errors.
+
+Current new-core command .msb/bot/src/telegram/bot.mjs replies that automatic
+undo is unavailable. The Codex path overlay/bot/ext/shim/run-turn.mjs ->
+adapters/codex.mjs invokes codex exec --json; parseCodexStdout extracts agent
+text, thread, usage and completion/failure, not prior file bytes or a complete
+list of changes. The standard execution argument is danger-full-access. No
+snapshot caller or native rollback invocation is established in the inspected
+Codex path. This does not prove that Codex CLI can never offer such a feature;
+its observable capabilities and target version need separate evidence.
+
+A safe implementation requires a reliable scope and capture/rollback contract
+for the specific provider, project and turn, including shell-created, deleted,
+binary and externally modified files; refusal for missing/corrupt snapshots and
+protection for later changes; explicit tests of cancellation, conflicts and
+concurrency. Do not implement an apparent undo by guessing from model text,
+reversing an incomplete diff or applying git reset. No real files, CLI account,
+network, JAR1 or unrelated engine were touched during this read-only audit.
