@@ -70,7 +70,7 @@ Tests use the real Telegram handler, an owned synthetic Claude
 executable, and disposable state. No account charge or live
 provider acceptance is part of this checkpoint.
 
-Observed route discrepancy (policy not yet chosen): with a disposable Codex
+Observed route discrepancy (before the owner decision): with a disposable Codex
 state containing costPaused:true, tests/reference/probe-spend-pause-routes.mjs
 shows the real foreground Telegram route returns the existing pause text
 without calling its fake model; a direct call to currentReminderRefusal also
@@ -85,8 +85,11 @@ while its screen 52930-52934 describes accounting for Anthropic API and
 excludes subscriptions. No exact old counterpart to the newer tasks.json
 interval schema was established. The accepted c56f30b source has the same
 foreground costPaused gate and a direct interval path with no costPaused check;
-this source comparison does not prove any live JAR1 state or event. The owner
-has been asked which provider/schedule policy is intended before changing it.
+this source comparison does not prove any live JAR1 state or event. On 16
+November the owner selected that the saved cost pause blocks all turns,
+including direct interval tasks. Preserve existing permissions, provider
+selection, sessions and UI; an already started turn is a separate lifecycle
+from admission. The observation above describes the pre-fix behavior.
 
 The observational probe passed on local Node 26 and isolated Linux arm64 Node
 22.23.2 with synthetic profiles, fake Telegram/runner and unrelated dispatchers

@@ -35,5 +35,7 @@ Node 26 and isolated Linux arm64 Node 22.23.2; Linux had no network, and the
 unrelated dispatcher was mocked. An initial probe failed because its synthetic
 bin directory was absent; creating it fixed the fixture, not product behavior.
 No real credentials, model, filesystem target, JAR1 or OpenClaw was exercised.
-The owner has been asked to choose the intended simple-interval access policy;
-no behavior or existing settings were changed by these observations.
+On 16 November the owner chose to retain the existing access of simple Codex
+intervals for now. Do not expand or restrict their existing CLI arguments,
+permissions or settings; retain the permission policies of neighboring saved
+actions while fixing pause admission.
