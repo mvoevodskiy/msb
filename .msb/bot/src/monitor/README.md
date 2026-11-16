@@ -24,5 +24,7 @@
 Проверки: [monitor-env](../../tests/monitor-env.test.mjs) — config/storage,
 [menu-handlers](../../tests/menu-handlers.test.mjs) — меню, timezone и отправка;
 [monitor-source-choice](../../tests/monitor-source-choice.test.mjs) — ввод @ника, выбор, отмена и устаревшие кнопки;
-[старый контракт](../../tests/reference/parity-monitor-source-contract.txt) — доказательства и границы.
+[старый контракт](../../tests/reference/parity-monitor-source-contract.txt) — доказательства и границы;
+[monitor-reactivate](../../tests/monitor-reactivate.test.mjs) — повторное добавление отключённого X-источника;
+[контракт повтора](../../tests/reference/parity-monitor-reactivate-contract.txt) — старый и текущий путь.
 Доступность внешних источников и полнота старого мониторинга ими не подтверждаются.

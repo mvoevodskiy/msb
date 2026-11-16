@@ -150,7 +150,12 @@ export async function addSourceFromInput(raw, env = process.env, { type } = {}) 
 
     if (parsed.type === 'twitter') {
       const u = parsed.username.toLowerCase();
-      if (cfg.twitter.accounts.some((a) => a.username.toLowerCase() === u)) {
+      const existing = cfg.twitter.accounts.find((a) => a.username.toLowerCase() === u);
+      if (existing) {
+        if (existing.enabled === false) {
+          existing.enabled = true;
+          return { ok: true, added: true, reason: 're-enabled', type: 'twitter', name: parsed.name };
+        }
         return { ok: true, added: false, type: 'twitter', name: parsed.name };
       }
       cfg.twitter.accounts.push({ username: parsed.username, name: parsed.name, enabled: true, addedAt: now });

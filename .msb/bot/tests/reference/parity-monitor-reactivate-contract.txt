@@ -1,0 +1,23 @@
+Repeat addition of a disabled X/Twitter source
+
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf; readable blob
+73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11. Read via
+`git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba`.
+GHA 5727–5754 looks up the handle case-insensitively, turns an existing
+inactive account on and returns `added:true, reason:re-enabled` without creating
+a duplicate. OQA 43261–43264 reports that result as `(re-enabled)`.
+
+Before the fix, open-core addSourceFromInput returned an already-exists result
+for both enabled and disabled X accounts. Now an owner explicitly re-adding the
+same disabled X account changes only that record's enabled field under the
+existing config lock and reports the old re-enabled result for both @ choice and explicit URLs. The category-level
+`twitter.enabled` and all unrelated providers/settings retain their existing
+values, as in the old duplicate path. The current open-core poll treats missing
+`enabled` as active (`poll.mjs`); the fix does not rewrite such entries.
+Telegram and other providers' duplicate behavior is unchanged by this fix.
+
+RED: two synthetic tests showed the disabled entry stayed false through Telegram
+selection and concurrent direct URLs; independent review found the direct URL
+form omitted the old re-enabled status. GREEN: monitor-reactivate.test.mjs plus
+monitor-source-choice and the related collector/digest/locking checks. All data,
+callbacks and provider accounts were synthetic; no network or JAR1 action.

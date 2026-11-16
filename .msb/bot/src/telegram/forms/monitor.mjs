@@ -35,6 +35,9 @@ export async function handleMonitorSourceInput({ ctx, text, pending, chatId }) {
   pending.delete(chatId);
   const result = await addSourceFromInput(text);
   if (!result.ok) return ctx.reply(result.error);
+  if (result.type === 'twitter' && result.reason === 're-enabled') {
+    return ctx.reply(`✅ Twitter: ${result.name} (re-enabled)`, { reply_markup: again() });
+  }
   return ctx.reply(result.added
     ? `✔ Источник <b>${result.type}</b>: ${result.name}`
     : `Уже был: <b>${result.type}</b> ${result.name}`, { parse_mode: 'HTML' });
@@ -51,7 +54,8 @@ export async function handleMonitorSourceChoice({ data, pending, chatId, ctx, ms
     const result = await addSourceFromInput(draft.value, process.env, { type });
     if (!result.ok) return ctx.reply(result.error || 'Не получилось добавить источник.', { reply_markup: again() });
     const title = type === 'telegram' ? 'Telegram' : 'Twitter';
-    return ctx.reply(result.added ? `✅ ${title}: ${result.name}` : `⏭ ${title}: ${result.name} (уже добавлен)`, { reply_markup: again() });
+    const restored = result.reason === 're-enabled' ? ' (re-enabled)' : '';
+    return ctx.reply(result.added ? `✅ ${title}: ${result.name}${restored}` : `⏭ ${title}: ${result.name} (уже добавлен)`, { reply_markup: again() });
   } catch (error) {
     return ctx.reply(`Не получилось добавить: ${String(error?.message || error).slice(0, 160)}`, { reply_markup: again() });
   }
