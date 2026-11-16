@@ -164,5 +164,11 @@ timer, the once record is stamped and disabled, and resuming does not rerun it.
 The script uses synthetic profiles/Telegram and mocks the unrelated dispatcher.
 It passed on macOS Node 26 and isolated Linux Node 22.23.2. This is an
 observation, not a proposed correctness assertion or live JAR1 check. The
-owner was asked whether occurrences due during spend pause should later run
-once or be skipped; changing that policy awaits the answer.
+owner has now selected that a background task or one-time reminder due during
+the spend pause should execute once after resume. Keep at most one deferred
+occurrence per task, including recurring tasks; do not replay every missed
+interval. This is an explicit change to the old consumption policy, not a claim
+that the work is already implemented. Preserve task edits, deletion, /stop,
+sessions and provider permissions; do not duplicate work already started.
+A crash between an external effect and recording completion can still prevent
+a strict exactly-once guarantee. The probe describes the historical baseline.
