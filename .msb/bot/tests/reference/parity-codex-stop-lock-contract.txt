@@ -1,0 +1,17 @@
+Codex stop during a contended sleep marker (RED diagnostic)
+
+User-facing contract: the already supported /stop, /stop@bot and reply «стоп»
+interrupt an active Codex turn even while the bot is paused; stopping must not
+wake the bot or change its provider/session. This is the current Codex contract,
+not a claim that the old kernel had Codex. The old blob
+73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11:118208-118263 interrupts the active
+turn on /stop; 109826-109879 gates inputs while asleep. Inspect with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | sed -n '118208,118263p;109826,109879p'
+
+RED: when a synthetic marker lock is held, both core-only and overlay+core
+wait before dispatching all three stop variants. Releasing the lock lets the
+stop reach the fake active turn; its marker and captured session remain intact.
+The diagnostic intentionally asserts the defect and is not a release test.
+It uses a temporary profile, fake Telegram/turn and a mocked engine status;
+no real model, credentials, network, JAR1 or OpenClaw behavior is involved.
+Run from iia root: node .msb/bot/tests/reference/probe-codex-stop-lock.mjs
