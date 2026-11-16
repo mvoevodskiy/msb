@@ -329,6 +329,30 @@ for (const fenced of [false, true]) {
   });
 }
 
+test('quiet owner trim delivers only the green report without the publish banner', async t => {
+  const f = await profile(t, [action('quiet-trim', { output: { emptyIsValidOutcome: true } })], {
+    text: 'Читаю регламент…\n🟢 От тебя ничего не нужно\nНашёл 1 поводов для публикации\n- Title',
+  });
+  await f.scheduler.tickNow();
+  assert.equal((await f.runs())[0].status, 'ok');
+  assert.equal(f.sent.length, 1);
+  assert.match(f.sent[0].text, /^🟢 От тебя ничего не нужно/);
+  assert.doesNotMatch(f.sent[0].text, /Читаю регламент|Ничего не опубликовано/);
+  const [call] = await f.calls();
+  assert.match(call.input, /с первой строки/);
+});
+
+test('non-quiet HTML digest skips the publish banner and keeps markup', async t => {
+  const f = await profile(t, [action('digest')], {
+    text: 'Собираю данные из pult…\n```html\n<b>Быстрые деньги · 16.11</b>\nAsk: пусто\n```',
+  });
+  await f.scheduler.tickNow();
+  assert.equal((await f.runs())[0].status, 'ok');
+  assert.equal(f.sent.length, 1);
+  assert.match(f.sent[0].text, /^<b>Быстрые деньги · 16\.11<\/b>/);
+  assert.doesNotMatch(f.sent[0].text, /Ничего не опубликовано|Собираю данные|&lt;b&gt;|<pre>/);
+});
+
 test('changing the provider during workspace preparation leaves the saved action ready without a launch', async t => {
   const original = action('route');
   const f = await profile(t, [original]);

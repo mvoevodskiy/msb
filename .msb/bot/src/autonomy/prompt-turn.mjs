@@ -2,10 +2,14 @@
  * Execute a stateless saved prompt in the old autonomy workspace. [Policy](./prompt-policy.mjs)
  * supplies the tools for [Claude](../agent/claude.mjs), the registered Codex adapter,
  * or the Cursor adapter. [Freshness](./prompt-freshness.mjs) refuses before spawn.
- * [Saved roles](./prompt-team.mjs) use the same tool boundary and claimed action.
- * [Dispatcher](./reminder-dispatch.mjs) owns cancellation, delivery and history.
+ * Quiet outcomes use [trimQuietOwnerText](#trimQuietOwnerText) before
+ * [delivery](./prompt-delivery.mjs). [Saved roles](./prompt-team.mjs) use the same
+ * tool boundary and claimed action. [Dispatcher](./reminder-dispatch.mjs) owns
+ * cancellation, delivery and history.
  * Saved cost pause is checked before launch; [tests](../../tests/saved-codex-prompt-action.test.mjs)
  * and [contract](../../tests/reference/parity-owner-spend-contract.txt) describe its limits.
+ * Checks: [saved-prompt-action](../../tests/saved-prompt-action.test.mjs),
+ * [quiet-owner-trim](../../tests/quiet-owner-trim.test.mjs).
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -73,7 +77,12 @@ function taskInstructions(action, { quiet, provider, tools, handoff, shell }, te
     if (entries.length) lines.push(labels[index] + ' — ' + entries.join(', ').slice(0, 350));
   }
   lines.push('', action.task.prompt);
-  if (quiet) lines.push('', 'Если сообщать нечего — ответь одной строкой ' + quietMarker + '.');
+  if (quiet) {
+    lines.push('',
+      'Итоговый ответ — только одно из трёх, с первой строки: ровно ' + quietMarker
+      + '; или отчёт со строки «🟢 От тебя ничего не нужно»; или «🔴 Нужно от тебя: …». '
+      + 'Любой текст до маркеров уйдёт в чат или будет отрезан ядром — писать так нельзя.');
+  }
   if (teamPrompt) lines.push('', teamPrompt);
   if ((provider === 'claude' || provider === 'cursor') && action.task.helpers === false) {
     lines.push('', 'Помощников не зови, всю работу делай сам: так попросил владелец.');
@@ -85,11 +94,42 @@ function quietText(value) {
   return value.replace(/```[a-z]*\n?/gi, '').replace(/[`*>#«»"']/g, '').trim().replace(/[.!;]+$/, '').trim().toUpperCase();
 }
 
-function quietResult(value) {
-  const text = value.trimEnd();
+function quietFencesBalanced(lines) {
+  return lines.filter(line => /^\s*```/.test(line)).length % 2 === 0;
+}
+
+/** True when the model answer is the quiet silence marker, including a glued trailing one. */
+export function quietResult(value) {
+  const text = String(value ?? '').trimEnd();
   if (!text || quietText(text) === quietMarker) return true;
   const lines = text.split('\n');
-  return quietText(lines.pop()) === quietMarker && lines.filter(line => /^\s*```/.test(line)).length % 2 === 0;
+  const last = lines.pop();
+  if (!quietFencesBalanced(lines)) return false;
+  if (quietText(last) === quietMarker) return true;
+  return /\[NOTHING_TO_REPORT\]\s*$/i.test(text);
+}
+
+/**
+ * Drop quiet-task thinking before the owner report markers.
+ * First match wins; «Нашёл N поводов…» also gets the green header.
+ */
+export function trimQuietOwnerText(text) {
+  const src = String(text ?? '');
+  const candidates = [
+    { re: /^🟢\s*От тебя ничего не нужно\s*$/m, wrap: false },
+    { re: /^🔴\s*Нужно от тебя:.*/m, wrap: false },
+    { re: /^Нашёл\s+\d+\s+поводов для публикации/m, wrap: true },
+  ];
+  let best = null;
+  for (const candidate of candidates) {
+    const match = candidate.re.exec(src);
+    if (match && (best == null || match.index < best.index)) {
+      best = { index: match.index, wrap: candidate.wrap };
+    }
+  }
+  if (!best) return src.trimEnd();
+  const tail = src.slice(best.index).trimEnd();
+  return best.wrap ? ('🟢 От тебя ничего не нужно\n' + tail) : tail;
 }
 
 function providerLabel(provider) {
@@ -192,8 +232,15 @@ export async function runSavedPrompt(action, plan, { signal, isCurrent, runCodex
   if (result.isError || (result.providerId && result.providerId !== plan.provider)) {
     return { ...metrics, status: 'error', error: 'ход движка не удался', text: result.assistantTextObserved ? result.text : '' };
   }
-  if (plan.quiet && quietResult(result.text)) {
-    return { ...metrics, status: 'skipped', detail: 'нечего сообщить — задача промолчала штатно (маркер тишины)' };
+  if (plan.quiet) {
+    if (quietResult(result.text)) {
+      return { ...metrics, status: 'skipped', detail: 'нечего сообщить — задача промолчала штатно (маркер тишины)' };
+    }
+    const trimmed = trimQuietOwnerText(result.text);
+    if (!trimmed.trim() || quietResult(trimmed)) {
+      return { ...metrics, status: 'skipped', detail: 'нечего сообщить — задача промолчала штатно (маркер тишины)' };
+    }
+    return { ...metrics, status: 'ok', text: trimmed, quietOwner: true, detail: 'доставлено' };
   }
   return { ...metrics, status: 'ok', text: result.text, detail: 'доставлено' };
 }
