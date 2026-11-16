@@ -41,3 +41,12 @@ and isolated Linux Node 22.23.2, list/digest returned the JSONL item and the
 synthetic database bytes remained unchanged. The probe does not establish future
 switching policy, real JAR1 contents, complete old schema/FTS/WAL compatibility
 or a safe migration. It is a baseline, not a requirement to keep SQLite disabled.
+
+Identity-collision probe: tests/reference/probe-monitor-storage-id-collision.mjs
+creates two synthetic JSONL items from distinct sources with the same externalId.
+Their current composite-hash IDs differ and both are retained. In a minimal
+old-shaped SQLite table, inserting those externalIds as primary keys with the
+old INSERT OR IGNORE pattern retains only one. The probe passed on local Node 26
+and isolated Linux Node 22.23.2; JSONL bytes stayed unchanged. This demonstrates
+a possible lossy naive mapping, not a claim that a real profile has such a
+collision or a decision about how duplicate histories should be merged.

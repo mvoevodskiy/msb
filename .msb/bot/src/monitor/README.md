@@ -21,7 +21,8 @@
 только времена источников, отправка — свою отметку после успешной доставки.
 Реальный backend — JSONL. Сохранение значения `sqlite` в UI не создаёт SQLite backend;
 [старое хранилище и граница включения](../../tests/reference/parity-monitor-storage-evidence.txt),
-[синтетический baseline](../../tests/reference/probe-monitor-storage-baseline.mjs).
+[синтетический baseline](../../tests/reference/probe-monitor-storage-baseline.mjs) и
+[проверка ключей](../../tests/reference/probe-monitor-storage-id-collision.mjs).
 
 Проверки: [monitor-env](../../tests/monitor-env.test.mjs) — config/storage,
 [menu-handlers](../../tests/menu-handlers.test.mjs) — меню, timezone и отправка;
