@@ -7,7 +7,7 @@
 
 | Задача | Файл → функция |
 |---|---|
-| Разобрать ссылку и сохранить источник | [config.mjs](config.mjs): `classifySourceInput`, `addSourceFromInput`, `removeSource`, `updateMonitorConfig` |
+| Разобрать ссылку и сохранить источник | [config.mjs](config.mjs): `classifySourceInput`, `addSourceFromInput`, `removeSource`, `updateMonitorConfig`; неоднозначный @ник → [форма выбора](../telegram/forms/monitor.mjs) |
 | Безопасная длина идентификатора кнопки источника | [source-ref.mjs](source-ref.mjs): `sourceCallbackData`, `sourceToken` |
 | Получить материалы | [poll.mjs](poll.mjs): `pollAllSources` |
 | Убрать дубликаты и записать JSONL/meta | [store.mjs](store.mjs): `itemId`, `appendItems`, `loadMeta`, `updateMeta` |
@@ -22,5 +22,7 @@
 Реальный backend — JSONL. Сохранение значения `sqlite` в UI не создаёт SQLite backend.
 
 Проверки: [monitor-env](../../tests/monitor-env.test.mjs) — config/storage,
-[menu-handlers](../../tests/menu-handlers.test.mjs) — меню, timezone и отправка.
+[menu-handlers](../../tests/menu-handlers.test.mjs) — меню, timezone и отправка;
+[monitor-source-choice](../../tests/monitor-source-choice.test.mjs) — ввод @ника, выбор, отмена и устаревшие кнопки;
+[старый контракт](../../tests/reference/parity-monitor-source-contract.txt) — доказательства и границы.
 Доступность внешних источников и полнота старого мониторинга ими не подтверждаются.

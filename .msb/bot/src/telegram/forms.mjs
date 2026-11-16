@@ -3,7 +3,7 @@
  * входящих сообщений: [createBot](./bot.mjs) владеет pending и принимает результат.
  * Auth → [forms/auth](./forms/auth.mjs), env → [forms/env](./forms/env.mjs),
  * Pult → [forms/pult](./forms/pult.mjs), проект → [forms/projects](./forms/projects.mjs);
- * MCP → [forms/mcp](./forms/mcp.mjs), остальные короткие adapters ниже.
+ * MCP → [forms/mcp](./forms/mcp.mjs), источники → [forms/monitor](./forms/monitor.mjs).
  * Timezone остаётся после reply-stop в createBot, чтобы сохранить прежний приоритет.
  * [Контракт](../../tests/reference/parity-forms-contract.txt), [проверки](../../tests/menu-handlers.test.mjs).
  */
@@ -16,6 +16,7 @@ import { handleProjectNameInput } from './forms/projects.mjs';
 import { handleAuthInput } from './forms/auth.mjs';
 import { handleEnvNameInput, handleEnvValueInput, handleEnvCommentInput } from './forms/env.mjs';
 import {handleMcpInput} from './forms/mcp.mjs';
+import {handleMonitorSourceInput} from './forms/monitor.mjs';
 import { handlePultInput, PULT_KINDS } from './forms/pult.mjs';
 import { BOOTSTRAP_SERVICE_INPUT } from './pending-input.mjs';
 import { handleBootstrapServiceInput } from './bootstrap-services.mjs';
@@ -24,7 +25,7 @@ const HANDLERS = {
   [BOOTSTRAP_SERVICE_INPUT]: handleBootstrapServiceInput,
   'auth-token': handleAuthInput, 'env-key-name': handleEnvNameInput,
   'feedback': handleFeedback, 'new-project': handleProjectNameInput,
-  'bot-token': handleBotToken, 'mon-source': handleSource, 'mcp-setup':handleMcpInput,
+  'bot-token': handleBotToken, 'mon-source': handleMonitorSourceInput, 'mcp-setup':handleMcpInput,
 };
 export async function handleFormInput(options) {
   const {kind,ctx} = options;
@@ -54,22 +55,5 @@ async function handleBotToken({ ctx,text,pending,chatId,cfg }) {
   } else {
     await ctx.reply(`Не удалось добавить бота: ${res.error}`);
   }
-  return;
-}
-
-async function handleSource({ ctx,text,pending,chatId }) {
-  pending.delete(chatId);
-  const { addSourceFromInput } = await import('../monitor/config.mjs');
-  const res = await addSourceFromInput(text);
-  if (!res.ok) {
-    await ctx.reply(res.error);
-    return;
-  }
-  await ctx.reply(
-    res.added
-      ? `✔ Источник <b>${res.type}</b>: ${res.name}`
-      : `Уже был: <b>${res.type}</b> ${res.name}`,
-    { parse_mode: 'HTML' },
-  );
   return;
 }

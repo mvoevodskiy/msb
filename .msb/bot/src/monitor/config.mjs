@@ -75,7 +75,7 @@ export function updateMonitorConfig(change, env = process.env) {
 }
 
 /** Разбор ссылки / @ника → тип источника. */
-export function classifySourceInput(raw) {
+export function classifySourceInput(raw, { type } = {}) {
   const text = String(raw || '').trim();
   if (!text) return null;
 
@@ -103,10 +103,13 @@ export function classifySourceInput(raw) {
   // Twitter / X
   m = text.match(/(?:twitter\.com|x\.com)\/([A-Za-z0-9_]+)/i);
   if (m) return { type: 'twitter', username: m[1], name: `@${m[1]}` };
-  if (/^@[A-Za-z0-9_]{1,15}$/.test(text) && !text.includes('/')) {
-    // ambiguous @ — prefer twitter unless looks like telegram channel later
-    return { type: 'twitter', username: text.slice(1), name: text };
+  // The same handle can belong to Telegram or X. Old UI asks the owner.
+  if (/^@[A-Za-z0-9_]{2,64}$/.test(text)) {
+    if (type === 'telegram' || type === 'twitter') return { type, username: text.slice(1), name: text };
+    return { type: 'ambiguous', username: text.slice(1), name: text };
   }
+  // Preserve the new core's existing single-character X handle support.
+  if (/^@[A-Za-z0-9_]$/.test(text)) return { type: 'twitter', username: text.slice(1), name: text };
 
   // Telegram
   m = text.match(/(?:t\.me|telegram\.me)\/([A-Za-z0-9_]+)/i);
@@ -118,8 +121,9 @@ export function classifySourceInput(raw) {
   return null;
 }
 
-export async function addSourceFromInput(raw, env = process.env) {
-  const parsed = classifySourceInput(raw);
+export async function addSourceFromInput(raw, env = process.env, { type } = {}) {
+  const parsed = classifySourceInput(raw, { type });
+  if (parsed?.type === 'ambiguous') return { ok: false, needsChoice: true, value: parsed.name };
   if (!parsed) return { ok: false, error: 'Не понял источник. Пришли URL или @ник (YouTube, GitHub, X, Telegram, RSS).' };
 
   const now = new Date().toISOString();

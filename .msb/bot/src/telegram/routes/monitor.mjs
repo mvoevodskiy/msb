@@ -1,5 +1,6 @@
 /**
  * Мониторинг: источники, дайджест, сбор и настройки.
+ * Ввод/выбор типа → [monitor form](../forms/monitor.mjs); [checks](../../../tests/monitor-source-choice.test.mjs).
  * Навигация: [Telegram](../README.md).
  */
 import { monitorDigestScreen, monitorHelpScreen, monitorScreen, monitorSettingsScreen, monitorSourcesScreen, placeholder } from '../screens.mjs';
@@ -7,11 +8,19 @@ import { removeSource } from '../../monitor/config.mjs';
 import { pollAllSources } from '../../monitor/poll.mjs';
 import { buildDigestText, updateDigestSettings } from '../../monitor/digest.mjs';
 import { UNHANDLED } from './shared.mjs';
+import { cancelMonitorSourceChoice, handleMonitorSourceChoice } from '../forms/monitor.mjs';
 
-export async function handleMonitorRoute({ data, show, pending, chatId, bot }) {
+export async function handleMonitorRoute({ data, show, pending, chatId, bot, ctx, msgId }) {
   // —— monitor ——
   if (data === 'mon:back' || data === 'auto:monitor') return show(await monitorScreen(data === 'auto:monitor' ? 'auto:home' : 'menu:back'));
   if (data === 'mon:sources') return show(await monitorSourcesScreen());
+  if (data === 'mon:add:cancel') {
+    cancelMonitorSourceChoice({ pending, chatId, msgId });
+    return show(await monitorSourcesScreen());
+  }
+  if (data === 'mon:add:as:telegram' || data === 'mon:add:as:twitter') {
+    return handleMonitorSourceChoice({ data, pending, chatId, ctx, msgId, show });
+  }
   if (data === 'mon:digest') return show(await monitorDigestScreen());
   if (data === 'mon:help') return show(monitorHelpScreen());
   if (data === 'mon:settings') return show(monitorSettingsScreen());

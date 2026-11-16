@@ -1,0 +1,36 @@
+Ambiguous monitor source: old Telegram UX and open-core route
+
+Old baseline: master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+readable blob 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11. Reproduce with
+`git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba`.
+N2Q 102248–102303 recognizes URL hosts and returns an owner choice for a bare
+@handle of 2–64 ASCII letters, digits or underscores: Telegram or Twitter.
+Source input 118820–118880 shows the question and buttons, retaining the value
+until choice. Callback 117271–117299 adds the selected type through OQA;
+43261–43288 contains the provider-specific normalization. The previous screen
+and callback presentation are the reference, not the bundled implementation.
+
+Before this change, core config.mjs classified 2–15-character @handles as
+Twitter and rejected longer ones, and forms.mjs immediately stored that choice.
+The input form, callback route and store now share one path: an ambiguous input
+returns a choice without writing, forms/monitor.mjs shows the previous question,
+and routes/monitor.mjs selects the type before addSourceFromInput updates the
+existing monitor config. Telegram and Twitter URLs retain their existing paths;
+existing sources are never reclassified. One-character @handles retain the new
+core's pre-existing Twitter behavior because the old ambiguous pattern began at
+2 and this change does not remove that existing input.
+
+A transient candidate is scoped to chat and its delivered prompt message. A
+stale selection or cancel cannot consume a newer draft: without this, an old
+choice could write the wrong nickname or delete a later input. `/start` and the
+actual cancel button discard the choice; duplicate clicks cannot write twice.
+No platform token or external request is needed to choose a source. The old
+multi-line and unknown-URL/RSS clarification routes are outside this specific
+fix and are not claimed restored.
+
+RED: the production Telegram fixture's @handle tests initially wrote Twitter
+without asking and rejected a long handle. A later independently reviewed stale
+navigation case also failed before the scoped cancel fix. GREEN: see
+monitor-source-choice.test.mjs; related monitor concurrency/target/digest and
+selected other-form regressions are run separately. Tests use local synthetic
+Telegram updates and temporary profile data only; no production bot or service.
