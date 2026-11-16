@@ -22,7 +22,9 @@ Lock сериализует запись JSON. Отдельный [interval clai
 При метке паузы выбранного Codex [scheduler](scheduler.mjs) откладывает новый
 интервальный ход без изменения его времени; уже запущенный ход не отменяется.
 [Проверка](../../tests/legacy-timer-dispatch.test.mjs) охватывает пробуждение
-и прежний путь выбранного Claude.
+и прежний путь выбранного Claude. [RED-пробник переключения](../../tests/reference/probe-codex-provider-pause.mjs)
+показывает оставшуюся гонку при выборе Codex во время допуска интервала;
+[доказательства и границы](../../tests/reference/parity-interval-provider-pause-contract.txt).
 
 | Задача | Файл → функция |
 |---|---|

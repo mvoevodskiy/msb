@@ -1,0 +1,27 @@
+Interval Codex pause and provider transition — RED evidence
+
+Old reference: git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba.
+Lines 3785–3803 describe the per-bot sleep marker; 109826–109879 show the
+old general admission gate. The old source does not contain the current Codex
+provider or the new tasks.json interval route, so it cannot prove exact Codex
+semantics. The accepted new-core contract keeps a selected Codex asleep and
+preserves each provider's conversation during switching.
+
+The diagnostic probe-codex-provider-pause.mjs uses the actual Telegram
+provider-selection callback, a fake CLI login status held at a barrier, the
+actual interval scheduler and agent router, and a fake model runner. Selection
+starts while Claude is active and no marker exists; after the ingress gate, a
+new sleep marker is written. The interval passes its Codex check while Claude
+is still selected. Provider selection then restores Codex and its parked test
+session; the interval enters the fake Codex runner, preserves the marker but
+advances nextAt. This is RED, not evidence that JAR1 had this interleaving.
+
+Run from iia root:
+  node .msb/bot/tests/reference/probe-codex-provider-pause.mjs
+The probe explicitly expects the current defect; it is not a passing test.
+It uses temporary files, fake auth/CLI status, fake Telegram and fake model.
+CLI installation is mocked and no real provider, network, JAR1, or OpenClaw
+behavior is exercised. RED was reproduced on local Node 26 and isolated Linux
+Node 22.23.2. The first Linux attempt used a noexec temporary mount and could
+not locate the fixture CLI; the corrected isolated run used an exec tmpfs and
+an explicit no-installer mock.
