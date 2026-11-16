@@ -58,6 +58,9 @@ run install -m 0644 "$SOURCE/overlay/bot/systemd/60-ext-entry.conf" "$BOT_DST/sy
 run install -m 0644 "$SOURCE/overlay/bot/package.json" "$BOT_DST/package.json"
 
 if [[ -f "$SOURCE/overlay/usr-local-bin/bot-ctl.sh" ]]; then
+  [[ -f "$SOURCE/usr-local-lib/msb-fstab.py" ]] || { echo "нет msb-fstab.py в снимке" >&2; exit 1; }
+  run install -d -m 0755 /usr/local/lib
+  run install -m 0644 "$SOURCE/usr-local-lib/msb-fstab.py" /usr/local/lib/msb-fstab.py
   run install -m 0755 "$SOURCE/overlay/usr-local-bin/bot-ctl.sh" /usr/local/bin/bot-ctl.sh
 fi
 

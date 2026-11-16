@@ -232,6 +232,7 @@ install_node_deps() {
 install_bins() {
   log "скрипты /usr/local/bin и msb-engine"
   run install -d -m 0755 /usr/local/bin /usr/local/sbin /usr/local/lib/msb-engine
+  run install -m 0644 "$SOURCE/usr-local-lib/msb-fstab.py" /usr/local/lib/msb-fstab.py
   run install -m 0755 "$SOURCE/usr-local-bin/bot-ctl.sh" /usr/local/bin/bot-ctl.sh
   run install -m 0755 "$SOURCE/usr-local-bin/msb-bot-watchdog.sh" /usr/local/bin/msb-bot-watchdog.sh
   run install -m 0755 "$SOURCE/usr-local-sbin/msb-engine" /usr/local/sbin/msb-engine
@@ -283,15 +284,16 @@ setup_bots() {
       "$bot_dir/diaries"
 
     if [[ "$DRY_RUN" != "1" ]]; then
+      # Refuse conflicting target entries before touching a mount.
+      python3 -I -B "$SOURCE/usr-local-lib/msb-fstab.py" check /etc/fstab "$WORKSPACE" "$bot_dir/cwd" >/dev/null
       if ! findmnt -n "$bot_dir/cwd" >/dev/null 2>&1; then
         mount --bind "$WORKSPACE" "$bot_dir/cwd"
       fi
-      local line="$WORKSPACE  $bot_dir/cwd  none  bind,nofail,x-systemd.device-timeout=1s  0  0"
-      if ! grep -Fqx "$line" /etc/fstab 2>/dev/null && ! grep -Fqx "$line" "$fstab_snip" 2>/dev/null; then
-        echo "$line" >>"$fstab_snip"
-      fi
-      if ! grep -Fqx "$line" /etc/fstab 2>/dev/null; then
-        echo "$line" >>/etc/fstab
+      # One shared matcher recognises both historical and current options.
+      local outcome
+      outcome=$(python3 -I -B "$SOURCE/usr-local-lib/msb-fstab.py" ensure /etc/fstab "$WORKSPACE" "$bot_dir/cwd")
+      if [[ "$outcome" == "added" ]]; then
+        python3 -I -B "$SOURCE/usr-local-lib/msb-fstab.py" ensure "$fstab_snip" "$WORKSPACE" "$bot_dir/cwd" >/dev/null
       fi
     else
       log "dry-run: bind $WORKSPACE → $bot_dir/cwd"
