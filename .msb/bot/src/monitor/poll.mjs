@@ -1,19 +1,37 @@
 /**
  * Сбор источников мониторинга (RSS / YouTube RSS / GitHub Atom / TG public / X).
  * Навигация: [Мониторинг](./README.md) → [storage](./store.mjs), [digest](./digest.mjs).
+ * X handle/username → [source-ref](./source-ref.mjs); merge учитывает снимок строки.
+ * Проверки: [source snapshots](../../tests/monitor-source-snapshot.test.mjs),
+ * [legacy X](../../tests/monitor-twitter-legacy.test.mjs),
+ * [scheduled intervals](../../tests/monitor-interval-scheduler.test.mjs).
  */
+import { isDeepStrictEqual } from 'node:util';
 import { loadMonitorConfig, updateMonitorConfig } from './config.mjs';
-import { appendItems, itemId, updateMeta } from './store.mjs';
+import { twitterIdentity } from './source-ref.mjs';
+import { appendItems, itemId, loadMeta, updateMeta } from './store.mjs';
+import { botId } from '../paths.mjs';
 
-export async function pollAllSources(env = process.env, { log = console.error } = {}) {
+export async function pollAllSources(env = process.env, { log = console.error, scheduled = false } = {}) {
   const cfg = await loadMonitorConfig(env);
   const pollTimes = {};
   const collected = [];
   const errors = [];
   const sourceUpdates = [];
+  // Scheduled cadence belongs to each bot and source type, not the last
+  // successful fetch shown in the UI. Manual collection leaves it unchanged.
+  const scheduleBot = botId(env);
+  const lastScheduled = scheduled ? (await loadMeta(env, { forUpdate: true })).lastScheduledPollAtByBot?.[scheduleBot] || {} : {};
+  const startedAt = Date.now();
+  const scheduledAttempts = {};
+  const due = type => !scheduled || !(startedAt - new Date(lastScheduled[type] || '2000-01-01T00:00:00Z').getTime() <
+    (cfg[type].pollIntervalMinutes ?? 30) * 60_000);
+  const markScheduled = type => { if (scheduled) scheduledAttempts[type] = new Date().toISOString(); };
 
-  if (cfg.rss.enabled) {
-    for (const feed of cfg.rss.feeds.filter((f) => f.enabled !== false)) {
+  if (cfg.rss.enabled && due('rss')) {
+    const feeds = cfg.rss.feeds.filter((f) => f.enabled !== false);
+    for (const feed of feeds) {
+      const snapshot = structuredClone(feed);
       try {
         const items = await fetchRss(feed.url, 'rss', feed.url, feed.name);
         collected.push(...items);
@@ -24,12 +42,15 @@ export async function pollAllSources(env = process.env, { log = console.error } 
         errors.push({ type: 'rss', id: feed.url, error: err.message });
         log(`[msb/monitor] rss fail ${feed.url}: ${err.message}`);
       }
-      sourceUpdates.push({ type: 'rss', key: feed.url, addedAt: feed.addedAt, lastError: feed.lastError });
+      sourceUpdates.push({ type: 'rss', key: feed.url, addedAt: feed.addedAt, lastError: feed.lastError, snapshot });
     }
+    if (feeds.length) markScheduled('rss');
   }
 
-  if (cfg.youtube.enabled) {
-    for (const ch of cfg.youtube.channels.filter((c) => c.enabled !== false)) {
+  if (cfg.youtube.enabled && due('youtube')) {
+    const channels = cfg.youtube.channels.filter((c) => c.enabled !== false);
+    for (const ch of channels) {
+      const snapshot = structuredClone(ch);
       try {
         let channelId = ch.channelId;
         if (!channelId && ch.handle) {
@@ -49,12 +70,15 @@ export async function pollAllSources(env = process.env, { log = console.error } 
         errors.push({ type: 'youtube', id: ch.name, error: err.message });
         log(`[msb/monitor] youtube fail ${ch.name}: ${err.message}`);
       }
-      sourceUpdates.push({ type: 'youtube', key: ch.handle || ch.channelId || ch.name, addedAt: ch.addedAt, lastError: ch.lastError, channelId: ch.channelId });
+      sourceUpdates.push({ type: 'youtube', key: ch.handle || ch.channelId || ch.name, addedAt: ch.addedAt, lastError: ch.lastError, channelId: ch.channelId, snapshot });
     }
+    if (channels.length) markScheduled('youtube');
   }
 
-  if (cfg.github.enabled) {
-    for (const repo of cfg.github.repos.filter((r) => r.enabled !== false)) {
+  if (cfg.github.enabled && due('github')) {
+    const repos = cfg.github.repos.filter((r) => r.enabled !== false);
+    for (const repo of repos) {
+      const snapshot = structuredClone(repo);
       try {
         const url = `https://github.com/${repo.owner}/${repo.repo}/releases.atom`;
         const items = await fetchRss(url, 'github', `${repo.owner}/${repo.repo}`, repo.name);
@@ -70,12 +94,15 @@ export async function pollAllSources(env = process.env, { log = console.error } 
         errors.push({ type: 'github', id: repo.name, error: err.message });
         log(`[msb/monitor] github fail ${repo.name}: ${err.message}`);
       }
-      sourceUpdates.push({ type: 'github', key: `${repo.owner}/${repo.repo}`, addedAt: repo.addedAt, lastError: repo.lastError });
+      sourceUpdates.push({ type: 'github', key: `${repo.owner}/${repo.repo}`, addedAt: repo.addedAt, lastError: repo.lastError, snapshot });
     }
+    if (repos.length) markScheduled('github');
   }
 
-  if (cfg.telegram.enabled) {
-    for (const ch of cfg.telegram.channels.filter((c) => c.enabled !== false)) {
+  if (cfg.telegram.enabled && due('telegram')) {
+    const channels = cfg.telegram.channels.filter((c) => c.enabled !== false);
+    for (const ch of channels) {
+      const snapshot = structuredClone(ch);
       try {
         const items = await fetchTelegramPublic(ch.username, ch.name);
         collected.push(...items);
@@ -86,32 +113,53 @@ export async function pollAllSources(env = process.env, { log = console.error } 
         errors.push({ type: 'telegram', id: ch.username, error: err.message });
         log(`[msb/monitor] telegram fail ${ch.username}: ${err.message}`);
       }
-      sourceUpdates.push({ type: 'telegram', key: ch.username, addedAt: ch.addedAt, lastError: ch.lastError });
+      sourceUpdates.push({ type: 'telegram', key: ch.username, addedAt: ch.addedAt, lastError: ch.lastError, snapshot });
     }
+    if (channels.length) markScheduled('telegram');
   }
 
-  if (cfg.twitter.enabled) {
+  if (cfg.twitter.enabled && due('twitter')) {
     const bearer = env.X_BEARER_TOKEN || env.TWITTER_BEARER_TOKEN;
-    for (const acc of cfg.twitter.accounts.filter((a) => a.enabled !== false)) {
+    const accounts = cfg.twitter.accounts.filter((a) => a?.enabled !== false);
+    let attempted = false;
+    for (const acc of accounts) {
+      const id = twitterIdentity(acc);
+      if (!id) {
+        errors.push({ type: 'twitter', id: null, error: 'некорректный идентификатор X-источника' });
+        continue;
+      }
+      const snapshot = structuredClone(acc);
       try {
         if (!bearer) throw new Error('нужен X_BEARER_TOKEN в переменных окружения');
-        const items = await fetchTwitter(acc.username, bearer, acc.name);
+        attempted = true;
+        const items = await fetchTwitter(id, bearer, acc.name);
         collected.push(...items);
-        pollTimes[`twitter:${acc.username}`] = new Date().toISOString();
+        pollTimes[`twitter:${id}`] = new Date().toISOString();
         acc.lastError = null;
       } catch (err) {
         acc.lastError = err.message;
-        errors.push({ type: 'twitter', id: acc.username, error: err.message });
-        log(`[msb/monitor] twitter fail ${acc.username}: ${err.message}`);
+        errors.push({ type: 'twitter', id, error: err.message });
+        log(`[msb/monitor] twitter fail ${id}: ${err.message}`);
       }
-      sourceUpdates.push({ type: 'twitter', key: acc.username, addedAt: acc.addedAt, lastError: acc.lastError });
+      sourceUpdates.push({ type: 'twitter', key: id, addedAt: acc.addedAt, lastError: acc.lastError, snapshot });
     }
+    if (attempted) markScheduled('twitter');
   }
 
   await updateMonitorConfig((current) => mergeSourceUpdates(current, sourceUpdates), env);
   const added = await appendItems(collected, env);
   await updateMeta((meta) => {
     meta.lastPollAt = { ...meta.lastPollAt, ...pollTimes };
+    if (Object.keys(scheduledAttempts).length) {
+      const previous = meta.lastScheduledPollAtByBot?.[scheduleBot] || {};
+      const merged = { ...previous };
+      for (const [type, at] of Object.entries(scheduledAttempts)) {
+        const currentAt = new Date(previous[type] || 0).getTime();
+        if (!(currentAt > new Date(at).getTime())) merged[type] = at;
+      }
+      meta.lastScheduledPollAtByBot = { ...meta.lastScheduledPollAtByBot,
+        [scheduleBot]: merged };
+    }
   }, env);
   log(`[msb/monitor] poll done: fetched=${collected.length} new=${added} errors=${errors.length}`);
   return { fetched: collected.length, added, errors, cfg };
@@ -123,12 +171,16 @@ function mergeSourceUpdates(cfg, updates) {
     youtube: [cfg.youtube.channels, (item) => item.handle || item.channelId || item.name],
     github: [cfg.github.repos, (item) => `${item.owner}/${item.repo}`],
     telegram: [cfg.telegram.channels, (item) => item.username],
-    twitter: [cfg.twitter.accounts, (item) => item.username],
+    twitter: [cfg.twitter.accounts, (item) => twitterIdentity(item)],
   };
   for (const update of updates) {
     const [list, key] = buckets[update.type];
-    const matches = list.filter((entry) => key(entry) === update.key && entry.addedAt === update.addedAt);
+    const matches = list.filter((entry) => key(entry) === update.key && entry.addedAt === update.addedAt &&
+      (update.type !== 'twitter' || isDeepStrictEqual(entry, update.snapshot)));
     if (matches.length !== 1) continue;
+    // Keep the existing ambiguous-identity rule for these sources: only after
+    // finding one matching key check that the row has not changed meanwhile.
+    if (update.type !== 'twitter' && !isDeepStrictEqual(matches[0], update.snapshot)) continue;
     matches[0].lastError = update.lastError;
     if (update.type === 'youtube' && update.channelId && !matches[0].channelId) {
       matches[0].channelId = update.channelId;

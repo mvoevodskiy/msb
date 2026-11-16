@@ -1,0 +1,42 @@
+Monitor: YouTube source selection — reference and boundaries
+
+Old core blob: 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11.
+Read with: git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+OQA, 43251–43260: resolve a submitted channel to an ID before adding;
+VHA, 5684–5711: compare the exact ID, re-enable an existing disabled entry
+and report re-enabled, leave group enabled unchanged on reactivation.
+
+Before this fix, an ID input had no handle and accidentally matched any earlier
+old-shaped record with no handle. The wrong record could be enabled and the
+requested source not added. This fix matches present IDs/handles first, keeps
+the pre-existing handle-prefixed ID lookup, and only re-enables explicit false. Missing
+or null enabled is active in the current poller, unlike old falsy semantics.
+Multiple matching records are preserved and reported as ambiguous.
+
+Important remaining parity gap: for an input handle with no exact saved match,
+open-core retains its existing fallback by display name. A display name is not
+proof of identity, so this can still match a different channel; conversely an
+unresolved handle and channel ID for the same channel may produce duplicates.
+The old core resolved before comparing, while this stage does not perform a
+network request or claim full equivalence.
+
+A channelId of `handle:science` is recognized for lookup but its provenance is
+not established. Old blob 73aa9e7e:5684-5711 and 43251-43260 resolves submitted
+channels before storing channelId; no creator of a `handle:` channelId was found
+in the readable old blob. Initial open-core
+0bc2c9493063043bca866ca8ead6ee2aec6f3457:.msb/bot/src/monitor/config.mjs:111-124
+used that prefix only for comparison and stored a new handle as channelId:null
+and a separate handle. A synthetic row alone is not proof that JAR1 contains
+this format or that old core produced it.
+
+A conditional offline probe with a temporary profile and fake fetch confirmed
+that, if such a row is present, the current poller sends the prefix as the RSS
+channel_id and does not invoke its handle resolver. The fake 404 is not a real
+YouTube response. The old-format semantics, conflicts/duplicates and callback
+compatibility remain unproven; do not migrate or claim restored polling based
+only on this hypothetical row. This issue is distinct from the unanswered
+choice about resolving new handles before or after adding a source.
+
+Path: Telegram form -> addSourceFromInput -> updateMonitorConfig under lock.
+Synthetic checks: tests/monitor-youtube-reactivate.test.mjs and related monitor
+tests. No network, real profile or JAR1; live YouTube collection is not proven.

@@ -25,15 +25,18 @@ async function openDatabase(file) {
   return new DatabaseSync(file);
 }
 
+function isBusy(err) {
+  return /^SQLITE_(BUSY|LOCKED)/.test(err?.code || '') ||
+    (err?.code === 'ERR_SQLITE_ERROR' && [5, 6].includes(err.errcode & 255));
+}
+
 async function acquire(db) {
   db.exec('PRAGMA busy_timeout = 0;');
   const deadline = performance.now() + 10_000;
   for (;;) {
     try { db.exec('BEGIN IMMEDIATE;'); return; }
     catch (err) {
-      const busy = /^SQLITE_(BUSY|LOCKED)/.test(err?.code || '') ||
-        (err?.code === 'ERR_SQLITE_ERROR' && [5, 6].includes(err.errcode & 255));
-      if (!busy || performance.now() >= deadline) throw err;
+      if (!isBusy(err) || performance.now() >= deadline) throw err;
       // SQLite's synchronous busy_timeout would freeze Telegram polling /stop.
       await new Promise(resolve => setTimeout(resolve, 25));
     }
@@ -58,4 +61,19 @@ export function withFileLock(file, action) {
   const release = () => { if (queues.get(file) === update) queues.delete(file); };
   update.then(release, release);
   return update;
+}
+
+/** Try a separate OS-released lock once; do not wait or block the event loop. */
+export async function tryWithFileLock(file, action) {
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  const lockPath = `${file}.lock.sqlite`;
+  const db = await openDatabase(lockPath);
+  try {
+    await fs.chmod(lockPath, 0o600);
+    db.exec('PRAGMA busy_timeout = 0;');
+    try { db.exec('BEGIN IMMEDIATE;'); }
+    catch (err) { if (isBusy(err)) return false; throw err; }
+    try { await action(); return true; }
+    finally { db.exec('ROLLBACK;'); }
+  } finally { db.close(); }
 }

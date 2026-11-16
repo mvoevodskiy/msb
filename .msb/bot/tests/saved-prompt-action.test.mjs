@@ -404,3 +404,37 @@ test('a redirected background workspace cannot run in the owner project', async 
   assert.deepEqual(await f.actions(), [original]);
   assert.deepEqual(await f.runs(), []);
 });
+
+test('saved Claude prompt defers when spend pause is set during workspace preparation', async t => {
+  const original = action('spend-preflight');
+  const f = await profile(t, [original]);
+  const beforeState = (await loadState()).state;
+  const waiting = Promise.withResolvers(), release = Promise.withResolvers();
+  const realpath = fs.realpath.bind(fs);
+  const workspace = path.join(f.autonomy, 'cc-workspace');
+  let held = false;
+  t.mock.method(fs, 'realpath', async (file, ...args) => {
+    if (file === workspace && !held) { held = true; waiting.resolve(); await release.promise; }
+    return realpath(file, ...args);
+  });
+  const tick = f.scheduler.tickNow();
+  try {
+    await Promise.race([waiting.promise, tick.then(() => assert.fail('Expected workspace preparation'))]);
+    await saveState({ ...(await loadState()).state, costPaused: true });
+  } finally { release.resolve(); }
+  await tick;
+  assert.deepEqual(await f.calls(), []);
+  const [deferredAction] = await f.actions();
+  const { costPausePending, ...restoredAction } = deferredAction;
+  assert.ok(costPausePending);
+  assert.deepEqual(restoredAction, original);
+  assert.deepEqual(f.sent, []);
+  assert.equal((await loadState()).state.ccSessionId, beforeState.ccSessionId);
+  await f.callback('settings:cost:resume');
+  await f.scheduler.tickNow();
+  const [call] = await f.calls();
+  assert.ok(call);
+  assert.equal(value(call, '--permission-mode'), 'acceptEdits');
+  assert.equal((await f.actions())[0].lastStatus, 'ok');
+  assert.equal((await loadState()).state.ccSessionId, beforeState.ccSessionId);
+});

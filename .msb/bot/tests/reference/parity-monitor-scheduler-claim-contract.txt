@@ -1,0 +1,49 @@
+Per-bot cross-process monitor scheduler claim
+
+Old readable blob 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11:108140-108183
+starts a periodic scheduler and skips a tick while the previous tick in that
+process is still running. Lines 108287-108342 group source polling and mark
+attempts, followed by the digest branch at 108651-108776. Read with
+`git show <blob> | nl -ba`. The old in-process flag does not establish a
+cross-process exactly-once guarantee.
+
+At 559ae35 each scheduler object had its own busy flag, and two processes for
+the same bot could both pass the scheduled due check before either recorded an
+attempt. RED on isolated processes with fake RSS and fake Telegram: while a
+slow poll was held, the fast process made a second request and sent a digest
+containing only the old item; after the slow poll got a new item, its digest
+was suppressed as already sent. The same duplicate occurred when the second
+process used a symlink alias of the same monitor root. No real requests or
+personal data were involved.
+
+The scheduler takes a non-blocking SQLite claim for (monitor directory,
+sanitized botId) before the whole scheduled poll and digest; a busy claim skips
+that tick. The claim is separate from the config, items and meta locks and is
+released by the OS on process exit. Different bot IDs remain independent.
+The explicit manual pollAllSources route does not take this claim. If stop()
+occurs while claim acquisition is pending, the admitted callback checks stopped
+before starting any fetch. A claim error is logged and does not fall through to
+unclaimed collection. The claim creates a per-bot lock database under
+monitor/.scheduler-claims; it is not deleted automatically on rollback.
+
+GREEN: seven focused checks cover two real processes of one bot and the fresh
+digest, independent bot IDs, manual collection during a held scheduled pass,
+claim release after SIGKILL, path aliases, claim creation error and stop before
+admission. All 117 selected monitor tests passed on macOS Node 26 and isolated
+network-none Linux Node 22.23.2. Linux passed both Node's SQLite fallback and
+better-sqlite3 11.10.0 native (SQLite 3.49.2), loaded from the existing local
+test image; the source and native package mounts were read-only. Fake profiles,
+RSS and Telegram were used. No live server, service, personal data or unrelated
+provider was exercised.
+
+This only coordinates scheduled ticks using this claim. Manual collection or an
+external direct call to pollAllSources({scheduled:true}) can overlap; a crash
+after a remote fetch or message but before metadata is saved can cause a retry.
+The claim protects normal symlink aliases tested on macOS and Linux, not a
+separate hardlinked meta.json, directory replacement during a tick or unrelated
+non-cooperating writers. A long-running or hung tick holds the claim: another
+instance skips its tick, and a digest may be delayed or miss its configured
+hour. stop() after work starts does not cancel the active poll. These are limits,
+not a claim of exactly-once execution or guaranteed deadline delivery. Revert
+the behavior commit to restore prior admission; retain or inspect lock files
+as user data instead of deleting them automatically.

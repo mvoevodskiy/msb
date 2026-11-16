@@ -1,7 +1,8 @@
 /**
  * Check saved legacy timer eligibility and reserve the ordinary Telegram turn.
  * [Scheduler](./scheduler.mjs), [records](./legacy-timers.mjs), [inbox](../telegram/inbox.mjs),
- * [old contract](../../tests/reference/parity-autonomy-contract.txt), [ingress test](../../tests/legacy-timer-dispatch.test.mjs).
+ * [old contract](../../tests/reference/parity-autonomy-contract.txt), [spend pause](../../tests/reference/parity-owner-spend-contract.txt),
+ * [ingress test](../../tests/legacy-timer-dispatch.test.mjs).
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -25,17 +26,17 @@ async function isSleeping(env) {
   }
 }
 
-/** The worker commits only an awake admission. False leaves all reservations prepared. */
-export async function admitLegacyTimerRuns(runs, signal, { blocked = false, blockedByCodexSleep = false, env = process.env } = {}) {
+/** The worker admits awake runs; false defers sleep and deferredByCost retains the spend-paused group. */
+export async function admitLegacyTimerRuns(runs, signal, { blocked = false, blockedByCodexSleep = false, deferForCost = false, now = Date.now, timezone = 'Europe/Moscow', env = process.env } = {}) {
   if (blocked && !blockedByCodexSleep) return false;
-  if (!blocked && runs.every(run => !pendingLegacyTimerRun(run.timer))) {
+  if (!blocked && !deferForCost && runs.every(run => !pendingLegacyTimerRun(run.timer))) {
     const state = await updateState(() => {
       signal?.throwIfAborted();
       return NO_STATE_WRITE;
     }, env);
     // Ordinary stamped timers need no further schedule-file validation when
     // Codex is not selected, just as on the original queue path.
-    if (!isCodexSelected(state)) return new Set(runs);
+    if (!isCodexSelected(state) && !state.costPaused) return new Set(runs);
   }
   return claimLegacyTimerRuns(runs, { env, signal, admit: async commit => {
     let admitted;
@@ -46,12 +47,20 @@ export async function admitLegacyTimerRuns(runs, signal, { blocked = false, bloc
       const destination = destinationKey(state);
       // A provider switch after queue rejection does not invalidate the
       // observed Codex sleep decision. Only the matching timer can be saved.
-      admitted = isCodexSelected(state) || blockedByCodexSleep
-        ? await withFileLock(markerPath(env), async () => {
-          signal?.throwIfAborted();
-          return commit(destination, blockedByCodexSleep || await isSleeping(env));
-        })
-        : await commit(destination);
+      if (state.costPaused) {
+        await commit(destination, true, 'cost_pause');
+        admitted = { deferredByCost: true };
+      } else {
+        const instant = new Date(now());
+        const coalesce = run => run.timer.legacyPendingRun?.reason === 'cost_pause' &&
+          isDue(run.timer, instant, ownerClock(state.timezone || timezone)) ? instant.toISOString() : undefined;
+        admitted = isCodexSelected(state) || blockedByCodexSleep
+          ? await withFileLock(markerPath(env), async () => {
+            signal?.throwIfAborted();
+            return commit(destination, blockedByCodexSleep || await isSleeping(env), undefined, coalesce);
+          })
+          : await commit(destination, false, undefined, coalesce);
+      }
       return NO_STATE_WRITE;
     }, env);
     return admitted;
@@ -86,8 +95,11 @@ function isDue(timer, instant, local) {
 
 export async function dispatchLegacyTimers({ scheduledTurns, timezone, now, isInterrupted, env = process.env }) {
   const { file, timers } = await legacyTimerSnapshot(env);
-  if (isInterrupted() || !timers.length || await isSleeping(env)) return;
+  if (isInterrupted() || !timers.length) return;
+  const sleeping = await isSleeping(env);
+  if (isInterrupted()) return;
   const { state } = await loadState(env);
+  if (sleeping && (!state.costPaused || !isCodexSelected(state))) return;
   const { chatId, userId } = state;
   if (!chatId || !userId) return;
 
@@ -96,10 +108,13 @@ export async function dispatchLegacyTimers({ scheduledTurns, timezone, now, isIn
   const local = date => (formatClock ??= ownerClock(state.timezone || timezone))(date);
   for (const timer of timers) {
     if (isInterrupted()) return;
-    if (!pendingLegacyTimerRun(timer) && !isDue(timer, instant, local)) continue;
+    const pending = pendingLegacyTimerRun(timer);
+    const due = isDue(timer, instant, local);
+    if ((!pending && !due) || (pending && state.costPaused && timer.legacyPendingRun.reason !== undefined)) continue;
     const text = '⏰ Таймер "' + timer.name + '":\n' + timer.prompt;
     await publishLegacyTimerRun(file, timer, {
-      env, now, recoverable: isCodexSelected(state), destination: destinationKey(state),
+      env, now, recoverable: isCodexSelected(state) || Boolean(state.costPaused), destination: destinationKey(state),
+      deferOnly: Boolean(state.costPaused), coalesceAt: pending && due ? instant.getTime() : undefined,
       reserve: legacyRun => isInterrupted() ? null : scheduledTurns.reserve({ chatId, userId, text, legacyRun }),
     });
   }

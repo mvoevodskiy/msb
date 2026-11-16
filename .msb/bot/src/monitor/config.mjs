@@ -1,9 +1,14 @@
+/**
+ * Конфигурация источников мониторинга и короткие транзакции изменений.
+ * Вход: Telegram forms/routes; сбор и merge статусов → poll.mjs.
+ * X identity/callback → source-ref.mjs; проверки → monitor-twitter-legacy.test.mjs.
+ */
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { msbRoot } from '../paths.mjs';
 import { withFileLock } from '../../shared/file-lock.mjs';
-import { sourceToken } from './source-ref.mjs';
+import { sourceToken, twitterAliases, twitterIdentity } from './source-ref.mjs';
 
 export function monitorDir(env = process.env) {
   return path.join(msbRoot(env), 'monitor');
@@ -75,7 +80,7 @@ export function updateMonitorConfig(change, env = process.env) {
 }
 
 /** Разбор ссылки / @ника → тип источника. */
-export function classifySourceInput(raw) {
+export function classifySourceInput(raw, { type } = {}) {
   const text = String(raw || '').trim();
   if (!text) return null;
 
@@ -103,10 +108,13 @@ export function classifySourceInput(raw) {
   // Twitter / X
   m = text.match(/(?:twitter\.com|x\.com)\/([A-Za-z0-9_]+)/i);
   if (m) return { type: 'twitter', username: m[1], name: `@${m[1]}` };
-  if (/^@[A-Za-z0-9_]{1,15}$/.test(text) && !text.includes('/')) {
-    // ambiguous @ — prefer twitter unless looks like telegram channel later
-    return { type: 'twitter', username: text.slice(1), name: text };
+  // The same handle can belong to Telegram or X. Old UI asks the owner.
+  if (/^@[A-Za-z0-9_]{2,64}$/.test(text)) {
+    if (type === 'telegram' || type === 'twitter') return { type, username: text.slice(1), name: text };
+    return { type: 'ambiguous', username: text.slice(1), name: text };
   }
+  // Preserve the new core's existing single-character X handle support.
+  if (/^@[A-Za-z0-9_]$/.test(text)) return { type: 'twitter', username: text.slice(1), name: text };
 
   // Telegram
   m = text.match(/(?:t\.me|telegram\.me)\/([A-Za-z0-9_]+)/i);
@@ -118,20 +126,35 @@ export function classifySourceInput(raw) {
   return null;
 }
 
-export async function addSourceFromInput(raw, env = process.env) {
-  const parsed = classifySourceInput(raw);
+export async function addSourceFromInput(raw, env = process.env, { type } = {}) {
+  const parsed = classifySourceInput(raw, { type });
+  if (parsed?.type === 'ambiguous') return { ok: false, needsChoice: true, value: parsed.name };
   if (!parsed) return { ok: false, error: 'Не понял источник. Пришли URL или @ник (YouTube, GitHub, X, Telegram, RSS).' };
 
   const now = new Date().toISOString();
   return updateMonitorConfig(async (cfg) => {
     if (parsed.type === 'youtube') {
-      const key = parsed.channelId || `handle:${parsed.handle}`;
-      const exists = cfg.youtube.channels.find(
-        (c) => c.channelId === key || c.handle === parsed.handle || c.name === parsed.name,
+      let matches = cfg.youtube.channels.filter((c) =>
+        (parsed.channelId && c.channelId === parsed.channelId) ||
+        (parsed.handle && (c.handle === parsed.handle || c.channelId === `handle:${parsed.handle}`)),
       );
+      // Preserve the existing handle-by-name fallback for legacy records. It
+      // is not proof of identity; resolving handles like the old core is a
+      // separate, documented follow-up. Never use it for a concrete ID.
+      if (!matches.length && parsed.handle) {
+        matches = cfg.youtube.channels.filter((c) => c.name === parsed.name);
+      }
+      if (matches.length > 1) {
+        return { ok: false, error: `Найдено несколько записей YouTube для ${parsed.name}. Проверь список источников.` };
+      }
+      const exists = matches[0];
       if (exists) {
-        exists.enabled = true;
-        return { ok: true, added: false, type: 'youtube', name: exists.name };
+        const name = exists.name || parsed.name;
+        if (exists.enabled === false) {
+          exists.enabled = true;
+          return { ok: true, added: true, reason: 're-enabled', type: 'youtube', name };
+        }
+        return { ok: true, added: false, type: 'youtube', name };
       }
       cfg.youtube.channels.push({
         channelId: parsed.channelId || null,
@@ -146,7 +169,16 @@ export async function addSourceFromInput(raw, env = process.env) {
 
     if (parsed.type === 'twitter') {
       const u = parsed.username.toLowerCase();
-      if (cfg.twitter.accounts.some((a) => a.username.toLowerCase() === u)) {
+      const matches = cfg.twitter.accounts.filter((a) => twitterAliases(a).some((alias) => alias.toLowerCase() === u));
+      if (matches.length > 1 || (matches.length === 1 && !twitterIdentity(matches[0]))) {
+        return { ok: false, error: `Найдены неоднозначные записи Twitter для ${parsed.name}. Проверь список источников.` };
+      }
+      const existing = matches[0];
+      if (existing) {
+        if (existing.enabled === false) {
+          existing.enabled = true;
+          return { ok: true, added: true, reason: 're-enabled', type: 'twitter', name: parsed.name };
+        }
         return { ok: true, added: false, type: 'twitter', name: parsed.name };
       }
       cfg.twitter.accounts.push({ username: parsed.username, name: parsed.name, enabled: true, addedAt: now });
@@ -156,7 +188,17 @@ export async function addSourceFromInput(raw, env = process.env) {
 
     if (parsed.type === 'github') {
       const full = `${parsed.owner}/${parsed.repo}`;
-      if (cfg.github.repos.some((r) => `${r.owner}/${r.repo}` === full)) {
+      const matches = cfg.github.repos.filter((r) => `${r.owner}/${r.repo}`.toLowerCase() === full.toLowerCase());
+      // Older open-core could create case-variant duplicates. Do not change
+      // an arbitrary record or claim a disabled source is already active.
+      if (matches.length > 1) {
+        return { ok: false, error: `Найдено несколько записей GitHub для ${full}. Проверь список источников.` };
+      }
+      if (matches.length) {
+        if (matches[0].enabled === false) {
+          matches[0].enabled = true;
+          return { ok: true, added: true, reason: 're-enabled', type: 'github', name: full };
+        }
         return { ok: true, added: false, type: 'github', name: full };
       }
       cfg.github.repos.push({ owner: parsed.owner, repo: parsed.repo, name: full, enabled: true, addedAt: now });
@@ -204,7 +246,31 @@ export async function removeSource(type, id, env = process.env, { byToken = fals
       ok = mark(cfg.youtube.channels, (c) => byToken ? tokenMatches([c.channelId, c.handle, c.name]) : c.channelId === id || c.handle === id || c.name === id);
       if (!cfg.youtube.channels.length) cfg.youtube.enabled = false;
     } else if (type === 'twitter') {
-      ok = mark(cfg.twitter.accounts, (a) => byToken ? tokenMatches([a.username]) : a.username === id);
+      // A previously rendered legacy button could encode a missing X id as
+      // the string 'undefined'. Only fresh token buttons can remove that name.
+      if (!byToken && (typeof id !== 'string' || id === 'undefined')) return false;
+      const matches = cfg.twitter.accounts.filter((a) => byToken
+        ? tokenMatches(twitterAliases(a))
+        : twitterAliases(a).some((alias) => alias.toLowerCase() === id.toLowerCase()));
+      const identity = matches.length === 1 ? twitterIdentity(matches[0]) : null;
+      const collisions = identity && cfg.twitter.accounts.filter((a) =>
+        twitterAliases(a).some((alias) => alias.toLowerCase() === identity.toLowerCase()));
+      if (identity && collisions.length === 1) {
+        cfg.twitter.accounts.splice(cfg.twitter.accounts.indexOf(matches[0]), 1);
+        ok = true;
+      } else if (byToken && !matches.length) {
+        // Malformed rows have no safe account identity. A token of the entire
+        // unchanged row allows explicit deletion without selecting a neighbor.
+        const malformed = cfg.twitter.accounts.filter((a) => !twitterIdentity(a) &&
+          sourceToken('twitter-invalid', JSON.stringify(a)) === id);
+        const signature = (a) => JSON.stringify(twitterAliases(a).map((alias) => alias.toLowerCase()));
+        const indistinguishable = malformed.length === 1 && cfg.twitter.accounts.filter((a) =>
+          !twitterIdentity(a) && signature(a) === signature(malformed[0]));
+        if (malformed.length === 1 && indistinguishable.length === 1) {
+          cfg.twitter.accounts.splice(cfg.twitter.accounts.indexOf(malformed[0]), 1);
+          ok = true;
+        }
+      }
       if (!cfg.twitter.accounts.length) cfg.twitter.enabled = false;
     } else if (type === 'github') {
       ok = mark(cfg.github.repos, (r) => byToken ? tokenMatches([`${r.owner}/${r.repo}`]) : `${r.owner}/${r.repo}` === id || r.name === id);
@@ -225,8 +291,13 @@ export function listSourcesFlat(cfg) {
   for (const c of cfg.youtube.channels || []) {
     out.push({ type: 'youtube', id: c.channelId || c.handle || c.name, name: c.name, enabled: c.enabled !== false });
   }
+  let invalidTwitter = 0;
   for (const a of cfg.twitter.accounts || []) {
-    out.push({ type: 'twitter', id: a.username, name: a.name || `@${a.username}`, enabled: a.enabled !== false });
+    const id = twitterIdentity(a);
+    const invalidToken = id ? null : sourceToken('twitter-invalid', JSON.stringify(a));
+    const invalidName = id ? null : `⚠️ ${++invalidTwitter}: ${twitterAliases(a).map((alias) => `@${alias}`).join(' / ') || 'Некорректный источник X'}`;
+    out.push({ type: 'twitter', id, name: id ? (a?.name || `@${id}`) : invalidName,
+      enabled: a?.enabled !== false, invalid: !id, ...(!id ? { invalidToken } : {}) });
   }
   for (const r of cfg.github.repos || []) {
     out.push({ type: 'github', id: `${r.owner}/${r.repo}`, name: r.name || `${r.owner}/${r.repo}`, enabled: r.enabled !== false });

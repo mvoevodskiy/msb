@@ -6,7 +6,7 @@
 
 Модуль принимает события Telegram, показывает меню и ведёт пользовательский ход.
 Текстовые формы выделены в [dispatcher](forms.mjs) и подмодули [auth](forms/auth.mjs),
-[env](forms/env.mjs) (name→value→description/skip, transient draft/общий TTL), [Pult](forms/pult.mjs); они не запускают отдельный agent path.
+[env](forms/env.mjs) (name→value→description/skip, transient draft/общий TTL), [Pult](forms/pult.mjs) и [источники](forms/monitor.mjs); они не запускают отдельный agent path.
 Точка сборки — [`createBot`](bot.mjs): owner guard, команды, callback/text/voice
 handlers, общие `pending`, `running` и [очередь](#очередь). [`main`](../main.mjs) управляет запуском
 и shutdown процесса.
@@ -108,7 +108,7 @@ Owner boundary остаётся перед core router: middleware бота и h
 | [settings](routes/settings.mjs) | `handleSettingsRoute`: `.env`, timezone, лимиты, сведения, STT и уведомления |
 | [engines](routes/engines.mjs) | `handleEnginesRoute`: обычный экран и опциональный OS dispatcher |
 | [autonomy](routes/autonomy.mjs) | `handleAutonomyRoute`: задачи, история, таймеры и сохранённые права |
-| [monitor](routes/monitor.mjs) | `handleMonitorRoute`: источники, дайджест, сбор и настройки |
+| [monitor](routes/monitor.mjs) → [форма выбора](forms/monitor.mjs) | `handleMonitorRoute`: источники, дайджест, сбор и настройки; [@ник и отмена](../../tests/monitor-source-choice.test.mjs) |
 | [workspace](routes/workspace.mjs) | `handleWorkspaceRoute`: MCP callbacks → [MCP](../mcp/README.md) |
 
 Диспетчер сохраняет исходный порядок; поздние setup/misc обработчики вызываются

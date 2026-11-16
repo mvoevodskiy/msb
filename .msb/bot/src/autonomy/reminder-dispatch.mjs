@@ -4,17 +4,19 @@
  * [Frequency decisions](./reminder-frequency-brake.mjs) settle before due selection.
  * [Scheduler](./scheduler.mjs) drains this pass on shutdown.
  * [Store](./reminder-store.mjs) records delivery and [breaker](./reminder-breaker.mjs)
- * transitions. [Pause lock](./owner-pause.mjs), [checks](../../tests/reminder-limits.test.mjs).
+ * transitions. [Pause lock](./owner-pause.mjs), [deferred cost slot](./cost-pause-pending.mjs),
+ * [admission](../../tests/reminder-limits.test.mjs), [pause/resume checks](../../tests/saved-spend-pause.test.mjs).
  */
 import { loadState, NO_STATE_WRITE, updateState } from '../state.mjs';
 import { singleRequestSignal } from '../telegram/presentation-api.mjs';
 import { isLocalReminderEngine, readReminderPolicy, reminderOwnerChat } from './reminder-policy.mjs';
-import { trackAutonomyTurn, withAutonomyPauseLock } from './owner-pause.mjs';
+import { readAutonomyPause, trackAutonomyTurn, withAutonomyPauseLock } from './owner-pause.mjs';
 import { currentReminderRefusal, readBoxReminderRefusal } from './reminder-admission.mjs';
 import { codexQuotaRefusal } from './subscription-gate.mjs';
 import { readReminderBreakerRefusal } from './reminder-breaker.mjs';
 import { reminderBreakerNotice } from './reminder-breaker-notice.mjs';
 import { reminderIsDue } from './reminder-schedule.mjs';
+import { hasCostPausePending } from './cost-pause-pending.mjs';
 import { reminderFrequencyAllows } from './reminder-frequency.mjs';
 import { readReminderFrequencyDecisions } from './frequency-decisions.mjs';
 import { applyReminderFrequencyBrake } from './reminder-frequency-brake.mjs';
@@ -66,16 +68,20 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
     return result;
   }
 
-  async function admit(action, slotAt, ts, boxRefusal, quotaRead, publish, isStopped) {
+  async function admit(action, slotAt, ts, boxRefusal, quotaRead, preflightPaused, publish, defer, isStopped) {
     const target = await destination(isStopped);
     if (!target) return;
     // The provider and owner's saved spend are sampled after journal I/O.
     return withLocalState(isStopped, async state => {
       if (!reminderIsDue(action, slotAt, state.timezone || timezone)) return;
-      const plan = action.task.kind === 'prompt' ? planFor(action, state) : undefined;
-      if (action.task.kind === 'prompt' && !plan) return;
       const decisions = action.trigger.kind === 'once' ? undefined : await readReminderFrequencyDecisions();
       if (!reminderFrequencyAllows(action, decisions)) return;
+      if (state.costPaused) return defer('дневной лимит расходов уже достигнут (costPaused)');
+      // The budget was deliberately not read while paused. Preserve the due slot
+      // and retry with all limits if the owner resumed during that preflight.
+      if (preflightPaused) return defer();
+      const plan = action.task.kind === 'prompt' ? planFor(action, state) : undefined;
+      if (action.task.kind === 'prompt' && !plan) return;
       const breaker = await readReminderBreakerRefusal(action.id, ts);
       const codex = state.extAuthBypass === 'codex';
       const quotaCurrent = quotaRead?.report?.isCurrent;
@@ -85,6 +91,7 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
       if (!earlier && codex && readCodexQuota && !quotaRead) return;
       const quotaDetail = codex ? codexQuotaRefusal(quotaRead?.report?.quota, state, now(), target.reserveFraction) : undefined;
       const refusal = earlier ?? currentReminderRefusal(action, state, ts, target.reserveFraction, quotaDetail);
+      if (refusal && hasCostPausePending(action)) return defer(refusal.detail);
       const claimed = await publish(refusal);
       return { action: claimed, chat: target.chat, refusal, plan, quotaCurrent };
     });
@@ -93,7 +100,7 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
   async function promptOutcome(file, action, chat, plan, turn, quotaCurrent) {
     const active = AbortSignal.any([turn.signal, signal]);
     try {
-      const result = await runSavedPrompt(action, plan, {
+      let result = await runSavedPrompt(action, plan, {
         runCodexPrompt,
         runCursorPrompt,
         signal: active, isCurrent: async () => await savedActionClaimIsCurrent(file, action) &&
@@ -101,8 +108,12 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
       }).catch(() => ({
         status: 'deferred', detail: 'не удалось подготовить изолированный запуск',
       }));
+      if (result.status === 'deferred' && !result.costPauseDeferred && !result.fileCommitStarted) {
+        const state = await loadState().then(value => value.state, () => undefined);
+        if (state?.costPaused) result = { ...result, costPauseDeferred: true };
+      }
       if (active.aborted) return { status: 'stopped', detail: 'ход прерван остановкой фоновых задач',
-        fileCommitStarted: result.fileCommitStarted };
+        fileCommitStarted: result.fileCommitStarted, costPauseDeferred: result.costPauseDeferred };
       return await deliverSavedPrompt(api, chat, result, active);
     } finally {
       turn.release();
@@ -125,7 +136,7 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
     for (const snapshot of actions) {
       if (isStopped()) break;
       if (!reminderIsDue(snapshot, slotAt, target.timezone)) continue;
-      if (!supports(snapshot, target.state)) {
+      if (!supports(snapshot, target.state) && !target.state.costPaused) {
         if (snapshot.enabled !== false && snapshot.task?.kind === 'prompt') {
           log('[msb/reminder] skip ' + snapshot.id
             + ' reason=no-plan provider=' + (target.state.extAuthBypass || 'claude'));
@@ -136,15 +147,16 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
       try {
         // Old shared journals can be slow. Read them before locking the local
         // pause, then recheck that both the action and route can still run.
-        let boxRefusal = await readBoxReminderRefusal(ts);
-        const quotaRead = boxRefusal ? undefined : await prepareCodexQuota(snapshot, ts, isStopped);
+        const preflightPaused = Boolean((await loadState()).state.costPaused);
+        let boxRefusal = preflightPaused ? undefined : await readBoxReminderRefusal(ts);
+        const quotaRead = preflightPaused || boxRefusal ? undefined : await prepareCodexQuota(snapshot, ts, isStopped);
         let admitted;
         try {
           // Another bot can consume the shared budget while the native read is pending.
           if (quotaRead && !quotaRead.active.aborted) boxRefusal = await readBoxReminderRefusal(ts);
           admitted = await withAutonomyPauseLock(async () => {
             const claim = await claimSavedAction(file, snapshot, ts, {
-              admit: (action, publish) => admit(action, slotAt, ts, boxRefusal, quotaRead, publish, isStopped),
+              admit: (action, publish, defer) => admit(action, slotAt, ts, boxRefusal, quotaRead, preflightPaused, publish, defer, isStopped),
             });
             if (claim?.plan && !claim.refusal) claim.turn = trackAutonomyTurn();
             return claim;
@@ -153,9 +165,25 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
           quotaRead?.release();
         }
         if (!admitted) continue;
+        if (admitted.deferred) {
+          if (admitted.pendingConflict) log('[msb/reminder] Cannot save deferred occurrence: unknown pending format');
+          if (admitted.notice && !isStopped() && !signal.aborted) await sendText(api, target.chat,
+            '📡 Автономное действие «' + admitted.action.name + '» приостановлено: ' + admitted.notice)
+            .catch(() => log('[msb/reminder] Could not send the limit notice'));
+          continue;
+        }
         const { action, chat, refusal, turn, plan, quotaCurrent } = admitted;
-        const result = refusal ?? (turn ? await promptOutcome(file, action, chat, plan, turn, quotaCurrent)
-          : await sendReminder(api, chat, action.task.text));
+        let result = refusal;
+        if (!result && turn) result = await promptOutcome(file, action, chat, plan, turn, quotaCurrent);
+        else if (!result) {
+          const checks = await Promise.all([loadState(), readAutonomyPause()]).catch(() => undefined);
+          const costPaused = Boolean(checks?.[0].state.costPaused);
+          result = isStopped() || signal.aborted || checks?.[1].stopped
+            ? { status: 'stopped', costPauseDeferred: costPaused }
+            : !checks ? { status: 'deferred', costPauseDeferred: true, detail: 'состояние расходов недоступно' }
+              : costPaused ? { status: 'deferred', costPauseDeferred: true }
+                : await sendReminder(api, chat, action.task.text);
+        }
         const completion = refusal ? undefined
           : await finishSavedAction(file, snapshot, action, result).catch(actionError => ({ actionError }));
         if (completion?.actionError) {

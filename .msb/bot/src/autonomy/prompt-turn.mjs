@@ -4,6 +4,8 @@
  * or the Cursor adapter. [Freshness](./prompt-freshness.mjs) refuses before spawn.
  * [Saved roles](./prompt-team.mjs) use the same tool boundary and claimed action.
  * [Dispatcher](./reminder-dispatch.mjs) owns cancellation, delivery and history.
+ * Saved cost pause is checked before launch; [tests](../../tests/saved-codex-prompt-action.test.mjs)
+ * and [contract](../../tests/reference/parity-owner-spend-contract.txt) describe its limits.
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -96,15 +98,26 @@ function providerLabel(provider) {
   return 'Claude';
 }
 
+// No provider ran on these error paths. Preserve a due occurrence if the
+// spend state changed or could not be read while that error was prepared.
+async function earlyPromptError(result, signal, env) {
+  if (signal.aborted) return stopped;
+  try {
+    const { state } = await loadState(env);
+    if (!state.costPaused) return result;
+  } catch { /* fail closed and retry the unstarted occurrence */ }
+  return { ...deferred, costPauseDeferred: true };
+}
+
 export async function runSavedPrompt(action, plan, { signal, isCurrent, runCodexPrompt, runCursorPrompt }, env = process.env) {
   if (signal.aborted) return stopped;
   if (plan.modelError) {
-    return { status: 'error', error: plan.modelError, text: plan.modelError };
+    return earlyPromptError({ status: 'error', error: plan.modelError, text: plan.modelError }, signal, env);
   }
   const freshness = await checkSavedPromptFreshness(action, { env });
   if (!freshness.ok) {
     const message = 'источник протух: ' + freshness.path;
-    return { status: 'error', error: message, text: message, stale: true };
+    return earlyPromptError({ status: 'error', error: message, text: message, stale: true }, signal, env);
   }
 
   const root = actionRoot(env);
@@ -120,10 +133,14 @@ export async function runSavedPrompt(action, plan, { signal, isCurrent, runCodex
     plan.provider === 'claude' && plan.tools.includes('Agent') && savedClaudeHelpersSupported(env),
   ]);
   const directories = [homeDir(env), os.tmpdir()];
+  let costPauseDeferred = false;
   const canLaunch = async () => {
     if (signal.aborted || await fs.realpath(logical) !== cwd || !await isCurrent()) return false;
-    const { state } = await loadState(env);
-    return !signal.aborted && isDeepStrictEqual(
+    let state;
+    try { ({ state } = await loadState(env)); }
+    catch { costPauseDeferred = true; return false; }
+    if (state.costPaused) costPauseDeferred = true;
+    return !signal.aborted && !state.costPaused && isDeepStrictEqual(
       savedPromptPlan(action, state, env, Boolean(runCodexPrompt), Boolean(runCursorPrompt)),
       plan,
     );
@@ -155,12 +172,15 @@ export async function runSavedPrompt(action, plan, { signal, isCurrent, runCodex
           ...(claudeHelpersSupported ? { agents } : {}) }, signal: turnSignal });
     }
   } catch {
-    if (signal.aborted) return stopped;
+    if (signal.aborted) return costPauseDeferred ? { ...stopped, costPauseDeferred: true } : stopped;
+    if (costPauseDeferred) return { ...deferred, costPauseDeferred: true };
     return { status: 'error', error: 'не удалось запустить ' + providerLabel(plan.provider) + ' для фоновой задачи' };
   }
-  if (signal.aborted) return result?.fileCommitStarted ? { ...stopped, fileCommitStarted: true } : stopped;
-  if (timeout.aborted && !result) return { status: 'error', error: 'ход прерван по сроку', timeout: true };
-  if (!result) return deferred;
+  if (signal.aborted) return result?.fileCommitStarted ? { ...stopped, fileCommitStarted: true }
+    : costPauseDeferred ? { ...stopped, costPauseDeferred: true } : stopped;
+  if (timeout.aborted && !result) return costPauseDeferred ? { ...deferred, costPauseDeferred: true }
+    : { status: 'error', error: 'ход прерван по сроку', timeout: true };
+  if (!result) return costPauseDeferred ? { ...deferred, costPauseDeferred: true } : deferred;
   const usage = result.usage;
   const parentInput = usage ? usage.inputTokens + usage.cacheReadTokens + usage.cacheCreationTokens : undefined;
   // Old JO charged the whole observed helper total to the daily input budget.

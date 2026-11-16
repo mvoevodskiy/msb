@@ -142,10 +142,21 @@ test('owner reserve uses the owner-local calendar day and the old default 30 per
   await assertBlocked(f, /израсходовано \$0\.65.*потолок автономки \$0\.70 \(резерв \$0\.30 для диалога\)/);
 });
 
-test('saved owner cost pause blocks a reminder with unavailable billing data', async t => {
+test('saved owner cost pause defers a reminder with unavailable billing data until resume', async t => {
   const f = await profile(t, { state: { costPaused: true } });
   await f.scheduler.tickNow();
-  await assertBlocked(f, /дневной лимит расходов уже достигнут \(costPaused\)/);
+  const [pending] = await f.readActions();
+  assert.equal(pending.enabled, true);
+  assert.equal(pending.lastRunAt, undefined);
+  assert.ok(pending.costPausePending);
+  assert.equal(f.messages.length, 1);
+  assert.match(f.messages[0].text, /дневной лимит расходов уже достигнут \(costPaused\)/);
+  await f.callback('settings:cost:resume');
+  await f.scheduler.tickNow();
+  assert.equal(f.messages.at(-1).text, '⏰ ' + title);
+  assert.equal((await f.runs()).at(-1).status, 'ok');
+  await f.scheduler.tickNow();
+  assert.equal(f.messages.filter(row => row.text === '⏰ ' + title).length, 1);
 });
 
 test('an open legacy breaker spends its once quietly and an expired breaker allows delivery', async t => {
@@ -241,20 +252,28 @@ test('an existing completed interval row counts as a run with its price and inpu
   await assertBlocked(f, /сегодня автономка сделала 1 ход/);
 });
 
-test('a failed limit notice does not undo or repeat the spent action', async t => {
+test('a failed cost-pause notice leaves the deferred action to run once after resume', async t => {
   const f = await profile(t, { state: { costPaused: true } });
+  const transport = f.bot.api.sendMessage;
   let attempts = 0;
   f.bot.api.sendMessage = async (_chat, text) => {
     assert.match(text, /📡 Автономное действие/);
-    assert.equal((await f.readActions())[0].lastOutcome, 'blocked');
-    assert.equal((await f.runs())[0].status, 'blocked');
+    const [pending] = await f.readActions();
+    assert.equal(pending.enabled, true);
+    assert.ok(pending.costPausePending);
+    assert.equal(pending.lastRunAt, undefined);
+    await assert.rejects(fs.stat(f.journal), { code: 'ENOENT' });
     attempts++;
     throw Error('fixture transport failure');
   };
   await f.scheduler.tickNow();
   await f.scheduler.tickNow();
   assert.equal(attempts, 1);
-  assert.equal((await f.runs()).length, 1);
+  f.bot.api.sendMessage = transport;
+  await f.callback('settings:cost:resume');
+  await f.scheduler.tickNow();
+  assert.equal(f.messages.filter(row => row.text === '⏰ ' + title).length, 1);
+  assert.equal((await f.runs()).at(-1).status, 'ok');
 });
 
 async function whileJournalReads(t, f, change) {
@@ -369,7 +388,7 @@ test('an old threshold crossing announces one pause and later failures extend ba
   }]);
 });
 
-test('an owner pause and a budget refusal leave the old breaker bytes alone', async t => {
+test('owner and cost pauses leave the old breaker unchanged until delivery', async t => {
   const f = await profile(t, { state: { costPaused: true } });
   await f.seedBreakers({ [reminder.id]: { open: true, consecutiveFailures: 4, backoffUntil: at } });
   const bytes = await fs.readFile(f.breakerFile);
@@ -380,8 +399,12 @@ test('an owner pause and a budget refusal leave the old breaker bytes alone', as
   assert.deepEqual(await fs.readFile(f.breakerFile), bytes);
   await setOwnerPause(false, route);
   await f.scheduler.tickNow();
-  await assertBlocked(f, /costPaused/);
+  assert.ok((await f.readActions())[0].costPausePending);
+  await assert.rejects(fs.stat(f.journal), { code: 'ENOENT' });
   assert.deepEqual(await fs.readFile(f.breakerFile), bytes);
+  await f.callback('settings:cost:resume');
+  await f.scheduler.tickNow();
+  assert.equal(f.messages.filter(row => row.text === '⏰ ' + title).length, 1);
 });
 
 test('a breaker opened while reading usage is checked again before the local attempt is claimed', async t => {

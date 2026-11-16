@@ -3,6 +3,7 @@
  * admits legacy freshness/shell/continuous/handoff for `extAuthBypass=cursor`.
  * Isolated cwd is `autonomy/cursor-workspace`; continuous resume lives in
  * `autonomy/cursor-sessions.json` by action id. Interactive chat sessions stay separate.
+ * Prelaunch state is checked after the key read; [tests](../../../../.msb/bot/tests/saved-cursor-prompt.test.mjs).
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -72,10 +73,10 @@ export async function runSavedCursorPrompt(options, env = process.env) {
   } = options;
   if (signal.aborted || env.JARVIS_CC_ONLY === '1') return;
   const key = await readEnvKey('CURSOR_API_KEY', env);
+  if (!await canLaunch()) return;
   if (!key) {
     return { providerId: 'cursor', text: 'Нет CURSOR_API_KEY для фонового Cursor', assistantTextObserved: true, isError: true };
   }
-  if (!await canLaunch()) return;
 
   const envPath = { ...env, PATH: enrichPath(env), CURSOR_API_KEY: key };
   const bin = await resolveBin(envPath);

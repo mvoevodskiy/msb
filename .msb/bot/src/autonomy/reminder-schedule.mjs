@@ -4,8 +4,11 @@
  * [Registration](./reminder-protocol.mjs) uses the same calendar for input,
  * preview and [advisories](./reminder-registration-advice.mjs). [Frequency gate](./reminder-frequency.mjs)
  * and [breaker](./reminder-breaker.mjs) use the old spacing estimate.
- * [Scheduler checks](../../tests/recurring-reminder.test.mjs).
+ * [Cost-pause pending](./cost-pause-pending.mjs) can be due outside its cron minute.
+ * [Scheduler checks](../../tests/recurring-reminder.test.mjs), [pause checks](../../tests/saved-spend-pause.test.mjs).
  */
+import { hasCostPausePending } from './cost-pause-pending.mjs';
+
 const minuteMs = 60_000;
 const dayMs = 24 * 60 * minuteMs;
 const fieldBounds = [[0, 59], [0, 23], [1, 31], [1, 12], [0, 6]];
@@ -108,6 +111,7 @@ export function validReminderTimezone(timezone) {
 export function reminderIsDue(action, now, timezone) {
   if (!action.enabled || action.budget?.killSwitch || spentReminder(action) || action.disabledReason === 'frequency') return false;
   const { trigger } = action;
+  if (hasCostPausePending(action) && Date.parse(action.costPausePending.at) <= now) return true;
   if (trigger.kind === 'once') return Date.parse(trigger.at) <= now;
   const last = action.lastRunAt ? Date.parse(action.lastRunAt) : 0;
   if (action.lastRunAt && (!Number.isFinite(last) || last > now)) return false;

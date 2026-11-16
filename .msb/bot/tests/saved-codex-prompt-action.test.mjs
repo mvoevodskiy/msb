@@ -280,3 +280,39 @@ test('a Codex account fence is checked again after claim and before the owned CL
   assert.deepEqual(await f.actions(), [original]);
   assert.deepEqual(f.messages, []);
 });
+
+test('saved Codex prompt defers when spend pause is set during workspace preparation', async t => {
+  const f = await profile(t);
+  const protectedBefore = await Promise.all(f.files.slice(1).map(file => fs.readFile(file)));
+  const beforeState = (await loadState()).state;
+  const waiting = Promise.withResolvers(), release = Promise.withResolvers();
+  const realpath = fs.realpath.bind(fs);
+  const workspace = path.join(f.autonomy, 'cc-workspace');
+  let held = false;
+  t.mock.method(fs, 'realpath', async (file, ...args) => {
+    if (file === workspace && !held) { held = true; waiting.resolve(); await release.promise; }
+    return realpath(file, ...args);
+  });
+  const tick = f.scheduler.tickNow();
+  try {
+    await Promise.race([waiting.promise, tick.then(() => assert.fail('Expected workspace preparation'))]);
+    await saveState({ ...(await loadState()).state, costPaused: true });
+  } finally { release.resolve(); }
+  await tick;
+  assert.equal(await f.call(), null);
+  const [deferredAction] = await f.actions();
+  const { costPausePending, ...restoredAction } = deferredAction;
+  assert.ok(costPausePending);
+  assert.deepEqual(restoredAction, original);
+  assert.deepEqual(f.messages, []);
+  assert.deepEqual(await Promise.all(f.files.slice(1).map(file => fs.readFile(file))), protectedBefore);
+  assert.equal((await loadState()).state.ccSessionId, beforeState.ccSessionId);
+  await f.callback('settings:cost:resume');
+  await f.scheduler.tickNow();
+  const call = await f.call();
+  assert.ok(call);
+  assert.ok(call.argv.includes('read-only'));
+  assert.ok(call.argv.includes('features.shell_tool=false'));
+  assert.equal((await f.actions())[0].lastStatus, 'ok');
+  assert.equal((await loadState()).state.ccSessionId, beforeState.ccSessionId);
+});

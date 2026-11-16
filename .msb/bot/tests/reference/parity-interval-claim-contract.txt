@@ -1,0 +1,98 @@
+Interval tasks: same-bot process claim — evidence and limitations
+
+No exact old equivalent of the new tasks.json interval schema is established.
+Old core blob 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11: use
+git show <blob> | nl -ba; schedules.json dispatch 108800–108835, storage
+18045–18068 and 18259–18282 use different once/daily/weekly records and do
+not establish multi-process exactly-once behavior for the new interval store.
+
+RED evidence: commit cc621f7 uses two separate synthetic scheduler processes
+with fake turns and fake Telegram. Before the fix both processes for the same
+bot entered and notified for one due task. It also showed two different bots
+sharing AUTONOMY_DIR could run that task twice; separate directories were the
+control. Neither observation proves the production server was in that state.
+
+Current route: scheduler -> interval-claim -> tryWithFileLock on a separate
+SQLite lock in the canonical bot root, including when task directories differ.
+An already held claim is skipped without waiting. After acquiring,
+the task is reread and its snapshot, enabled flag and due time rechecked. The
+claim lasts through saveTaskResult; the tasks.json lock remains short. A local
+stop epoch or pending scheduled turn is rechecked before the model starts.
+Tests mock unrelated dispatchers before importing scheduler and use fake turn
+and Telegram. The fixed regression and reference probe demonstrate separate
+processes, symlink aliases, different due tasks, local owner pause, /stop before
+admission (also via the real handler with fake Telegram), edits/deletion,
+process death and lock failure/release.
+
+Not a global exactly-once guarantee: bots sharing a task list still run it
+separately pending the owner's scope decision; nextAt itself is shared. A crash
+after an external action but before save can cause retry. A live hung process
+keeps the claim; lock files are retained. An edit/delete after the final read
+cannot cancel an already admitted turn, though its result cannot overwrite the
+changed row. /stop does not abort an interval already started or signal another
+process. Foreground or compact in a second process is not covered by this
+interval-only claim. No JAR1, real model, Telegram or OpenClaw was exercised.
+
+Local validation (16 November 2026): 114 related Node 26 tests, two task-store
+concurrency tests and one digest/menu test passed; the revised shared interval
+probe also passed with the documented different-bot boundary. In isolated
+Linux arm64 / Node 22.23.2, the 15 interval/stop tests plus six sleep-marker
+checks passed twice: once using Node's SQLite fallback and once with the
+existing better-sqlite3 11.10.0 source built offline. The source tree was
+mounted read-only, the container had no network and temporary output was
+removed with the container. Earlier native staging attempts failed on a noexec
+temporary mount and omitted Python fixture dependencies; the final stage
+contained client_markers.py and client_fs.py and all 21 tests passed.
+
+From .msb/bot with Node 22 and dependencies available:
+  node --test tests/autonomy-same-bot-claim.test.mjs tests/autonomy-stop-admission.test.mjs tests/sleep-marker.test.mjs
+  node tests/reference/probe-shared-interval-race.mjs
+The stop ingress wrapper creates its own test child with module mocks enabled;
+no extra flag is needed for the normal test command.
+
+
+Follow-up admission checks: the original sequence could start a task edited or
+removed while the first asynchronous pause check was in flight. A repeated
+snapshot catches those observed changes. A second owner/Codex pause check after
+the snapshot avoids introducing a new unchecked pause window, and local
+stop/pending are rechecked before runTurn. Six new synthetic gate cases and the
+existing 15 claim/stop cases passed on Node 26 and isolated Linux Node 22;
+two existing Codex/Claude interval-pause tests also passed on both. The latter
+were selected through tests/fixtures/legacy-timer-without-openclaw.mjs, which
+mocks the unrelated dispatcher before importing the existing tests.
+
+The rechecks in that earlier stage were best effort. RED 4860ce8 then showed
+an edit during the last asynchronous pause check could still start stale work.
+The current stage compares the candidate under the same lock as task writers,
+reads owner/fleet pause after waiting for that lock, and invokes runTurn before
+releasing it. The turn result is awaited only after the task lock is released;
+the per-bot interval claim remains held. An edit/delete committed first blocks
+the old turn. An edit committed after admission does not cancel that turn and
+cannot be overwritten by its result. If that edit leaves nextAt due, the next
+tick may run the edited task again; this existing behavior is tested, not hidden.
+
+The lock also covers the final asynchronous read of owner/fleet pause, but no
+pause or marker lock is acquired there. An independent process can still change
+pause or selected provider after the relevant read; the runner separately
+checks captured Codex pause. A crash or failure after an external effect can
+cause a retry. A simulated error after lock release tests abort and drain, not
+a real SQLite rollback/close failure; a runner that ignores abort can retain
+its interval claim until it ends. Direct interval /stop, task ownership across
+bots and non-cooperating edits outside the store lock remain separate boundaries.
+
+Current-stage validation: the original edit/delete RED is GREEN. On local Node
+26 and isolated Linux arm64 Node 22.23.2, 55 related top-level tests passed
+(their wrappers additionally assert 12 provider/pause and 16 Codex stop cases),
+seven store/compact tests and two selected Codex/Claude pause tests passed.
+In Linux, 43 selected top-level checks also passed against native better-sqlite3
+11.10.0, built offline from the locally available package into an ephemeral
+container directory; its successful SQLite query was checked before the suite.
+The other Linux run used Node's SQLite fallback. The original source mount was
+read-only; the native suite ran from an ephemeral copy. Both containers had no
+network and all state was synthetic.
+
+Coverage includes edit/delete before and after admission, a store writer while
+the fake model is held, local stop/pending/owner pause and external owner/fleet
+pause during the task-lock wait, malformed pause data, Codex pause during the
+wait, synchronous throw/rejection/defer, and a simulated post-release error
+with cooperative or delayed abort. No real JAR1, provider or Telegram was used.

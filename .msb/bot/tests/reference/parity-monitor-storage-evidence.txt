@@ -1,0 +1,88 @@
+Monitor storage: old SQLite and the open-core activation boundary
+
+Old readable blob: 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11. Inspect with
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | sed -n '6423,6447p;6587,6610p;7410,7440p;108341,108374p;116956,117004p'
+The old factory constructs a better-sqlite3 store with WAL in knowledge.db and
+contains a JSONL fallback on construction failure. The collector calls its
+upsertItems and the digest reads the selected store. The old SQLite table keys
+items by externalId; the new JSONL store uses a hash of source type, source ID,
+external ID and URL. The old UI writes MONITOR_STORAGE and resets the store.
+The readable source exports initialSync (41750-41758); a caller or complete
+history migration is not established by a search for its symbol/name.
+
+New open-core monitorSettingsScreen tells the user SQLite is not connected.
+mon:storage:set only saves cfg.storage in config.json; poll.mjs calls JSONL
+appendItems and digest.mjs calls JSONL listRecentItems regardless of that value.
+Consequently a profile may already contain storage:sqlite while its actual
+history has continued in JSONL. Automatically honoring the saved value after
+an update could switch reads to an empty or stale SQLite database. This is a
+conditional risk from source, not a claim about any particular JAR1 profile.
+
+better-sqlite3 is declared in .msb/bot/package.json. Version 11.10.0 was built
+offline and used for separate local Linux lock tests, not as a working monitor
+backend or a test of the installed server ABI. Node's fallback SQLite in the
+local container is experimental. Old SQLite may contain WAL, FTS and overlapping
+records; neither version's current code proves how to merge or deduplicate both
+histories, preserve source/digest markers or reverse a switch after partial failure.
+
+Before restoring a user-visible backend choose how an already saved sqlite value
+and a new explicit selection behave, and how to preserve the existing JSONL and
+any old database. Tests must cover synthetic old schema/IDs and both histories,
+repeated/partial migration, concurrent poll/digest/writers, unavailable native
+module/open failure, rollback and an unchanged JSONL fallback; SQLite WAL needs
+a consistent copy. Until then do not silently activate or migrate user data.
+No real source, database, credentials, network, JAR1 or unrelated engine was
+read or changed by this audit.
+
+Current-baseline probe: tests/reference/probe-monitor-storage-baseline.mjs creates
+an isolated profile with cfg.storage=sqlite, one synthetic JSONL item and a
+minimal old-shaped knowledge.db containing a different item. On local Node 26
+and isolated Linux Node 22.23.2, list/digest returned the JSONL item and the
+synthetic database bytes remained unchanged. The probe does not establish future
+switching policy, real JAR1 contents, complete old schema/FTS/WAL compatibility
+or a safe migration. It is a baseline, not a requirement to keep SQLite disabled.
+
+Identity-collision probe: tests/reference/probe-monitor-storage-id-collision.mjs
+creates two synthetic JSONL items from distinct sources with the same externalId.
+Their current composite-hash IDs differ and both are retained. In a minimal
+old-shaped SQLite table, inserting those externalIds as primary keys with the
+old INSERT OR IGNORE pattern retains only one. The probe passed on local Node 26
+and isolated Linux Node 22.23.2; JSONL bytes stayed unchanged. This demonstrates
+a possible lossy naive mapping, not a claim that a real profile has such a
+collision or a decision about how duplicate histories should be merged.
+
+Old/new markers and cursors (source inspection only)
+
+Old source lines 55438-55465, 55505-55522, 55684-55689 and 108257-108265,
+108299-108342, 108401-108414: the old scheduler kept lastPollAt by source
+type in its bot state.json, using legacy lastYtPoll/lastTwPoll/etc. as fallback.
+The state path was dirname(IIA_SESSION_DIR or ~/.iia/sessions)/state.json.
+It recorded the type timestamp after the attempted source batch and saved the
+state; it also sent collected cursors to the store and then updated config.
+The shared monitor/config.json held source fields such as YouTube lastVideoId,
+X sinceId/userId, GitHub lastReleaseTag/lastCommitSha, Telegram lastPostId,
+and RSS lastGuid/etag (6012-6075). SQLite also had a sources.cursor field,
+but updateCursor is an UPDATE of an existing row (6458-6475, 6836-6858).
+A search for calls to .upsertSource( in this readable blob did not find a
+caller; that search does not rule out dynamic or external consumers.
+
+Old lastDigestSent was the bot-local calendar day: Y0(timezone), 55653-55659,
+and the scheduler checked it at 108651-108655. It was saved at 108775-108776
+after its digest branch; a branch with no generated material could still record
+the date, and internal delivery fallbacks could swallow errors. It is therefore
+not proof that the recipient received a digest. Old SQLite has a digests table
+and saveDigest/loadDigest methods; JSONL can store digest HTML in a dated file
+(6477-6485, 6860-6879, 7360-7378). A search of the readable blob did not find
+calls to .saveDigest( or .loadDigest(; this is not proof of their absence in
+dynamic/external consumers or of complete historical migration.
+
+In the new source, monitor/store.mjs stores lastPollAt by individual source and
+lastDigestAt as an ISO instant in shared monitor/meta.json. poll.mjs updates
+its timestamps for successful fetches; digest.mjs records lastDigestAt after
+sendMessage resolves and checks the recipient bot's timezone and local day.
+Those markers have different scope and success semantics from the old fields.
+Do not blindly equate a type timestamp with a source timestamp, or a local day
+with a successful-delivery instant, when assessing a possible migration. This
+is source evidence, not an inspection of any user's state or a migration plan
+approved by the owner; timezone, concurrent writers and unknown provenance
+still need explicit treatment before any change to data.

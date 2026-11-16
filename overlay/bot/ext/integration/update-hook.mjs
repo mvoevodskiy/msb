@@ -6,11 +6,14 @@
  * Saved Codex admission and execution → [adapter](../adapters/saved-codex.mjs).
  * Saved Cursor admission and execution → [adapter](../adapters/saved-cursor.mjs).
  * Engine sleep admission stays in the core [gate](../../../../.msb/bot/src/engines/sleep.mjs).
+ * Paused Codex stop ingress uses the shared predicate before a marker lock;
+ * [checks](../../../../.msb/bot/tests/codex-stop-lock.test.mjs) preserve form priority.
  * A Claude selection captures [Codex pause intent](../codex-pause-switch.mjs)
  * before asynchronous callback work; other callbacks retain their old gate.
  * Навигация: [Обвязка](../README.md).
  */
 import { beginCallbackRender, runCallbackScope } from '../../shared/callback-renders.mjs';
+import { isStopInput } from '../../shared/stop-input.mjs';
 import { registerEngineProviderView } from '../engine-menu.mjs';
 import { registerCompactProvider } from '../compact-codex.mjs';
 import {registerSkillsProvider} from '../codex-skills.mjs';
@@ -53,6 +56,20 @@ export function installUpdateHook(BotClass, env = process.env) {
     }
     try {
       const sleep = this[Symbol.for('msb.engineSleep')];
+      if (!closedCore && sleep && isStopInput(update?.message)) {
+        const text = update.message.text;
+        const chatId = event?.chat?.id;
+        // Reply text still belongs to an already-open overlay form. For an
+        // awake bot keep the normal form-cancellation route for slash commands.
+        const inputOpen = chatId != null && !text.trim().startsWith('/') && Boolean(text.trim()) &&
+          (getPendingAuth(event.from.id, { chatId, includeExpired: true }) ||
+           getPendingLocalIp(event.from.id, { chatId, includeExpired: true }));
+        let revision;
+        try { revision = await sleep.revision?.(); } catch { /* keep the normal fail-closed route */ }
+        if (!inputOpen && revision && await sleep.allowStop?.()) {
+          return origHandleUpdate.call(this, update, webhookReplyEnvelope);
+        }
+      }
       if (sleep && await sleep.sleeping()) {
         const data = update?.callback_query?.data;
         const text = update?.message?.text || '';

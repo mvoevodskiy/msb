@@ -69,3 +69,260 @@ Existing auth routes, Pult transport, and ledger bytes are preserved.
 Tests use the real Telegram handler, an owned synthetic Claude
 executable, and disposable state. No account charge or live
 provider acceptance is part of this checkpoint.
+
+Observed route discrepancy (before the owner decision): with a disposable Codex
+state containing costPaused:true, the probe at commit 16234e2 showed the real
+foreground Telegram route returns the existing pause text
+without calling its fake model; a direct call to currentReminderRefusal also
+returns blocked. The same synthetic profile's direct tasks.json interval calls
+its fake runner and advances nextAt. The flag, selected provider and session
+remain unchanged. The probe observes the current behavior; it is not a passing
+correctness claim for the intended interval policy and does not test a complete
+reminder dispatch or real charges.
+
+The old worker 110354-110362 applies the saved flag before provider dispatch,
+while its screen 52930-52934 describes accounting for Anthropic API and
+excludes subscriptions. No exact old counterpart to the newer tasks.json
+interval schema was established. The accepted c56f30b source has the same
+foreground costPaused gate and a direct interval path with no costPaused check;
+this source comparison does not prove any live JAR1 state or event. On 16
+November the owner selected that the saved cost pause blocks all turns,
+including direct interval tasks. Preserve existing permissions, provider
+selection, sessions and UI; an already started turn is a separate lifecycle
+from admission. The observation above describes the pre-fix behavior.
+
+The observational probe passed on local Node 26 and isolated Linux arm64 Node
+22.23.2 with synthetic profiles, fake Telegram/runner and unrelated dispatchers
+mocked. Linux had no network. No account, charge, JAR1 or OpenClaw was used.
+
+Direct interval fix: scheduler admission reads the saved flag before calling
+its runner and rechecks while admitting the task. The real runAgentTurn checks
+the captured state before first-session reservation and reads the flag again
+after preparation, immediately before handing off to the provider wrapper. A
+pause or read error observed at scheduler admission does not advance the task,
+write a run log or send a notification. Existing provider selection, model,
+permission mode and sessions are unchanged. The updated probe now expects
+foreground and interval rejection; the original RED version remains at 16234e2.
+
+RED at 8c39e49: all eight original fixture scenarios failed: paused Codex,
+Claude and Cursor intervals launched, as did cases where the pause changed
+during admission/preparation or state reading failed. GREEN after the fix: nine
+fixture cases, including first-session reservation cleanup, and a related
+43-test set passed on macOS Node 26 and isolated Linux Node 22.23.2, with
+unrelated dispatchers mocked. Two further focused cases covered a pause while
+waiting for the task lock and /stop during the new state read; all eleven
+fixture cases then passed on both platforms. The fake Codex CLI access probe
+still observed the same existing CLI arguments with both rights-toggle values on
+both platforms. This checks arguments, not real OS privileges or JAR1.
+
+The state queue is process-local and the final read and provider spawn are not
+one atomic transaction; a pause saved after the final read may not block an
+already admitted turn. The wrapper itself may do asynchronous preparation.
+The user did not request aborting an already started turn. The interval stage
+alone is not a claim that every route or a live provider is covered. No automatic
+cost accounting is added and no real credentials, service or JAR1 were accessed.
+
+Saved prompt follow-up at fb5026f: the existing admission already blocks costPaused. If
+the flag is saved after admission while the workspace is prepared, canLaunch
+now re-reads it before handing off to the selected provider. Its existing
+deferred result restores the claimed action when no file effect has begun. The
+original initial-admission refusal could still skip an occurrence, including a
+once action; that checkpoint did not change the separate policy.
+
+RED on 45030d8: owned fake Codex and Claude CLIs were launched after the pause
+was set during workspace preparation. A further RED on the actual Cursor adapter
+showed a missing key reported as an error and the once action consumed when the
+pause arrived during the key read. The adapter now checks canLaunch immediately
+after that read; after resume the existing missing-key error is still reported.
+A preliminary Claude fixture invocation
+failed because its cleared PATH lacked Node; it was rerun with a usable PATH
+and reproduced the provider launch. GREEN: 45 saved-prompt tests passed on macOS
+Node 26 and isolated network-none Linux Node 22.23.2. These include scheduler,
+storage, fake provider, resume, retained session and existing permission flags
+for Codex and Claude. Cursor coverage includes a fake adapter invoking canLaunch
+and the real adapter through the dispatcher with a missing key; it does not
+launch a real Cursor CLI. One selected reminder admission test
+passed on both platforms. Unrelated dispatchers were mocked; no real service,
+credentials, cost, JAR1 or OpenClaw was exercised.
+
+The read and actual provider spawn are not atomic. A pause saved after the final
+check may not prevent an already admitted launch, and a started turn is not
+aborted. External effects begun before the check cannot be replayed safely. At
+fb5026f a stale source or model error could still be reported before canLaunch;
+the restoration of a claim depends on its successful conditional write. Legacy
+timers require separate inspection; no automatic billing is added.
+
+Legacy timer observation at fb5026f (no new policy applied): old bundle
+73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11:108800–108831 dispatched a due
+legacy schedule and stamped lastRunAt, disabling once; the queued worker
+110354–110362 later returned on costPaused. Read with git show <blob> | nl -ba.
+At fb5026f the scheduler similarly published the record before the Telegram
+worker's foreground pause gate. Four probe cases demonstrate both an initially
+paused once timer and pause added while a timer waits behind a fake active turn,
+with Codex and Claude states. In each, the fake provider is not called for the
+timer, the once record is stamped and disabled, and resuming does not rerun it.
+The original probe at aabd9cc used synthetic profiles/Telegram and mocked the
+unrelated dispatcher. It passed on macOS Node 26 and isolated Linux Node
+22.23.2. This is an observation, not a proposed correctness assertion or live
+JAR1 check. The current probe checks the subsequently fixed initial-pause path
+and later was updated to check queued-pause recovery too. The
+owner has now selected that a background task or one-time reminder due during
+the spend pause should execute once after resume. Keep at most one deferred
+occurrence per task, including recurring tasks; do not replay every missed
+interval. This is an explicit change to the old consumption policy, not a claim
+that the work is already implemented. Preserve task edits, deletion, /stop,
+sessions and provider permissions; do not duplicate work already started.
+A crash between an external effect and recording completion can still prevent
+a strict exactly-once guarantee. The probe describes the historical baseline.
+
+Saved-action implementation of the owner's new policy (local only): a due
+literal reminder or saved prompt observed while costPaused stores one
+costPausePending occurrence under the existing action-file lock. The marker
+retains the original trigger, schedule revision and previous attempt. A later
+scheduler pass accepts that occurrence even outside its cron minute. Multiple
+missed slots coalesce; no attempt or run journal is written while deferred.
+The old cost-pause notice is sent once; a changed quota/budget refusal is
+reported once and retains the pending action until the separate limit allows it.
+Unknown marker versions are preserved; a changed schedule, newer attempt,
+deleted row or disabled task cannot launch the stale occurrence. Text edits and
+a user's off/on choice retain the applicable occurrence without reverting edits.
+
+After claim, the literal path rechecks expense and owner pause before sending;
+saved prompts propagate a detected prelaunch pause through stop, preparation
+failure and early model/freshness error. A state-read failure at that final
+fence also defers the unstarted occurrence. A quick resume after a paused
+preflight must first save the due slot and retry all limits on the next tick;
+it cannot skip the box-budget read. /stop epoch changes prevent a not-yet-sent
+literal during the added asynchronous check. These are admission checks, not
+an atomic transaction with a real external service.
+
+RED on 0487b4d: four initial synthetic cases exposed consumed once/interval/
+cron reminders, a literal send after pause and lost cron debt during prompt
+preparation. Further focused RED cases exposed /stop and budget-resume races,
+cleanup and early-error paths, toggle and unknown-field loss. GREEN: 159 related
+checks passed on macOS Node 26 and isolated network-none Linux Node 22.23.2,
+including 19 focused saved-spend cases, existing saved Codex/Claude/Cursor
+fixtures, reminders, task rescheduling, /stop and legacy timer regressions.
+All profiles, Telegram and provider results were synthetic; unrelated
+dispatchers were replaced before import. No OpenClaw scenario, real provider,
+account, payment or JAR1 was exercised.
+
+The marker can survive a restart after its write. It cannot discover a cron
+minute that passed entirely while the scheduler was not running and no marker
+existed. A crash after the action is claimed but before the external effect
+can still consume it; after an external effect the outcome can be uncertain.
+Cross-process state edits, already-started work and remote delivery are not
+atomic with the final check. Other paths, including legacy timers, require
+separate implementation; this checkpoint does not promise universal catch-up
+or exactly-once delivery and does not turn on automatic spending measurement.
+
+Legacy initial-pause stage (local only): when a due schedule is observed while
+costPaused is already set, legacy-dispatch and legacy-timers persist the
+existing pending-run record with reason=cost_pause under the schedule lock.
+The same Telegram status, typing and paused response run without a provider;
+subsequent ticks do not repeatedly enqueue the pending occurrence while paused.
+After resume, the existing queue and admission execute it. A recurring pending
+run coinciding with a new current slot is coalesced by updating the stamp; a
+repeat in that minute is suppressed. /stop cancels the pending marker using the
+existing path. If the saved chat changed, the occurrence follows it only when
+the numeric saved owner still matches and the bot's admin guard accepts them.
+The old Codex sleep markers retain their own previous semantics.
+
+RED at 6f553df: the initial-pause Codex and Claude once tests lost their
+pending run; daily/weekly work did not reliably survive. A further RED showed
+that changing the saved chat for the same owner stranded a pending timer.
+GREEN: after the final fix, 43 focused and related timer/probe checks passed on
+macOS Node 26 and isolated network-none Linux Node 22.23.2. Before the chat
+rebind fix, a wider related 63-test set covering Telegram inbox, /stop and
+spend UI passed on both platforms; the final chat-specific change was then
+checked by the 43-test set. A fake owner other than the configured admin could
+not receive the timer. At that stage the queued-pause probe still observed an unresolved late-pause
+path; the original source is at aabd9cc and the next stage supersedes it. No real
+Telegram, provider, OpenClaw or JAR1 was used.
+
+The 8f4cfeb stage covered a pause already observed by the dispatcher, not a
+pause set after a timer was queued or an arbitrary mixture of old queued timer
+parts; the following stage addresses those observed paths.
+A cron-like slot missed while the scheduler is off, a write failure and the
+post-admission crash/external-effect window remain separate limitations.
+
+Legacy queued-pause stage (local only): while a legacy timer waits behind an
+owner turn, the worker now samples the saved spend pause and under the existing
+schedule/state locks turns matching stamped reservations into cost_pause pending
+records. The ordinary paused status and response remain, including for mixed
+queued text; only timer parts become pending, not the owner text. A pause that
+commits while the worker waits for state admission is treated the same. Existing
+Codex sleep pending can also carry the cost-pause reason without starting Codex;
+a due timer is retained if Codex sleep already exists at dispatch. The old
+non-Codex sleep-marker route is unchanged.
+
+At an awake admission the current owner clock coalesces a pending daily/weekly
+occurrence with a due current slot even if the original queue entry was already
+waiting before resume. If pause is observed after admission but before the
+model is called, the worker restores only the exact claimed timer snapshots.
+A deleted, toggled or replaced record is not overwritten. The same check runs
+after a status-delivery failure before any provider call. /stop retains its
+existing cancellation semantics; already-started work is not replayed.
+
+RED at 8f4cfeb: two Codex/Claude cases lost a timer when pause was saved while
+it waited in the queue; two more lost it while admission waited on state. A
+separate Linux timing failure led to a deterministic RED in which an old queued
+weekly occurrence and its current slot both ran after resume. Two late-status
+cases also lost the unstarted admitted timer. Two more RED cases exposed a due
+Codex timer under an existing sleep mark and a reasonless sleep-pending timer
+when cost pause was already active. GREEN: 201 related checks passed
+on macOS Node 26 and isolated network-none Linux Node 22.23.2, including fake
+Telegram inbox, saved prompts, limits, /stop, Codex sleep and timers. The first
+version of the late-status test gated send only and failed to reach an already
+queued status; gating both send and edit reproduced the actual defect. No real
+provider, account, Telegram, OpenClaw scenario or JAR1 was accessed.
+
+A pause set after the final state read may race provider launch: there is no
+cross-process atomic operation with the CLI. A timer modified or removed during
+preparation is not restored; a failed restore write cannot be promised durable.
+A whole cron minute spent with the scheduler down is not inferred from current
+state. Crash after admission before an external effect can consume an occurrence;
+crash after an effect may be uncertain. This is not an exactly-once guarantee.
+
+Recurring regression follow-up: an older recurring-reminder test used the
+costPaused flag to demonstrate that a rejection consumes its slot and the
+breaker follows its old recovery schedule. After owner decision
+0487b4d and fix 6f553df, that premise was no longer valid. The test now uses a
+separate saved daily budget refusal and still checks the same blocked/error/
+skipped/recovered sequence. Eight common cases passed on macOS Node 26 and
+network-none Linux Node 22.23.2, using the dispatcher mock and synthetic data.
+
+An initial negative test-name filter accidentally included a generic
+foreign-record test containing a synthetic OpenClaw-tagged row. The unrelated
+dispatcher was mocked and no OpenClaw process, service, integration or JAR1
+was used. The tracked runner now enforces a positive allowlist of exactly eight
+common cases in a child process and asserts the foreign-record test is absent.
+
+Offline pause recovery research at da5851f (documentation only): production
+search `rg -n costPaused .msb/bot/src .msb/bot/shared overlay tools --glob
+"*.{mjs,cjs,js,ts,py}"` found the settings route clearing the flag, but no
+explicit false-to-true writer in those sources. This does not rule out an
+external writer or a previously saved state. The current state has no durable
+pause-start/end epoch. updateState serializes in-process but stores a snapshot,
+not a transition journal. A saved action can have createdAt and a reschedule
+revision, but imported rows need not have createdAt; revision has no time.
+Legacy schedules and toggles likewise do not retain an activation timeline.
+The current timezone does not prove the timezone that applied before a change.
+
+For example, the same daily 09:00 schedule and costPaused=true at 10:00 are
+consistent with a pause beginning at 08:00 or at 09:30. If the scheduler was
+offline at 09:00 and no pending marker was saved, those histories require
+different outcomes. The present data cannot choose safely. Do not invent a
+start time, interpret a migration time as historical fact, replay every old
+schedule or rewrite existing records merely to manufacture a result.
+
+A future complete contract needs recorded pause epochs from every real writer,
+and enough timestamped schedule/enable/timezone revisions to prove that a
+particular definition was active at a due instant. Reconciliation should
+coalesce a proven missed occurrence into the existing pending path, recheck
+current limits and record the handled epoch without restoring deleted data.
+It must address DST, schedules beyond the current 45-day next-cron search,
+concurrent edits, restart and multi-file failure. A legacy profile with no
+start or revision history remains explicitly unknown; a newly observed time
+can establish knowledge only from that point. No implementation, migration,
+real service, credentials, OpenClaw or JAR1 was involved in this research.

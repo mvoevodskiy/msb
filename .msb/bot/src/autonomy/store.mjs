@@ -1,7 +1,8 @@
 /**
  * Единственный владелец tasks.json: read/modify/write под общим межпроцессным lock.
  * Входы: [Telegram](../telegram/bot.mjs) добавляет, [scheduler](./scheduler.mjs)
- * условно фиксирует результат одной задачи; runner не держит файловый lock.
+ * условно фиксирует результат одной задачи; короткий admission lock проверяет
+ * snapshot при вызове runner, но не удерживается для ожидания завершения хода.
  * [Paths](../paths.mjs), [lock](../../shared/file-lock.mjs),
  * [регрессии](../../tests/autonomy-store-concurrency.test.mjs).
  */
@@ -59,6 +60,21 @@ export async function addTask(partial, env = process.env) {
 export async function saveAllTasks(tasks, env = process.env) {
   // Explicit owner replacement only; a scheduler must never save its old snapshot.
   await withFileLock(path.resolve(tasksPath(env)), () => saveTasks(tasks, env));
+}
+
+/**
+ * Under the same lock as owner writes, admit only the identical snapshot.
+ * start may check pause and invoke the turn, but must return its boolean
+ * admission without awaiting the turn itself; the lock does not wait for it.
+ */
+export async function admitCurrentTask(before, start, env = process.env) {
+  return withFileLock(path.resolve(tasksPath(env)), async () => {
+    const current = (await listTasks(env)).find(task => task.id === before.id);
+    if (!current || !isDeepStrictEqual(current, before)) return false;
+    const admitted = await start();
+    if (typeof admitted !== 'boolean') throw new TypeError('Task admission must return a boolean');
+    return admitted;
+  });
 }
 
 /** Commit only execution fields, and only if the task has not changed since launch. */

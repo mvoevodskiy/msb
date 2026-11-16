@@ -1,3 +1,8 @@
+/**
+ * JSONL items and separate monitor metadata: poll and digest → shared store.
+ * Paths/config: [config](./config.mjs); mutation and read-only fallback checks:
+ * [meta integrity](../../tests/monitor-meta-integrity.test.mjs).
+ */
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { createHash } from 'node:crypto';
@@ -19,10 +24,18 @@ export function itemId(sourceType, sourceId, externalId, url) {
     .slice(0, 16);
 }
 
-export async function loadMeta(env = process.env) {
+// Read-only screens keep their empty fallback; writes must not replace an
+// unreadable, corrupt or non-object file with a newly fabricated state.
+// See [integrity regression](../../tests/monitor-meta-integrity.test.mjs).
+export async function loadMeta(env = process.env, { forUpdate = false } = {}) {
   try {
-    return JSON.parse(await fs.readFile(metaPath(env), 'utf8'));
-  } catch {
+    const meta = JSON.parse(await fs.readFile(metaPath(env), 'utf8'));
+    if (forUpdate && (!meta || typeof meta !== 'object' || Array.isArray(meta))) {
+      throw new TypeError('Monitor metadata must be an object');
+    }
+    return meta;
+  } catch (error) {
+    if (forUpdate && error?.code !== 'ENOENT') throw error;
     return { lastPollAt: {}, lastDigestAt: null };
   }
 }
@@ -47,7 +60,7 @@ export function saveMeta(meta, env = process.env) {
 // not call saveMeta/updateMeta themselves; a failed action never saves the mark.
 export function updateMeta(mutator, env = process.env) {
   return serializeMeta(env, async () => {
-    const meta = await loadMeta(env);
+    const meta = await loadMeta(env, { forUpdate: true });
     const result = await mutator(meta);
     await writeMeta(meta, env);
     return result;
