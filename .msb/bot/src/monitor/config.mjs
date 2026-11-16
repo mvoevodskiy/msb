@@ -1,9 +1,14 @@
+/**
+ * Конфигурация источников мониторинга и короткие транзакции изменений.
+ * Вход: Telegram forms/routes; сбор и merge статусов → poll.mjs.
+ * X identity/callback → source-ref.mjs; проверки → monitor-twitter-legacy.test.mjs.
+ */
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import os from 'node:os';
 import { msbRoot } from '../paths.mjs';
 import { withFileLock } from '../../shared/file-lock.mjs';
-import { sourceToken } from './source-ref.mjs';
+import { sourceToken, twitterAliases, twitterIdentity } from './source-ref.mjs';
 
 export function monitorDir(env = process.env) {
   return path.join(msbRoot(env), 'monitor');
@@ -164,7 +169,11 @@ export async function addSourceFromInput(raw, env = process.env, { type } = {}) 
 
     if (parsed.type === 'twitter') {
       const u = parsed.username.toLowerCase();
-      const existing = cfg.twitter.accounts.find((a) => a.username.toLowerCase() === u);
+      const matches = cfg.twitter.accounts.filter((a) => twitterAliases(a).some((alias) => alias.toLowerCase() === u));
+      if (matches.length > 1 || (matches.length === 1 && !twitterIdentity(matches[0]))) {
+        return { ok: false, error: `Найдены неоднозначные записи Twitter для ${parsed.name}. Проверь список источников.` };
+      }
+      const existing = matches[0];
       if (existing) {
         if (existing.enabled === false) {
           existing.enabled = true;
@@ -237,7 +246,31 @@ export async function removeSource(type, id, env = process.env, { byToken = fals
       ok = mark(cfg.youtube.channels, (c) => byToken ? tokenMatches([c.channelId, c.handle, c.name]) : c.channelId === id || c.handle === id || c.name === id);
       if (!cfg.youtube.channels.length) cfg.youtube.enabled = false;
     } else if (type === 'twitter') {
-      ok = mark(cfg.twitter.accounts, (a) => byToken ? tokenMatches([a.username]) : a.username === id);
+      // A previously rendered legacy button could encode a missing X id as
+      // the string 'undefined'. Only fresh token buttons can remove that name.
+      if (!byToken && (typeof id !== 'string' || id === 'undefined')) return false;
+      const matches = cfg.twitter.accounts.filter((a) => byToken
+        ? tokenMatches(twitterAliases(a))
+        : twitterAliases(a).some((alias) => alias.toLowerCase() === id.toLowerCase()));
+      const identity = matches.length === 1 ? twitterIdentity(matches[0]) : null;
+      const collisions = identity && cfg.twitter.accounts.filter((a) =>
+        twitterAliases(a).some((alias) => alias.toLowerCase() === identity.toLowerCase()));
+      if (identity && collisions.length === 1) {
+        cfg.twitter.accounts.splice(cfg.twitter.accounts.indexOf(matches[0]), 1);
+        ok = true;
+      } else if (byToken && !matches.length) {
+        // Malformed rows have no safe account identity. A token of the entire
+        // unchanged row allows explicit deletion without selecting a neighbor.
+        const malformed = cfg.twitter.accounts.filter((a) => !twitterIdentity(a) &&
+          sourceToken('twitter-invalid', JSON.stringify(a)) === id);
+        const signature = (a) => JSON.stringify(twitterAliases(a).map((alias) => alias.toLowerCase()));
+        const indistinguishable = malformed.length === 1 && cfg.twitter.accounts.filter((a) =>
+          !twitterIdentity(a) && signature(a) === signature(malformed[0]));
+        if (malformed.length === 1 && indistinguishable.length === 1) {
+          cfg.twitter.accounts.splice(cfg.twitter.accounts.indexOf(malformed[0]), 1);
+          ok = true;
+        }
+      }
       if (!cfg.twitter.accounts.length) cfg.twitter.enabled = false;
     } else if (type === 'github') {
       ok = mark(cfg.github.repos, (r) => byToken ? tokenMatches([`${r.owner}/${r.repo}`]) : `${r.owner}/${r.repo}` === id || r.name === id);
@@ -258,8 +291,13 @@ export function listSourcesFlat(cfg) {
   for (const c of cfg.youtube.channels || []) {
     out.push({ type: 'youtube', id: c.channelId || c.handle || c.name, name: c.name, enabled: c.enabled !== false });
   }
+  let invalidTwitter = 0;
   for (const a of cfg.twitter.accounts || []) {
-    out.push({ type: 'twitter', id: a.username, name: a.name || `@${a.username}`, enabled: a.enabled !== false });
+    const id = twitterIdentity(a);
+    const invalidToken = id ? null : sourceToken('twitter-invalid', JSON.stringify(a));
+    const invalidName = id ? null : `⚠️ ${++invalidTwitter}: ${twitterAliases(a).map((alias) => `@${alias}`).join(' / ') || 'Некорректный источник X'}`;
+    out.push({ type: 'twitter', id, name: id ? (a?.name || `@${id}`) : invalidName,
+      enabled: a?.enabled !== false, invalid: !id, ...(!id ? { invalidToken } : {}) });
   }
   for (const r of cfg.github.repos || []) {
     out.push({ type: 'github', id: `${r.owner}/${r.repo}`, name: r.name || `${r.owner}/${r.repo}`, enabled: r.enabled !== false });

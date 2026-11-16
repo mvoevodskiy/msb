@@ -15,6 +15,7 @@ export async function monitorScreen(back = 'menu:back') {
   const meta = await loadMeta();
   const sources = listSourcesFlat(cfg);
   const broken = sources.filter((s) => {
+    if (s.invalid) return true;
     const bucket = cfg[s.type];
     const list =
       s.type === 'youtube'
@@ -26,7 +27,7 @@ export async function monitorScreen(back = 'menu:back') {
             : s.type === 'telegram'
               ? bucket.channels
               : bucket.feeds;
-    const row = (list || []).find((x) => (x.url || x.username || x.channelId || x.handle || `${x.owner}/${x.repo}`) === s.id || x.name === s.name);
+    const row = (list || []).find((x) => x && ((x.url || x.username || x.channelId || x.handle || `${x.owner}/${x.repo}`) === s.id || x.name === s.name));
     return Boolean(row?.lastError);
   });
   const lines = ['<b>📡 Мониторинг</b>', ''];
@@ -70,7 +71,8 @@ export async function monitorSourcesScreen() {
     const lines = sources.map((s) => `• <b>${escapeHtml(s.type)}</b> ${escapeHtml(s.name)}`);
     text = `<b>🛰️ Источники</b> (${sources.length})\n\n${lines.join('\n')}\n${BLANK}`;
     for (const s of sources.slice(0, 20)) {
-      kb.text(`🗑 ${s.type}:${s.name}`.slice(0, 40), sourceCallbackData(s.type, s.id)).row();
+      const callback = s.invalidToken ? `mon:src-key:twitter:${s.invalidToken}` : sourceCallbackData(s.type, s.id);
+      kb.text(`🗑 ${s.type}:${s.name}`.slice(0, 40), callback).row();
     }
   }
   kb.text('+ Добавить источник', 'mon:add-hint').row();

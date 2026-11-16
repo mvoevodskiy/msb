@@ -1,8 +1,12 @@
 /**
  * Сбор источников мониторинга (RSS / YouTube RSS / GitHub Atom / TG public / X).
  * Навигация: [Мониторинг](./README.md) → [storage](./store.mjs), [digest](./digest.mjs).
+ * X handle/username → [source-ref](./source-ref.mjs); merge учитывает снимок строки.
+ * Проверки: [legacy X](../../tests/monitor-twitter-legacy.test.mjs), monitor-concurrency.test.mjs.
  */
+import { isDeepStrictEqual } from 'node:util';
 import { loadMonitorConfig, updateMonitorConfig } from './config.mjs';
+import { twitterIdentity } from './source-ref.mjs';
 import { appendItems, itemId, updateMeta } from './store.mjs';
 
 export async function pollAllSources(env = process.env, { log = console.error } = {}) {
@@ -92,19 +96,25 @@ export async function pollAllSources(env = process.env, { log = console.error } 
 
   if (cfg.twitter.enabled) {
     const bearer = env.X_BEARER_TOKEN || env.TWITTER_BEARER_TOKEN;
-    for (const acc of cfg.twitter.accounts.filter((a) => a.enabled !== false)) {
+    for (const acc of cfg.twitter.accounts.filter((a) => a?.enabled !== false)) {
+      const id = twitterIdentity(acc);
+      if (!id) {
+        errors.push({ type: 'twitter', id: null, error: 'некорректный идентификатор X-источника' });
+        continue;
+      }
+      const snapshot = structuredClone(acc);
       try {
         if (!bearer) throw new Error('нужен X_BEARER_TOKEN в переменных окружения');
-        const items = await fetchTwitter(acc.username, bearer, acc.name);
+        const items = await fetchTwitter(id, bearer, acc.name);
         collected.push(...items);
-        pollTimes[`twitter:${acc.username}`] = new Date().toISOString();
+        pollTimes[`twitter:${id}`] = new Date().toISOString();
         acc.lastError = null;
       } catch (err) {
         acc.lastError = err.message;
-        errors.push({ type: 'twitter', id: acc.username, error: err.message });
-        log(`[msb/monitor] twitter fail ${acc.username}: ${err.message}`);
+        errors.push({ type: 'twitter', id, error: err.message });
+        log(`[msb/monitor] twitter fail ${id}: ${err.message}`);
       }
-      sourceUpdates.push({ type: 'twitter', key: acc.username, addedAt: acc.addedAt, lastError: acc.lastError });
+      sourceUpdates.push({ type: 'twitter', key: id, addedAt: acc.addedAt, lastError: acc.lastError, snapshot });
     }
   }
 
@@ -123,11 +133,12 @@ function mergeSourceUpdates(cfg, updates) {
     youtube: [cfg.youtube.channels, (item) => item.handle || item.channelId || item.name],
     github: [cfg.github.repos, (item) => `${item.owner}/${item.repo}`],
     telegram: [cfg.telegram.channels, (item) => item.username],
-    twitter: [cfg.twitter.accounts, (item) => item.username],
+    twitter: [cfg.twitter.accounts, (item) => twitterIdentity(item)],
   };
   for (const update of updates) {
     const [list, key] = buckets[update.type];
-    const matches = list.filter((entry) => key(entry) === update.key && entry.addedAt === update.addedAt);
+    const matches = list.filter((entry) => key(entry) === update.key && entry.addedAt === update.addedAt &&
+      (update.type !== 'twitter' || isDeepStrictEqual(entry, update.snapshot)));
     if (matches.length !== 1) continue;
     matches[0].lastError = update.lastError;
     if (update.type === 'youtube' && update.channelId && !matches[0].channelId) {
