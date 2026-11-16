@@ -24,7 +24,8 @@ const TICK_MS = 60_000;
  * [Store](./store.mjs) условно сохраняет одну неизменённую задачу после каждого хода,
  * не весь старый список; active run не держит lock файла.
  * Проверки: [persistence](../../tests/autonomy-store-concurrency.test.mjs),
- * [compact guard](../../tests/autonomy-compact-guard.test.mjs). [Контракт](./README.md).
+ * [compact guard](../../tests/autonomy-compact-guard.test.mjs),
+ * [shared interval RED probe](../../tests/reference/probe-shared-interval-race.mjs). [Контракт](./README.md).
  */
 export function startScheduler({ api, adminId, scheduledTurns, timezone, now = Date.now,
   log = console.error, runTurn = runAgentTurn, runCodexPrompt, runCursorPrompt, readCodexQuota } = {}) {
