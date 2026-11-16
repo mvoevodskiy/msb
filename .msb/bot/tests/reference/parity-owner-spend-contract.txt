@@ -297,3 +297,32 @@ foreign-record test containing a synthetic OpenClaw-tagged row. The unrelated
 dispatcher was mocked and no OpenClaw process, service, integration or JAR1
 was used. The tracked runner now enforces a positive allowlist of exactly eight
 common cases in a child process and asserts the foreign-record test is absent.
+
+Offline pause recovery research at da5851f (documentation only): production
+search `rg -n costPaused .msb/bot/src .msb/bot/shared overlay tools --glob
+"*.{mjs,cjs,js,ts,py}"` found the settings route clearing the flag, but no
+explicit false-to-true writer in those sources. This does not rule out an
+external writer or a previously saved state. The current state has no durable
+pause-start/end epoch. updateState serializes in-process but stores a snapshot,
+not a transition journal. A saved action can have createdAt and a reschedule
+revision, but imported rows need not have createdAt; revision has no time.
+Legacy schedules and toggles likewise do not retain an activation timeline.
+The current timezone does not prove the timezone that applied before a change.
+
+For example, the same daily 09:00 schedule and costPaused=true at 10:00 are
+consistent with a pause beginning at 08:00 or at 09:30. If the scheduler was
+offline at 09:00 and no pending marker was saved, those histories require
+different outcomes. The present data cannot choose safely. Do not invent a
+start time, interpret a migration time as historical fact, replay every old
+schedule or rewrite existing records merely to manufacture a result.
+
+A future complete contract needs recorded pause epochs from every real writer,
+and enough timestamped schedule/enable/timezone revisions to prove that a
+particular definition was active at a due instant. Reconciliation should
+coalesce a proven missed occurrence into the existing pending path, recheck
+current limits and record the handled epoch without restoring deleted data.
+It must address DST, schedules beyond the current 45-day next-cron search,
+concurrent edits, restart and multi-file failure. A legacy profile with no
+start or revision history remains explicitly unknown; a newly observed time
+can establish knowledge only from that point. No implementation, migration,
+real service, credentials, OpenClaw or JAR1 was involved in this research.
