@@ -2,7 +2,8 @@
  * Сбор источников мониторинга (RSS / YouTube RSS / GitHub Atom / TG public / X).
  * Навигация: [Мониторинг](./README.md) → [storage](./store.mjs), [digest](./digest.mjs).
  * X handle/username → [source-ref](./source-ref.mjs); merge учитывает снимок строки.
- * Проверки: [legacy X](../../tests/monitor-twitter-legacy.test.mjs), monitor-concurrency.test.mjs.
+ * Проверки: [source snapshots](../../tests/monitor-source-snapshot.test.mjs),
+ * [legacy X](../../tests/monitor-twitter-legacy.test.mjs), monitor-concurrency.test.mjs.
  */
 import { isDeepStrictEqual } from 'node:util';
 import { loadMonitorConfig, updateMonitorConfig } from './config.mjs';
@@ -18,6 +19,7 @@ export async function pollAllSources(env = process.env, { log = console.error } 
 
   if (cfg.rss.enabled) {
     for (const feed of cfg.rss.feeds.filter((f) => f.enabled !== false)) {
+      const snapshot = structuredClone(feed);
       try {
         const items = await fetchRss(feed.url, 'rss', feed.url, feed.name);
         collected.push(...items);
@@ -28,12 +30,13 @@ export async function pollAllSources(env = process.env, { log = console.error } 
         errors.push({ type: 'rss', id: feed.url, error: err.message });
         log(`[msb/monitor] rss fail ${feed.url}: ${err.message}`);
       }
-      sourceUpdates.push({ type: 'rss', key: feed.url, addedAt: feed.addedAt, lastError: feed.lastError });
+      sourceUpdates.push({ type: 'rss', key: feed.url, addedAt: feed.addedAt, lastError: feed.lastError, snapshot });
     }
   }
 
   if (cfg.youtube.enabled) {
     for (const ch of cfg.youtube.channels.filter((c) => c.enabled !== false)) {
+      const snapshot = structuredClone(ch);
       try {
         let channelId = ch.channelId;
         if (!channelId && ch.handle) {
@@ -53,12 +56,13 @@ export async function pollAllSources(env = process.env, { log = console.error } 
         errors.push({ type: 'youtube', id: ch.name, error: err.message });
         log(`[msb/monitor] youtube fail ${ch.name}: ${err.message}`);
       }
-      sourceUpdates.push({ type: 'youtube', key: ch.handle || ch.channelId || ch.name, addedAt: ch.addedAt, lastError: ch.lastError, channelId: ch.channelId });
+      sourceUpdates.push({ type: 'youtube', key: ch.handle || ch.channelId || ch.name, addedAt: ch.addedAt, lastError: ch.lastError, channelId: ch.channelId, snapshot });
     }
   }
 
   if (cfg.github.enabled) {
     for (const repo of cfg.github.repos.filter((r) => r.enabled !== false)) {
+      const snapshot = structuredClone(repo);
       try {
         const url = `https://github.com/${repo.owner}/${repo.repo}/releases.atom`;
         const items = await fetchRss(url, 'github', `${repo.owner}/${repo.repo}`, repo.name);
@@ -74,12 +78,13 @@ export async function pollAllSources(env = process.env, { log = console.error } 
         errors.push({ type: 'github', id: repo.name, error: err.message });
         log(`[msb/monitor] github fail ${repo.name}: ${err.message}`);
       }
-      sourceUpdates.push({ type: 'github', key: `${repo.owner}/${repo.repo}`, addedAt: repo.addedAt, lastError: repo.lastError });
+      sourceUpdates.push({ type: 'github', key: `${repo.owner}/${repo.repo}`, addedAt: repo.addedAt, lastError: repo.lastError, snapshot });
     }
   }
 
   if (cfg.telegram.enabled) {
     for (const ch of cfg.telegram.channels.filter((c) => c.enabled !== false)) {
+      const snapshot = structuredClone(ch);
       try {
         const items = await fetchTelegramPublic(ch.username, ch.name);
         collected.push(...items);
@@ -90,7 +95,7 @@ export async function pollAllSources(env = process.env, { log = console.error } 
         errors.push({ type: 'telegram', id: ch.username, error: err.message });
         log(`[msb/monitor] telegram fail ${ch.username}: ${err.message}`);
       }
-      sourceUpdates.push({ type: 'telegram', key: ch.username, addedAt: ch.addedAt, lastError: ch.lastError });
+      sourceUpdates.push({ type: 'telegram', key: ch.username, addedAt: ch.addedAt, lastError: ch.lastError, snapshot });
     }
   }
 
@@ -140,6 +145,9 @@ function mergeSourceUpdates(cfg, updates) {
     const matches = list.filter((entry) => key(entry) === update.key && entry.addedAt === update.addedAt &&
       (update.type !== 'twitter' || isDeepStrictEqual(entry, update.snapshot)));
     if (matches.length !== 1) continue;
+    // Keep the existing ambiguous-identity rule for these sources: only after
+    // finding one matching key check that the row has not changed meanwhile.
+    if (update.type !== 'twitter' && !isDeepStrictEqual(matches[0], update.snapshot)) continue;
     matches[0].lastError = update.lastError;
     if (update.type === 'youtube' && update.channelId && !matches[0].channelId) {
       matches[0].channelId = update.channelId;
