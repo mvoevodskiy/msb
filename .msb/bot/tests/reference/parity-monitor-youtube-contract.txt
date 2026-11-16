@@ -1,0 +1,26 @@
+Monitor: YouTube source selection — reference and boundaries
+
+Old core blob: 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11.
+Read with: git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+OQA, 43251–43260: resolve a submitted channel to an ID before adding;
+VHA, 5684–5711: compare the exact ID, re-enable an existing disabled entry
+and report re-enabled, leave group enabled unchanged on reactivation.
+
+Before this fix, an ID input had no handle and accidentally matched any earlier
+old-shaped record with no handle. The wrong record could be enabled and the
+requested source not added. This fix matches present IDs/handles first, keeps
+the legacy handle-prefixed ID match, and only re-enables explicit false. Missing
+or null enabled is active in the current poller, unlike old falsy semantics.
+Multiple matching records are preserved and reported as ambiguous.
+
+Important remaining parity gap: for an input handle with no exact saved match,
+open-core retains its existing fallback by display name. A display name is not
+proof of identity, so this can still match a different channel; conversely an
+unresolved handle and channel ID for the same channel may produce duplicates.
+The old core resolved before comparing, while this stage does not perform a
+network request or claim full equivalence. Legacy handle: values are accepted
+for lookup as before, but their polling compatibility is not established.
+
+Path: Telegram form -> addSourceFromInput -> updateMonitorConfig under lock.
+Synthetic checks: tests/monitor-youtube-reactivate.test.mjs and related monitor
+tests. No network, real profile or JAR1; live YouTube collection is not proven.

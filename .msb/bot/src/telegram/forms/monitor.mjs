@@ -35,8 +35,8 @@ export async function handleMonitorSourceInput({ ctx, text, pending, chatId }) {
   pending.delete(chatId);
   const result = await addSourceFromInput(text);
   if (!result.ok) return ctx.reply(result.error);
-  if ((result.type === 'twitter' || result.type === 'github') && result.reason === 're-enabled') {
-    const title = result.type === 'twitter' ? 'Twitter' : 'GitHub';
+  if (['twitter', 'github', 'youtube'].includes(result.type) && result.reason === 're-enabled') {
+    const title = { twitter: 'Twitter', github: 'GitHub', youtube: 'YouTube' }[result.type];
     return ctx.reply(`✅ ${title}: ${result.name} (re-enabled)`, { reply_markup: again() });
   }
   return ctx.reply(result.added

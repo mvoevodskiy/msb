@@ -28,5 +28,7 @@
 [monitor-reactivate](../../tests/monitor-reactivate.test.mjs) — повторное добавление отключённого X-источника;
 [контракт повтора](../../tests/reference/parity-monitor-reactivate-contract.txt) — старый и текущий путь;
 [monitor-github-reactivate](../../tests/monitor-github-reactivate.test.mjs) и
-[контракт GitHub](../../tests/reference/parity-monitor-github-contract.txt) — регистр, повторное включение и уже существующие дубли.
+[контракт GitHub](../../tests/reference/parity-monitor-github-contract.txt) — регистр, повторное включение и уже существующие дубли;
+[monitor-youtube-reactivate](../../tests/monitor-youtube-reactivate.test.mjs) и
+[контракт YouTube](../../tests/reference/parity-monitor-youtube-contract.txt) — точные ID/handle и нерешённая проверка алиасов.
 Доступность внешних источников и полнота старого мониторинга ими не подтверждаются.

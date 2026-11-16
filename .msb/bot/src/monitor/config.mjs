@@ -129,13 +129,27 @@ export async function addSourceFromInput(raw, env = process.env, { type } = {}) 
   const now = new Date().toISOString();
   return updateMonitorConfig(async (cfg) => {
     if (parsed.type === 'youtube') {
-      const key = parsed.channelId || `handle:${parsed.handle}`;
-      const exists = cfg.youtube.channels.find(
-        (c) => c.channelId === key || c.handle === parsed.handle || c.name === parsed.name,
+      let matches = cfg.youtube.channels.filter((c) =>
+        (parsed.channelId && c.channelId === parsed.channelId) ||
+        (parsed.handle && (c.handle === parsed.handle || c.channelId === `handle:${parsed.handle}`)),
       );
+      // Preserve the existing handle-by-name fallback for legacy records. It
+      // is not proof of identity; resolving handles like the old core is a
+      // separate, documented follow-up. Never use it for a concrete ID.
+      if (!matches.length && parsed.handle) {
+        matches = cfg.youtube.channels.filter((c) => c.name === parsed.name);
+      }
+      if (matches.length > 1) {
+        return { ok: false, error: `Найдено несколько записей YouTube для ${parsed.name}. Проверь список источников.` };
+      }
+      const exists = matches[0];
       if (exists) {
-        exists.enabled = true;
-        return { ok: true, added: false, type: 'youtube', name: exists.name };
+        const name = exists.name || parsed.name;
+        if (exists.enabled === false) {
+          exists.enabled = true;
+          return { ok: true, added: true, reason: 're-enabled', type: 'youtube', name };
+        }
+        return { ok: true, added: false, type: 'youtube', name };
       }
       cfg.youtube.channels.push({
         channelId: parsed.channelId || null,
