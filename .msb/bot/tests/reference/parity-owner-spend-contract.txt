@@ -165,7 +165,7 @@ The original probe at aabd9cc used synthetic profiles/Telegram and mocked the
 unrelated dispatcher. It passed on macOS Node 26 and isolated Linux Node
 22.23.2. This is an observation, not a proposed correctness assertion or live
 JAR1 check. The current probe checks the subsequently fixed initial-pause path
-and retains the queued-pause observation pending the next stage. The
+and later was updated to check queued-pause recovery too. The
 owner has now selected that a background task or one-time reminder due during
 the spend pause should execute once after resume. Keep at most one deferred
 occurrence per task, including recurring tasks; do not replay every missed
@@ -236,11 +236,50 @@ macOS Node 26 and isolated network-none Linux Node 22.23.2. Before the chat
 rebind fix, a wider related 63-test set covering Telegram inbox, /stop and
 spend UI passed on both platforms; the final chat-specific change was then
 checked by the 43-test set. A fake owner other than the configured admin could
-not receive the timer. The original queued-pause probe is still an observation
-of the unresolved late-pause path; the previous source is at aabd9cc. No real
+not receive the timer. At that stage the queued-pause probe still observed an unresolved late-pause
+path; the original source is at aabd9cc and the next stage supersedes it. No real
 Telegram, provider, OpenClaw or JAR1 was used.
 
-This stage covers a pause already observed by the dispatcher, not a pause set
-after a timer was queued or an arbitrary mixture of old queued timer parts.
+The 8f4cfeb stage covered a pause already observed by the dispatcher, not a
+pause set after a timer was queued or an arbitrary mixture of old queued timer
+parts; the following stage addresses those observed paths.
 A cron-like slot missed while the scheduler is off, a write failure and the
 post-admission crash/external-effect window remain separate limitations.
+
+Legacy queued-pause stage (local only): while a legacy timer waits behind an
+owner turn, the worker now samples the saved spend pause and under the existing
+schedule/state locks turns matching stamped reservations into cost_pause pending
+records. The ordinary paused status and response remain, including for mixed
+queued text; only timer parts become pending, not the owner text. A pause that
+commits while the worker waits for state admission is treated the same. Existing
+Codex sleep pending can also carry the cost-pause reason without starting Codex;
+a due timer is retained if Codex sleep already exists at dispatch. The old
+non-Codex sleep-marker route is unchanged.
+
+At an awake admission the current owner clock coalesces a pending daily/weekly
+occurrence with a due current slot even if the original queue entry was already
+waiting before resume. If pause is observed after admission but before the
+model is called, the worker restores only the exact claimed timer snapshots.
+A deleted, toggled or replaced record is not overwritten. The same check runs
+after a status-delivery failure before any provider call. /stop retains its
+existing cancellation semantics; already-started work is not replayed.
+
+RED at 8f4cfeb: two Codex/Claude cases lost a timer when pause was saved while
+it waited in the queue; two more lost it while admission waited on state. A
+separate Linux timing failure led to a deterministic RED in which an old queued
+weekly occurrence and its current slot both ran after resume. Two late-status
+cases also lost the unstarted admitted timer. Two more RED cases exposed a due
+Codex timer under an existing sleep mark and a reasonless sleep-pending timer
+when cost pause was already active. GREEN: 201 related checks passed
+on macOS Node 26 and isolated network-none Linux Node 22.23.2, including fake
+Telegram inbox, saved prompts, limits, /stop, Codex sleep and timers. The first
+version of the late-status test gated send only and failed to reach an already
+queued status; gating both send and edit reproduced the actual defect. No real
+provider, account, Telegram, OpenClaw scenario or JAR1 was accessed.
+
+A pause set after the final state read may race provider launch: there is no
+cross-process atomic operation with the CLI. A timer modified or removed during
+preparation is not restored; a failed restore write cannot be promised durable.
+A whole cron minute spent with the scheduler down is not inferred from current
+state. Crash after admission before an external effect can consume an occurrence;
+crash after an effect may be uncertain. This is not an exactly-once guarantee.

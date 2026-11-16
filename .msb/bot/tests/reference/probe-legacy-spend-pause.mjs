@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-// Queued cases still observe the unresolved fb5026f boundary; initial-pause cases check the new policy.
+// Initial and queued pause cases check the owner-selected policy; old observation is at aabd9cc.
 // [Old source and outcome](./parity-owner-spend-contract.txt).
 const repo = fileURLToPath(new URL('../../../../', import.meta.url));
 const moduleUrl = name => pathToFileURL(path.join(repo, name)).href;
@@ -22,7 +22,7 @@ async function until(fn) {
   assert.fail('fixture wait timed out');
 }
 for (const provider of ['codex', 'claude']) {
-  test('observe queued legacy timer while spend paused: ' + provider, async t => {
+  test('queued legacy timer stays pending while spend paused: ' + provider, async t => {
     let release;
     const held = new Promise(resolve => { release=resolve; });
     t.after(release);
@@ -49,10 +49,13 @@ for (const provider of ['codex', 'claude']) {
     assert.equal(calls.length,1);
     const [saved]=JSON.parse(await fs.readFile(file,'utf8'));
     assert.equal(saved.enabled,false);
-    assert.equal(saved.legacyPendingRun,undefined);
+    assert.equal(saved.legacyPendingRun?.reason,'cost_pause');
     await f.callback('settings:cost:resume');
     await scheduler.tickNow();
-    assert.equal(calls.length,1);
+    await until(()=>calls.length===2);
+    assert.equal(calls[1].prompt,'⏰ Таймер "fixture":\nfixture timer');
+    await scheduler.tickNow();
+    assert.equal(calls.length,2);
   });
 }
 

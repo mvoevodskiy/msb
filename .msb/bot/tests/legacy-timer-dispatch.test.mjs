@@ -9,7 +9,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { startScheduler } from '../src/autonomy/scheduler.mjs';
-import { claimLegacyTimerRuns } from '../src/autonomy/legacy-timers.mjs';
+import { changeLegacyTimer, claimLegacyTimerRuns } from '../src/autonomy/legacy-timers.mjs';
 import { addTask, listTasks } from '../src/autonomy/store.mjs';
 import { botRoot, msbRoot, statePath } from '../src/paths.mjs';
 import { loadState, saveState, updateState } from '../src/state.mjs';
@@ -47,11 +47,12 @@ async function until(check, label) {
 
 async function dispatchFixture(t, { timers = [timer], owner = 42, chatId = groupChat, run } = {}) {
   const calls = [], recipients = [];
+  let time = tick;
   const runTimer = async args => {
     calls.push(args);
     return run ? run(args) : normalResult;
   };
-  const f = await fixture(t, runTimer, { overlay: false, runtimeProfile: 'jar1' });
+  const f = await fixture(t, runTimer, { overlay: false, runtimeProfile: 'jar1', now: () => time });
   for (const key of ['MSB_SESSION_DIR', 'IIA_SESSION_DIR', 'AUTONOMY_DIR']) delete process.env[key];
   process.env.TZ = 'UTC';
   const { state } = await loadState();
@@ -60,7 +61,6 @@ async function dispatchFixture(t, { timers = [timer], owner = 42, chatId = group
   await fs.writeFile(file, JSON.stringify(timers));
   const send = f.bot.api.sendMessage;
   f.bot.api.sendMessage = async (chat, ...args) => { recipients.push(chat); return send(chat, ...args); };
-  let time = tick;
   const intervalRuns = [];
   const start = bot => startScheduler({ api: bot.api, adminId: 42, timezone: 'UTC', log() {},
     scheduledTurns: bot[Symbol.for('msb.scheduledTurns')], now: () => time,
@@ -74,7 +74,7 @@ async function dispatchFixture(t, { timers = [timer], owner = 42, chatId = group
       await scheduler.stop();
       await f.bot.stop();
       const bot = createBot({ botToken: 'fake', botId: 'default', adminId: 42, workspace: f.workspace, timezone: 'UTC' },
-        { bot: new f.bot.constructor(), runTurn: runTimer });
+        { bot: new f.bot.constructor(), runTurn: runTimer, now: () => time });
       await bot.start();
       const fresh = start(bot);
       return { scheduler: fresh, async close() { await fresh.stop(); await bot.stop(); } };
@@ -866,13 +866,17 @@ test('paused legacy daily and weekly timers coalesce missed slots and a current 
   const f = await dispatchFixture(t, { timers: [daily, weekly], chatId: 42 });
   await saveState({ ...(await loadState()).state, costPaused: true });
   await f.scheduler.tickNow();
+  await until(() => !f.bot[Symbol.for('msb.scheduledTurns')].pending, 'paused notices did not settle');
   assert.ok((await f.records()).every(row => row.legacyPendingRun));
   f.setTime(tick + 7 * 86_400_000);
   await f.scheduler.tickNow();
   assert.equal(f.calls.length, 0);
   await saveState({ ...(await loadState()).state, costPaused: false });
   await f.scheduler.tickNow();
-  await until(() => f.calls.map(call => call.prompt).join('\n').includes(weekly.name), 'deferred recurring timers did not run');
+  await until(() => {
+    const text = f.calls.map(call => call.prompt).join('\n');
+    return text.includes(daily.name) && text.includes(weekly.name);
+  }, 'deferred recurring timers did not run');
   const prompts = f.calls.map(call => call.prompt).join('\n');
   assert.equal(prompts.split(daily.name).length - 1, 1);
   assert.equal(prompts.split(weekly.name).length - 1, 1);
@@ -948,4 +952,353 @@ test('a different saved owner cannot receive a spend-paused timer', async t => {
   await saveState({ ...(await loadState()).state, chatId: 42, userId: 42 });
   await f.scheduler.tickNow();
   await until(() => f.calls.length === 1, 'timer was not preserved for the original owner');
+});
+
+
+for (const provider of ['codex', 'claude']) {
+  test('spend pause after queueing preserves the ' + provider + ' timer and not the mixed owner text', async t => {
+    const first = gate();
+    t.after(first.resolve);
+    const f = await dispatchFixture(t, { chatId: 42, run: async ({ prompt }) => {
+      if (prompt === 'Занять очередь') await first.promise;
+      return normalResult;
+    } });
+    const state = { ...(await loadState()).state };
+    if (provider === 'claude') { delete state.extAuthBypass; state.authMode = 'subscription'; state.hasSubscriptionAuth = true; }
+    await saveState(state);
+    const session = state.ccSessionId;
+    await f.message('Занять очередь');
+    await until(() => f.calls.length === 1, 'manual turn did not start');
+    await f.scheduler.tickNow();
+    await f.message('Не повторять ручное сообщение');
+    await saveState({ ...(await loadState()).state, costPaused: true });
+    first.resolve();
+    await until(() => f.messages.some(text => text.includes('Дневной лимит достигнут')), 'paused status did not finish');
+    assert.equal(f.calls.length, 1);
+    assert.equal((await f.records())[0].legacyPendingRun?.reason, 'cost_pause');
+    const fresh = await f.restart();
+    try {
+      f.setTime(tick + 10 * 60_000);
+      await saveState({ ...(await loadState()).state, costPaused: false });
+      await fresh.scheduler.tickNow();
+      await until(() => f.calls.length === 2, 'queued timer did not survive pause');
+      assert.ok(f.calls[1].prompt.includes(timerPrompt));
+      assert.ok(!f.calls[1].prompt.includes('Не повторять ручное сообщение'));
+      assert.equal((await loadState()).state.ccSessionId, session);
+      await fresh.scheduler.tickNow();
+      assert.equal(f.calls.length, 2);
+    } finally { await fresh.close(); }
+  });
+}
+
+
+for (const provider of ['codex', 'claude']) {
+  test('spend pause committed while ' + provider + ' timer waits for admission is retained', async t => {
+    const busy = gate(), held = gate(), release = gate();
+    t.after(busy.resolve); t.after(release.resolve);
+    const f = await dispatchFixture(t, { chatId: 42, run: async ({ prompt }) => {
+      if (prompt === 'Занять очередь') await busy.promise;
+      return normalResult;
+    } });
+    const state = { ...(await loadState()).state };
+    if (provider === 'claude') { delete state.extAuthBypass; state.authMode = 'subscription'; state.hasSubscriptionAuth = true; }
+    await saveState(state);
+    await f.message('Занять очередь');
+    await until(() => f.calls.length === 1, 'manual turn did not start');
+    await f.scheduler.tickNow();
+    const writing = updateState(async current => { held.resolve(); await release.promise; return { ...current, costPaused: true }; });
+    await held.promise;
+    const stateQueue = globalThis[Symbol.for('msb.stateUpdates')];
+    busy.resolve();
+    try {
+      await until(() => stateQueue.get(statePath()) !== writing || f.calls.length > 1, 'timer did not reach admission');
+      assert.equal(f.calls.length, 1);
+    } finally { release.resolve(); await writing; }
+    await until(() => f.messages.some(text => text.includes('Дневной лимит достигнут')), 'paused response did not finish');
+    assert.equal((await f.records())[0].legacyPendingRun?.reason, 'cost_pause');
+    await saveState({ ...(await loadState()).state, costPaused: false });
+    f.setTime(tick + 10 * 60_000);
+    await f.scheduler.tickNow();
+    await until(() => f.calls.length === 2, 'deferred timer did not run after resume');
+    await f.scheduler.tickNow();
+    assert.equal(f.calls.length, 2);
+  });
+}
+
+test('mixed timers queued before and during spend pause both wait while owner text is not replayed', async t => {
+  const first = gate();
+  t.after(first.resolve);
+  const later = { ...timer, id: 'later-spend', name: 'Календарь', at: new Date(tick + 60_000).toISOString() };
+  const f = await dispatchFixture(t, { timers: [timer, later], chatId: 42, run: async ({ prompt }) => {
+    if (prompt === 'Занять очередь') await first.promise;
+    return normalResult;
+  } });
+  await f.message('Занять очередь');
+  await until(() => f.calls.length === 1, 'manual turn did not start');
+  await f.scheduler.tickNow();
+  await saveState({ ...(await loadState()).state, costPaused: true });
+  f.setTime(tick + 60_000);
+  await f.scheduler.tickNow();
+  await f.message('Не повторять ручной ввод');
+  first.resolve();
+  await until(() => f.messages.some(text => text.includes('Дневной лимит достигнут')), 'paused response did not finish');
+  assert.ok((await f.records()).every(row => row.legacyPendingRun?.reason === 'cost_pause'));
+  await saveState({ ...(await loadState()).state, costPaused: false });
+  f.setTime(tick + 10 * 60_000);
+  await f.scheduler.tickNow();
+  await until(() => f.calls.slice(1).map(call => call.prompt).join('\\n').includes(later.name), 'both timers did not resume');
+  const prompts = f.calls.slice(1).map(call => call.prompt).join('\\n');
+  assert.equal(prompts.split(timer.name).length - 1, 1);
+  assert.equal(prompts.split(later.name).length - 1, 1);
+  assert.ok(!prompts.includes('Не повторять ручной ввод'));
+  const count = f.calls.length;
+  await f.scheduler.tickNow();
+  assert.equal(f.calls.length, count);
+});
+
+test('a queued daily timer paused by spend coalesces with the next current slot', async t => {
+  const busy = gate();
+  t.after(busy.resolve);
+  const daily = { ...timer, id: 'daily-queued-spend', name: 'Ежедневно', type: 'daily', hour: 9 };
+  const f = await dispatchFixture(t, { timers: [daily], chatId: 42, run: async ({ prompt }) => {
+    if (prompt === 'Занять очередь') await busy.promise;
+    return normalResult;
+  } });
+  await f.message('Занять очередь');
+  await until(() => f.calls.length === 1, 'manual turn did not start');
+  await f.scheduler.tickNow();
+  await saveState({ ...(await loadState()).state, costPaused: true });
+  busy.resolve();
+  await until(() => f.messages.some(text => text.includes('Дневной лимит достигнут')), 'paused response did not finish');
+  assert.equal((await f.records())[0].legacyPendingRun?.reason, 'cost_pause');
+  await saveState({ ...(await loadState()).state, costPaused: false });
+  f.setTime(tick + 86_400_000);
+  await f.scheduler.tickNow();
+  await until(() => f.calls.length === 2, 'the deferred daily timer did not run');
+  await f.scheduler.tickNow();
+  assert.equal(f.calls.length, 2);
+  assert.equal((await f.records())[0].lastRunAt, new Date(tick + 86_400_000).toISOString());
+});
+
+test('queued Codex sleep plus spend pause preserves and coalesces the daily timer', async t => {
+  const busy = gate();
+  t.after(busy.resolve);
+  const daily = { ...timer, id: 'daily-sleep-cost', name: 'Ежедневный', type: 'daily', hour: 9 };
+  const f = await dispatchFixture(t, { timers: [daily], chatId: 42, run: async ({ prompt }) => {
+    if (prompt === 'Занять очередь') await busy.promise;
+    return normalResult;
+  } });
+  await f.message('Занять очередь');
+  await until(() => f.calls.length === 1, 'manual turn did not start');
+  await f.scheduler.tickNow();
+  const marker = path.join(msbRoot(), 'engine', 'sleep.default');
+  await fs.mkdir(path.dirname(marker), { recursive: true });
+  await fs.writeFile(marker, 'sleep');
+  await saveState({ ...(await loadState()).state, costPaused: true });
+  busy.resolve();
+  await until(() => !f.bot[Symbol.for('msb.scheduledTurns')].pending, 'sleep did not settle');
+  assert.equal((await f.records())[0].legacyPendingRun?.reason, 'cost_pause');
+  assert.equal(f.calls.length, 1);
+  await fs.unlink(marker);
+  await saveState({ ...(await loadState()).state, costPaused: false });
+  f.setTime(tick + 86_400_000);
+  await f.scheduler.tickNow();
+  await until(() => f.calls.length === 2, 'deferred timer did not run after wake');
+  await f.scheduler.tickNow();
+  assert.equal(f.calls.length, 2);
+});
+
+
+test('a previously queued paused daily or weekly run coalesces at admission after resume', async t => {
+  const daily = { ...timer, id: 'daily-queued-boundary', name: 'Дневной', type: 'daily', hour: 9 };
+  const weekly = { ...timer, id: 'weekly-queued-boundary', name: 'Недельный', type: 'weekly', hour: 9, weekdays: [7] };
+  const f = await dispatchFixture(t, { timers: [daily, weekly], chatId: 42 });
+  await saveState({ ...(await loadState()).state, costPaused: true });
+  const entered = gate(), release = gate();
+  t.after(release.resolve);
+  const send = f.bot.api.sendMessage;
+  let held = false;
+  f.bot.api.sendMessage = async (chat, text, ...options) => {
+    if (text === 'Думаю ⏳' && !held) { held = true; entered.resolve(); await release.promise; }
+    return send(chat, text, ...options);
+  };
+  const firstTick = f.scheduler.tickNow();
+  try {
+    await firstTick;
+    await until(() => held, 'expected paused status');
+    f.setTime(tick + 7 * 86_400_000);
+    await saveState({ ...(await loadState()).state, costPaused: false });
+    await f.scheduler.tickNow();
+  } finally { release.resolve(); }
+  await until(() => f.calls.some(call => call.prompt.includes(weekly.name)), 'queued weekly did not run');
+  await until(() => !f.bot[Symbol.for('msb.scheduledTurns')].pending, 'queued turns did not settle');
+  await f.scheduler.tickNow();
+  await until(() => f.calls.some(call => call.prompt.includes(daily.name)), 'daily did not run');
+  await until(() => !f.bot[Symbol.for('msb.scheduledTurns')].pending, 'resumed turns did not settle');
+  await f.scheduler.tickNow();
+  const prompts = f.calls.map(call => call.prompt).join('\n');
+  assert.equal(prompts.split(daily.name).length - 1, 1);
+  assert.equal(prompts.split(weekly.name).length - 1, 1);
+});
+
+for (const provider of ['codex', 'claude']) {
+  test('spend pause during the admitted ' + provider + ' timer status retains only the timer', async t => {
+    const busy = gate(), entered = gate(), release = gate();
+    t.after(busy.resolve); t.after(release.resolve);
+    const f = await dispatchFixture(t, { chatId: 42, run: async ({ prompt }) => {
+      if (prompt === 'Занять очередь') await busy.promise;
+      return normalResult;
+    } });
+    const state = { ...(await loadState()).state };
+    if (provider === 'claude') { delete state.extAuthBypass; state.authMode = 'subscription'; state.hasSubscriptionAuth = true; }
+    await saveState(state);
+    await f.message('Занять очередь');
+    await until(() => f.calls.length === 1, 'manual turn did not start');
+    await f.scheduler.tickNow();
+    await f.message('Не повторять ручной ввод');
+    const send = f.bot.api.sendMessage, edit = f.bot.api.editMessageText;
+    let held = false;
+    const pauseStatus = async text => {
+      if (text === 'Думаю ⏳' && !held) { held = true; entered.resolve(); await release.promise; }
+    };
+    f.bot.api.sendMessage = async (chat, text, ...options) => {
+      await pauseStatus(text);
+      return send(chat, text, ...options);
+    };
+    f.bot.api.editMessageText = async (chat, id, text, ...options) => {
+      await pauseStatus(text);
+      return edit(chat, id, text, ...options);
+    };
+    busy.resolve();
+    try {
+      await until(() => held, 'timer status did not start');
+      await saveState({ ...(await loadState()).state, costPaused: true });
+    } finally { release.resolve(); }
+    await until(() => f.messages.some(text => text.includes('Дневной лимит достигнут')), 'paused response did not finish');
+    assert.equal(f.calls.length, 1);
+    assert.equal((await f.records())[0].legacyPendingRun?.reason, 'cost_pause');
+    await saveState({ ...(await loadState()).state, costPaused: false });
+    f.setTime(tick + 10 * 60_000);
+    await f.scheduler.tickNow();
+    await until(() => f.calls.length === 2, 'timer did not resume after the late pause');
+    assert.ok(f.calls[1].prompt.includes(timerPrompt));
+    assert.ok(!f.calls[1].prompt.includes('Не повторять ручной ввод'));
+    await f.scheduler.tickNow();
+    assert.equal(f.calls.length, 2);
+  });
+}
+
+
+test('status delivery failure during a late spend pause retains the unstarted timer', async t => {
+  const entered = gate(), release = gate();
+  t.after(release.resolve);
+  const f = await dispatchFixture(t, { chatId: 42 });
+  const send = f.bot.api.sendMessage;
+  let held = false;
+  f.bot.api.sendMessage = async (chat, text, ...options) => {
+    if (text === 'Думаю ⏳' && !held) {
+      held = true; entered.resolve(); await release.promise; throw Error('synthetic status failure');
+    }
+    return send(chat, text, ...options);
+  };
+  const tickRun = f.scheduler.tickNow();
+  try {
+    await tickRun;
+    await until(() => held, 'timer status did not start');
+    await saveState({ ...(await loadState()).state, costPaused: true });
+  } finally { release.resolve(); }
+  await until(() => !f.bot[Symbol.for('msb.scheduledTurns')].pending, 'timer worker did not settle');
+  assert.equal(f.calls.length, 0);
+  assert.equal((await f.records())[0].legacyPendingRun?.reason, 'cost_pause');
+  f.bot.api.sendMessage = send;
+  await saveState({ ...(await loadState()).state, costPaused: false });
+  f.setTime(tick + 10 * 60_000);
+  await f.scheduler.tickNow();
+  await until(() => f.calls.length === 1, 'unstarted timer did not resume');
+});
+
+test('a deleted admitted timer is not recreated by a later spend pause', async t => {
+  const entered = gate(), release = gate();
+  t.after(release.resolve);
+  const f = await dispatchFixture(t, { chatId: 42 });
+  const send = f.bot.api.sendMessage;
+  let held = false;
+  f.bot.api.sendMessage = async (chat, text, ...options) => {
+    if (text === 'Думаю ⏳' && !held) { held = true; entered.resolve(); await release.promise; }
+    return send(chat, text, ...options);
+  };
+  await f.scheduler.tickNow();
+  try {
+    await until(() => held, 'timer status did not start');
+    await changeLegacyTimer(timer.id, { remove: true });
+    await saveState({ ...(await loadState()).state, costPaused: true });
+  } finally { release.resolve(); }
+  await until(() => !f.bot[Symbol.for('msb.scheduledTurns')].pending, 'timer worker did not settle');
+  assert.deepEqual(await f.records(), []);
+  assert.equal(f.calls.length, 0);
+  await saveState({ ...(await loadState()).state, costPaused: false });
+  await f.scheduler.tickNow();
+  assert.equal(f.calls.length, 0);
+});
+
+test('a daily timer due under existing Codex sleep and spend pause is retained', async t => {
+  const daily = { ...timer, id: 'sleep-before-due', name: 'Сон перед сроком', type: 'daily', hour: 9 };
+  const f = await dispatchFixture(t, { timers: [daily], chatId: 42 });
+  const marker = path.join(msbRoot(), 'engine', 'sleep.default');
+  await fs.mkdir(path.dirname(marker), { recursive: true });
+  await fs.writeFile(marker, 'sleep');
+  await saveState({ ...(await loadState()).state, costPaused: true });
+  await f.scheduler.tickNow();
+  await until(() => !f.bot[Symbol.for('msb.scheduledTurns')].pending, 'sleep notice did not settle');
+  assert.equal((await f.records())[0].legacyPendingRun?.reason, 'cost_pause');
+  assert.equal(f.calls.length, 0);
+  await fs.unlink(marker);
+  await saveState({ ...(await loadState()).state, costPaused: false });
+  f.setTime(tick + 10 * 60_000);
+  await f.scheduler.tickNow();
+  await until(() => f.calls.length === 1, 'daily timer did not resume');
+  await f.scheduler.tickNow();
+  assert.equal(f.calls.length, 1);
+});
+
+test('an existing Codex-sleep pending timer acquires spend pause and coalesces after resume', async t => {
+  const busy = gate();
+  t.after(busy.resolve);
+  const daily = { ...timer, id: 'prior-sleep', name: 'Ранее уснул', type: 'daily', hour: 9 };
+  const f = await dispatchFixture(t, { timers: [daily], chatId: 42, run: async ({ prompt }) => {
+    if (prompt === 'Занять очередь') await busy.promise;
+    return normalResult;
+  } });
+  await f.message('Занять очередь');
+  await until(() => f.calls.length === 1, 'manual turn did not start');
+  await f.scheduler.tickNow();
+  const marker = path.join(msbRoot(), 'engine', 'sleep.default');
+  await fs.mkdir(path.dirname(marker), { recursive: true });
+  await fs.writeFile(marker, 'sleep');
+  busy.resolve();
+  await until(() => !f.bot[Symbol.for('msb.scheduledTurns')].pending, 'sleep did not settle');
+  assert.ok((await f.records())[0].legacyPendingRun);
+  assert.equal((await f.records())[0].legacyPendingRun.reason, undefined);
+  await saveState({ ...(await loadState()).state, costPaused: true });
+  await f.scheduler.tickNow();
+  assert.equal((await f.records())[0].legacyPendingRun?.reason, 'cost_pause');
+  await fs.unlink(marker);
+  await saveState({ ...(await loadState()).state, costPaused: false });
+  f.setTime(tick + 86_400_000);
+  await f.scheduler.tickNow();
+  await until(() => f.calls.length === 2, 'deferred timer did not resume');
+  await f.scheduler.tickNow();
+  assert.equal(f.calls.length, 2);
+});
+
+test('an existing sleep marker keeps its prior non-Codex behavior under spend pause', async t => {
+  const f = await dispatchFixture(t, { chatId: 42 });
+  const { extAuthBypass, ...state } = (await loadState()).state;
+  await saveState({ ...state, authMode: 'subscription', hasSubscriptionAuth: true, costPaused: true });
+  const marker = path.join(msbRoot(), 'engine', 'sleep.default');
+  await fs.mkdir(path.dirname(marker), { recursive: true });
+  await fs.writeFile(marker, 'sleep');
+  await f.scheduler.tickNow();
+  assert.deepEqual(await f.records(), [timer]);
+  assert.equal(f.calls.length, 0);
 });

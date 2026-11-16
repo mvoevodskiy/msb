@@ -142,12 +142,20 @@ export async function publishLegacyTimerRun(file, timer, { reserve, now, env, re
     let next = timer;
     if (pending && timer.legacyPendingRun.file !== file) return;
     const rebind = pending && timer.legacyPendingRun.destination !== destination &&
-      timer.legacyPendingRun.reason === 'cost_pause' && sameDestinationOwner(timer.legacyPendingRun.destination, destination);
+      (timer.legacyPendingRun.reason === 'cost_pause' || (deferOnly && timer.legacyPendingRun.reason === undefined)) &&
+      sameDestinationOwner(timer.legacyPendingRun.destination, destination);
     if (pending && timer.legacyPendingRun.destination !== destination && !rebind) return;
-    if (pending && deferOnly) return;
     if (pending && timer.legacyPendingRun.definition !== runDefinition(timer)) {
       delete records[index].legacyPendingRun;
       await save();
+      return;
+    }
+    if (pending && deferOnly) {
+      if (timer.legacyPendingRun.reason === undefined) {
+        records[index] = { ...timer, legacyPendingRun: { ...timer.legacyPendingRun, reason: 'cost_pause',
+          ...(rebind ? { destination } : {}) } };
+        await save();
+      }
       return;
     }
     if (!pending) {
@@ -176,26 +184,36 @@ export async function publishLegacyTimerRun(file, timer, { reserve, now, env, re
   }, { expectedFile: file });
 }
 
-/** Admit this group, or make stamped in-memory reservations durable when sleep blocks it. */
+/** Admit the group, or make stamped reservations durable under sleep or spend pause. */
 export async function claimLegacyTimerRuns(runs, { env = process.env, signal, admit = commit => commit() } = {}) {
-  return (await withLegacyTimerUpdate(env, (records, save, file) => admit(async (destination, defer = false) => {
+  return (await withLegacyTimerUpdate(env, (records, save, file) => admit(async (destination, defer = false, reason, coalesce) => {
     const claimed = new Set();
     let changed = false;
     for (const run of runs) {
       const pending = pendingLegacyTimerRun(run.timer);
       if (!pending && !defer) {
         // This attempt was already committed by the ordinary legacy writer.
+        run.admittedTimer = structuredClone(run.timer);
         claimed.add(run);
         continue;
       }
-      if (pending && defer) continue;
       if (run.file !== file) continue;
       if (destination !== undefined && run.destination !== destination) continue;
       const current = records.find(row => row?.id === run.timer.id);
       if (!current || !isDeepStrictEqual(current, run.timer)) continue;
-      if (defer) current.legacyPendingRun = pendingMark(run);
+      if (pending && defer) {
+        if (reason === 'cost_pause' && current.legacyPendingRun.reason === undefined) {
+          current.legacyPendingRun = { ...current.legacyPendingRun, reason };
+          changed = true;
+        }
+        continue;
+      }
+      if (defer) current.legacyPendingRun = { ...pendingMark(run), ...(reason ? { reason } : {}) };
       else {
+        const at = coalesce?.(run);
         delete current.legacyPendingRun;
+        if (at) current.lastRunAt = at;
+        run.admittedTimer = structuredClone(current);
         claimed.add(run);
       }
       changed = true;
@@ -203,6 +221,23 @@ export async function claimLegacyTimerRuns(runs, { env = process.env, signal, ad
     if (changed) await save();
     return defer ? false : claimed;
   }), { signal })) ?? new Set();
+}
+
+/** Restore only the same unstarted claimed timers when spend pause is observed after admission. */
+export async function deferClaimedLegacyTimerRuns(runs, { env = process.env, signal } = {}) {
+  return withLegacyTimerUpdate(env, async (records, save, file) => {
+    let changed = false;
+    for (const run of runs) {
+      if (run.file !== file || typeof run.destination !== 'string') continue;
+      const current = records.find(row => row?.id === run.timer.id);
+      const expected = run.admittedTimer ?? run.timer;
+      if (!current || !isDeepStrictEqual(current, expected) || Object.hasOwn(current, 'legacyPendingRun')) continue;
+      current.legacyPendingRun = { ...pendingMark({ id: run.id, file, timer: current, destination: run.destination }),
+        reason: 'cost_pause' };
+      changed = true;
+    }
+    if (changed) await save();
+  }, { signal });
 }
 
 export async function cancelPendingLegacyTimerRuns(includeInFlight, env = process.env) {

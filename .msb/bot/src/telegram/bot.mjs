@@ -19,7 +19,8 @@ import { randomUUID } from 'node:crypto';
  * Лимиты автономки из ответа → [limit markers](./limit-markers.mjs) → [подтверждение](./limit-confirmation.mjs).
  * журнал Пульта → [history](./history.mjs), STT → [voice](./voice.mjs).
  * /cost → [saved spend view](./screens/spend.mjs); saved owner pause gates the model turn.
- * Due timers observed during that pause retain [pending](../autonomy/legacy-timers.mjs) while the usual status runs.
+ * Paused timers retain [pending](../autonomy/legacy-timers.mjs) while the usual status runs;
+ * [checks](../../tests/legacy-timer-dispatch.test.mjs) cover the queue and late status.
  * Final [reminder](./reminder-markers.mjs) and [owner pause](./pause-markers.mjs), then installation markers.
  * Model skill markers → [processor](../skills/response-markers.mjs) before plan/delivery/history, never UI metadata.
  * Prepared skills views/chunks → [view delivery](./view-delivery.mjs), context reply retained.
@@ -70,7 +71,7 @@ import { trySessionOperation } from '../agent/session-operation.mjs';
 import { hasClaudeAuth, loadState, updateState } from '../state.mjs';
 import { addTask, tryParseScheduleMessage } from '../autonomy/store.mjs';
 import { admitLegacyTimerRuns } from '../autonomy/legacy-dispatch.mjs';
-import { cancelPendingLegacyTimerRuns } from '../autonomy/legacy-timers.mjs';
+import { cancelPendingLegacyTimerRuns, deferClaimedLegacyTimerRuns } from '../autonomy/legacy-timers.mjs';
 import { adminGuard, hasCodexSetup, isAdmin, isSetupMode } from './auth.mjs';
 import { HELP_CC, HELP_OC, commandsForEngine } from './commands.mjs';
 import { handleCallback } from './router.mjs';
@@ -121,15 +122,19 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
           return;
         }
         const runs = entry.legacyParts?.flatMap(part => part.legacyRun ? [part.legacyRun] : []);
-        // A newly due timer captured during the saved spend pause keeps its
-        // pending occurrence while using the ordinary paused status/response.
-        if (!blocked && runs?.length && runs.every(run => run.timer.legacyPendingRun?.reason === 'cost_pause')) {
-          entry.forceSpendPaused = Boolean((await loadState()).state.costPaused);
-          if (cancelled()) { await cancelInboxEntry(entry).catch(() => {}); return; }
-        }
         let admitted;
-        if (!entry.forceSpendPaused && runs?.length && (!blocked || runs.some(run => !run.timer.legacyPendingRun))) {
-          admitted = await admitLegacyTimerRuns(runs, turn.controller.signal, { blocked, blockedByCodexSleep }).catch(error => {
+        // The spend flag may have changed while this timer waited in the inbox.
+        // Preserve only timer occurrences; ordinary text keeps the paused reply.
+        if ((!blocked || blockedByCodexSleep) && runs?.length && (await loadState()).state.costPaused) {
+          admitted = await admitLegacyTimerRuns(runs, turn.controller.signal, { blocked, blockedByCodexSleep, deferForCost: true, now, timezone: cfg.timezone }).catch(error => {
+            if (!cancelled()) console.error('[msb/bot] legacy admission failed:', error.code || error.name);
+            return new Set();
+          });
+          if (cancelled()) { await cancelInboxEntry(entry).catch(() => {}); return; }
+          if (admitted?.deferredByCost) { entry.forceSpendPaused = true; admitted = undefined; }
+        }
+        if (!entry.forceSpendPaused && admitted === undefined && runs?.length && (!blocked || runs.some(run => !run.timer.legacyPendingRun))) {
+          admitted = await admitLegacyTimerRuns(runs, turn.controller.signal, { blocked, blockedByCodexSleep, now, timezone: cfg.timezone }).catch(error => {
             if (!cancelled()) console.error('[msb/bot] legacy admission failed:', error.code || error.name);
             return new Set();
           });
@@ -137,6 +142,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
             if (!blocked) await cancelInboxEntry(entry).catch(() => {});
             return;
           }
+          if (admitted?.deferredByCost) { entry.forceSpendPaused = true; admitted = undefined; }
         }
         if (blocked) {
           if (entry.recovery?.id) {
@@ -158,6 +164,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
             await cancelInboxEntry(entry, true);
             return;
           }
+          entry.admittedLegacyRuns = [...admitted];
         }
         return executeTurn(entry.ctx, entry.text || '', turn, entry.voice, entry);
       })()
@@ -670,7 +677,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     let transcribed = false;
     const startedAt = performance.now();
     let history, result, outcome = 'error', deliveredText = '', delivered = false;
-    let responseReady = false;
+    let responseReady = false, providerStarted = false, legacyDeferred = false;
     const stopped = async () => {
       outcome = 'aborted';
       const received = turn.interruptedByUser ? result?.assistantReply : null;
@@ -751,6 +758,10 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       const { state } = await loadState();
       signal.throwIfAborted();
       const paused = Boolean(state.costPaused || entry.forceSpendPaused);
+      if (paused && entry.admittedLegacyRuns?.length) {
+        await deferClaimedLegacyTimerRuns(entry.admittedLegacyRuns, { signal });
+        legacyDeferred = true;
+      }
       const bootstrapScope = !entry.scheduled && ctx.message && reminderOwner && state.extAuthBypass === 'codex'
         ? codexBootstrapScope(chatId, reminderOwner, thread) : undefined;
       const introPending = bootstrapScope ? entry.recovery || {
@@ -762,6 +773,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         requireCodex: Boolean(requireCodex),
       } : undefined;
       if (introPending) { turn.pendingId = introPending.id; introOwned.add(introPending.id); }
+      if (!paused) providerStarted = true;
       let out = paused ? { ok: false, text: SPEND_PAUSED } : await runTurn({ prompt: entry.prompt ?? text, signal,
         ...(requireCodex ? { requireCodex: true } : {}),
         ...(reminderOwner ? { reminderOwner, checkSavedCodex, checkSavedCursor } : {}),
@@ -855,6 +867,11 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         }
       }
     } finally {
+      if (!providerStarted && !legacyDeferred && !signal.aborted && entry.admittedLegacyRuns?.length) {
+        try {
+          if ((await loadState()).state.costPaused) await deferClaimedLegacyTimerRuns(entry.admittedLegacyRuns, { signal });
+        } catch { console.error('[msb/bot] Could not retain paused legacy timer'); }
+      }
       await progress?.stop();
       if (transcription && !transcribed) await ctx.api.deleteMessage(chatId, transcription.message_id, presentationSignal(AbortSignal.timeout(15_000))).catch(() => {});
       turn.completed = true;
