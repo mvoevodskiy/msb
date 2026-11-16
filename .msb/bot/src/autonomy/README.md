@@ -269,9 +269,10 @@ cron на проверенном [Gateway бота](../agent/openclaw-gateway.mj
 создаёт отдельный `autonomy/cc-workspace` и выбирает зарегистрированный маршрут.
 Quiet-задачи (`emptyIsValidOutcome`) обрезают ход мысли до маркеров владельца
 (`trimQuietOwnerText`) и помечают `quietOwner` для [доставки](./prompt-delivery.mjs):
-в чат уходит только итог, без шапки «Ничего не опубликовано». То же для
-HTML-digest (make_money и т.п.) с `<b>`/`🟢`/`🔴`, плюс unwrap ` ```html ` в
-[response](../telegram/response.mjs). Проверки:
+в чат уходит только итог, без шапки «Ничего не опубликовано». Для обычных и
+ошибочных заданий текст перед HTML и маркерами сохраняется целиком. HTML-digest,
+распознаётся по `<b>`/`🟢`/`🔴` и показывается без шапки; разметку ` ```html `
+распаковывает [response](../telegram/response.mjs). Проверки:
 [quiet-owner-trim](../../tests/quiet-owner-trim.test.mjs),
 [saved-prompt-action](../../tests/saved-prompt-action.test.mjs),
 [response-delivery](../../tests/response-delivery.test.mjs).

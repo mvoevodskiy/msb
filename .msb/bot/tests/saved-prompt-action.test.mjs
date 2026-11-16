@@ -97,6 +97,14 @@ async function waitForNative(f, tick) {
   assert.fail('A native process must have started');
 }
 
+test('ordinary saved Claude response retains text before an HTML heading', async t => {
+  const text = 'Важное вступление\n<b>Отчёт</b>\nДетали';
+  const f = await profile(t, [action('html-intro')], { text });
+  await f.scheduler.tickNow();
+  assert.equal((await f.runs())[0].status, 'ok');
+  assert.ok(f.sent.some(row => row.chat === owner && row.text.includes('Важное вступление') && row.text.includes('<b>Отчёт</b>')));
+});
+
 test('a saved Claude prompt uses the old isolated workspace, native tool boundary and separate history', async t => {
   const f = await profile(t, [action('default')]);
   const protectedBefore = await Promise.all([fs.readFile(statePath()), fs.readFile(f.storeFile)]);
@@ -349,8 +357,9 @@ test('non-quiet HTML digest skips the publish banner and keeps markup', async t 
   await f.scheduler.tickNow();
   assert.equal((await f.runs())[0].status, 'ok');
   assert.equal(f.sent.length, 1);
-  assert.match(f.sent[0].text, /^<b>Быстрые деньги · 16\.11<\/b>/);
-  assert.doesNotMatch(f.sent[0].text, /Ничего не опубликовано|Собираю данные|&lt;b&gt;|<pre>/);
+  assert.match(f.sent[0].text, /^Собираю данные из pult…/);
+  assert.match(f.sent[0].text, /<b>Быстрые деньги · 16\.11<\/b>/);
+  assert.doesNotMatch(f.sent[0].text, /Ничего не опубликовано|&lt;b&gt;|<pre>/);
 });
 
 test('changing the provider during workspace preparation leaves the saved action ready without a launch', async t => {
