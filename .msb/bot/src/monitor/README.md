@@ -26,5 +26,7 @@
 [monitor-source-choice](../../tests/monitor-source-choice.test.mjs) — ввод @ника, выбор, отмена и устаревшие кнопки;
 [старый контракт](../../tests/reference/parity-monitor-source-contract.txt) — доказательства и границы;
 [monitor-reactivate](../../tests/monitor-reactivate.test.mjs) — повторное добавление отключённого X-источника;
-[контракт повтора](../../tests/reference/parity-monitor-reactivate-contract.txt) — старый и текущий путь.
+[контракт повтора](../../tests/reference/parity-monitor-reactivate-contract.txt) — старый и текущий путь;
+[monitor-github-reactivate](../../tests/monitor-github-reactivate.test.mjs) и
+[контракт GitHub](../../tests/reference/parity-monitor-github-contract.txt) — регистр, повторное включение и уже существующие дубли.
 Доступность внешних источников и полнота старого мониторинга ими не подтверждаются.

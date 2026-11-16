@@ -165,7 +165,17 @@ export async function addSourceFromInput(raw, env = process.env, { type } = {}) 
 
     if (parsed.type === 'github') {
       const full = `${parsed.owner}/${parsed.repo}`;
-      if (cfg.github.repos.some((r) => `${r.owner}/${r.repo}` === full)) {
+      const matches = cfg.github.repos.filter((r) => `${r.owner}/${r.repo}`.toLowerCase() === full.toLowerCase());
+      // Older open-core could create case-variant duplicates. Do not change
+      // an arbitrary record or claim a disabled source is already active.
+      if (matches.length > 1) {
+        return { ok: false, error: `Найдено несколько записей GitHub для ${full}. Проверь список источников.` };
+      }
+      if (matches.length) {
+        if (matches[0].enabled === false) {
+          matches[0].enabled = true;
+          return { ok: true, added: true, reason: 're-enabled', type: 'github', name: full };
+        }
         return { ok: true, added: false, type: 'github', name: full };
       }
       cfg.github.repos.push({ owner: parsed.owner, repo: parsed.repo, name: full, enabled: true, addedAt: now });

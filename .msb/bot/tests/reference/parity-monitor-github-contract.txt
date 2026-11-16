@@ -1,0 +1,20 @@
+Monitor: GitHub source reactivation — reference and boundaries
+
+Old core blob: 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11.
+Read with: git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+DHA, lines 5756–5785: owner/repo matching ignores case; an existing disabled
+entry is re-enabled and reported as re-enabled; an active duplicate is not added.
+The group github.enabled is set when adding a new entry, not when re-enabling.
+OQA, lines 43265–43278: successful re-enable has the suffix (re-enabled).
+
+In open-core before this change, casing differences created duplicate entries;
+a same-case disabled entry was left disabled. An absent enabled field is active
+in the new poller (poll.mjs), so only explicit false is re-enabled here.
+Existing case-variant duplicates can result from the old open-core behavior:
+when more than one record matches, this fix leaves all unchanged and reports
+the ambiguity instead of silently enabling one. It does not merge or repair
+historic duplicates.
+
+Path: Telegram form -> addSourceFromInput -> updateMonitorConfig under lock.
+Synthetic checks: tests/monitor-github-reactivate.test.mjs and related monitor
+tests. No network, real profile or JAR1. This does not prove a live GitHub fetch.
