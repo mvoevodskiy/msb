@@ -30,7 +30,7 @@
 [monitor-github-reactivate](../../tests/monitor-github-reactivate.test.mjs) и
 [контракт GitHub](../../tests/reference/parity-monitor-github-contract.txt) — регистр, повторное включение и уже существующие дубли;
 [monitor-youtube-reactivate](../../tests/monitor-youtube-reactivate.test.mjs) и
-[контракт YouTube](../../tests/reference/parity-monitor-youtube-contract.txt) — точные ID/handle и нерешённая проверка алиасов;
+[контракт YouTube](../../tests/reference/parity-monitor-youtube-contract.txt) — точные ID/handle, нерешённая проверка алиасов и условный формат `handle:`;
 [monitor-twitter-legacy](../../tests/monitor-twitter-legacy.test.mjs) и
 [контракт старых X-записей](../../tests/reference/parity-monitor-twitter-legacy-contract.txt) — handle/username, кнопки и сбор.
 Доступность внешних источников и полнота старого мониторинга ими не подтверждаются.
