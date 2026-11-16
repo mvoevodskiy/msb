@@ -12,14 +12,16 @@
 | Получить материалы | [poll.mjs](poll.mjs): `pollAllSources` |
 | Убрать дубликаты и записать JSONL/meta | [store.mjs](store.mjs): `itemId`, `appendItems`, `loadMeta`, `updateMeta` |
 | Собрать/отправить дайджест | [digest.mjs](digest.mjs): `buildDigestText`, `maybeSendDigest`, `updateDigestSettings` |
-| Фоновый запуск | [scheduler.mjs](scheduler.mjs): `startMonitorScheduler` |
+| Фоновый запуск | [scheduler.mjs](scheduler.mjs): `startMonitorScheduler` → [межпроцессный claim](scheduler-claim.mjs) одного бота |
 | Экран и действие | [screens/monitor](../telegram/screens/monitor.mjs), [routes/monitor](../telegram/routes/monitor.mjs) |
 
 Есть обработчики RSS/Atom, YouTube RSS, GitHub Atom, Telegram public и X API.
 Фоновый тик — 5 минут; плановый сбор соблюдает интервалы по типу источника
 и боту, а ручной сбор запускается сразу и не сдвигает плановую отметку.
 [Контракт периодов](../../tests/reference/parity-monitor-interval-contract.txt),
-[проверки](../../tests/monitor-interval-scheduler.test.mjs). Дайджест
+[проверки](../../tests/monitor-interval-scheduler.test.mjs). Одновременные
+плановые тики одного бота защищены отдельным [claim](scheduler-claim.mjs);
+[границы и тесты](../../tests/reference/parity-monitor-scheduler-claim-contract.txt). Дайджест
 учитывает сохранённую timezone профиля бота.
 Изменения `meta.json` сериализованы по профилю и между процессами: сбор обновляет
 только времена источников, отправка — свою отметку после успешной доставки.

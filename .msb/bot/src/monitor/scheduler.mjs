@@ -1,13 +1,16 @@
 import { pollAllSources } from './poll.mjs';
 import { maybeSendDigest } from './digest.mjs';
+import { tryMonitorSchedulerClaim } from './scheduler-claim.mjs';
 
 const TICK_MS = 5 * 60 * 1000;
 const START_DELAY_MS = 45_000;
 
 /**
  * Фоновый тик мониторинга: [poll](./poll.mjs) соблюдает периоды типов,
- * затем [digest](./digest.mjs) проверяет час. Ручной сбор идёт напрямую в poll.
- * Проверка: [scheduled intervals](../../tests/monitor-interval-scheduler.test.mjs).
+ * затем [digest](./digest.mjs) проверяет час; [claim](./scheduler-claim.mjs)
+ * не допускает два плановых тика одного бота. Ручной сбор идёт напрямую в poll.
+ * Проверки: [intervals](../../tests/monitor-interval-scheduler.test.mjs),
+ * [claim](../../tests/monitor-scheduler-claim.test.mjs).
  */
 export function startMonitorScheduler({ api, adminId, log = console.error } = {}) {
   let stopped = false;
@@ -23,8 +26,11 @@ export function startMonitorScheduler({ api, adminId, log = console.error } = {}
     if (stopped || busy) return;
     busy = true;
     try {
-      await pollAllSources(process.env, { log, scheduled: true });
-      await maybeSendDigest({ api, adminId, log });
+      await tryMonitorSchedulerClaim(async () => {
+        if (stopped) return;
+        await pollAllSources(process.env, { log, scheduled: true });
+        await maybeSendDigest({ api, adminId, log });
+      });
     } catch (err) {
       log(`[msb/monitor] tick error: ${err.message}`);
     } finally {

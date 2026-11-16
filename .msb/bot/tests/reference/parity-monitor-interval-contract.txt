@@ -37,11 +37,12 @@ Marker updates share the existing metadata lock and retain the later valid
 timestamp if overlapping fetches finish out of order. An additional synthetic
 RED demonstrated an earlier RSS timestamp overwriting a newer one while a
 different source was still running; the final merge kept the newer timestamp.
-This does not claim exactly-once fetching: the due check and network work are
-not a single transaction, so simultaneous schedulers of one bot can both
-start, and a crash before the marker is written can cause a later retry.
-No shared metadata lock is held over the network. Different bot IDs retain
-independent schedule markers while preserving the existing shared source data.
+The subsequent [scheduler claim](parity-monitor-scheduler-claim-contract.txt)
+prevents overlapping scheduled ticks of the same bot through the scheduler;
+direct callers can still overlap, and a crash before the marker is written can
+cause a later retry. This does not claim exactly-once fetching. No shared
+metadata lock is held over the network. Different bot IDs retain independent
+schedule markers while preserving the existing shared source data.
 
 The 15 focused fixture tests cover 60/15-minute types, failed attempts,
 manual collection, metadata preservation, restart, disabled/added sources,
