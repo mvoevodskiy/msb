@@ -1,4 +1,4 @@
-/** Observational baseline, not a claim of the intended interval policy.
+/** Regression for the owner's selected spend-pause scope; see 16234e2 for RED.
  * Fake Telegram, model and reminder dispatcher; no real profile or network.
  */
 import assert from 'node:assert/strict';
@@ -45,15 +45,15 @@ try {
   const before = await listTasks();
   scheduler = startScheduler({ log() {}, runTurn: async () => { intervalCalls++; return { ok: true, text: 'synthetic' }; } });
   await scheduler.tickNow();
-  assert.equal(intervalCalls, 1);
-  assert.ok((await listTasks())[0].nextAt > before[0].nextAt);
+  assert.equal(intervalCalls, 0);
+  assert.deepEqual(await listTasks(), before);
   const after = (await loadState()).state;
   assert.equal(after.costPaused, true);
   assert.equal(after.extAuthBypass, 'codex');
   assert.equal(after.ccSessionId, saved.ccSessionId);
   assert.deepEqual(after, saved);
-  console.log('OBSERVED: saved cost pause blocks foreground and reminder admission, but a direct interval runs and advances.');
-  console.log('This is a synthetic baseline; the intended provider/schedule policy is not established.');
+  console.log('VERIFIED: saved cost pause blocks foreground, reminder admission and a direct interval without advancing it.');
+  console.log('Synthetic routes only; real provider billing and live delivery were not tested.');
 } finally {
   if (scheduler) await scheduler.stop();
   for (const cleanup of cleanups.reverse()) await cleanup();

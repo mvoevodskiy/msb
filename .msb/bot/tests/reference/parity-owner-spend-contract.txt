@@ -71,8 +71,8 @@ executable, and disposable state. No account charge or live
 provider acceptance is part of this checkpoint.
 
 Observed route discrepancy (before the owner decision): with a disposable Codex
-state containing costPaused:true, tests/reference/probe-spend-pause-routes.mjs
-shows the real foreground Telegram route returns the existing pause text
+state containing costPaused:true, the probe at commit 16234e2 showed the real
+foreground Telegram route returns the existing pause text
 without calling its fake model; a direct call to currentReminderRefusal also
 returns blocked. The same synthetic profile's direct tasks.json interval calls
 its fake runner and advances nextAt. The flag, selected provider and session
@@ -94,3 +94,31 @@ from admission. The observation above describes the pre-fix behavior.
 The observational probe passed on local Node 26 and isolated Linux arm64 Node
 22.23.2 with synthetic profiles, fake Telegram/runner and unrelated dispatchers
 mocked. Linux had no network. No account, charge, JAR1 or OpenClaw was used.
+
+Direct interval fix: scheduler admission reads the saved flag before calling
+its runner and rechecks while admitting the task. The real runAgentTurn checks
+the captured state before first-session reservation and reads the flag again
+after preparation, immediately before handing off to the provider wrapper. A
+pause or read error observed at scheduler admission does not advance the task,
+write a run log or send a notification. Existing provider selection, model,
+permission mode and sessions are unchanged. The updated probe now expects
+foreground and interval rejection; the original RED version remains at 16234e2.
+
+RED at 8c39e49: all eight original fixture scenarios failed: paused Codex,
+Claude and Cursor intervals launched, as did cases where the pause changed
+during admission/preparation or state reading failed. GREEN after the fix: nine
+fixture cases, including first-session reservation cleanup, and a related
+43-test set passed on macOS Node 26 and isolated Linux Node 22.23.2, with
+unrelated dispatchers mocked. Two further focused cases covered a pause while
+waiting for the task lock and /stop during the new state read; all eleven
+fixture cases then passed on both platforms. The fake Codex CLI access probe
+still observed the same existing CLI arguments with both rights-toggle values on
+both platforms. This checks arguments, not real OS privileges or JAR1.
+
+The state queue is process-local and the final read and provider spawn are not
+one atomic transaction; a pause saved after the final read may not block an
+already admitted turn. The wrapper itself may do asynchronous preparation.
+The user did not request aborting an already started turn. Saved prompts and
+legacy timer paths require separate inspection and fixes; this stage alone is
+not a claim that every route or a live provider is covered. No automatic cost
+accounting is added and no real credentials, service or JAR1 were accessed.

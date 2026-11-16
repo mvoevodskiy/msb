@@ -1,5 +1,6 @@
 import {
   hasClaudeAuth,
+  loadState,
   NO_STATE_WRITE,
   resolveEffort,
   resolveModel,
@@ -41,7 +42,7 @@ export function supportsCodexAttachments(state, env = process.env) {
  * runAgentTurn: prompt/signal → выбранный CLI → результат и guarded session/usage.
  * Вызывают [Telegram](../telegram/bot.mjs) и [autonomy](../autonomy/scheduler.mjs).
  * Cold owner Codex introduction → [bootstrap](./codex-bootstrap.mjs), before ordinary session reservation.
- * Interval admission → [captured Codex pause](../engines/codex-sleep.mjs) before any first-session reservation;
+ * Interval admission → saved spend and [captured Codex pause](../engines/codex-sleep.mjs) before first-session reservation;
  * deferred result is consumed by [scheduler](../autonomy/scheduler.mjs), not sent to Telegram.
  * A prepared ninth input is claimed through [pending](./intro-pending.mjs) after the
  * captured profile/project [scope check](./intro-pending-scope.mjs), before launch.
@@ -100,10 +101,11 @@ export async function runAgentTurn({
   }
   let state, firstSession, baseWorkspace, contextNow, skillInstall, mcpInstall, mcp, pendingClaimed, pendingWait;
   let intervalDeferred = false;
+  const isInterval = autonomy && typeof intervalShouldDefer === 'function';
   await updateState(async s => {
     state = { ...s };
-    if (autonomy && typeof intervalShouldDefer === 'function') {
-      if (signal?.aborted || intervalShouldDefer() || await capturedCodexIsSleeping(state, env) ||
+    if (isInterval) {
+      if (s.costPaused || signal?.aborted || intervalShouldDefer() || await capturedCodexIsSleeping(state, env) ||
           signal?.aborted || intervalShouldDefer()) {
         intervalDeferred = true;
         return NO_STATE_WRITE;
@@ -190,6 +192,11 @@ export async function runAgentTurn({
   mcp=await prepareMcpLaunch(state,providerId,env,cwd);
   const installScope=mcpInstall?await nativeMcpScope(mcpInstall.provider,cwd,env):undefined;
   if (signal?.aborted) return aborted();
+  if (isInterval) {
+    const current = (await loadState(env)).state;
+    if (signal?.aborted) return aborted();
+    if (current.costPaused || intervalShouldDefer()) return { ok: false, intervalDeferred: true };
+  }
 
   const codexProfile = isCodex ? captureCodexProfile(env) : undefined;
   let lastTool = '';

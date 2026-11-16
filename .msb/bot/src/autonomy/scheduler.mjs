@@ -7,6 +7,7 @@ import { runAgentTurn } from '../agent/turn.mjs';
 import { admitCurrentTask, listTasks, saveTaskResult } from './store.mjs';
 import { trySessionOperation } from '../agent/session-operation.mjs';
 import { readAutonomyPause, trackAutonomyTurn } from './owner-pause.mjs';
+import { loadState } from '../state.mjs';
 import { createCodexSleep } from '../engines/codex-sleep.mjs';
 import { createReminderDispatcher } from './reminder-dispatch.mjs';
 import { createOpenClawReminderDispatcher } from './openclaw-reminder-dispatch.mjs';
@@ -22,6 +23,7 @@ const TICK_MS = 60_000;
  * отправляются напрямую, интервальные задачи используют [runner](../agent/turn.mjs).
  * [Owner pause](./owner-pause.mjs) blocks admission and interrupts an active interval.
  * [Codex sleep](../engines/codex-sleep.mjs) also defers a not-yet-started interval.
+ * The owner's saved spend pause defers it before [runner](../agent/turn.mjs).
  * [Store](./store.mjs) условно сохраняет одну неизменённую задачу после каждого хода,
  * не весь старый список; active run не держит lock tasks.json.
  * [Interval claim](./interval-claim.mjs) сериализует интервалы одного бота до сохранения.
@@ -144,7 +146,9 @@ async function executeTask(task, api, adminId, log, runTurn, isStopped, codexSle
   const signal = AbortSignal.any([turn.signal, admissionAbort.signal]);
   let result, started;
   try {
+    const spendPaused = async () => Boolean((await loadState()).state.costPaused);
     const paused = async () => (await readAutonomyPause()).stopped || signal.aborted || isStopped() ||
+      await spendPaused() || signal.aborted || isStopped() ||
       await codexSleeping({ resumeOnWake: false }) || signal.aborted || isStopped();
     if (await paused()) return false;
     // Admission awaits I/O. Catch edits observed during that work, then
@@ -157,7 +161,8 @@ async function executeTask(task, api, adminId, log, runTurn, isStopped, codexSle
       const admitted = await admitCurrentTask(task, async () => {
         // A different process may pause autonomy while this one waits for the
         // task lock. These reads take no pause/marker transaction lock.
-        if ((await readAutonomyPause()).stopped || signal.aborted || isStopped()) return false;
+        if ((await readAutonomyPause()).stopped || signal.aborted || isStopped() ||
+            await spendPaused() || signal.aborted || isStopped()) return false;
         log('[msb/scheduler] run ' + Date.now() + '-' + task.id.slice(0, 8) + ' task=' + task.title);
         try {
           started = Promise.resolve(runTurn({
