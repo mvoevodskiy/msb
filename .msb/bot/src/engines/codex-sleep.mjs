@@ -6,6 +6,7 @@
  * [handoff/stop](../../tests/codex-sleep-flow.test.mjs) use synthetic I/O;
  * allowStop admits existing stop paths only for selected Codex; provider
  * selection captures a revision for [overlay](../../../../overlay/bot/ext/codex-pause-switch.mjs).
+ * Captured interval provider → [turn](../agent/turn.mjs); [checks](../../tests/interval-provider-pause.test.mjs).
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -16,8 +17,20 @@ import { createSleepMarker } from './sleep-marker.mjs';
 import { createSleepGate } from './sleep-gate.mjs';
 import { isCodexSelected } from './codex-active.mjs';
 
+function codexMarkerPath(env = process.env) {
+  return path.join(msbRoot(env), 'engine', `sleep.${botId(env)}`);
+}
+
+// The caller already owns the selected state snapshot. Do not reread a newer
+// provider here or wake the marker; the same marker/lock remains authoritative.
+export async function capturedCodexIsSleeping(state, env = process.env) {
+  if (!isCodexSelected(state)) return false;
+  const markerState = createSleepMarker({ marker: () => codexMarkerPath(env) });
+  return markerState.sleeping({ resumeOnWake: false });
+}
+
 export function createCodexSleep({ pending, now = Date.now, onWake = async () => {}, extraButtons = async () => {} }) {
-  const marker = () => path.join(msbRoot(), 'engine', `sleep.${botId()}`);
+  const marker = () => codexMarkerPath();
   const markerState = createSleepMarker({ marker, onWake });
   const notices = new Map();
 

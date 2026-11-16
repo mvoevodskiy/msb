@@ -30,6 +30,7 @@ const TICK_MS = 60_000;
  * [compact guard](../../tests/autonomy-compact-guard.test.mjs),
  * [claim regression](../../tests/autonomy-same-bot-claim.test.mjs),
  * [Telegram stop](../../tests/autonomy-stop-admission.test.mjs),
+ * [provider/pause](../../tests/interval-provider-pause.test.mjs),
  * [shared interval probe](../../tests/reference/probe-shared-interval-race.mjs). [Контракт](./README.md).
  */
 export function startScheduler({ api, adminId, scheduledTurns, timezone, now = Date.now,
@@ -156,6 +157,7 @@ async function executeTask(task, api, adminId, log, runTurn, isStopped, codexSle
         'Задание:\n' + task.prompt,
       ].join('\n'),
       autonomy: true,
+      intervalShouldDefer: isStopped,
       signal,
     });
   } catch (error) {
@@ -164,7 +166,7 @@ async function executeTask(task, api, adminId, log, runTurn, isStopped, codexSle
   } finally {
     turn.release();
   }
-  if (signal.aborted) return false;
+  if (signal.aborted || result?.intervalDeferred === true) return false;
 
   const dir = autonomyDir();
   ensureDir(dir);

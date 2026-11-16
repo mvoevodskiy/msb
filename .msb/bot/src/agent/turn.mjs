@@ -15,6 +15,7 @@ import { introductionPendingCurrent } from './intro-pending-scope.mjs';
 import { readClaudeQuotaEvent, saveClaudeQuota } from './claude-quota.mjs';
 import { runOpenClawTurn } from './openclaw-turn.mjs';
 import { conversationalModePrompt } from './mode-prompt.mjs';
+import { capturedCodexIsSleeping } from '../engines/codex-sleep.mjs';
 import { projectLocations, resolveProjectCwd } from '../projects/paths.mjs';
 import { isLocalReminderEngine } from '../autonomy/reminder-policy.mjs';
 import { openClawTaskMaintenancePrompt, reminderPrompt } from '../autonomy/reminder-protocol.mjs';
@@ -40,6 +41,8 @@ export function supportsCodexAttachments(state, env = process.env) {
  * runAgentTurn: prompt/signal → выбранный CLI → результат и guarded session/usage.
  * Вызывают [Telegram](../telegram/bot.mjs) и [autonomy](../autonomy/scheduler.mjs).
  * Cold owner Codex introduction → [bootstrap](./codex-bootstrap.mjs), before ordinary session reservation.
+ * Interval admission → [captured Codex pause](../engines/codex-sleep.mjs) before any first-session reservation;
+ * deferred result is consumed by [scheduler](../autonomy/scheduler.mjs), not sent to Telegram.
  * A prepared ninth input is claimed through [pending](./intro-pending.mjs) after the
  * captured profile/project [scope check](./intro-pending-scope.mjs), before launch.
  * OpenClaw ordinary turn → [named acpx](./openclaw-turn.mjs), before Claude auth.
@@ -76,6 +79,7 @@ export async function runAgentTurn({
   onIntroPendingClaimed,
   onIntroPendingLaunched,
   requireCodex = false,
+  intervalShouldDefer,
   env = process.env,
 } = {}) {
   const aborted = () => ({ ok: false, error: 'aborted', text: 'Остановлено.' });
@@ -95,8 +99,16 @@ export async function runAgentTurn({
     } else if (introduction) return introduction;
   }
   let state, firstSession, baseWorkspace, contextNow, skillInstall, mcpInstall, mcp, pendingClaimed, pendingWait;
+  let intervalDeferred = false;
   await updateState(async s => {
     state = { ...s };
+    if (autonomy && typeof intervalShouldDefer === 'function') {
+      if (signal?.aborted || intervalShouldDefer() || await capturedCodexIsSleeping(state, env) ||
+          signal?.aborted || intervalShouldDefer()) {
+        intervalDeferred = true;
+        return NO_STATE_WRITE;
+      }
+    }
     if (requireCodex && !supportsCodexAttachments(state, env)) return NO_STATE_WRITE;
     if (pendingId) {
       if (signal?.aborted) return NO_STATE_WRITE;
@@ -118,6 +130,9 @@ export async function runAgentTurn({
   }, env);
   try {
   if (signal?.aborted) return aborted();
+  if (intervalDeferred || (autonomy && typeof intervalShouldDefer === 'function' && intervalShouldDefer())) {
+    return { ok: false, intervalDeferred: true };
+  }
   if (pendingId && !pendingClaimed) return pendingWait
     ? { ok: false, error: 'intro_pending_wait', text: 'Запрос сохранён. Дождусь завершения текущего хода и продолжу при следующем сообщении; повторно отправлять запрос не нужно.' }
     : { ok: false, error: 'intro_pending_changed',

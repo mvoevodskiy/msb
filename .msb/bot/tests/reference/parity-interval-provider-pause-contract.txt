@@ -1,4 +1,4 @@
-Interval Codex pause and provider transition — RED evidence
+Interval Codex pause and provider transition — RED → GREEN
 
 Old reference: git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba.
 Lines 3785–3803 describe the per-bot sleep marker; 109826–109879 show the
@@ -7,7 +7,7 @@ provider or the new tasks.json interval route, so it cannot prove exact Codex
 semantics. The accepted new-core contract keeps a selected Codex asleep and
 preserves each provider's conversation during switching.
 
-The diagnostic probe-codex-provider-pause.mjs uses the actual Telegram
+The original RED probe in commit 1f3f756 used the actual Telegram
 provider-selection callback, a fake CLI login status held at a barrier, the
 actual interval scheduler and agent router, and a fake model runner. Selection
 starts while Claude is active and no marker exists; after the ingress gate, a
@@ -16,12 +16,33 @@ is still selected. Provider selection then restores Codex and its parked test
 session; the interval enters the fake Codex runner, preserves the marker but
 advances nextAt. This is RED, not evidence that JAR1 had this interleaving.
 
+The RED probe used temporary files, fake auth/CLI status, fake Telegram and
+fake model. CLI installation was mocked; no real provider, network, JAR1 or
+OpenClaw behavior was exercised. RED was reproduced on local Node 26 and
+isolated Linux Node 22.23.2. The first Linux attempt used a noexec temporary
+mount; the corrected run used an exec tmpfs and an explicit no-installer mock.
+
+The new runner guard checks the marker for the state snapshot actually selected
+by the interval, before first-session reservation, without waking the bot.
+An internal deferred result makes the scheduler retain the due task without a
+run log or notification. The regression follows the real selection callback,
+checks state/session/marker and the unchanged task, then wakes Codex and verifies
+one execution. It also checks an alternate bot profile, first-session reserve,
+Claude and direct turns, unreadable marker, /stop, and a contended marker lock.
+
 Run from iia root:
   node .msb/bot/tests/reference/probe-codex-provider-pause.mjs
-The probe explicitly expects the current defect; it is not a passing test.
-It uses temporary files, fake auth/CLI status, fake Telegram and fake model.
-CLI installation is mocked and no real provider, network, JAR1, or OpenClaw
-behavior is exercised. RED was reproduced on local Node 26 and isolated Linux
-Node 22.23.2. The first Linux attempt used a noexec temporary mount and could
-not locate the fixture CLI; the corrected isolated run used an exec tmpfs and
-an explicit no-installer mock.
+  node --test .msb/bot/tests/interval-provider-pause.test.mjs
+The test wrapper enables module mocks in an isolated child and asserts all 11
+synthetic scenarios. Provider changes or markers written by another process
+after the captured state/marker check remain a separate non-atomic boundary;
+/stop of an already started interval and shared task ownership are not fixed.
+
+Validation: local Node 26 and isolated Linux arm64 Node 22.23.2 each passed
+37 related top-level tests (the interval-provider wrapper runs 11 additional
+synthetic cases), two selected Codex/Claude interval-pause cases, five selected
+Codex/Claude switch cases, and six selected provider-session cases. The
+selections exclude unrelated engine behavior; the status/dispatcher fixtures
+are mocked before import. Both model runners and Telegram are synthetic.
+The prior interval-claim stage separately validated native better-sqlite3;
+this provider-guard stage was checked with the existing Node SQLite fallback.
