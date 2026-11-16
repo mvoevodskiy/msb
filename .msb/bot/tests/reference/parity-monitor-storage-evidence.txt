@@ -33,3 +33,11 @@ module/open failure, rollback and an unchanged JSONL fallback; SQLite WAL needs
 a consistent copy. Until then do not silently activate or migrate user data.
 No real source, database, credentials, network, JAR1 or unrelated engine was
 read or changed by this audit.
+
+Current-baseline probe: tests/reference/probe-monitor-storage-baseline.mjs creates
+an isolated profile with cfg.storage=sqlite, one synthetic JSONL item and a
+minimal old-shaped knowledge.db containing a different item. On local Node 26
+and isolated Linux Node 22.23.2, list/digest returned the JSONL item and the
+synthetic database bytes remained unchanged. The probe does not establish future
+switching policy, real JAR1 contents, complete old schema/FTS/WAL compatibility
+or a safe migration. It is a baseline, not a requirement to keep SQLite disabled.

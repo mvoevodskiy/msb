@@ -20,7 +20,8 @@
 Изменения `meta.json` сериализованы по профилю и между процессами: сбор обновляет
 только времена источников, отправка — свою отметку после успешной доставки.
 Реальный backend — JSONL. Сохранение значения `sqlite` в UI не создаёт SQLite backend;
-[старое хранилище и граница включения](../../tests/reference/parity-monitor-storage-evidence.txt).
+[старое хранилище и граница включения](../../tests/reference/parity-monitor-storage-evidence.txt),
+[синтетический baseline](../../tests/reference/probe-monitor-storage-baseline.mjs).
 
 Проверки: [monitor-env](../../tests/monitor-env.test.mjs) — config/storage,
 [menu-handlers](../../tests/menu-handlers.test.mjs) — меню, timezone и отправка;
