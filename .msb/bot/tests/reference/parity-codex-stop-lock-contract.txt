@@ -1,4 +1,4 @@
-Codex stop during a contended sleep marker (RED diagnostic)
+Codex stop during a contended sleep marker (RED → GREEN)
 
 User-facing contract: the already supported /stop, /stop@bot and reply «стоп»
 interrupt an active Codex turn even while the bot is paused; stopping must not
@@ -11,7 +11,31 @@ turn on /stop; 109826-109879 gates inputs while asleep. Inspect with
 RED: when a synthetic marker lock is held, both core-only and overlay+core
 wait before dispatching all three stop variants. Releasing the lock lets the
 stop reach the fake active turn; its marker and captured session remain intact.
-The diagnostic intentionally asserts the defect and is not a release test.
-It uses a temporary profile, fake Telegram/turn and a mocked engine status;
-no real model, credentials, network, JAR1 or OpenClaw behavior is involved.
-Run from iia root: node .msb/bot/tests/reference/probe-codex-stop-lock.mjs
+The original diagnostic asserting the defect is preserved in commit 8c60034;
+it is not a release test. The new shared stop predicate and provider-scoped
+admission bypass the marker transaction for an already permitted Codex stop.
+Overlay only takes this route for the owner, a present marker and selected Codex;
+a reply owned by an overlay form retains that form's existing priority. Awake
+slash commands retain normal form cancellation; paused slash behavior remains
+unchanged. The gate still checks owner before model/stop dispatch.
+
+GREEN: the executable regression asserts all six stop paths interrupt before
+the held lock is released. It also checks owner scope, stop lookalikes, awake
+and paused overlay forms, a core form and an unreadable marker. A form-owned
+reply can still wait for the marker: its prior routing has not been changed.
+The separate issue of /stop for an already-running direct interval remains.
+Temporary profile, fake Telegram/turn and mocked engine status only; no real
+model, credentials, network, JAR1 or unrelated engine behavior is involved.
+Run from iia root:
+  node .msb/bot/tests/reference/probe-codex-stop-lock.mjs
+  node --test .msb/bot/tests/codex-stop-lock.test.mjs
+
+Validation: on local Node 26 and isolated Linux arm64 Node 22.23.2, 64
+related top-level tests passed (their child wrappers additionally assert 16
+stop-lock and 11 provider/pause synthetic cases), 13 sleep-flow cases with
+engine status mocked, and 10 selected stop/form cases. The original selected
+menu test timed out on both platforms; an independent archive of 8c60034
+confirmed its expectation predated the already-requested new-message delivery.
+Commit 0d21a6c updates that test only. The new fix was not tested on JAR1 or
+with a real account. Marker reads and session data in these cases are synthetic;
+the provider state and marker are not claimed atomic across processes.
