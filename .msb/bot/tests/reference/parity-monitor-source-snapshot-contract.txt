@@ -1,0 +1,16 @@
+Monitor source results after a concurrent edit (RED)
+
+A poll must not apply the result of an old source snapshot to a changed or
+replaced row. X already compares the snapshot under the config lock; before
+this stage RSS, YouTube, GitHub and Telegram merge only on key plus addedAt.
+That is unsafe when an old row has no addedAt or a replacement uses the same
+value. A delayed YouTube resolver can also assign its old channel ID to the
+changed row. See tests/monitor-source-snapshot.test.mjs. These assertions are a
+RED diagnostic until a separate fix; they are not release evidence.
+
+Old readable blob 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11:5882-5910 and
+7290-7350 constructs sources and updates cursors by identity; read via
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | sed -n '5882,5910p;7290,7350p'
+This is a new-core concurrency safety defect, not a claim that old core had an
+atomic snapshot guard. Tests use temporary profiles and fake fetch; no real
+source, Telegram, JAR1 or OpenClaw is involved.

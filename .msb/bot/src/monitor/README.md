@@ -32,5 +32,7 @@
 [monitor-youtube-reactivate](../../tests/monitor-youtube-reactivate.test.mjs) и
 [контракт YouTube](../../tests/reference/parity-monitor-youtube-contract.txt) — точные ID/handle, нерешённая проверка алиасов и условный формат `handle:`;
 [monitor-twitter-legacy](../../tests/monitor-twitter-legacy.test.mjs) и
-[контракт старых X-записей](../../tests/reference/parity-monitor-twitter-legacy-contract.txt) — handle/username, кнопки и сбор.
+[контракт старых X-записей](../../tests/reference/parity-monitor-twitter-legacy-contract.txt) — handle/username, кнопки и сбор;
+[RED снимка источника](../../tests/monitor-source-snapshot.test.mjs) и
+[контракт](../../tests/reference/parity-monitor-source-snapshot-contract.txt) — отложенный сбор и изменённые записи.
 Доступность внешних источников и полнота старого мониторинга ими не подтверждаются.
