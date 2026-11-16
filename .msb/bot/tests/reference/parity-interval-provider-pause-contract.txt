@@ -33,8 +33,8 @@ Claude and direct turns, unreadable marker, /stop, and a contended marker lock.
 Run from iia root:
   node .msb/bot/tests/reference/probe-codex-provider-pause.mjs
   node --test .msb/bot/tests/interval-provider-pause.test.mjs
-The test wrapper enables module mocks in an isolated child and asserts all 11
-synthetic scenarios. Provider changes or markers written by another process
+The test wrapper enables module mocks in an isolated child and now asserts all 12
+synthetic scenarios, including Codex pause while the task lock is held. Provider changes or markers written by another process
 after the captured state/marker check remain a separate non-atomic boundary;
 /stop of an already started interval and shared task ownership are not fixed.
 
@@ -45,4 +45,6 @@ Codex/Claude switch cases, and six selected provider-session cases. The
 selections exclude unrelated engine behavior; the status/dispatcher fixtures
 are mocked before import. Both model runners and Telegram are synthetic.
 The prior interval-claim stage separately validated native better-sqlite3;
-this provider-guard stage was checked with the existing Node SQLite fallback.
+that original provider-guard stage used the existing Node SQLite fallback.
+A later interval-admission stage also ran the expanded wrapper on native
+better-sqlite3; its details are in parity-interval-claim-contract.txt.

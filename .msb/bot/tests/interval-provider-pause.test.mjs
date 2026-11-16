@@ -9,7 +9,7 @@ const fixture=fileURLToPath(new URL('./fixtures/interval-provider-pause-check.mj
 test('provider selection and interval pause preserve the selected session', {timeout:20000}, async()=>{
   const env={PATH:'/usr/bin:/bin',TMPDIR:process.env.TMPDIR||'/tmp'};
   const {stdout}=await run(process.execPath,['--experimental-test-module-mocks','--no-warnings','--test','--test-reporter=spec',fixture],{timeout:18000,env});
-  assert.match(stdout,/tests 11/);
-  assert.match(stdout,/pass 11/);
+  assert.match(stdout,/tests 12/);
+  assert.match(stdout,/pass 12/);
   assert.match(stdout,/fail 0/);
 });

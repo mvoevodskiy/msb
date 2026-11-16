@@ -4,10 +4,14 @@
 [Telegram](../telegram/README.md#callback-маршруты)
 
 `store` сериализует read/modify/write через общий [file lock](../../shared/file-lock.mjs).
-Scheduler перечитывает кандидата после допуска, затем повторно проверяет паузы
-и перед запуском учитывает stop/pending. По завершении он условно сохраняет
-только поля результата неизменённой задачи. Новый/удалённый/отредактированный
-вход не затирается старым снимком; lock не удерживается во время модели.
+Scheduler перечитывает кандидата, проверяет паузы и учитывает stop/pending.
+Под тем же lock, что используют писатели `tasks.json`, он ещё раз сравнивает
+снимок, читает общую паузу и допускает ход. Ожидание модели идёт уже без этого
+lock. Изменение до допуска предотвращает старый ход; изменение после допуска
+сохраняется, но уже принятый ход не отменяется. По завершении условно сохраняются
+только поля результата неизменённой задачи. Если правка не меняла время запуска,
+отвергнутый CAS может оставить задачу наступившей и привести к повтору на
+следующем такте. Независимые файлы паузы и другие процессы не атомарны с допуском.
 [persistence regression](../../tests/autonomy-store-concurrency.test.mjs) проверяет
 также независимые процессы. [Контракт old→new](../../tests/reference/parity-autonomy-contract.txt). `saveAllTasks` — явная замена всего списка, не API
 будущих toggle/delete; их read/modify/write должно оставаться в store transaction.
@@ -29,7 +33,7 @@ Lock сериализует запись JSON. Отдельный [interval clai
 | Задача | Файл → функция |
 |---|---|
 | Разобрать сообщение «каждые N часов …» | [store.mjs](store.mjs): `tryParseScheduleMessage` |
-| Прочитать/сохранить задачи | [store.mjs](store.mjs): `listTasks`, `addTask`, `saveTaskResult` (полная замена — только явный `saveAllTasks`) |
+| Прочитать/сохранить задачи | [store.mjs](store.mjs): `listTasks`, `addTask`, `admitCurrentTask`, `saveTaskResult` (полная замена — только явный `saveAllTasks`) |
 | Выполнить наступившую задачу и сохранить `runs.jsonl` | [scheduler.mjs](scheduler.mjs): `startScheduler`, внутренний `runTask` |
 | Не запускать интервальные ходы одного бота параллельно | [interval-claim.mjs](interval-claim.mjs): `tryIntervalClaim` → [file lock](../../shared/file-lock.mjs): `tryWithFileLock` |
 | Запустить сохранённый таймер | [legacy-dispatch.mjs](legacy-dispatch.mjs) → [очередь Telegram](../telegram/inbox.mjs) |

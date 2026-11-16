@@ -249,3 +249,32 @@ test('defer immediately after reserving a first session releases only its own re
   assert.equal(out.intervalDeferred,true);assert.equal(spawned.length,0);
   assert.deepEqual((await loadState()).state,state);
 });
+
+test('Codex pause set while the task lock is busy still defers the captured provider', {timeout:10000}, async t=>{
+  spawned.length=0;
+  const f=await fixture(t,undefined,{overlay:false});
+  await addTask({id:'fixture',prompt:'synthetic',everyHours:1,nextAt:Date.now()-1000});
+  const before=await listTasks(),marker=await markerAt();
+  const {autonomyDir}=await import(mod('.msb/bot/src/paths.mjs'));
+  const file=path.resolve(autonomyDir(),'tasks.json'),locked=gate(),held=gate();
+  const holder=withFileLock(file,async()=>{locked.resolve();await held.promise;});
+  await locked.promise;
+  const scheduler=startScheduler({log(){},adminId:42,api:{sendMessage:async()=>{}},runTurn:runAgentTurn});
+  let tick;
+  try {
+    tick=scheduler.tickNow();
+    await until(()=>{
+      const queued=globalThis[Symbol.for('msb.providerStoreUpdates')]?.get(file);
+      return Boolean(queued && queued!==holder);
+    },'final task admission queued behind the held lock');
+    await fs.writeFile(marker,'fixture');
+    held.resolve();await holder;await tick;tick=null;
+    assert.equal(spawned.length,0);
+    assert.deepEqual(await listTasks(),before);
+    assert.equal(await fs.readFile(marker,'utf8'),'fixture');
+    await f.callback('eng:wake');
+    await scheduler.tickNow();
+    assert.equal(spawned.length,1);
+    assert.equal(spawned[0].provider,'codex');
+  } finally {held.resolve();await holder.catch(()=>{});if(tick)await tick.catch(()=>{});await scheduler.stop();}
+});

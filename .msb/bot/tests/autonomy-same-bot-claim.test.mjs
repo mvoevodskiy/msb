@@ -11,7 +11,7 @@ import path from 'node:path';
 import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { addTask, listTasks, saveAllTasks } from '../src/autonomy/store.mjs';
-import { tryWithFileLock } from '../shared/file-lock.mjs';
+import { tryWithFileLock, withFileLock } from '../shared/file-lock.mjs';
 import { saveState } from '../src/state.mjs';
 
 const worker=fileURLToPath(new URL('./fixtures/autonomy-claim-worker.mjs',import.meta.url));
@@ -275,4 +275,127 @@ for(const command of ['stop','pending']) test(`${command} during the second admi
   w.send('release');w.send('admit');await w.wait('done');
   assert.deepEqual(await listTasks(f.env),before);
   assert.equal(w.events.filter(event=>event.event==='entered').length,0);
+});
+
+for (const change of ['edit', 'delete']) test(`a task ${change} during the final pause check prevents admission`, { timeout: 10000 }, async t => {
+  const f = await setupSingle(t, { admission: true, admissionAt: 2 }), w = f.launch();
+  await w.wait('ready'); w.send('start'); await w.wait('admission');
+  const tasks = await listTasks(f.env);
+  if (change === 'edit') { tasks[0].prompt = 'owner-updated'; tasks[0].enabled = false; }
+  const changed = change === 'delete' ? [] : tasks;
+  await saveAllTasks(changed, f.env);
+  w.send('release'); w.send('admit'); await w.wait('done');
+  assert.equal(w.events.filter(event => event.event === 'entered').length, 0);
+  assert.equal(w.events.filter(event => event.event === 'delivery').length, 0);
+  assert.deepEqual(await listTasks(f.env), changed);
+});
+
+for (const failure of ['throw', 'reject', 'deferred']) test(`a ${failure} at admission leaves the task due without a notification`, { timeout: 10000 }, async t => {
+  const f = await setupSingle(t), before = await listTasks(f.env);
+  const first = f.launch({ TASK_TEST_TURN_FAILURE: failure });
+  await first.wait('ready'); first.send('start'); await first.wait('entered');
+  if (failure !== 'deferred') await first.wait('logged-error');
+  await first.wait('done');
+  assert.deepEqual(await listTasks(f.env), before);
+  assert.equal(first.events.filter(event => event.event === 'delivery').length, 0);
+  const next = f.launch(); await next.wait('ready'); next.send('start'); await next.wait('entered');
+  next.send('release'); await next.wait('done');
+  assert.ok((await listTasks(f.env))[0].nextAt > Date.now());
+});
+
+test('a simulated lock cleanup failure aborts and drains its started turn before retry', { timeout: 10000 }, async t => {
+  const f = await setupSingle(t), before = await listTasks(f.env);
+  const first = f.launch({ TASK_TEST_RELEASE_LOCK_FAILURE: '1' });
+  await first.wait('ready'); first.send('start'); await first.wait('entered');
+  await first.wait('lock-release-failed'); await first.wait('aborted'); await first.wait('logged-error'); await first.wait('done');
+  assert.deepEqual(await listTasks(f.env), before);
+  assert.equal(first.events.filter(event => event.event === 'delivery').length, 0);
+  const next = f.launch(); await next.wait('ready'); next.send('start'); await next.wait('entered');
+  next.send('release'); await next.wait('done');
+  assert.ok((await listTasks(f.env))[0].nextAt > Date.now());
+});
+
+for (const operation of ['stop', 'pending', 'pause']) test(`${operation} while waiting for the task lock prevents admission`, { timeout: 10000 }, async t => {
+  const f = await setupSingle(t, { scheduled: true }), before = await listTasks(f.env);
+  const locked = {}; locked.ready = new Promise(resolve => { locked.mark = resolve; });
+  const release = {}; release.ready = new Promise(resolve => { release.mark = resolve; });
+  const file = path.resolve(f.env.AUTONOMY_DIR, 'tasks.json');
+  const holder = withFileLock(file, async () => { locked.mark(); await release.ready; });
+  await locked.ready;
+  const worker = f.launch({ TASK_TEST_FINAL_LOCK_GATE: '1' });
+  try {
+    await worker.wait('ready'); worker.send('start'); await worker.wait('final-admission');
+    worker.send(operation); await worker.wait(operation === 'pause' ? 'paused' : operation === 'stop' ? 'stopped' : 'pending');
+  } finally { release.mark(); await holder; }
+  await worker.wait('done');
+  assert.equal(worker.events.filter(event => event.event === 'entered').length, 0);
+  assert.equal(worker.events.filter(event => event.event === 'delivery').length, 0);
+  assert.deepEqual(await listTasks(f.env), before);
+});
+
+for (const pause of ['owner', 'fleet']) test(`an external ${pause} pause while waiting for the task lock prevents admission`, { timeout: 10000 }, async t => {
+  const f = await setupSingle(t), before = await listTasks(f.env);
+  const locked = {}; locked.ready = new Promise(resolve => { locked.mark = resolve; });
+  const release = {}; release.ready = new Promise(resolve => { release.mark = resolve; });
+  const holder = withFileLock(path.resolve(f.env.AUTONOMY_DIR, 'tasks.json'), async () => { locked.mark(); await release.ready; });
+  await locked.ready;
+  const worker = f.launch({ TASK_TEST_FINAL_LOCK_GATE: '1' });
+  try {
+    await worker.wait('ready'); worker.send('start'); await worker.wait('final-admission');
+    const root = path.dirname(f.env.MSB_SESSION_DIR);
+    await fs.mkdir(path.join(root, 'autonomy'), { recursive: true });
+    if (pause === 'owner') await fs.writeFile(path.join(root, 'autonomy', 'STOP'), 'synthetic');
+    else await fs.writeFile(path.join(root, 'remote-config.json'), JSON.stringify({ autonomyGlobalStop: true }));
+  } finally { release.mark(); await holder; }
+  worker.send('release'); await worker.wait('done');
+  assert.equal(worker.events.filter(event => event.event === 'entered').length, 0);
+  assert.equal(worker.events.filter(event => event.event === 'delivery').length, 0);
+  assert.deepEqual(await listTasks(f.env), before);
+});
+
+test('a delayed abort after simulated lock failure keeps the interval claim but not the task lock', { timeout: 10000 }, async t => {
+  const f = await setupSingle(t), before = await listTasks(f.env);
+  const first = f.launch({ TASK_TEST_RELEASE_LOCK_FAILURE: '1', TASK_TEST_DELAY_ABORT_EXIT: '1' });
+  await first.wait('ready'); first.send('start'); await first.wait('entered'); await first.wait('lock-release-failed');
+  const contender = f.launch(); await contender.wait('ready'); contender.send('start'); await contender.wait('done');
+  assert.equal(contender.events.filter(event => event.event === 'entered').length, 0);
+  await saveAllTasks(before, f.env);
+  first.send('release'); await first.wait('aborted'); await first.wait('logged-error'); await first.wait('done');
+  assert.deepEqual(await listTasks(f.env), before);
+  const next = f.launch(); await next.wait('ready'); next.send('start'); await next.wait('entered');
+  next.send('release'); await next.wait('done');
+  assert.ok((await listTasks(f.env))[0].nextAt > Date.now());
+});
+
+test('an unreadable fleet pause during task admission fails closed', { timeout: 10000 }, async t => {
+  const f = await setupSingle(t), before = await listTasks(f.env);
+  const locked = {}; locked.ready = new Promise(resolve => { locked.mark = resolve; });
+  const release = {}; release.ready = new Promise(resolve => { release.mark = resolve; });
+  const holder = withFileLock(path.resolve(f.env.AUTONOMY_DIR, 'tasks.json'), async () => { locked.mark(); await release.ready; });
+  await locked.ready;
+  const worker = f.launch({ TASK_TEST_FINAL_LOCK_GATE: '1' });
+  try {
+    await worker.wait('ready'); worker.send('start'); await worker.wait('final-admission');
+    const root = path.dirname(f.env.MSB_SESSION_DIR);
+    await fs.mkdir(root, { recursive: true });
+    await fs.writeFile(path.join(root, 'remote-config.json'), '{broken-json');
+  } finally { release.mark(); await holder; }
+  await worker.wait('logged-error'); await worker.wait('done');
+  assert.equal(worker.events.filter(event => event.event === 'entered').length, 0);
+  assert.deepEqual(await listTasks(f.env), before);
+});
+
+test('an edit after admission keeps its due time and the next tick uses the edited prompt', { timeout: 10000 }, async t => {
+  const f = await setupSingle(t), first = f.launch();
+  await first.wait('ready'); first.send('start');
+  const old = await first.wait('entered'); assert.match(old.prompt, /synthetic/);
+  const changed = await listTasks(f.env); changed[0].prompt = 'owner-updated-only';
+  await saveAllTasks(changed, f.env);
+  first.send('release'); await first.wait('done');
+  assert.deepEqual(await listTasks(f.env), changed, 'The prior result cannot overwrite the edit.');
+  assert.ok(changed[0].nextAt <= Date.now(), 'The unchanged due time can cause a later rerun.');
+  const second = f.launch(); await second.wait('ready'); second.send('start');
+  const current = await second.wait('entered'); assert.match(current.prompt, /owner-updated-only/);
+  second.send('release'); await second.wait('done');
+  assert.ok((await listTasks(f.env))[0].nextAt > Date.now());
 });

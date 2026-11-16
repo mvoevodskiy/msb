@@ -4,7 +4,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { autonomyDir, ensureDir } from '../paths.mjs';
 import { tryIntervalClaim } from './interval-claim.mjs';
 import { runAgentTurn } from '../agent/turn.mjs';
-import { listTasks, saveTaskResult } from './store.mjs';
+import { admitCurrentTask, listTasks, saveTaskResult } from './store.mjs';
 import { trySessionOperation } from '../agent/session-operation.mjs';
 import { readAutonomyPause, trackAutonomyTurn } from './owner-pause.mjs';
 import { createCodexSleep } from '../engines/codex-sleep.mjs';
@@ -25,7 +25,8 @@ const TICK_MS = 60_000;
  * [Store](./store.mjs) условно сохраняет одну неизменённую задачу после каждого хода,
  * не весь старый список; active run не держит lock tasks.json.
  * [Interval claim](./interval-claim.mjs) сериализует интервалы одного бота до сохранения.
- * После I/O допуска snapshot и паузы сверяются снова; допуск не атомарен.
+ * После I/O допуска snapshot и паузы сверяются снова; финальный snapshot и
+ * вызов runner сериализованы с записью tasks.json, независимые паузы — нет.
  * Проверки: [persistence](../../tests/autonomy-store-concurrency.test.mjs),
  * [compact guard](../../tests/autonomy-compact-guard.test.mjs),
  * [claim regression](../../tests/autonomy-same-bot-claim.test.mjs),
@@ -137,31 +138,52 @@ async function runTask(task, api, adminId, log, runTurn, isStopped, codexSleepin
 
 async function executeTask(task, api, adminId, log, runTurn, isStopped, codexSleeping, isCurrent) {
   const turn = trackAutonomyTurn();
-  const { signal } = turn;
-  let result;
+  // If releasing the short task-store lock fails after launch, abort and wait
+  // for the owned run before releasing its separate interval/session claims.
+  const admissionAbort = new AbortController();
+  const signal = AbortSignal.any([turn.signal, admissionAbort.signal]);
+  let result, started;
   try {
     const paused = async () => (await readAutonomyPause()).stopped || signal.aborted || isStopped() ||
       await codexSleeping({ resumeOnWake: false }) || signal.aborted || isStopped();
     if (await paused()) return false;
     // Admission awaits I/O. Catch edits observed during that work, then
     // recheck pause because the extra task read also gives other writers time.
-    // These checks narrow races; they are not an atomic admission transaction.
+    // These preliminary checks narrow independent pause races; the final
+    // task snapshot and invocation are serialized with cooperating writers below.
     if (!await isCurrent() || signal.aborted || isStopped() || await paused()) return false;
     if (signal.aborted || isStopped()) return false;
-    log('[msb/scheduler] run ' + Date.now() + '-' + task.id.slice(0, 8) + ' task=' + task.title);
-    result = await runTurn({
-      prompt: [
-        'Ты выполняешь фоновую задачу владельца в общей с чатом сессии.',
-        'Сделай ровно то, что в задании. В конце — короткий итог.',
-        '',
-        'Задание:\n' + task.prompt,
-      ].join('\n'),
-      autonomy: true,
-      intervalShouldDefer: isStopped,
-      signal,
-    });
+    try {
+      const admitted = await admitCurrentTask(task, async () => {
+        // A different process may pause autonomy while this one waits for the
+        // task lock. These reads take no pause/marker transaction lock.
+        if ((await readAutonomyPause()).stopped || signal.aborted || isStopped()) return false;
+        log('[msb/scheduler] run ' + Date.now() + '-' + task.id.slice(0, 8) + ' task=' + task.title);
+        try {
+          started = Promise.resolve(runTurn({
+            prompt: [
+              'Ты выполняешь фоновую задачу владельца в общей с чатом сессии.',
+              'Сделай ровно то, что в задании. В конце — короткий итог.',
+              '',
+              'Задание:\n' + task.prompt,
+            ].join('\n'),
+            autonomy: true,
+            intervalShouldDefer: isStopped,
+            signal,
+          })).then(value => ({ ok: true, value }), error => ({ ok: false, error }));
+        } catch (error) { started = Promise.resolve({ ok: false, error }); }
+        return true;
+      });
+      if (!admitted) return false;
+    } catch (error) {
+      if (started) { admissionAbort.abort(); await started; }
+      throw error;
+    }
+    const outcome = await started;
+    if (!outcome.ok) throw outcome.error;
+    result = outcome.value;
   } catch (error) {
-    if (signal.aborted) return false;
+    if (turn.signal.aborted) return false;
     throw error;
   } finally {
     turn.release();
