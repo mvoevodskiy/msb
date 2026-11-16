@@ -26,6 +26,7 @@ bootstrap/workspace-seed/ → /home/client/workspace/   # ТОЛЬКО seed
 Политика: bootstrap/UPDATE-POLICY.md (system-блоки, не wholesale).
 
 usr-local-bin/*           → /usr/local/bin/   # bot-ctl + watchdog
+usr-local-lib/msb-fstab.py → /usr/local/lib/msb-fstab.py  # общий разбор записей fstab
 usr-local-sbin/msb-engine → /usr/local/sbin/ + /usr/local/lib/msb-engine/
 
 systemd/msb-bot@.service (+ drop-ins ядра)

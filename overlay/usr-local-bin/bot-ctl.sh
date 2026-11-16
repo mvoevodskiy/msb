@@ -42,6 +42,7 @@ TOKEN_FILE="${3:-}"
 BOTS_ROOT="/home/client/.msb/bots"
 WORKSPACE="/home/client/workspace"
 CLIENT_USER="client"
+FSTAB_HELPER="/usr/local/lib/msb-fstab.py"
 
 # Whitelist of permitted actions. `reload` is the v1 graduated-signal placeholder
 # — currently aliased to restart, intended for future hot-reload semantics where
@@ -76,16 +77,10 @@ ensure_multibot_template() {
   fi
 }
 
-fstab_line_for() {
-  local id="$1"
-  # nofail: не валит local-fs.target; device-timeout: не держит boot при сбое bind
-  printf '%s  %s/bots/%s/cwd  none  bind,nofail,x-systemd.device-timeout=1s  0  0\n' "$WORKSPACE" "/home/client/.msb" "$id"
-}
-
 add_bot_instance() {
   local id="$1" token_file="$2"
   local bot_dir="${BOTS_ROOT}/${id}"
-  local token="" owner="" line cwd
+  local token="" owner="" cwd
 
   ensure_multibot_template
 
@@ -105,6 +100,8 @@ add_bot_instance() {
     echo "bot-ctl: add требует token-file (BOT_TOKEN=...)" >&2
     exit 64
   fi
+
+  /usr/bin/python3 -I -B "$FSTAB_HELPER" check /etc/fstab "$WORKSPACE" "$bot_dir/cwd" >/dev/null
 
   # shellcheck disable=SC1090
   token=$(grep -E '^BOT_TOKEN=' "$token_file" | head -1 | cut -d= -f2- || true)
@@ -164,10 +161,7 @@ JSON
   if ! findmnt -n "$cwd" >/dev/null 2>&1; then
     mount --bind "$WORKSPACE" "$cwd"
   fi
-  line=$(fstab_line_for "$id")
-  if ! grep -Fqx "$line" /etc/fstab 2>/dev/null; then
-    echo "$line" >>/etc/fstab
-  fi
+  /usr/bin/python3 -I -B "$FSTAB_HELPER" ensure /etc/fstab "$WORKSPACE" "$cwd" >/dev/null
 
   /bin/systemctl daemon-reload
   /bin/systemctl reset-failed "msb-bot@${id}" 2>/dev/null || true
@@ -190,7 +184,7 @@ JSON
 remove_bot_instance() {
   local id="$1"
   local bot_dir="${BOTS_ROOT}/${id}"
-  local cwd line
+  local cwd
 
   ensure_multibot_template
 
@@ -203,6 +197,9 @@ remove_bot_instance() {
     exit 64
   fi
 
+  # Refuse conflicting mount entries before stopping or unmounting the bot.
+  /usr/bin/python3 -I -B "$FSTAB_HELPER" check /etc/fstab "$WORKSPACE" "$bot_dir/cwd" >/dev/null
+
   /bin/systemctl disable --now "msb-bot@${id}" 2>/dev/null || true
   /bin/systemctl reset-failed "msb-bot@${id}" 2>/dev/null || true
 
@@ -210,12 +207,7 @@ remove_bot_instance() {
   if findmnt -n "$cwd" >/dev/null 2>&1; then
     umount "$cwd" || umount -l "$cwd" || true
   fi
-  line=$(fstab_line_for "$id")
-  if grep -Fqx "$line" /etc/fstab 2>/dev/null; then
-    # удалить точную строку bind без затрагивания других ботов
-    grep -Fxv "$line" /etc/fstab > /etc/fstab.bot-ctl.tmp
-    mv /etc/fstab.bot-ctl.tmp /etc/fstab
-  fi
+  /usr/bin/python3 -I -B "$FSTAB_HELPER" remove /etc/fstab "$WORKSPACE" "$cwd" >/dev/null
 
   rm -rf "$bot_dir"
   /bin/systemctl daemon-reload
