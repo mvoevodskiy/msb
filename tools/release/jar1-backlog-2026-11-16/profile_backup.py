@@ -135,6 +135,9 @@ def copy_sqlite(source, dest, expected, timeout=30):
             def progress(_status, _remaining, _total):
                 if time.monotonic() > deadline: raise TimeoutError('SQLite backup timed out')
             src.backup(dst, pages=128, progress=progress, sleep=0.05)
+            # The private copy must stand alone even when the source uses WAL.
+            if dst.execute('PRAGMA journal_mode=DELETE').fetchone()[0].lower() != 'delete':
+                raise RuntimeError('Could not seal SQLite snapshot')
         finally: dst.close()
     finally: src.close()
     check = sqlite3.connect('file:' + quote(str(dest), safe='/') + '?mode=ro', uri=True)
@@ -230,6 +233,52 @@ def verify_copy(destination, home, expected_session, require_complete=False):
     if active_session(home, data) != expected_session: raise RuntimeError('Copied active session does not match')
     return len(expected)
 
+
+def database_names(inventory):
+    return set(DATABASES) | {rel for rel, entry in inventory.items()
+        if entry and entry.get('type') == 'file' and rel.endswith(('.sqlite', '.db'))
+        and not rel.endswith('.lock.sqlite')}
+
+
+def sqlite_journal_state(home, databases):
+    """Compare durable WAL/journal bytes; absent and empty sidecars are equivalent."""
+    result = {}
+    for rel in sorted(databases):
+        for suffix in ('-wal', '-journal'):
+            path = home / (rel + suffix)
+            try: fd = os.open(path, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK)
+            except FileNotFoundError:
+                result[rel + suffix] = None
+                continue
+            try:
+                first = os.fstat(fd)
+                if not stat.S_ISREG(first.st_mode): raise RuntimeError('Unexpected SQLite journal')
+                digest = hashlib.sha256()
+                with os.fdopen(fd, 'rb', closefd=False) as stream:
+                    for chunk in iter(lambda: stream.read(1024 * 1024), b''): digest.update(chunk)
+                last = os.fstat(fd)
+                if any(getattr(first, key) != getattr(last, key) for key in
+                       ('st_dev', 'st_ino', 'st_size', 'st_mtime_ns', 'st_ctime_ns')):
+                    raise RuntimeError('SQLite journal changed while reading')
+                result[rel + suffix] = (first.st_size, digest.hexdigest()) if first.st_size else None
+            finally: os.close(fd)
+    return result
+
+
+def inventories_match(before, after, databases):
+    sidecars = {rel + suffix for rel in databases for suffix in ('-wal', '-shm', '-journal')}
+    # A sidecar may appear and disappear entirely between inventories.
+    # Still compare all directory members and their contents below.
+    changed_dirs = {str(Path(rel).parent) for rel in databases}
+    if (set(before) - sidecars) != (set(after) - sidecars): return False
+    for rel in set(before) - sidecars:
+        left, right = before[rel], after[rel]
+        if rel in changed_dirs and left and right and left.get('type') == right.get('type') == 'directory':
+            left = {k: v for k, v in left.items() if k not in ('mtime_ns', 'ctime_ns')}
+            right = {k: v for k, v in right.items() if k not in ('mtime_ns', 'ctime_ns')}
+        if left != right: return False
+    return True
+
 def backup_profile(home, destination, check_writers=no_open_writers):
     home, destination = Path(home).resolve(), Path(destination).absolute()
     parent = destination.parent
@@ -242,6 +291,8 @@ def backup_profile(home, destination, check_writers=no_open_writers):
     check_writers(home)
     before = snapshot_inventory(home)
     validate_inventory(home, before)
+    databases = database_names(before)
+    journals = sqlite_journal_state(home, databases)
     session = active_session(home, home)
     destination.mkdir(mode=0o700)
     manifest = {}
@@ -260,7 +311,9 @@ def backup_profile(home, destination, check_writers=no_open_writers):
         digest = copy_sqlite(source, output, entry) if database else copy_regular(source, output, entry)
         manifest[rel] = {**entry, 'backup_sha256': digest, 'sqlite': database}
     check_writers(home)
-    if snapshot_inventory(home) != before: raise RuntimeError('Profile inventory changed during backup')
+    after = snapshot_inventory(home)
+    if not inventories_match(before, after, databases) or sqlite_journal_state(home, databases) != journals:
+        raise RuntimeError('Profile inventory or SQLite journal changed during backup')
     record = destination / 'manifest.json'
     with record.open('x') as f:
         os.fchmod(f.fileno(), 0o600)
