@@ -49,3 +49,19 @@ From .msb/bot with Node 22 and dependencies available:
   node tests/reference/probe-shared-interval-race.mjs
 The stop ingress wrapper creates its own test child with module mocks enabled;
 no extra flag is needed for the normal test command.
+
+
+Follow-up admission checks: the original sequence could start a task edited or
+removed while the first asynchronous pause check was in flight. A repeated
+snapshot catches those observed changes. A second owner/Codex pause check after
+the snapshot avoids introducing a new unchecked pause window, and local
+stop/pending are rechecked before runTurn. Six new synthetic gate cases and the
+existing 15 claim/stop cases passed on Node 26 and isolated Linux Node 22;
+two existing Codex/Claude interval-pause tests also passed on both. The latter
+were selected through tests/fixtures/legacy-timer-without-openclaw.mjs, which
+mocks the unrelated dispatcher before importing the existing tests.
+
+These are best-effort rechecks, not an atomic admission protocol. An edit can
+occur during the final asynchronous pause checks, or another process can set a
+pause after an earlier read. A full guarantee needs a coordinated admission and
+cancellation design; do not claim that this stage eliminates those races.

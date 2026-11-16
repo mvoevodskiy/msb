@@ -25,6 +25,7 @@ const TICK_MS = 60_000;
  * [Store](./store.mjs) условно сохраняет одну неизменённую задачу после каждого хода,
  * не весь старый список; active run не держит lock tasks.json.
  * [Interval claim](./interval-claim.mjs) сериализует интервалы одного бота до сохранения.
+ * После I/O допуска snapshot и паузы сверяются снова; допуск не атомарен.
  * Проверки: [persistence](../../tests/autonomy-store-concurrency.test.mjs),
  * [compact guard](../../tests/autonomy-compact-guard.test.mjs),
  * [claim regression](../../tests/autonomy-same-bot-claim.test.mjs),
@@ -80,7 +81,10 @@ export function startScheduler({ api, adminId, scheduledTurns, timezone, now = D
           if (!current || !isDeepStrictEqual(current, snapshot)) return;
           const before = { ...current }, task = { ...current };
           if (task.enabled === false || (task.nextAt || 0) > tickAt) return;
-          if (!await runTask(task, api, adminId, log, runTurn, mayNotStart, codexSleep.sleeping)) return;
+          const isCurrent = async () => isDeepStrictEqual(
+            (await listTasks()).find(entry => entry.id === before.id), before,
+          );
+          if (!await runTask(task, api, adminId, log, runTurn, mayNotStart, codexSleep.sleeping, isCurrent)) return;
           task.nextAt = tickAt + Math.max(1, task.everyHours || 24) * 3600 * 1000;
           await saveTaskResult(before, task);
         });
@@ -120,23 +124,29 @@ export function startScheduler({ api, adminId, scheduledTurns, timezone, now = D
   };
 }
 
-async function runTask(task, api, adminId, log, runTurn, isStopped, codexSleeping) {
+async function runTask(task, api, adminId, log, runTurn, isStopped, codexSleeping, isCurrent) {
   const release = trySessionOperation();
   if (!release) return false;
   try {
-    return await executeTask(task, api, adminId, log, runTurn, isStopped, codexSleeping);
+    return await executeTask(task, api, adminId, log, runTurn, isStopped, codexSleeping, isCurrent);
   } finally {
     release();
   }
 }
 
-async function executeTask(task, api, adminId, log, runTurn, isStopped, codexSleeping) {
+async function executeTask(task, api, adminId, log, runTurn, isStopped, codexSleeping, isCurrent) {
   const turn = trackAutonomyTurn();
   const { signal } = turn;
   let result;
   try {
-    if ((await readAutonomyPause()).stopped || signal.aborted || isStopped() ||
-        await codexSleeping({ resumeOnWake: false }) || signal.aborted || isStopped()) return false;
+    const paused = async () => (await readAutonomyPause()).stopped || signal.aborted || isStopped() ||
+      await codexSleeping({ resumeOnWake: false }) || signal.aborted || isStopped();
+    if (await paused()) return false;
+    // Admission awaits I/O. Catch edits observed during that work, then
+    // recheck pause because the extra task read also gives other writers time.
+    // These checks narrow races; they are not an atomic admission transaction.
+    if (!await isCurrent() || signal.aborted || isStopped() || await paused()) return false;
+    if (signal.aborted || isStopped()) return false;
     log('[msb/scheduler] run ' + Date.now() + '-' + task.id.slice(0, 8) + ' task=' + task.title);
     result = await runTurn({
       prompt: [

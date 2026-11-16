@@ -6,12 +6,24 @@ mock.module(url('autonomy/openclaw-reminder-dispatch.mjs'), {namedExports:{creat
 mock.module(url('autonomy/reminder-dispatch.mjs'), {namedExports:{createReminderDispatcher:idle}});
 mock.module(url('agent/turn.mjs'), {namedExports:{runAgentTurn:async()=>{throw Error('real turn prohibited');}}});
 mock.module(url('autonomy/legacy-dispatch.mjs'), {namedExports:{dispatchLegacyTimers:async()=>{}}});
+const store=await import(url('autonomy/store.mjs'));
+let releaseRead,readCount=0;
+const readGate=new Promise(resolve=>{releaseRead=resolve;});
+if(process.env.TASK_TEST_STORE_GATE==='1') {
+  mock.module(url('autonomy/store.mjs'), {namedExports:{...store,listTasks:async(...args)=>{
+    const rows=await store.listTasks(...args);
+    if(++readCount===3){process.send({event:'last-read'});await readGate;}
+    return rows;
+  }}});
+}
 const owner=await import(url('autonomy/owner-pause.mjs'));
 let admit;
 const admission=new Promise(resolve=>{admit=resolve;});
 if(process.env.TASK_TEST_ADMISSION==='1') {
+  let pauseCount=0;
   mock.module(url('autonomy/owner-pause.mjs'), {namedExports:{...owner,readAutonomyPause:async(...args)=>{
-    process.send({event:'admission'});await admission;return owner.readAutonomyPause(...args);
+    if(++pauseCount===Number(process.env.TASK_TEST_ADMISSION_AT||1)){process.send({event:'admission'});await admission;}
+    return owner.readAutonomyPause(...args);
   }}});
 }
 const {startScheduler}=await import(url('autonomy/scheduler.mjs'));
@@ -27,6 +39,7 @@ const scheduler=startScheduler({log(){},adminId:42,scheduledTurns,api:{sendMessa
 process.on('message',async message=>{
   if (message==='release') return release();
   if (message==='admit') return admit();
+  if (message==='read-release') return releaseRead();
   if (message==='stop') {scheduledTurns.stopEpoch++;process.send({event:'stopped'});return;}
   if (message==='pending') {scheduledTurns.pending=true;process.send({event:'pending'});return;}
   if (message==='pause') {

@@ -12,6 +12,7 @@ import { fork } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { addTask, listTasks, saveAllTasks } from '../src/autonomy/store.mjs';
 import { tryWithFileLock } from '../shared/file-lock.mjs';
+import { saveState } from '../src/state.mjs';
 
 const worker=fileURLToPath(new URL('./fixtures/autonomy-claim-worker.mjs',import.meta.url));
 async function race(t,ids,{alias=false,twoTasks=false,separateAutonomy=false}={}) {
@@ -104,12 +105,13 @@ test('different bots keep their existing shared-task behavior pending an ownersh
 });
 
 
-async function setupSingle(t,{admission=false,scheduled=false,twoTasks=false}={}) {
+async function setupSingle(t,{admission=false,scheduled=false,twoTasks=false,storeGate=false,admissionAt=1}={}) {
   const root=await fs.mkdtemp(path.join(os.tmpdir(),'autonomy-claim-single-'));
   const runtime=path.join(root,'runtime'),autonomy=path.join(root,'autonomy'),id='same';
   const env={PATH:process.env.PATH||'/usr/bin:/bin',MSB_RUNTIME_ROOT:runtime,MSB_BOT_ID:id,
     AUTONOMY_DIR:autonomy,MSB_SESSION_DIR:path.join(runtime,'bots',id,'sessions'),
-    ...(admission?{TASK_TEST_ADMISSION:'1'}:{}),...(scheduled?{TASK_TEST_SCHEDULED:'1'}:{})};
+    ...(admission?{TASK_TEST_ADMISSION:'1',TASK_TEST_ADMISSION_AT:String(admissionAt)}:{}),
+    ...(scheduled?{TASK_TEST_SCHEDULED:'1'}:{}),...(storeGate?{TASK_TEST_STORE_GATE:'1'}:{})};
   const children=[];
   t.after(async()=>{
     await Promise.all(children.map(child=>new Promise(resolve=>{
@@ -235,4 +237,42 @@ test('a skipped interval in another directory runs on a later tick after claim r
   await next.wait('ready');next.send('start');await next.wait('entered');
   next.send('release');await next.wait('done');
   assert.ok((await listTasks(otherEnv))[0].nextAt>Date.now());
+});
+
+
+for(const change of ['edit','delete']) test(`a task ${change} during the first admission check prevents the stale turn`, {timeout:10000}, async t=>{
+  const f=await setupSingle(t,{admission:true}),w=f.launch();
+  await w.wait('ready');w.send('start');await w.wait('admission');
+  const tasks=await listTasks(f.env);
+  if(change==='edit'){tasks[0].prompt='owner-updated';tasks[0].enabled=false;}
+  await saveAllTasks(change==='delete'?[]:tasks,f.env);
+  w.send('release');w.send('admit');await w.wait('done');
+  assert.deepEqual(await listTasks(f.env),change==='delete'?[]:tasks);
+  assert.equal(w.events.filter(event=>event.event==='entered').length,0);
+  assert.equal(w.events.filter(event=>event.event==='delivery').length,0);
+});
+
+for(const pause of ['owner','codex']) test(`a ${pause} pause set during the repeated task read prevents the model turn`, {timeout:10000}, async t=>{
+  const f=await setupSingle(t,{storeGate:true}),w=f.launch();
+  if(pause==='codex')await saveState({engine:'cc',extAuthBypass:'codex'},f.env);
+  const before=await listTasks(f.env);
+  await w.wait('ready');w.send('start');await w.wait('last-read');
+  const marker=pause==='owner'?path.join(path.dirname(f.env.MSB_SESSION_DIR),'autonomy','STOP')
+    :path.join(f.env.MSB_RUNTIME_ROOT,'engine','sleep.same');
+  await fs.mkdir(path.dirname(marker),{recursive:true});
+  await fs.writeFile(marker,'synthetic');
+  w.send('release');w.send('read-release');await w.wait('done');
+  assert.deepEqual(await listTasks(f.env),before);
+  assert.equal(await fs.readFile(marker,'utf8'),'synthetic');
+  assert.equal(w.events.filter(event=>event.event==='entered').length,0);
+});
+
+for(const command of ['stop','pending']) test(`${command} during the second admission check prevents the model turn`, {timeout:10000}, async t=>{
+  const f=await setupSingle(t,{admission:true,admissionAt:2,scheduled:true}),w=f.launch();
+  const before=await listTasks(f.env);
+  await w.wait('ready');w.send('start');await w.wait('admission');
+  w.send(command);await w.wait(command==='stop'?'stopped':'pending');
+  w.send('release');w.send('admit');await w.wait('done');
+  assert.deepEqual(await listTasks(f.env),before);
+  assert.equal(w.events.filter(event=>event.event==='entered').length,0);
 });
