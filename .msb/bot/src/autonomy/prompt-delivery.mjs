@@ -42,8 +42,14 @@ function ownerDigestBody(text, quietOwner) {
 
 export async function deliverSavedPrompt(api, chat, result, signal) {
   if (result.status !== 'ok' && result.status !== 'error') return result;
-  const digestText = result.text ? trimOwnerDigestText(result.text) : '';
-  const quietOwner = result.status === 'ok' && ownerDigestBody(digestText, result.quietOwner);
+  // Only explicitly quiet successful results may discard a preamble.
+  // Ordinary and failed turns can contain useful text before HTML or markers.
+  const digestText = result.text
+    ? (result.status === 'ok' && result.quietOwner ? trimOwnerDigestText(result.text) : result.text)
+    : '';
+  // Preserve the existing digest/banner decision without discarding its preamble.
+  const digestMarker = result.text ? trimOwnerDigestText(result.text) : '';
+  const quietOwner = result.status === 'ok' && ownerDigestBody(digestMarker, result.quietOwner);
   const summary = result.timeout ? '⏱ Ход остановлен по сроку.'
     : result.status === 'error' ? '⚠️ Ход не удался — вот что движок успел вернуть.'
     : digestText ? '✅ Готово: 1 сообщение.\nНичего не опубликовано, посмотри и поправь. Ниже каждое отдельным сообщением.' : '✅ Готово.';

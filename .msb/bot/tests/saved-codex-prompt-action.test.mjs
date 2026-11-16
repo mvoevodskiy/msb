@@ -105,6 +105,17 @@ async function profile(t, { action = original, actions, runSavedCodex, readCodex
     })) };
 }
 
+test('ordinary saved Codex response retains text before an HTML heading', async t => {
+  const text = 'Важное вступление\n<b>Отчёт</b>\nДетали';
+  const f = await profile(t, { runSavedCodex: async () => ({
+    providerId: 'codex', text, assistantTextObserved: true,
+    usage: { inputTokens: 2, outputTokens: 1 },
+  }) });
+  await f.scheduler.tickNow();
+  assert.equal((await f.runs())[0].status, 'ok');
+  assert.ok(f.messages.some(message => message.includes('Важное вступление') && message.includes('<b>Отчёт</b>')));
+});
+
 test('the saved action launches Codex independently of the normal conversation', async t => {
   const f = await profile(t);
   const snapshot = () => Promise.all(f.files.map(file => fs.readFile(file)));

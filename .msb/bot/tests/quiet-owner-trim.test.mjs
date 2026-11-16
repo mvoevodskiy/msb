@@ -51,6 +51,25 @@ test('trimOwnerDigestText drops thinking before HTML or traffic-light digests', 
   );
 });
 
+test('ordinary and failed saved prompts retain text before HTML or digest markers', async () => {
+  const cases = [
+    { status: 'ok', text: 'Важное вступление\n<b>Отчёт</b>\nДетали' },
+    { status: 'ok', text: 'Важное вступление\n```html\n<b>Отчёт</b>\n```\nЗаключение' },
+    { status: 'ok', text: 'Важное вступление\n🟢 От тебя ничего не нужно\nДетали' },
+    { status: 'error', text: 'Частичный результат\n<i>Причина</i>' },
+    { status: 'ok', text: 'Вступление без особой разметки' },
+  ];
+  for (const input of cases) {
+    const sent = [];
+    const outcome = await deliverSavedPrompt({ sendMessage: async (_chat, text) => sent.push(text) },
+      1, input, AbortSignal.timeout(5_000));
+    assert.equal(outcome.text, input.text, 'stored result must retain the whole response');
+    assert.ok(sent.some(text => text.includes(input.text.split('\n')[0])), 'Telegram must receive the opening text');
+    const expected = input.status === 'error' || !input.text.includes('\n') ? 2 : 1;
+    assert.equal(sent.length, expected, 'the existing digest and error banner decisions remain unchanged');
+  }
+});
+
 test('deliverSavedPrompt skips the publish banner for quietOwner and HTML digests', async () => {
   const sent = [];
   const api = {
@@ -72,6 +91,7 @@ test('deliverSavedPrompt skips the publish banner for quietOwner and HTML digest
   sent.length = 0;
   await deliverSavedPrompt(api, 1, {
     status: 'ok',
+    quietOwner: true,
     text: 'Собираю данные…\n<b>Быстрые деньги</b>\nAsk: пусто',
   }, signal);
   assert.equal(sent.length, 1);
