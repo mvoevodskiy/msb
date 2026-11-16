@@ -57,3 +57,10 @@ account or real conversation was invoked. This is evidence for the installed
 not proof of a complete file-rollback capability elsewhere, and not a decision
 to modify any conversation. See the stored schema rather than relying on a
 future installed version remaining identical.
+
+Additional isolated local checks: `codex exec --help` for this same package
+lists resume, fork, review and help, with no undo/revert/rollback entry. Help
+absence does not prove there is no other hidden or future API. A synthetic
+loopback connection was denied by the network sandbox profile, and a synthetic
+file under the user root was denied by its home-read rule; no actual account or
+conversation was opened. These checks do not establish JAR1 CLI behavior.
