@@ -50,3 +50,39 @@ old INSERT OR IGNORE pattern retains only one. The probe passed on local Node 26
 and isolated Linux Node 22.23.2; JSONL bytes stayed unchanged. This demonstrates
 a possible lossy naive mapping, not a claim that a real profile has such a
 collision or a decision about how duplicate histories should be merged.
+
+Old/new markers and cursors (source inspection only)
+
+Old source lines 55438-55465, 55505-55522, 55684-55689 and 108257-108265,
+108299-108342, 108401-108414: the old scheduler kept lastPollAt by source
+type in its bot state.json, using legacy lastYtPoll/lastTwPoll/etc. as fallback.
+The state path was dirname(IIA_SESSION_DIR or ~/.iia/sessions)/state.json.
+It recorded the type timestamp after the attempted source batch and saved the
+state; it also sent collected cursors to the store and then updated config.
+The shared monitor/config.json held source fields such as YouTube lastVideoId,
+X sinceId/userId, GitHub lastReleaseTag/lastCommitSha, Telegram lastPostId,
+and RSS lastGuid/etag (6012-6075). SQLite also had a sources.cursor field,
+but updateCursor is an UPDATE of an existing row (6458-6475, 6836-6858).
+A search for calls to .upsertSource( in this readable blob did not find a
+caller; that search does not rule out dynamic or external consumers.
+
+Old lastDigestSent was the bot-local calendar day: Y0(timezone), 55653-55659,
+and the scheduler checked it at 108651-108655. It was saved at 108775-108776
+after its digest branch; a branch with no generated material could still record
+the date, and internal delivery fallbacks could swallow errors. It is therefore
+not proof that the recipient received a digest. Old SQLite has a digests table
+and saveDigest/loadDigest methods; JSONL can store digest HTML in a dated file
+(6477-6485, 6860-6879, 7360-7378). A search of the readable blob did not find
+calls to .saveDigest( or .loadDigest(; this is not proof of their absence in
+dynamic/external consumers or of complete historical migration.
+
+In the new source, monitor/store.mjs stores lastPollAt by individual source and
+lastDigestAt as an ISO instant in shared monitor/meta.json. poll.mjs updates
+its timestamps for successful fetches; digest.mjs records lastDigestAt after
+sendMessage resolves and checks the recipient bot's timezone and local day.
+Those markers have different scope and success semantics from the old fields.
+Do not blindly equate a type timestamp with a source timestamp, or a local day
+with a successful-delivery instant, when assessing a possible migration. This
+is source evidence, not an inspection of any user's state or a migration plan
+approved by the owner; timezone, concurrent writers and unknown provenance
+still need explicit treatment before any change to data.
