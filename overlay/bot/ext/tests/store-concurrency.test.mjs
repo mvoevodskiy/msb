@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { loadStore, setActive, setSelectedEffort, setSelectedModel, setSession, storePath } from '../store.mjs';
+import { loadStore, setActive, setActiveIf, setSelectedEffort, setSelectedModel, setSession, storePath } from '../store.mjs';
 import { withStoreLock } from '../store-lock.mjs';
 
 const script = fileURLToPath(new URL('./fixtures/store-concurrent.mjs', import.meta.url));
@@ -66,6 +66,17 @@ test('concurrent writes in one process preserve unrelated provider settings', as
   assert.equal(store.sessions.codex,'fixture-native-session');
   assert.equal(store.models.codex,'fixture-model');
   assert.equal(store.efforts.codex,'max');
+});
+
+test('only one conditional provider selection can replace the same snapshot', async t => {
+  const f = await fixture(t);
+  const results = await Promise.all([
+    setActiveIf('claude', 'codex', f.env, f.home),
+    setActiveIf('cursor', 'codex', f.env, f.home),
+  ]);
+  assert.equal(results.filter(Boolean).length, 1);
+  assert.ok(['claude', 'cursor'].includes((await loadStore(f.env, f.home)).active));
+  assert.equal(await setActiveIf('codex', 'codex', f.env, f.home), false);
 });
 
 test('a killed writer does not strand the next store update', async (t) => {

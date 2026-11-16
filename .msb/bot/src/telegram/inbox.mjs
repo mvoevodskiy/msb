@@ -2,7 +2,10 @@
  * One FIFO worker for supported Telegram text/voice; forwarded collector reserves
  * its place immediately. Text context → [reply formatter](./reply-context.mjs).
  * [Scheduled turns](../autonomy/legacy-dispatch.mjs) enter as reserved text.
- * Publish them after the timer file is committed. No provider/session state here.
+ * Already-prepared introduction recovery stays a separate item; source update
+ * IDs of merged text are retained for [Telegram handoff](./bot.mjs).
+ * Publish them after the timer file is committed. Retain original timer parts so
+ * [worker admission](./bot.mjs) can exclude stale rows without losing user text.
  */
 import { buildReplyContext } from './reply-context.mjs';
 
@@ -23,9 +26,35 @@ function mergeTexts(texts) {
     texts.map((text, i) => `[Сообщение ${i + 1}/${texts.length}]\n${text}`).join('\n\n');
 }
 
+function textPart(entry) {
+  return { ctx: entry.ctx, text: entry.text, prompt: textPrompt(entry), scheduled: entry.scheduled,
+    legacyRun: entry.legacyRun };
+}
+
+function applyTextParts(entry, parts) {
+  entry.ctx = parts[0].ctx;
+  entry.text = mergeTexts(parts.map(part => part.text));
+  entry.prompt = mergeTexts(parts.map(part => part.prompt));
+  entry.sourceUpdateIds = parts.map(part => part.ctx.update?.update_id).filter(Number.isSafeInteger);
+  entry.scheduled = parts.some(part => part.scheduled);
+  if (entry.scheduled) entry.isAutoTurn = parts.every(part => part.scheduled);
+  else delete entry.isAutoTurn;
+}
+
+export function retainAdmittedTimerParts(entry, admitted) {
+  const parts = entry.legacyParts.filter(part => !part.legacyRun || admitted.has(part.legacyRun));
+  if (!parts.length) return false;
+  if (parts.length !== entry.legacyParts.length) applyTextParts(entry, parts);
+  return true;
+}
+
+function occurrenceKey(legacyRun) {
+  return JSON.stringify([legacyRun.file, legacyRun.id]);
+}
+
 export function createInbox({ run, status, cancel, canRun = () => true, onError = console.error,
   now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout }) {
-  const queue = [], collectors = new Map(), effects = new Set();
+  const queue = [], collectors = new Map(), effects = new Set(), scheduledOccurrences = new Set();
   let active, closed = false;
   function effect(fn) {
     const p = Promise.resolve().then(fn).catch(() => onError('[msb/inbox] delivery failed'));
@@ -42,36 +71,38 @@ export function createInbox({ run, status, cancel, canRun = () => true, onError 
   function kick() {
     if (closed || active || !canRun() || !queue[0]?.ready) return;
     const entry = queue.shift();
+    const occurrences = [];
     // The old worker merges adjacent, already waiting text, never voices/batches/attachments.
-    if (!entry.items && !entry.voice && !entry.attachment) {
-      const texts = [entry.text], prompts = [textPrompt(entry)]; let chars = prompts[0].length;
-      let isAutoTurn = Boolean(entry.scheduled);
-      while (texts.length < 20) {
+    if (!entry.recovered && !entry.items && !entry.voice && !entry.attachment) {
+      const parts = [textPart(entry)]; let chars = parts[0].prompt.length;
+      while (parts.length < 20) {
         const next = queue[0];
-        if (!next?.ready || next.items || next.voice || next.attachment || keyOf(next) !== keyOf(entry)) break;
-        const prompt = textPrompt(next);
-        if (chars + prompt.length > 1_000_000) break;
-        queue.shift(); chars += prompt.length; texts.push(next.text); prompts.push(prompt);
-        isAutoTurn &&= Boolean(next.scheduled);
-        if (next.scheduled) entry.scheduled = true;
+        if (!next?.ready || next.recovered || next.items || next.voice || next.attachment || keyOf(next) !== keyOf(entry)) break;
+        const part = textPart(next);
+        if (chars + part.prompt.length > 1_000_000) break;
+        queue.shift(); chars += part.prompt.length; parts.push(part);
         // Mark the consumed queue status, keeping one thinking/final status.
         next.cancelled = true;
         effect(() => cancel(next, true));
       }
-      entry.text = mergeTexts(texts);
-      entry.prompt = mergeTexts(prompts);
-      if (entry.scheduled) entry.isAutoTurn = isAutoTurn;
+      for (const part of parts) if (part.legacyRun) occurrences.push(occurrenceKey(part.legacyRun));
+      if (occurrences.length) entry.legacyParts = parts;
+      applyTextParts(entry, parts);
     }
     active = entry;
     effect(async () => {
       try { if (!closed && !entry.cancelled) { entry.started = true; await run(entry); } }
-      finally { active = undefined; kick(); }
+      finally {
+        for (const occurrence of occurrences) scheduledOccurrences.delete(occurrence);
+        active = undefined;
+        kick();
+      }
     });
   }
   function push(item) {
     if (closed) return;
-    const key = keyOf(item), forwarded = isForwarded(item.ctx.message);
-    let batch = collectors.get(key);
+    const key = keyOf(item), forwarded = !item.recovered && isForwarded(item.ctx.message);
+    let batch = item.recovered ? undefined : collectors.get(key);
     if (forwarded || batch) {
       if (!batch) {
         batch = { ctx: item.ctx, key, items: [], startedAt: now(), ready: false };
@@ -93,6 +124,9 @@ export function createInbox({ run, status, cancel, canRun = () => true, onError 
   }
   function reserveScheduled(item) {
     if (closed) return null;
+    const occurrence = item.legacyRun && occurrenceKey(item.legacyRun);
+    if (occurrence && scheduledOccurrences.has(occurrence)) return null;
+    if (occurrence) scheduledOccurrences.add(occurrence);
     item.ready = false;
     item.scheduled = true;
     queue.push(item);
@@ -105,6 +139,7 @@ export function createInbox({ run, status, cancel, canRun = () => true, onError 
       } else {
         item.cancelled = true;
         queue.splice(index, 1);
+        if (occurrence) scheduledOccurrences.delete(occurrence);
       }
       kick();
     };
@@ -114,6 +149,7 @@ export function createInbox({ run, status, cancel, canRun = () => true, onError 
     if (active && !active.started) { active.cancelled = true; effect(() => cancel(active)); }
     for (const entry of queue.splice(0)) {
       entry.cancelled = true; clearTimer(entry.timer);
+      if (entry.legacyRun) scheduledOccurrences.delete(occurrenceKey(entry.legacyRun));
       effect(() => cancel(entry));
     }
     collectors.clear(); return hadPending;
@@ -124,6 +160,9 @@ export function createInbox({ run, status, cancel, canRun = () => true, onError 
     open() { closed = false; kick(); },
     get size() { return queue.length + Number(Boolean(active)); },
     get hasScheduled() { return Boolean(active?.scheduled || queue.some(item => item.scheduled)); },
+    get hasLegacyScheduled() {
+      return Boolean(active?.legacyParts || queue.some(item => item.legacyRun?.timer.legacyPendingRun));
+    },
     async shutdown() { closed = true; clear(); while (effects.size) await Promise.allSettled([...effects]); },
   };
 }

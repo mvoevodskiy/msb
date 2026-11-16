@@ -49,10 +49,10 @@ async function profile(t, { output = '[LIST_TIMERS]', timers = [once, daily, wee
       message: { message_id: messageId, chat: { id: chatId }, message_thread_id: 17,
         text: f.messages[messageId - 1] ?? 'Чужая карточка' } } });
   async function turn() {
-    const start = f.edits.length;
+    const start = f.messages.length;
     await f.request(request);
-    await until(() => f.edits.slice(start).some(text => text.includes('⏱')), 'timer reply did not finish');
-    return f.edits.slice(start).find(text => text.includes('⏱'));
+    await until(() => f.messages.slice(start).some(text => text.includes('⏱')), 'timer reply did not finish');
+    return f.messages.slice(start).find(text => text.includes('⏱'));
   }
   return { ...f, put, stop, question, keyboard, toast, click, turn,
     timers: async () => JSON.parse(await fs.readFile(f.schedules, 'utf8')),
@@ -424,11 +424,11 @@ for (const provider of ['claude', 'codex']) {
     await fs.writeFile(file, JSON.stringify([daily]));
     await native.respond('[TIMER_ON: daily]');
     await f.message(request);
-    await until(() => f.edits.some(text => text.includes('⏱')), 'provider did not finish', 10_000);
+    await until(() => f.messages.some(text => text.includes('⏱')), 'provider did not finish', 10_000);
     const call = (await native.trace()).at(-1);
     const prompt = provider === 'claude' ? call.argv[call.argv.indexOf('--append-system-prompt') + 1] : call.prompt;
     for (const marker of ['[LIST_TIMERS]', '[TIMER_OFF:', '[TIMER_ON:', '[TIMER_DELETE:']) assert.ok(prompt.includes(marker));
-    assert.match(f.edits.at(-1), /Готово: таймер «Почта утром» снова работает/);
+    assert.match(f.messages.at(-1), /Готово: таймер «Почта утром» снова работает/);
     assert.deepEqual(JSON.parse(await fs.readFile(file, 'utf8')), [{ ...daily, enabled: true }]);
   });
 }

@@ -54,7 +54,7 @@ async function verifyTurn(t, { model, nativeModel = model, usages = defaultUsage
   await f.message('fixture use the original model');
   const limit = Date.now() + 5000;
   let final;
-  while (!(final = f.edits.find(text => text.startsWith(answer)))) {
+  while (!(final = f.messages.find(text => text.startsWith(answer)))) {
     if (Date.now() >= limit) assert.fail('Claude footer fixture did not finish');
     await delay(10);
   }

@@ -84,7 +84,7 @@ test('a persisted owner spend pause survives the day boundary and blocks a model
   const saved = await putState({ costHistory: { '2026-02-08': 25 }, dailySpendLimit: 25, costPaused: true });
   await f.message('Обычный вопрос при паузе');
   // A progress frame can arrive before the worker reads the saved pause.
-  await until(() => f.edits.at(-1) === pauseText, 'The blocked turn must show the daily-limit warning');
+  await until(() => f.messages.at(-1) === pauseText, 'The blocked turn must show the daily-limit warning');
   assert.equal(modelCalls, 0);
   assert.deepEqual((await loadState()).state, saved);
   await f.callback('settings:cost:resume', 99);
@@ -93,7 +93,7 @@ test('a persisted owner spend pause survives the day boundary and blocks a model
   assert.equal((await loadState()).state.costPaused, false);
   assert.deepEqual((await loadState()).state.costHistory, saved.costHistory);
   await f.message('Обычный вопрос после возобновления');
-  await until(() => f.edits.some(text => text.startsWith('Ответ после возобновления')), 'The resumed worker must answer');
+  await until(() => f.messages.some(text => text.startsWith('Ответ после возобновления')), 'The resumed worker must answer');
   assert.equal(modelCalls, 1);
 });
 
@@ -108,7 +108,7 @@ test('Claude subscription total is preserved as metered telemetry without a bill
   const existing = { [localDay]: 0.1 };
   await putState({ authMode: 'subscription', hasSubscriptionAuth: true, dailySpendLimit: 0.25, costHistory: existing });
   await f.message('Обычный запрос через подписку');
-  const final = await until(() => f.edits.find(text => text.startsWith('Подписочный ответ')), 'The owned native CLI must reply', 10_000);
+  const final = await until(() => f.messages.find(text => text.startsWith('Подписочный ответ')), 'The owned native CLI must reply', 10_000);
   assert.equal(completed.result.meteredCostUsd, 0.625);
   assert.doesNotMatch(final, /\$0\.625/);
   assert.match(final, /<blockquote>⏱/);

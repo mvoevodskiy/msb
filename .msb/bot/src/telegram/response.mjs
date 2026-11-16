@@ -158,11 +158,11 @@ export function splitHtml(html, limit, {keepInlineCode = false} = {}) {
   return chunks;
 }
 
-function options(ctx, html = true, editing = false) {
+function options(ctx, html = true) {
   const thread = (ctx.message || ctx.callbackQuery?.message)?.message_thread_id;
   return {
     ...(html ? { parse_mode: 'HTML' } : {}),
-    ...(!editing && thread && thread !== 1 ? { message_thread_id: thread } : {}),
+    ...(thread && thread !== 1 ? { message_thread_id: thread } : {}),
     link_preview_options: { is_disabled: true },
   };
 }
@@ -177,7 +177,7 @@ async function send(ctx, html, keyboard) {
 }
 
 /**
- * Final text → Telegram: ordinary short edit, long chunks, old plan separate card.
+ * Final text → Telegram: remove the thinking status, send a new response message.
  * [plan parser/keyboard](./plan.mjs) runs here, never in progress; footer + markup
  * only on the final chunk, including plain fallback. Error notices can opt out.
  * [createBot](./bot.mjs) owns cancellation; [delivery tests](../../tests/plan-handoff.test.mjs).
@@ -187,21 +187,14 @@ export async function deliverTurnResponse(ctx, statusId, text, telemetry = {}, {
   const body = renderResponseHtml(restoreText(plan ? plan.cleanText : text || 'Ответ не пришёл — попробуй ещё раз.'));
   const footer = formatTurnFooter(telemetry);
   const complete = body + footer;
+  // The owner requested a new Telegram notification when the model completes.
+  // Delete only the supplied status, never the incoming user message; a failed
+  // cleanup must not prevent the answer itself from being delivered.
+  if (statusId) await ctx.api.deleteMessage(ctx.chat.id, statusId, presentationSignal(AbortSignal.timeout(15_000))).catch(() => {});
   if (complete.length <= LIMIT && !plan) {
-    if (statusId) {
-      try {
-        await ctx.api.editMessageText(ctx.chat.id, statusId, complete, options(ctx, true, true), presentationSignal(AbortSignal.timeout(15_000)));
-        return { method: 'edit', messages: 1 };
-      } catch (err) {
-        if (/not modified/i.test(String(err?.description || err?.message || err))) return { method: 'edit', messages: 1 };
-      }
-      // Only the bot's supplied status ID; never the incoming user message.
-      await ctx.api.deleteMessage(ctx.chat.id, statusId, presentationSignal(AbortSignal.timeout(15_000))).catch(() => {});
-    }
     await send(ctx, complete);
     return { method: 'send', messages: 1 };
   }
-  if (statusId) await ctx.api.deleteMessage(ctx.chat.id, statusId, presentationSignal(AbortSignal.timeout(15_000))).catch(() => {});
   const chunks = splitHtml(body, LIMIT - footer.length);
   for (let i = 0; i < chunks.length; i++) {
     const last = i === chunks.length - 1;

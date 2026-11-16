@@ -50,8 +50,8 @@ const has = (event) => report.events.includes(event);
 function hasAnswer(number) {
   const cli = report.cli.find((entry) => entry.number === number);
   const text = new RegExp(`^success-${number}\\n\\n<blockquote>⏱ \\d+\\.\\ds</blockquote>$`);
-  return report.calls.some((call) => call.applied && call.method === 'editMessageText'
-    && call.messageId === cli?.statusMessageId && call.parseMode === 'HTML' && text.test(call.text));
+  return report.calls.some((call) => call.applied && call.method === 'sendMessage'
+    && call.messageId !== cli?.statusMessageId && call.parseMode === 'HTML' && text.test(call.text));
 }
 function send(text, replyTo) {
   const id = ++updateId;
@@ -199,7 +199,12 @@ try {
       }
       return { ok: true, result: { message_id: id, date: 1, chat: { id: 42, type: 'private' }, text: payload.text } };
     }
-    if (method === 'sendChatAction' || method === 'deleteMessage') return { ok: true, result: true };
+    if (method === 'deleteMessage') {
+      report.calls.push({ method, messageId: payload.message_id, text: '', applied: true });
+      delete report.finalMessages[payload.message_id];
+      return { ok: true, result: true };
+    }
+    if (method === 'sendChatAction') return { ok: true, result: true };
     throw new Error(`Unmocked Telegram API: ${method}`);
   });
   polling = bot.start();
@@ -217,7 +222,7 @@ try {
     send('after failed status');
     await until(() => has('cli-init:1'), 'next CLI after status failure');
     children[0].close('success');
-    await until(() => hasAnswer(1), 'next answer replacing its status with the original HTML footer');
+    await until(() => hasAnswer(1), 'new answer with the original HTML footer');
   } else if (partialStop) {
     await until(() => has('cli-init:1'), 'first Claude session');
     const first = 'Первый фрагмент Claude.';
@@ -236,14 +241,14 @@ try {
     } });
     children[0].close('late-result');
     await until(() => has('stopped-edit-applied') || report.calls.some(call => call.applied &&
-      call.method === 'editMessageText' && call.text.startsWith(first)), 'terminal response after partial stop');
+      call.method === 'sendMessage' && call.text.startsWith(first)), 'terminal response after partial stop');
   } else if (scenario === 'reset-session') {
     await until(() => has('cli-init:1'), 'first native session before reset');
     send('/newtask');
     await until(() => report.calls.some((call) => call.applied && call.text === '🆕 Новая сессия. Предыдущий контекст сброшен.'), 'newtask during the first turn');
     report.events.push('reset-acknowledged');
     children[0].close('late-result');
-    await until(() => hasAnswer(1), 'late answer after reset replacing its status');
+    await until(() => hasAnswer(1), 'late answer after reset as a new message');
   } else if (['provider-roundtrip', 'provider-reset', 'provider-clear'].includes(scenario)) {
     await until(() => has('cli-init:1'), 'old provider turn before switch');
     if (scenario === 'provider-reset' || scenario === 'provider-clear') {

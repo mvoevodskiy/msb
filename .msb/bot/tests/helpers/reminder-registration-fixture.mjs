@@ -61,8 +61,8 @@ export async function reminderFixture(t, { output = marker(), enabled = '1', eng
       chat: { id: chat }, message_thread_id: 17 } });
   }
   async function final() {
-    await until(() => f.edits.some(text => text.includes('⏱')), 'final Telegram edit missing');
-    return f.edits.find(text => text.includes('⏱'));
+    await until(() => f.messages.some(text => text.includes('⏱')), 'final Telegram message missing');
+    return f.messages.find(text => text.includes('⏱'));
   }
   return { ...f, actionFile, schedules, directory, modelCalls, sent, scheduler, request, final,
     setTime(value) { clock = value; },

@@ -21,6 +21,7 @@ import { spawn } from 'node:child_process';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { workspaceDir } from '../paths.mjs';
 import { canonicalMcpPath, claudeMcpPath } from '../../shared/mcp-native-scope.mjs';
 import { isProviderSession } from '../../shared/session-starts.mjs';
@@ -47,6 +48,7 @@ function isolatedEnvironment() {
  * @property {string} [providerId]
  * @property {{ HOME: string, CODEX_HOME?: string }} [codexProfile] The profile used by [context](./context.mjs).
  * @property {boolean} [codexBootstrap] Keep the Codex ID outside the ordinary provider store.
+ * @property {boolean} [codexIntroSummary] Resume only for a read-only structured introduction summary.
  * @property {object} [mcp]
  * @property {string} [model]
  * @property {string} [effort]
@@ -57,6 +59,7 @@ function isolatedEnvironment() {
  * @property {AbortSignal} [signal]
  * @property {string} [cwd]
  * @property {(ev: object) => void} [onEvent]
+ * @property {() => void} [onSpawn] Called after the CLI child actually starts.
  * @property {boolean} [autonomy]
  * @property {number} [maxTurns]
  * @property {{tools: string[], directories: string[], agents?: Record<string, {description: string, prompt: string}>}} [isolated]
@@ -68,6 +71,10 @@ function isolatedEnvironment() {
 export async function runClaudeTurn(opts) {
   if (opts.isolated && (opts.sessionId || opts.mcp || opts.providerId !== 'claude')) {
     throw new Error('Invalid isolated Claude launch');
+  }
+  if (opts.codexIntroSummary && (!opts.codexBootstrap || opts.providerId !== 'codex' ||
+      !isProviderSession(opts.sessionId, 'codex') || opts.mcp)) {
+    throw new Error('Invalid Codex introduction summary launch');
   }
   const cwd = opts.cwd || workspaceDir();
   const permissionMode = opts.permissionMode || 'bypassPermissions';
@@ -178,6 +185,9 @@ export async function runClaudeTurn(opts) {
           MSB_TURN_MCP_CUSTOM: opts.mcp?.codexCustom?JSON.stringify(opts.mcp.codexCustom):undefined,
           MSB_TURN_PROVIDER: opts.providerId || undefined,
           MSB_CODEX_BOOTSTRAP: opts.codexBootstrap ? '1' : undefined,
+          MSB_CODEX_INTRO_SUMMARY: opts.codexIntroSummary ? '1' : undefined,
+          MSB_CODEX_INTRO_SCHEMA: opts.codexIntroSummary
+            ? fileURLToPath(new URL('./intro-summary.schema.json', import.meta.url)) : undefined,
           CI: '1',
           CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
           CLAUDE_CODE_AUTO_COMPACT_WINDOW: compact?.window ?? (process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW || '200000'),
@@ -194,6 +204,9 @@ export async function runClaudeTurn(opts) {
       return reject(err);
     }
 
+    child.once('spawn', () => {
+      try { opts.onSpawn?.(); } catch { console.error('[msb/agent-cc] spawn observer failed'); }
+    });
     child.stdin?.on('error', () => {});
     child.stdin?.end(opts.prompt || '');
 

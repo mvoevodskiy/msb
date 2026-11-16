@@ -11,7 +11,7 @@ import { buildConnMenu, buildModelMenu, buildAgentMenu, buildEffortMenu, buildPe
 import { setPendingAuth } from '../auth.mjs';
 import { openaiCompatConfigured } from '../openai-compat.mjs';
 import { updateBotState } from '../state-update.mjs';
-import { syncExtAuthGate } from '../setup-bypass.mjs';
+import { syncExtAuthGate, hasClaudeCreds } from '../setup-bypass.mjs';
 import { applyProviderModel, applyProviderEffort } from '../apply-model.mjs';
 import { loadStore } from '../store.mjs';
 import { setLocalSshHost, setPendingLocalIp, clearPendingLocalIp } from '../local-ssh.mjs';
@@ -21,13 +21,18 @@ import { selectCodexNative, ensureAndReport, connectCodexNative } from './native
 import { showLocalAwareSshHome } from './ssh-screen.mjs';
 import { writeBotPermissionMode } from './actions.mjs';
 import { EXT_MARKER } from './shared.mjs';
+import { captureCodexPause, beginClaudePauseSwitch, finishClaudePauseSwitch } from '../codex-pause-switch.mjs';
 
-export async function handleCallback(bot, cq, closedCore = false) {
+export async function handleCallback(bot, cq, closedCore = false, pauseCapture) {
   const data = String(cq.data || '');
   const chatId = cq.message?.chat?.id;
   const messageId = cq.message?.message_id;
   const userId = cq.from?.id;
   if (!chatId || !userId) return false;
+  if (!closedCore && !pauseCapture && ['settings:engine:set:cc', 'settings:conn:set:cc', 'ext:conn:set:claude'].includes(data)) {
+    try { pauseCapture = { captured: true, intent: await captureCodexPause(bot) }; }
+    catch { pauseCapture = { captured: true, error: true }; }
+  }
 
   if (data.startsWith('settings:ssh:')) {
     if (closedCore) return false;
@@ -114,7 +119,7 @@ export async function handleCallback(bot, cq, closedCore = false) {
       });
     }
     cq.data = 'ext:conn:set:claude';
-    return handleCallback(bot, cq, closedCore);
+    return handleCallback(bot, cq, closedCore, pauseCapture);
   }
   if (data === 'settings:auth:help') {
     cq.data = 'setup:help';
@@ -162,10 +167,42 @@ export async function handleCallback(bot, cq, closedCore = false) {
       const ok = await ensureAndReport(bot, chatId, messageId, id);
       if (!ok) return true;
     }
-    await setActive(id);
-    await syncExtAuthGate();
+    if (id === 'claude' && pauseCapture?.error) {
+      const menu = await buildConnMenu();
+      await editOrReply(bot, chatId, messageId, 'Не удалось проверить паузу. Попробуй ещё раз.', menu.keyboard);
+      return true;
+    }
+    const pauseIntent = id === 'claude' ? pauseCapture?.intent : null;
+    if (pauseIntent && !await hasClaudeCreds()) {
+      const menu = await buildConnMenu();
+      await editOrReply(bot, chatId, messageId, 'Claude ещё не подключён. Пауза сохранена.', menu.keyboard);
+      return true;
+    }
+    if (pauseIntent && !await beginClaudePauseSwitch(pauseIntent)) {
+      const menu = await buildConnMenu();
+      await editOrReply(bot, chatId, messageId, 'Пауза или движок изменились. Попробуй ещё раз.', menu.keyboard);
+      return true;
+    }
+    if (!pauseIntent) await setActive(id);
+    const synced = pauseIntent
+      ? await syncExtAuthGate(process.env, undefined, { pauseSwitch: pauseIntent })
+      : await syncExtAuthGate();
+    if (pauseIntent && synced.reason === 'pause-switch-need-claude-setup') {
+      const menu = await buildConnMenu();
+      await editOrReply(bot, chatId, messageId, 'Claude ещё не подключён. Пауза сохранена.', menu.keyboard);
+      return true;
+    }
+    if (pauseIntent && !synced.selected) return true;
+    const wake = id === 'claude' ? await finishClaudePauseSwitch(bot, pauseIntent) : { ok: true };
+    if (wake.superseded) return true;
     const menu = await buildConnMenu();
-    await editOrReply(bot, chatId, messageId, `${switchedText(id)}\n\n${menu.text}`, menu.keyboard);
+    if (wake.notReady) {
+      await editOrReply(bot, chatId, messageId, 'Claude ещё не подключён. Пауза сохранена.', menu.keyboard);
+      return true;
+    }
+    const warning = wake.stale ? '\n\nПауза изменилась во время переключения; сохранил новую метку.'
+      : !wake.ok ? '\n\nНе удалось подтвердить снятие паузы. Повтори выбор Claude.' : '';
+    await editOrReply(bot, chatId, messageId, `${switchedText(id)}${warning}\n\n${menu.text}`, menu.keyboard);
     console.error(`${EXT_MARKER} active provider → ${id}`);
     return true;
   }

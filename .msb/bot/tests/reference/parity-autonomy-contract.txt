@@ -91,10 +91,25 @@ and OpenClaw use their normal model policies. Tests use fake APIs,
 owned executable fixtures and disposable profile data.
 
 The scheduler stamps the admission attempt. Once the stamp is
-published, a process crash before the in-memory queue runs can lose
-the delivery, as in the old scheduler after enqueue. A model error
-or manual stop does not schedule a second run. The user profile's
-global legacy schedule adoption is outside this local checkpoint.
+published, Claude keeps the old one-attempt behavior. A Codex reservation
+also records one pending occurrence in the same schedules transaction.
+A timer stamped under Claude keeps only an in-memory reference until
+admission. If a later Codex sleep blocks it, the worker may persist that
+reference for the exact unchanged row before any model launch.
+The queue captures the Codex decision before status delivery. A wake or
+switch to Claude while delivery is pending does not lose that occurrence.
+If sleep blocks the worker, the occurrence remains eligible on a later
+awake tick, even after restart or outside the original recurring minute.
+This does not catch up a recurring slot never reserved before sleeping.
+A crash before the worker persists a Claude reservation still loses it.
+The worker retires the exact pending occurrence before model execution,
+under the schedule, state and then sleep-marker locks.
+The original schedule source, row and saved chat must match. `/stop`
+retires pending attempts in the current schedule without replay. If it
+cannot publish that cancellation, it reports the error and holds new
+recoverable reservations in the running process until a successful `/stop`.
+A model error or a crash after the final admission write does not schedule
+a second run. Global legacy schedule adoption is outside this checkpoint.
 24608/24644 and 26729–26748 route new SCHEDULE_TASK reminders to the
 separate action store. That conversation route is the next stage.
 

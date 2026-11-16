@@ -36,18 +36,18 @@ function assertBalanced(html) {
   assert.deepEqual(stack, []);
 }
 
-test('short response edits the original status with Markdown and the compact old footer', async () => {
+test('short response removes the thinking status and sends a new formatted message', async () => {
   const { ctx, calls } = fixture();
   const result = await deliverTurnResponse(ctx, 101, '**Готово**: `a < b`', {
     elapsedMs: 2345, costUsd: 0.0124, context: { contextTokens: 150, contextWindow: 1000 },
   });
-  assert.deepEqual(result, { method: 'edit', messages: 1 });
-  assert.equal(calls.length, 1);
-  assert.equal(calls[0].messageId, 101);
-  assert.equal(calls[0].text, '<b>Готово</b>: <code>a &lt; b</code>\n\n<blockquote>⏱ 2.3s · $0.012 · ○○○ 15%</blockquote>');
-  assert.equal(calls[0].options.parse_mode, 'HTML');
-  assert.equal(calls[0].chatId, 42);
-  assert.equal(calls[0].options.message_thread_id, undefined); // Editing already identifies its topic by message ID.
+  assert.deepEqual(result, { method: 'send', messages: 1 });
+  assert.deepEqual(calls.map(call => call.method), ['delete', 'send']);
+  assert.deepEqual(calls[0], { method: 'delete', chatId: 42, messageId: 101 });
+  assert.equal(calls[1].text, '<b>Готово</b>: <code>a &lt; b</code>\n\n<blockquote>⏱ 2.3s · $0.012 · ○○○ 15%</blockquote>');
+  assert.equal(calls[1].options.parse_mode, 'HTML');
+  assert.equal(calls[1].options.message_thread_id, 7);
+  assert.notEqual(calls[1].options.disable_notification, true);
   assert.ok(!calls.some((call) => call.text === '✅'));
 });
 
@@ -111,16 +111,12 @@ test('long HTML/Unicode responses delete status, preserve all text, and append f
   assert.equal(body, text);
 });
 
-test('edit failure falls back to send; not-modified is successful; delete failure does not lose a long reply', async () => {
-  const failed = fixture({ editError: new Error('message to edit not found') });
-  await deliverTurnResponse(failed.ctx, 101, 'Ответ', { elapsedMs: 1000 });
-  assert.deepEqual(failed.calls.map((call) => call.method), ['edit', 'delete', 'send']);
-  assert.deepEqual(failed.calls[1], { method: 'delete', chatId: 42, messageId: 101 });
-  assert.equal(failed.calls[2].text, failed.calls[0].text);
-  assert.equal(failed.calls[2].options.message_thread_id, 7);
-  const unchanged = fixture({ editError: new Error('Bad Request: message is not modified') });
-  await deliverTurnResponse(unchanged.ctx, 101, 'Ответ');
-  assert.deepEqual(unchanged.calls.map((call) => call.method), ['edit']);
+test('delete failure does not prevent short or long answer delivery', async () => {
+  const short = fixture({ deleteError: new Error('already deleted') });
+  await deliverTurnResponse(short.ctx, 101, 'Ответ', { elapsedMs: 1000 });
+  assert.deepEqual(short.calls.map(call => call.method), ['delete', 'send']);
+  assert.equal(short.calls[1].text, 'Ответ\n\n<blockquote>⏱ 1.0s</blockquote>');
+  assert.equal(short.calls[1].options.message_thread_id, 7);
   const long = fixture({ deleteError: new Error('already deleted') });
   await deliverTurnResponse(long.ctx, 101, 'x'.repeat(5000));
   assert.equal(long.calls.filter((call) => call.method === 'send').map((call) => call.text).join(''), 'x'.repeat(5000));
@@ -128,7 +124,6 @@ test('edit failure falls back to send; not-modified is successful; delete failur
 
 test('fallback failures only attempt to delete the supplied bot status, never the user message', async () => {
   const { ctx, calls } = fixture({
-    editError: new Error('message cannot be edited'),
     deleteError: new Error('status already deleted'),
     sendError: new Error('fixture connection failure'),
   });

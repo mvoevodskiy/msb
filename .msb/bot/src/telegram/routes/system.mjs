@@ -15,6 +15,7 @@ import {
   updatesScreen,
 } from '../screens.mjs';
 import { parsePultStatus } from '../../pult/status.mjs';
+import { botId } from '../../paths.mjs';
 import { cancelPultInput } from '../forms/pult.mjs';
 import { escapeHtml } from '../edit.mjs';
 import {
@@ -66,7 +67,7 @@ export async function handleSystemRoute({ data, show, chatId, bot, pending, sign
     const reloadIfNeeded = async () => {
       try {
         const { id } = await submitRequest('reload-pult', {
-          bot_id: process.env.MSB_BOT_ID || 'default',
+          bot_id: botId(),
         });
         const result = await waitRequestResult(id, { timeoutMs: 90_000 });
         return result?.code === 'OK'
@@ -85,9 +86,9 @@ export async function handleSystemRoute({ data, show, chatId, bot, pending, sign
       // Deferred input exit belongs to router admission, before any await.
       try {
         const { result, snapshot } = await refreshEngineStatus({ signal });
-        if (!result) return showPult('Обновление статуса не подтверждено: нет ответа помощника.', { pult: null });
+        if (!result) return showPult('Обновление статуса не подтверждено: нет ответа системной службы.', { pult: null });
         if (result.code !== 'OK') return showPult(`Не удалось обновить статус: <code>${escapeHtml(result.code)}</code>.`, { pult: null });
-        if (!parsePultStatus(snapshot.pult).known) return showPult('Помощник не вернул полный статус Пульта.', { pult: null });
+        if (!parsePultStatus(snapshot.pult).known) return showPult('Системная служба не вернула полный статус Пульта.', { pult: null });
         return showPult('', snapshot);
       } catch (err) {
         if (signal?.aborted) return;
@@ -98,14 +99,14 @@ export async function handleSystemRoute({ data, show, chatId, bot, pending, sign
       const action = data === 'settings:pult:on' ? 'enable-pult' : 'disable-pult';
       try {
         const { id } = await submitRequest(action, {
-          bot_id: process.env.MSB_BOT_ID || 'default',
+          bot_id: botId(),
         });
         const result = await waitRequestResult(id, { timeoutMs: 90_000 });
         const note = result
           ? `${action}: <code>${escapeHtml(result.code)}</code>${
               result.detail?.hint ? `\n${escapeHtml(String(result.detail.hint))}` : ''
             }${result.detail?.reason ? ` (${escapeHtml(String(result.detail.reason))})` : ''}`
-          : `⚠️ ${action}: нет ответа helper`;
+          : `⚠️ ${action}: нет ответа системной службы`;
         return showPult(note);
       } catch (err) {
         return showPult(`${action} ошибка: ${escapeHtml(err.message)}`);

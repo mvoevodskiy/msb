@@ -25,11 +25,11 @@ test('a weekday reminder is saved before confirmation and recurs at the owner cl
     text: '  Проверить почту <входящие>  ', timezone: 'Asia/Yekaterinburg',
   })) + '\n\nСледующая просьба.';
   const f = await reminderFixture(t, { output });
-  const edit = f.bot.api.editMessageText;
+  const send = f.bot.api.sendMessage;
   let published;
-  t.mock.method(f.bot.api, 'editMessageText', async (...args) => {
-    if (args[2].includes('Ок, поставил:')) published = await f.records().catch(() => undefined);
-    return edit(...args);
+  t.mock.method(f.bot.api, 'sendMessage', async (...args) => {
+    if (args[1].includes('Ок, поставил:')) published = await f.records().catch(() => undefined);
+    return send(...args);
   });
   await f.request('По будням в 9 напоминай проверить почту');
   const final = await f.final();
@@ -175,12 +175,12 @@ for (const provider of ['claude', 'codex']) {
     await saveState({ ...(await loadState()).state, chatId: 42, userId: 42 });
     await native.respond(marker(recurring('0 9 * * *')));
     await f.message('Каждый день в 9 напоминай проверить почту');
-    await until(() => f.edits.some(text => text.includes('⏱')), 'controlled CLI turn must finish', 10_000);
+    await until(() => f.messages.some(text => text.includes('⏱')), 'controlled CLI turn must finish', 10_000);
     const call = (await native.trace()).at(-1);
     const prompt = provider === 'claude' ? call.argv[call.argv.indexOf('--append-system-prompt') + 1] : call.prompt;
     assert.match(prompt, /\[SCHEDULE_TASK\].*"kind":"recurring".*"kind":"reminder"/);
     assert.match(prompt, /не чаще раза в час/);
-    assert.ok(f.edits.some(text => text.includes('Ок, поставил:')));
+    assert.ok(f.messages.some(text => text.includes('Ок, поставил:')));
     const file = path.join(path.dirname(sessionDir()), 'actions.json');
     const [entry] = JSON.parse(await fs.readFile(file, 'utf8'));
     assert.equal(entry.trigger.kind, 'cron');

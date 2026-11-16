@@ -8,8 +8,10 @@ export async function handleNativeEngineCallback({ data, state, show, providerVi
   await (async () => {
   if (data === 'eng:home' || data === 'eng:add' || data === 'eng:mig') {
     const snap = await engineStatusSnapshot();
-    if ((process.env.MSB_CC_ONLY || process.env.JARVIS_CC_ONLY) === '1' && data !== 'eng:home') {
-      return show({ text: CC_BLOCK(), keyboard: (await engineMenu(snap)).keyboard });
+    if ((process.env.MSB_CC_ONLY === '1' || process.env.JARVIS_CC_ONLY === '1') && data !== 'eng:home') {
+      const text = process.env.JARVIS_CC_ONLY === '1'
+        ? CC_BLOCK() : 'Управление OpenClaw через это меню отключено настройкой бота.';
+      return show({ text, keyboard: (await engineMenu(snap)).keyboard });
     }
     return show(await engineMenu(snap));
   }
@@ -18,7 +20,7 @@ export async function handleNativeEngineCallback({ data, state, show, providerVi
       const { result, snapshot: snap } = await refreshEngineStatus({ signal });
       const note = result
         ? `\n\nЗаявка <code>${result.code}</code> (${result.result})`
-        : '\n\n⚠️ Нет ответа helper за 20с';
+        : '\n\n⚠️ Системная служба не ответила за 20с';
       const screen = await engineMenu(snap);
       return show({ text: screen.text + note, keyboard: screen.keyboard });
     } catch (err) {
@@ -34,7 +36,8 @@ export async function handleNativeEngineCallback({ data, state, show, providerVi
       const { id } = await submitRequest(action, {
         bot_id: process.env.MSB_BOT_ID || 'default',
       });
-      const result = await waitRequestResult(id, { timeoutMs: 60_000 });
+      // The service has up to ten minutes for drain, state publication and wake.
+      const result = await waitRequestResult(id, { timeoutMs: 630_000 });
       const snap = await engineStatusSnapshot();
       const screen = await engineMenu(snap);
       const note = result

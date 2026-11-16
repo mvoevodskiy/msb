@@ -14,12 +14,13 @@ const thread = '0199a213-81c0-7800-8aa1-bbab2a035a53';
 const session = `ext:codex:${thread}`;
 const allUnchanged = { state: true, store: true, config: true, auth: true };
 
-async function scenario(t, name) {
+async function scenario(t, name, envOverrides = {}) {
   // The native config lock uses physical paths, including macOS /var aliases.
   const fixtureHome = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'msb-engine-reference-')));
   t.after(() => fs.rm(fixtureHome, { recursive: true, force: true }));
   const { stdout } = await execute(process.execPath, [harness, name], {
-    env: { HOME: fixtureHome, REFERENCE_HOME: fixtureHome, NODE_OPTIONS: `--import=${networkGuard}` },
+    env: { HOME: fixtureHome, REFERENCE_HOME: fixtureHome, NODE_OPTIONS: `--import=${networkGuard}`,
+      ...envOverrides },
     timeout: 15_000, maxBuffer: 1024 * 1024,
   });
   const result = JSON.parse(stdout);
@@ -31,10 +32,70 @@ async function scenario(t, name) {
   assert.equal(result.menu.buttons.find((button) => button.text.includes('Codex'))?.callback_data,
     'ext:conn:set:codex', 'The displayed button must use the existing provider switch flow');
   assert.ok(result.menu.buttons.some((button) => button.callback_data === 'settings:engine:set:cc'));
-  assert.ok(result.menu.buttons.some((button) => button.callback_data === 'eng:add'));
+  if (envOverrides.MSB_OS_ENGINE === 'native') {
+    assert.deepEqual(result.menu.buttons.map((button) => button.callback_data), [
+      'settings:engine:set:cc', 'ext:conn:set:codex', 'eng:status', 'eng:oc:on', 'eng:oc:off', 'menu:settings',
+    ]);
+  } else {
+    assert.ok(result.menu.buttons.some((button) => button.callback_data === 'eng:add'));
+  }
   assert.ok(result.menu.buttons.some((button) => button.callback_data === 'menu:settings'));
   return result;
 }
+
+const nativeCodexEnv = { MSB_OS_ENGINE: 'native', MSB_CC_ONLY: '1' };
+
+test('native engines: clean installation displays the selected Codex without an engine field', async (t) => {
+  const result = await scenario(t, 'engine-home', { ...nativeCodexEnv, REFERENCE_NO_ENGINE: '1' });
+  assert.match(result.menu.text, /Сейчас отвечает: <b>Codex<\/b>/);
+  assert.equal(result.menu.buttons.find((button) => button.callback_data === 'ext:conn:set:codex').text,
+    '🧠 Codex ✓');
+  assert.equal(result.state.engine, undefined);
+  assert.equal(result.state.ccSessionId, session);
+  assert.deepEqual(result.unchanged, allUnchanged);
+  assert.deepEqual(result.cli, []);
+});
+
+test('native engines: Codex button switches the CLI provider after its login is checked', async (t) => {
+  const result = await scenario(t, 'engine-valid-login', nativeCodexEnv);
+  assert.match(result.menu.text, /Сейчас отвечает: <b>Claude Code<\/b>/);
+  assert.equal(result.menu.buttons.find((button) => button.callback_data === 'ext:conn:set:codex').text,
+    '🧠 Codex');
+  assertLoginChecks(result);
+  assert.equal(result.store.active, 'codex');
+  assert.equal(result.state.extAuthBypass, 'codex');
+  assert.equal(result.state.ccSessionId, undefined);
+  assertSelectionsPreserved(result);
+});
+
+test('native engines: reselecting Codex preserves the existing session and native settings', async (t) => {
+  const result = await scenario(t, 'engine-reselect', nativeCodexEnv);
+  assertLoginChecks(result, 2);
+  assert.equal(result.unchanged.state, true);
+  assert.equal(result.state.ccSessionId, session);
+  assertSelectionsPreserved(result);
+});
+
+test('native engines: reselecting Codex preserves an unfinished first introduction', async (t) => {
+  const result = await scenario(t, 'engine-reselect', { ...nativeCodexEnv, REFERENCE_BOOTSTRAP: '1' });
+  assertLoginChecks(result, 2);
+  assert.equal(result.unchanged.state, true);
+  assert.equal(result.state.ccSessionId, undefined);
+  assert.equal(result.state.codexBootstrap['42:42:0'].sessionId, session);
+  assertSelectionsPreserved(result);
+});
+
+test('native engines: an OpenClaw selection stays visible until Codex is selected', async (t) => {
+  const result = await scenario(t, 'engine-oc-valid-login', nativeCodexEnv);
+  assert.match(result.menu.text, /Сейчас отвечает: <b>OpenClaw<\/b>/);
+  assert.equal(result.menu.buttons.find((button) => button.callback_data === 'ext:conn:set:codex').text,
+    '🧠 Codex');
+  assertLoginChecks(result);
+  assert.equal(result.store.active, 'codex');
+  assert.equal(result.state.engine, 'cc');
+  assert.equal(result.state.ocSessionId, 'reference-oc-session');
+  assertSelectionsPreserved(result);
+});
 
 function assertLoginChecks(result, count = 1) {
   assert.deepEqual(result.cli.map(({ name, argv, stdin }) => ({ name, argv, stdin })),

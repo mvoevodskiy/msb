@@ -4,6 +4,8 @@
  * [Контракт](../../../tests/reference/parity-forms-contract.txt),
  * [handler tests](../../../tests/pult-input.test.mjs). Backend → [Pult](../../pult/client.mjs).
  */
+import { botId } from '../../paths.mjs';
+
 export const PULT_KINDS = new Set(['pult-password','pult-tg-token','pult-url','pult-listen','pult-session']);
 /** Used by routes and deferred callback admission; unrelated form owners survive. */
 export function cancelPultInput(pending, chatId, kind) {
@@ -60,7 +62,7 @@ export async function handlePultInput({ kind, ctx, text, pending, chatId }) {
     let note = 'сохранено';
     try {
       const { id } = await submitRequest('reload-pult', {
-        bot_id: process.env.MSB_BOT_ID || 'default',
+        bot_id: botId(),
       });
       const result = await waitRequestResult(id, { timeoutMs: 90_000 });
       note =

@@ -45,6 +45,7 @@ for (const overlay of [false, true]) for (const entry of ['custom', 'quick']) {
     const options = entry === 'custom' ? f.messageOptions.at(-1) : f.editOptions.at(-1);
     assert.equal(options.parse_mode, 'HTML');
     assert.deepEqual(options.reply_markup.inline_keyboard, [[{text:'➕ Добавить TELEGRAM_BOT_2',callback_data:'settings:env:quick:TELEGRAM_BOT_2'}]]);
+    assert.deepEqual(f.deleted, [], 'Refusing the protected key must not remove a message.');
     await f.message('ordinary task after refusal');
     await until(() => turns.length === 1);
     assert.equal(await fs.readFile(file, 'utf8'), before);
@@ -52,7 +53,7 @@ for (const overlay of [false, true]) for (const entry of ['custom', 'quick']) {
     assert.deepEqual((await loadState()).state, state);
     assert.equal(await fs.readFile(f.storeFile, 'utf8'), providers);
     assert.deepEqual(f.restartRequests, []);
-    assert.deepEqual(f.deleted, []);
+    assert.ok(!f.deleted.includes(99), 'The subsequent turn may delete only its own thinking status.');
   });
 }
 

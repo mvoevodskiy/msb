@@ -237,6 +237,16 @@ old provenance and still-pending catalog locks are in
 
 ## Подтверждение плана и правки
 
+По решению владельца 15.11.2026 обычный итоговый ответ тоже приходит новым
+сообщением: [response](response.mjs) удаляет статус thinking и отправляет ответ
+с прежними форматированием, footer и topic. Если удаление статуса не удалось,
+это не блокирует отправку ответа. Это намеренное отличие от старого редактирования
+короткого ответа. Анимацию завершает и дожидается её последнего edit
+[progress](progress.mjs); отдельная команда /stop без частичного ответа сохраняет
+прежний статус остановки. [Проверки](../../tests/response-delivery.test.mjs),
+[гонка progress](../../tests/presentation-retry.test.mjs),
+[полный ход](../../tests/turn-lifecycle.test.mjs).
+
 Финальный ответ → [plan parser](plan.mjs) → [response](response.mjs) удаляет
 thinking и отправляет отдельную прежнюю карточку; footer/keyboard только на
 последнем chunk, включая plain fallback. Tool/text progress не создаёт approvals;

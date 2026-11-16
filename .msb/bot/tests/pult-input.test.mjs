@@ -4,6 +4,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fixture } from './helpers/menu-fixture.mjs';
 import { readEnvMap, setEnvKey } from '../src/env/store.mjs';
+import { loadState, saveState } from '../src/state.mjs';
 import { setPendingAuth, getPendingAuth, clearPendingAuth } from '../../../overlay/bot/ext/auth.mjs';
 import { setPendingLocalIp, getPendingLocalIp, clearPendingLocalIp } from '../../../overlay/bot/ext/local-ssh.mjs';
 
@@ -39,6 +40,40 @@ const fields = [
   ['url', 'settings:pult'], ['session', 'settings:pult'],
   ['listen:custom', 'settings:pult:listen'],
 ];
+
+for (const [rawBotId, expectedBotId] of [
+  ['default', 'default'], ['second_bot', 'second_bot'], [' second_bot ', 'second_bot'],
+]) for (const [kind, action, exercise] of [
+  ['enable', 'enable-pult', async f => f.callback('settings:pult:on')],
+  ['disable', 'disable-pult', async f => f.callback('settings:pult:off')],
+  ['preset', 'reload-pult', async f => f.callback('settings:pult:session:set:12')],
+  ['form', 'reload-pult', async f => {
+    await f.callback('settings:pult:password');
+    await f.message('fixture-pult-password');
+  }],
+]) test(`Pult ${kind} submits the current bot ID for ${JSON.stringify(rawBotId)}`, async t => {
+  const f = await pultFixture(t);
+  process.env.MSB_BOT_ID = rawBotId;
+  await exercise(f);
+  assert.equal(f.requests.length, 1);
+  assert.equal(f.requests[0].action, action);
+  assert.equal(f.requests[0].bot_id, expectedBotId);
+});
+
+for (const provider of ['codex', 'claude']) test(`Pult reload keeps the selected ${provider} conversation`, async t => {
+  const f = await pultFixture(t);
+  const before = (await loadState()).state;
+  before.extAuthBypass = provider === 'codex' ? 'codex' : undefined;
+  before.ccSessionId = provider === 'codex' ? before.ccSessionId : 'fixture-claude-session';
+  await saveState(before);
+  await f.callback('settings:pult:session:set:12');
+  assert.equal(f.requests[0].action, 'reload-pult');
+  assert.equal(f.requests[0].bot_id, 'default');
+  const after = (await loadState()).state;
+  assert.equal(after.extAuthBypass, before.extAuthBypass);
+  assert.equal(after.ccSessionId, before.ccSessionId);
+});
+
 for (const [field, back] of fields) test(`Pult input: ${field} Back ends only its form before the next task`, async t => {
   const f = await pultFixture(t);
   await f.callback(`settings:pult:${field}`);

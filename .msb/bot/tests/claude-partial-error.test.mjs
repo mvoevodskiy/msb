@@ -69,7 +69,7 @@ async function failTurn(t, { partial = false, apiFrame = false } = {}) {
   assert.equal(after.managedMcp, undefined);
   assert.equal(line.status, 'error');
   assert.equal(line.providerId, 'claude');
-  return { ...f, final: f.edits.at(-1), line };
+  return { ...f, final: f.messages.at(-1), line };
 }
 
 test('ordinary Claude partial text keeps its old footer on a nonzero exit', async t => {

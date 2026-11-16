@@ -51,6 +51,7 @@ Owner-check выполняется в [`installUpdateHook`](integration/update-h
 | Сохранить UI-режим прав | [`integration/actions.mjs`](integration/actions.mjs): `writeBotPermissionMode`; совместимый реэкспорт из [`menu.mjs`](menu.mjs) | [menu-handlers](../../../.msb/bot/tests/menu-handlers.test.mjs) проверяет сохранение native Codex session |
 | Согласовать provider с auth gate ядра | [`setup-bypass.mjs`](setup-bypass.mjs): `syncExtAuthGate`; [`state-update.mjs`](state-update.mjs): `updateBotState` | [setup-bypass](tests/setup-bypass.test.mjs), [engine-menu](tests/reference/engine-menu.test.mjs) |
 | Сохранить отдельные беседы при смене CLI | [`provider-sessions.mjs`](provider-sessions.mjs): `switchProviderSession` в общей транзакции state | [provider-sessions](tests/provider-sessions.test.mjs), [turn-lifecycle](../../../.msb/bot/tests/turn-lifecycle.test.mjs) |
+| Снять прежнюю паузу Codex при успешном выборе Claude | [`codex-pause-switch.mjs`](codex-pause-switch.mjs) → [marker](../../../.msb/bot/src/engines/sleep-marker.mjs), прежние callback/сессии | [codex-pause-switch](../../../.msb/bot/tests/codex-pause-switch.test.mjs), [sleep-marker](../../../.msb/bot/tests/sleep-marker.test.mjs) |
 
 Основной provider store — `<root>/bots/<id>/ext-providers.json`;
 `<root>` выбирает [shared profile](../../../.msb/bot/shared/README.md). Core-профиль
@@ -59,6 +60,10 @@ Owner-check выполняется в [`installUpdateHook`](integration/update-h
 `parkedCcSessions` того же state, а ID выбранного CLI возвращается в `ccSessionId`.
 `ext-providers.json` хранит последние наблюдавшиеся native ID как метаданные и не
 используется для автоматического возобновления после `/newtask` или `/clear`.
+При явном выборе Claude из приостановленного Codex внутренний `codexPauseSwitch`
+в `state.json` хранит ID, ревизию метки и эпоху сессии до завершения операции.
+Повтор после сбоя не удаляет более новую метку; обычный выбор без паузы не создаёт
+эту запись. Снятие метки не запускает отложенное знакомство другого provider.
 Записи store синхронизируются через SQLite lock-файл рядом с JSON (0600, без
 секретов); блокировка освобождается ОС при завершении процесса. Чтение JSON
 по-прежнему не меняет state. Смена провайдера увеличивает `sessionEpoch`, чтобы поздний ответ старого хода не

@@ -3,10 +3,12 @@
  * [Telegram management](../telegram/routes/autonomy.mjs), [profile paths](../paths.mjs),
  * [storage lock](../../shared/file-lock.mjs), [parity checks](../../tests/autonomy-timers.test.mjs).
  * [Conversation](./legacy-timer-actions.mjs) and [dispatcher](./legacy-dispatch.mjs) share the writer.
+ * A Codex reservation keeps its old attempt stamp and a pending ID until inbox admission.
  * [Interval tasks](./store.mjs) are separate.
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createHash, randomUUID } from 'node:crypto';
 import { isDeepStrictEqual } from 'node:util';
 import { withFileLock } from '../../shared/file-lock.mjs';
 import { actionRoot } from '../paths.mjs';
@@ -18,6 +20,21 @@ function timersPath(env) {
 
 export function savedLegacyTimers(records) {
   return records.filter(row => typeof row?.id === 'string' && typeof row.name === 'string');
+}
+
+export function pendingLegacyTimerRun(timer) {
+  const run = timer.legacyPendingRun;
+  return typeof run?.file === 'string' && typeof run.id === 'string' &&
+    /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/.test(run.id) &&
+    typeof run.definition === 'string' && typeof run.destination === 'string';
+}
+
+function runDefinition({ legacyPendingRun, ...timer }) {
+  return createHash('sha256').update(JSON.stringify(timer)).digest('hex');
+}
+
+function pendingMark({ id, file, timer, destination }) {
+  return { id, file, destination, definition: runDefinition(timer) };
 }
 
 async function physicalTimersPath(env) {
@@ -61,7 +78,7 @@ export async function withLegacyTimerUpdate(env, update, { expectedFile, signal 
         if (await physicalTimersPath(env) !== file) throw new Error('Timer file changed');
       },
     });
-    return update(records, save);
+    return update(records, save, file);
   });
 }
 
@@ -73,6 +90,7 @@ export async function changeLegacyTimer(id, { remove = false, env = process.env 
       : records.map(row => {
         if (row?.id !== id) return row;
         const timer = { ...row, enabled: !row.enabled };
+        delete timer.legacyPendingRun;
         if (timer.disabledBy === 'stop') delete timer.disabledBy;
         return timer;
       });
@@ -85,7 +103,12 @@ export async function changeLegacyTimer(id, { remove = false, env = process.env 
 export async function changeStoppedLegacyTimers(stop, env = process.env) {
   return (await withLegacyTimerUpdate(env, async (records, save) => {
     let changed = 0;
+    let cancelled = false;
     for (const timer of savedLegacyTimers(records)) {
+      if (stop && pendingLegacyTimerRun(timer)) {
+        delete timer.legacyPendingRun;
+        cancelled = true;
+      }
       if (stop && timer.enabled) {
         timer.enabled = false;
         timer.disabledBy = 'stop';
@@ -95,28 +118,82 @@ export async function changeStoppedLegacyTimers(stop, env = process.env) {
       } else continue;
       changed++;
     }
-    if (changed) await save();
+    if (changed || cancelled) await save();
     return changed;
   })) ?? 0;
 }
 
-export async function publishLegacyTimerRun(file, timer, { reserve, now, env }) {
+export async function publishLegacyTimerRun(file, timer, { reserve, now, env, recoverable, destination }) {
   await withLegacyTimerUpdate(env, async (records, save) => {
     const index = records.findIndex(row => row?.id === timer.id);
     if (index < 0 || !isDeepStrictEqual(records[index], timer)) return;
-    const finishReservation = reserve();
+    const pending = pendingLegacyTimerRun(timer);
+    let next = timer;
+    if (pending && (timer.legacyPendingRun.file !== file || timer.legacyPendingRun.destination !== destination)) return;
+    if (pending && timer.legacyPendingRun.definition !== runDefinition(timer)) {
+      delete records[index].legacyPendingRun;
+      await save();
+      return;
+    }
+    if (!pending) {
+      next = { ...timer, lastRunAt: new Date(now()).toISOString() };
+      if (timer.type === 'once') next.enabled = false;
+    }
+    const run = { id: pending ? timer.legacyPendingRun.id : randomUUID(), file, timer: next, destination };
+    if (!pending && recoverable) next.legacyPendingRun = pendingMark(run);
+    const finishReservation = reserve(run);
     if (!finishReservation) return;
 
     try {
-      const next = { ...timer, lastRunAt: new Date(now()).toISOString() };
-      if (timer.type === 'once') next.enabled = false;
-      records[index] = next;
-      await save();
+      if (!pending) {
+        records[index] = next;
+        await save();
+      }
     } catch (error) {
       finishReservation(false);
       throw error;
     }
     finishReservation(true);
+  }, { expectedFile: file });
+}
+
+/** Admit this group, or make stamped in-memory reservations durable when sleep blocks it. */
+export async function claimLegacyTimerRuns(runs, { env = process.env, signal, admit = commit => commit() } = {}) {
+  return (await withLegacyTimerUpdate(env, (records, save, file) => admit(async (destination, defer = false) => {
+    const claimed = new Set();
+    let changed = false;
+    for (const run of runs) {
+      const pending = pendingLegacyTimerRun(run.timer);
+      if (!pending && !defer) {
+        // This attempt was already committed by the ordinary legacy writer.
+        claimed.add(run);
+        continue;
+      }
+      if (pending && defer) continue;
+      if (run.file !== file) continue;
+      if (destination !== undefined && run.destination !== destination) continue;
+      const current = records.find(row => row?.id === run.timer.id);
+      if (!current || !isDeepStrictEqual(current, run.timer)) continue;
+      if (defer) current.legacyPendingRun = pendingMark(run);
+      else {
+        delete current.legacyPendingRun;
+        claimed.add(run);
+      }
+      changed = true;
+    }
+    if (changed) await save();
+    return defer ? false : claimed;
+  }), { signal })) ?? new Set();
+}
+
+export async function cancelPendingLegacyTimerRuns(includeInFlight, env = process.env) {
+  const { file, timers } = await readLegacyTimerRecords(env);
+  if (!file || (!includeInFlight && !timers.some(pendingLegacyTimerRun))) return 0;
+  return withLegacyTimerUpdate(env, async (records, save, file) => {
+    const pending = savedLegacyTimers(records).filter(timer => pendingLegacyTimerRun(timer) && timer.legacyPendingRun.file === file);
+    for (const timer of pending) delete timer.legacyPendingRun;
+    if (pending.length) await save();
+    return pending.length;
   }, { expectedFile: file });
 }
 

@@ -48,7 +48,7 @@ for (const provider of ['claude', 'codex']) {
       quiet, maxMinutes: quiet ? 1.2 : 42.4,
     })));
     await f.message(quiet ? 'Через пятнадцать минут сверь заметки' : 'Каждый вечер в восемь собирай заметки');
-    await until(() => f.edits.some(text => text.includes('⏱')), 'ordinary final response did not arrive', 10_000);
+    await until(() => f.messages.some(text => text.includes('⏱')), 'ordinary final response did not arrive', 10_000);
     const foreground = (await native.trace()).at(-1);
     const system = provider === 'claude' ? foreground.argv[foreground.argv.indexOf('--append-system-prompt') + 1] : foreground.prompt;
     assert.match(system, /\[SCHEDULE_TASK\].*"kind":"prompt"/);
@@ -70,7 +70,7 @@ for (const provider of ['claude', 'codex']) {
       silentIfEmpty: true, ...(quiet ? { emptyIsValidOutcome: true } : {}) });
     assert.equal(entry.budget.maxRunSeconds, quiet ? 60 : 42 * 60);
     assert.equal(entry.trigger.kind, quiet ? 'once' : 'cron');
-    assert.ok(f.edits.some(text => text.includes('Она сможет читать и сохранять файлы у тебя на сервере.')));
+    assert.ok(f.messages.some(text => text.includes('Она сможет читать и сохранять файлы у тебя на сервере.')));
     const plan = savedPromptPlan(entry, profile, process.env, provider === 'codex');
     assert.equal(plan.timeoutMs, (quiet ? 60 : 1800) * 1000 - 15_000);
     const now = quiet ? Date.parse(entry.trigger.at)
@@ -254,11 +254,11 @@ test('API-only native Codex is not offered or confirmed as a saved subscription 
   await fs.writeFile(auth, original);
   await native.respond(marker(promptAction()));
   await f.message('Через пятнадцать минут сверь заметки');
-  await until(() => f.edits.some(text => text.includes('⏱')), 'controlled Codex answer did not arrive', 10_000);
+  await until(() => f.messages.some(text => text.includes('⏱')), 'controlled Codex answer did not arrive', 10_000);
   const [{ prompt }] = (await native.trace()).slice(-1);
   assert.match(prompt, /\[SCHEDULE_TASK\].*"kind":"reminder"/);
   assert.doesNotMatch(prompt, /\[SCHEDULE_TASK\].*"kind":"prompt"/);
-  assert.ok(f.edits.some(text => text.includes('сбор на выбранном движке недоступен')));
+  assert.ok(f.messages.some(text => text.includes('сбор на выбранном движке недоступен')));
   await assert.rejects(fs.stat(path.join(actionRoot(), 'actions.json')), { code: 'ENOENT' });
   assert.equal(await fs.readFile(auth, 'utf8'), original);
 });

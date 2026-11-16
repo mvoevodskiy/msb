@@ -65,7 +65,7 @@ test('comment consumes exactly the next ordinary text and routes it through the 
   await f.callback('plan:comment', 42, { messageId: 77 });
   assert.equal(f.messages.at(-1), 'Напиши комментарий — агент учтёт его:');
   await f.message('измени второй шаг');
-  await until(() => calls.length === 1 && f.edits.some(text => text.startsWith('Комментарий принят')));
+  await until(() => calls.length === 1 && f.messages.some(text => text.startsWith('Комментарий принят')));
   await f.message('обычная следующая задача');
   await until(() => calls.length === 2); await f.bot.stop();
   assert.deepEqual(calls, ['✖ Не согласен. Комментарий: измени второй шаг', 'обычная следующая задача']);
@@ -135,16 +135,16 @@ test('unknown/prototype plan callbacks do not create a hidden continuation', asy
 test('infrastructure error containing a marker is a plain error notice, not an approval card', async t => {
   const f = await fixture(t, async () => { throw Error('fixture error [КНОПКИ: plan]'); });
   await f.message('synthetic task');
-  await until(() => f.edits.some(text => text.includes('fixture error')));
+  await until(() => f.messages.some(text => text.includes('fixture error')));
   await f.bot.stop();
   assert.equal(f.messageOptions.some(opts => opts?.reply_markup), false);
-  assert.match(f.edits.at(-1), /❌ Ошибка: fixture error \[КНОПКИ: plan\]/);
+  assert.match(f.messages.at(-1), /❌ Ошибка: fixture error \[КНОПКИ: plan\]/);
 });
 
 test('callback continuation keeps its topic through queue status and final response', async t => {
   const calls = [], f = await fixture(t, async opts => { calls.push(opts.prompt); return { ok: true, text: 'topic response' }; });
   await f.callback('plan:approve', 42, { threadId: 7 });
-  await until(() => f.edits.some(text => text.startsWith('topic response'))); await f.bot.stop();
+  await until(() => f.messages.some(text => text.startsWith('topic response'))); await f.bot.stop();
   assert.deepEqual(calls, ['✔ Продолжай выполнение.']);
   assert.ok(f.messageOptions.some(opts => opts?.message_thread_id === 7));
 });
@@ -153,7 +153,7 @@ test('plan comment is consumed only in its originating chat; other text retains 
   const calls = [], f = await fixture(t, async opts => { calls.push(opts.prompt); return { ok: true, text: 'ready' }; });
   await f.callback('plan:comment');
   await f.bot.handleUpdate({ message: { message_id: 7, from: { id: 42 }, chat: { id: 43 }, text: 'другой чат' } });
-  await until(() => f.edits.some(text => text.startsWith('ready')));
+  await until(() => f.messages.some(text => text.startsWith('ready')));
   await f.message('мой комментарий');
   await until(() => calls.length === 2); await f.bot.stop();
   assert.deepEqual(calls, ['другой чат', '✖ Не согласен. Комментарий: мой комментарий']);
