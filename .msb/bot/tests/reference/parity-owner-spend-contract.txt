@@ -283,3 +283,17 @@ preparation is not restored; a failed restore write cannot be promised durable.
 A whole cron minute spent with the scheduler down is not inferred from current
 state. Crash after admission before an external effect can consume an occurrence;
 crash after an effect may be uncertain. This is not an exactly-once guarantee.
+
+Recurring regression follow-up: an older recurring-reminder test used the
+costPaused flag to demonstrate that a rejection consumes its slot and the
+breaker follows its old recovery schedule. After owner decision
+0487b4d and fix 6f553df, that premise was no longer valid. The test now uses a
+separate saved daily budget refusal and still checks the same blocked/error/
+skipped/recovered sequence. Eight common cases passed on macOS Node 26 and
+network-none Linux Node 22.23.2, using the dispatcher mock and synthetic data.
+
+An initial negative test-name filter accidentally included a generic
+foreign-record test containing a synthetic OpenClaw-tagged row. The unrelated
+dispatcher was mocked and no OpenClaw process, service, integration or JAR1
+was used. The tracked runner now enforces a positive allowlist of exactly eight
+common cases in a child process and asserts the foreign-record test is absent.

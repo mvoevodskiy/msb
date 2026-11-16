@@ -69,9 +69,9 @@ test('old frequency floor honors the per-action saved Keep and holds an unapprov
   assert.deepEqual(after[2], off);
 });
 
-test('recurring rejection consumes a slot and a breaker follows two intervals before recovery', async t => {
+test('a non-pause budget rejection consumes a recurring slot and the breaker recovers', async t => {
   const entry = record('repeat', every(120));
-  const f = await profile(t, [entry], { state: { costPaused: true } });
+  const f = await profile(t, [entry], { state: { dailySpendLimit: 0.05 } });
   const originalSend = f.bot.api.sendMessage;
   let failures = 0;
   f.bot.api.sendMessage = async (...args) => {
@@ -81,7 +81,7 @@ test('recurring rejection consumes a slot and a breaker follows two intervals be
   await f.scheduler.tickNow();
   assert.equal((await f.rows())[0].enabled, true);
   assert.equal((await f.rows())[0].lastRunAt, at(initial));
-  await saveState({ ...(await loadState()).state, costPaused: false });
+  await saveState({ ...(await loadState()).state, dailySpendLimit: 0 });
   await f.advance(initial + 119 * min);
   assert.equal(failures, 0);
   for (const offset of [120, 240, 360, 480, 600]) await f.advance(initial + offset * min);
