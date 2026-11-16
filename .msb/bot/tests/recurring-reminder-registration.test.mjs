@@ -114,9 +114,13 @@ test('a STOP committed just after registration appears in the confirmation and g
   const target = path.join(await fs.realpath(f.directory), 'actions.json');
   await fs.mkdir(autonomy, { recursive: true });
   const rename = fs.rename;
+  let pauseInserted = false;
   t.mock.method(fs, 'rename', async (from, to) => {
     await rename(from, to);
-    if (to === target) await fs.writeFile(stop, 'fixture pause after action write');
+    if (to === target && !pauseInserted) {
+      pauseInserted = true;
+      await fs.writeFile(stop, 'fixture pause after action write');
+    }
   });
   await f.request('Каждый час напомни проверить почту');
   const final = await f.final();

@@ -224,7 +224,7 @@ test('/compact and normal turns cannot overlap across the owner’s chats', asyn
   assert.match(f.messages.at(-1), /Уже работаю/);
   assert.equal(compactCalls, 0);
   release();
-  await until(() => f.edits.some((text) => text.includes('done')));
+  await until(() => f.messages.some((text) => text.includes('done')));
 
   await until(() => journalHeld);
   await f.message('/compact');
