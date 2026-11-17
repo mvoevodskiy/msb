@@ -10,6 +10,14 @@ launcher = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(launcher)
 
 class LauncherTest(unittest.TestCase):
+    def test_pid_namespace_reaps_orphans_while_waiting_for_verifier(self):
+        child = SimpleNamespace(pid=123, returncode=None)
+        with patch.object(launcher.subprocess, 'Popen', return_value=child), \
+             patch.object(launcher.os, 'waitpid', side_effect=[(456, 0), (123, 7 << 8)]) as wait:
+            self.assertEqual(launcher.run_reaping(['synthetic'], cwd='/tmp'), 7)
+        self.assertEqual(wait.call_count, 2)
+        self.assertEqual(child.returncode, 7)
+
     def test_captures_service_host_namespace(self):
         result = SimpleNamespace(stdout='MainPID=123\nActiveState=active\n')
         with patch.object(launcher.subprocess, 'run', return_value=result), \
