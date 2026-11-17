@@ -1,5 +1,6 @@
 /**
- * Codex exec/resume и разбор ответа. При обычном сбое сохраняет завершённые фрагменты.
+ * Codex exec/resume и разбор ответа. Управляемый foreground → [app-server](./codex-app-server.mjs).
+ * При обычном сбое сохраняет завершённые фрагменты.
  * [Обвязка](../shim/run-turn.mjs) передаёт результат, [проверки](../tests/reference/provider-switch.test.mjs)
  * проходят от Telegram до CLI. Transport error не запускает повтор в новом thread.
  */
