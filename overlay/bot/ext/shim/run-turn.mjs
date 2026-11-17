@@ -15,6 +15,7 @@ import { runCodexTurn } from '../adapters/codex.mjs';
 import { runQwenTurn } from '../adapters/qwen.mjs';
 import { runOpenaiTurn } from '../adapters/openai.mjs';
 import { isValidCodexThreadId } from '../codex-native.mjs';
+import { openShimSteerControl } from './steer-control.mjs';
 
 
 
@@ -82,14 +83,18 @@ async function runAlternate(providerId, argv) {
   try {
     if (providerId === 'cursor') result = await runCursorTurn(ctx);
     else if (providerId === 'codex') {
-      result = await runCodexTurn({
-        ...ctx,
-        onThreadStarted(id) {
-          // Core uses this provisional ID only for the history of a stopped first turn.
-          emit({ type: 'system', subtype: 'codex_thread_started',
-            provider_id: providerId, session_id: encodeExtSession(providerId, id) });
-        },
-      });
+      const control = openShimSteerControl(ctx.env);
+      try {
+        result = await runCodexTurn({
+          ...ctx,
+          ...(control ? { onSteerReady: control.ready } : {}),
+          onThreadStarted(id) {
+            // Core uses this provisional ID only for the history of a stopped first turn.
+            emit({ type: 'system', subtype: 'codex_thread_started',
+              provider_id: providerId, session_id: encodeExtSession(providerId, id) });
+          },
+        });
+      } finally { control?.close(); }
     } else if (providerId === 'qwen') result = await runQwenTurn(ctx);
     else if (providerId === 'openai') result = await runOpenaiTurn(ctx);
     else {

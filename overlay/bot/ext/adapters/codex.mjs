@@ -6,6 +6,9 @@
 import os from 'node:os';
 import profile from '../../shared/profile.cjs';
 import { findBin, runCli } from './run-cli.mjs';
+import { runCodexAppServerTurn } from './codex-app-server.mjs';
+import { isCodexStreamCutMessage } from './codex-stream-cut.mjs';
+export { isCodexStreamCutMessage } from './codex-stream-cut.mjs';
 import { codexChildEnvironment } from '../codex-auth-env.mjs';
 import {prepareCodexMcp} from '../codex-mcp-launch.mjs';
 import {prepareIntroductionSummary} from '../intro-summary-policy.mjs';
@@ -23,12 +26,6 @@ import {
   ensureCodexStableTransport,
   codexHttpProviderOverrides,
 } from '../codex-transport.mjs';
-
-export function isCodexStreamCutMessage(text) {
-  return /stream disconnected|websocket closed|Reconnecting\.\.\.\s*\d+\/\d+|Falling back from WebSockets/i.test(
-    String(text || ''),
-  );
-}
 
 export function parseCodexStdout(stdout) {
   const lines = String(stdout || '')
@@ -197,6 +194,13 @@ async function execOnce({
 }
 
 export function finalizeParsed({ res, parsedOut, model, resumeRequested }) {
+  if (resumeRequested && parsedOut.resumeRejected) {
+    return {
+      ok: false,
+      text: 'Codex не смог продолжить выбранную сессию. Выбери другую в /sessions или начни новую командой /newtask.',
+      model: model || undefined,
+    };
+  }
   const text = (parsedOut.text || '').trim();
   let threadId = parsedOut.threadId;
   const foreignThread = resumeRequested && threadId && threadId !== resumeRequested;
@@ -269,7 +273,7 @@ export function finalizeParsed({ res, parsedOut, model, resumeRequested }) {
   };
 }
 
-export async function runCodexTurn({ prompt, parsed, cwd, env = process.env, home = env.HOME || os.homedir(), onThreadStarted }) {
+export async function runCodexTurn({ prompt, parsed, cwd, env = process.env, home = env.HOME || os.homedir(), onThreadStarted, onSteerReady }) {
   const introSummary = env.MSB_CODEX_INTRO_SUMMARY === '1';
   const envPath = { ...env, PATH: enrichPath(env, home) };
   let bin = findBin('codex', envPath);
@@ -332,8 +336,8 @@ export async function runCodexTurn({ prompt, parsed, cwd, env = process.env, hom
     childEnv=prepared.env; mcpArgs=prepared.args;
   }
 
-  const run = (resumeId) =>
-    execOnce({
+  const run = (resumeId) => {
+    const options = {
       bin,
       prompt,
       cwd,
@@ -346,7 +350,13 @@ export async function runCodexTurn({ prompt, parsed, cwd, env = process.env, hom
       mcpArgs,
       summaryArgs,
       onThreadStarted: parsed?.resume ? undefined : onThreadStarted,
-    });
+    };
+    // The control channel exists only for ordinary foreground Codex turns.
+    // Summaries and callers without one retain the existing exec route.
+    return typeof onSteerReady === 'function' && !introSummary
+      ? runCodexAppServerTurn({ ...options, onSteerReady })
+      : execOnce(options);
+  };
 
   const raw = await run(resumeRequested);
   if (raw.ok === false) return raw;

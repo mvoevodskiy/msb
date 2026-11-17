@@ -15,6 +15,8 @@
  * [Telegram stop checks](../../tests/turn-lifecycle.test.mjs).
  * Native API error frames stay separate from the assistant and its usage.
  * [Partial error checks](../../tests/claude-partial-error.test.mjs).
+ * Optional Codex-only control pipe → [steer channel](./steer-channel.mjs);
+ * [envelope checks](../../tests/steer-envelope.test.mjs).
  * [Native-shim regression](../../../../overlay/bot/ext/tests/reference/provider-switch.test.mjs).
  */
 import { spawn } from 'node:child_process';
@@ -26,6 +28,7 @@ import { workspaceDir } from '../paths.mjs';
 import { canonicalMcpPath, claudeMcpPath } from '../../shared/mcp-native-scope.mjs';
 import { isProviderSession } from '../../shared/session-starts.mjs';
 import { claudeCompactSettings, claudeTurnContext, updateClaudeInputSample } from './claude-context.mjs';
+import { createSteerChannel } from './steer-channel.mjs';
 
 const DEFAULT_MAX_TURNS = 200;
 const DEFAULT_ALLOWED_TOOLS = 'Bash,WebSearch,WebFetch,Agent,Task,Workflow,Monitor,Skill,Read,Edit,Write,Glob,Grep';
@@ -59,6 +62,7 @@ function isolatedEnvironment() {
  * @property {AbortSignal} [signal]
  * @property {string} [cwd]
  * @property {(ev: object) => void} [onEvent]
+ * @property {(handle: object | null) => void} [onSteerReady] Codex control for this exact child.
  * @property {() => void} [onSpawn] Called after the CLI child actually starts.
  * @property {boolean} [autonomy]
  * @property {number} [maxTurns]
@@ -169,11 +173,13 @@ export async function runClaudeTurn(opts) {
 
   return new Promise((resolve, reject) => {
     let child;
+    let steerChannel;
     let closed = false;
     let abortStarted = false;
     let termTimer = null;
     let killTimer = null;
     try {
+      const steerEnabled = opts.providerId === 'codex' && typeof opts.onSteerReady === 'function';
       child = spawn('claude', args, {
         cwd,
         env: {
@@ -184,6 +190,7 @@ export async function runClaudeTurn(opts) {
           MSB_TURN_MCP_REMOVE: opts.mcp?.codexNativeRemoval?JSON.stringify(opts.mcp.codexNativeRemoval):undefined,
           MSB_TURN_MCP_CUSTOM: opts.mcp?.codexCustom?JSON.stringify(opts.mcp.codexCustom):undefined,
           MSB_TURN_PROVIDER: opts.providerId || undefined,
+          MSB_CODEX_STEER_FD: steerEnabled ? '3' : undefined,
           MSB_CODEX_BOOTSTRAP: opts.codexBootstrap ? '1' : undefined,
           MSB_CODEX_INTRO_SUMMARY: opts.codexIntroSummary ? '1' : undefined,
           MSB_CODEX_INTRO_SCHEMA: opts.codexIntroSummary
@@ -193,9 +200,12 @@ export async function runClaudeTurn(opts) {
           CLAUDE_CODE_AUTO_COMPACT_WINDOW: compact?.window ?? (process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW || '200000'),
           CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: compact?.percent ?? (process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE || '90'),
         },
-        stdio: ['pipe', 'pipe', 'pipe'],
+        stdio: steerEnabled ? ['pipe', 'pipe', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe'],
         detached: true,
       });
+      if (steerEnabled && child.stdio?.[3]) {
+        steerChannel = createSteerChannel(child.stdio[3], { onReady: opts.onSteerReady });
+      }
     } catch (err) {
       cleanup();
       if (err?.code === 'ENOENT') {
@@ -233,6 +243,7 @@ export async function runClaudeTurn(opts) {
     function onAbort() {
       if (closed || abortStarted) return;
       abortStarted = true;
+      steerChannel?.close();
       stoppedReply = captureClaudeReply(currentClaudeContext());
       if (!signalGroup('SIGINT') || closed) return;
       termTimer = setTimeout(() => {
@@ -445,6 +456,7 @@ export async function runClaudeTurn(opts) {
 
     function cleanup() {
       closed = true;
+      steerChannel?.close();
       if (termTimer !== null) clearTimeout(termTimer);
       if (killTimer !== null) clearTimeout(killTimer);
       termTimer = killTimer = null;
