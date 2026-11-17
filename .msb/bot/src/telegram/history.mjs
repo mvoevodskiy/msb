@@ -1,4 +1,7 @@
-/** User-facing turn journal consumed by Pult; never reads native conversations. */
+/** User-facing turn journal consumed by Pult; never reads native conversations.
+ * [Bot lifecycle](./bot.mjs) owns the turn; [steer action](./steer-action.mjs)
+ * reserves sent corrections on that turn. [Checks](../../tests/steer-history.test.mjs).
+ */
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -15,6 +18,8 @@ export async function beginTurnHistory({ input, env = process.env, now = Date.no
   const query = historyPreview(input);
   let providerId = null;
   let completed = false;
+  let writes = Promise.resolve(), lastAcceptedAt = started;
+  const pending = new Set();
   const append = async (relative, row) => {
     try {
       const file = path.join(root, relative);
@@ -25,13 +30,36 @@ export async function beginTurnHistory({ input, env = process.env, now = Date.no
   const transcript = (at, row) => append(`transcripts/${at.slice(0, 10)}.jsonl`, { ts: at, turnId, providerId, ...row });
   await transcript(new Date(started).toISOString(), { role: 'user', text: query });
   return {
+    // Synchronous reservation fences finish before the physical steer send.
+    // Only a confirmed acknowledgement appends a user row to this same turn.
+    reserveSteer(input) {
+      if (completed) return null;
+      const text = historyPreview(input);
+      let resolve, settled = false;
+      const done = new Promise(r => { resolve = r; });
+      pending.add(done);
+      done.then(() => pending.delete(done));
+      return { settle(status) {
+        if (settled) return false;
+        settled = true;
+        if (status === 'accepted') {
+          const at = Math.max(lastAcceptedAt, now());
+          lastAcceptedAt = at;
+          const ts = new Date(at).toISOString();
+          writes = writes.then(() => transcript(ts, { role: 'user', text, providerId: 'codex' }));
+          writes.then(resolve, resolve);
+        } else resolve();
+        return true;
+      } };
+    },
     provider(value) { if (['claude', 'codex', 'cursor', 'qwen', 'openai'].includes(value)) providerId = value; },
     async finish({ status = 'error', text = '', delivered = false, result } = {}) {
       if (completed) return;
       completed = true;
       if (['claude', 'codex', 'cursor', 'qwen', 'openai'].includes(result?.providerId)) providerId = result.providerId;
       const ended = now();
-      const ts = new Date(ended).toISOString();
+      await Promise.all([...pending]);
+      const ts = new Date(Math.max(ended, lastAcceptedAt)).toISOString();
       const meta = { ts, turnId, providerId, status };
       const trace = { ...meta, query, elapsedMs: Math.max(0, ended - started) };
       // Alternate adapters do not yet report real tool counts. Unknown is not zero.

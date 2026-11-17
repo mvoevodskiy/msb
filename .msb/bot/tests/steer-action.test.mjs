@@ -12,7 +12,7 @@ function fixture({ prepareVoice = async entry => (entry.preparedVoice = { transc
     status: async () => {}, cancel: async () => {} });
   const controller = new AbortController();
   const handle = { active: true, isCurrent: async () => true, steer: async text => { sent.push(text); return steer(text); } };
-  const turn = { controller, steer: handle };
+  const turn = { controller, steer: handle, history: { reserveSteer: () => ({ settle() {} }) } };
   const getActive = (chatId, threadId) => chatId === 42 && threadId === 1 ? turn : null;
   const action = createSteerAction({ inbox, getActive, adminId: 42, prepareVoice, voiceNotConfigured,
     present: async (entry, text) => shown.push({ entry, text }), refresh: () => {} });

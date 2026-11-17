@@ -2,7 +2,7 @@
  * Explicit queued correction for [inbox](./inbox.mjs) and [bot callbacks](./router.mjs).
  * The active Codex handle belongs to [turn](../agent/turn.mjs); no new model
  * turn is started here. Voice preparation → [steer voice](./steer-voice.mjs).
- * [Race/owner/voice checks](../../tests/steer-action.test.mjs).
+ * Confirmed corrections → [turn history](./history.mjs); checks: [races](../../tests/steer-action.test.mjs), [journal](../../tests/steer-history.test.mjs).
  */
 import { isAdmin } from './auth.mjs';
 import { textPrompt } from './inbox.mjs';
@@ -26,23 +26,27 @@ export function createSteerAction({ inbox, getActive, adminId, prepareVoice, pre
     refresh();
     const entry = reservation.entry;
     const signal = AbortSignal.any([reservation.signal, turn.controller.signal]);
-    let preparingVoice = false, sending = false;
+    let preparingVoice = false, sending = false, ticket;
     const stillCurrent = () => !signal.aborted && reservation.isCurrent() && getActive(chatId, threadId) === turn &&
       turn.steer === handle && handle.active;
     const current = async () => stillCurrent() && await handle.isCurrent() && stillCurrent();
     try {
       await present(entry, entry.voice ? '🎙 Расшифровываю...' : 'Передаю в текущий ход...');
       if (!await current()) { reservation.release(); return; }
-      let prompt;
+      let prompt, input;
       if (entry.voice) {
         preparingVoice = !entry.preparedVoice;
         const recognized = entry.preparedVoice || await prepareVoice(entry, signal);
         preparingVoice = false;
         prompt = recognized.prompt;
-      } else prompt = textPrompt(entry);
+        input = recognized.transcript;
+      } else { prompt = textPrompt(entry); input = entry.text; }
       if (!await current()) { reservation.release(); return; }
+      ticket = turn.history?.reserveSteer(input);
+      if (!ticket) { reservation.release(); return; }
       sending = true;
       const result = await handle.steer(prompt);
+      ticket.settle(result?.status);
       if (!reservation.isCurrent()) return;
       if (result?.status === 'accepted') {
         reservation.consume();
@@ -55,6 +59,7 @@ export function createSteerAction({ inbox, getActive, adminId, prepareVoice, pre
         await present(entry, 'Не удалось подтвердить передачу. Сообщение не будет отправлено повторно автоматически.\n\nОчередь приостановлена. /stop остановит текущий ход и очистит очередь.');
       }
     } catch (error) {
+      ticket?.settle('unknown');
       if (reservation.isCurrent()) {
         if (sending || (preparingVoice && error?.code !== 'STT_NOT_CONFIGURED' && !entry.preparedVoice)) {
           reservation.unknown();
@@ -68,6 +73,6 @@ export function createSteerAction({ inbox, getActive, adminId, prepareVoice, pre
           if (notifyVoice) await voiceNotConfigured?.(entry).catch(() => {});
         }
       }
-    } finally { refresh(); }
+    } finally { ticket?.settle('unknown'); refresh(); }
   };
 }
