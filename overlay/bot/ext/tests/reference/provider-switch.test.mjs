@@ -104,6 +104,17 @@ test('reference: a native first-error without a result does not promote a provis
 async function partialTurn(t, variant, plan = false) {
   const r = await scenario(t, 'codex-partial-' + variant, partialHarness);
   assert.equal(r.executions.length, 1);
+  assert.equal(r.executions[0].argv.at(-1), 'app-server');
+  assert.deepEqual(r.executions[0].requests.map(req => req.method), [
+    'initialize', 'initialized', variant === 'first' ? 'thread/start' : 'thread/resume',
+    ...(variant === 'mismatch' ? [] : ['turn/start']),
+  ]);
+  const started = r.executions[0].requests.find(req => req.method === 'turn/start');
+  if (started) {
+    assert.equal(started.params.threadId, thread);
+    assert.match(started.params.input[0].text, /fixture partial request/);
+  }
+
   assert.equal(r.pending, null);
   assert.equal(r.parked, null);
   assert.deepEqual(r.diary.map(({status, providerId}) => ({status, providerId})), [{ status: 'error', providerId: 'codex' }]);
@@ -134,7 +145,7 @@ test('reference: Codex partial failure with ordinary exit preserves completed sk
   assert.equal(r.active, session);
   assert.equal(r.storedNative, thread);
   assert.deepEqual(r.usage, r.priorUsage);
-  assert.equal(r.executions[0][r.executions[0].indexOf('resume') + 1], thread);
+  assert.equal(r.executions[0].requests.find(req => req.method === 'thread/resume')?.params.threadId, thread);
   assert.equal(r.wroteSkill, true);
   assert.match(r.final, /^Первый фрагмент\n\nВторой фрагмент[\s\S]*Поставил навык[\s\S]*<blockquote>⏱ \d+\.\ds<\/blockquote>$/);
   assert.doesNotMatch(r.final, /98%|INSTALL_SKILL|⚠️/);
@@ -154,7 +165,8 @@ test('reference: Codex partial failure never displays a mismatched resume draft'
   assert.equal(r.active, session);
   assert.deepEqual(r.usage, r.priorUsage);
   assert.doesNotMatch(r.final, /фрагмент|blockquote/);
-  assert.match(r.final, /Ordinary native fixture failure/);
+  assert.match(r.final, /Codex app-server request failed/);
+  assert.equal(r.wroteSkill, false);
   assert.deepEqual(r.history, partialHistory);
 });
 
@@ -214,7 +226,13 @@ test('reference: Codex resume refusal guides explicit recovery and preserves the
   const r = await scenario(t, 'codex-recovery-missing', partialHarness);
   const notices = r.calls.filter(call => call.mode === 'HTML').map(call => call.text);
   assert.equal(notices.length, 3);
-  const resumeIds = r.executions.map(argv => argv.includes('resume') ? argv[argv.indexOf('resume') + 1] : null);
+  const resumeIds = r.executions.map(call => call.requests.find(req => req.method === 'thread/resume')?.params.threadId ?? null);
+  assert.ok(r.executions.every(call => call.argv.at(-1) === 'app-server'));
+  assert.deepEqual(r.executions.map(call => call.requests.map(req => req.method)), [
+    ['initialize', 'initialized', 'thread/resume'], ['initialize', 'initialized', 'thread/resume'],
+    ['initialize', 'initialized', 'thread/start', 'turn/start'],
+  ]);
+  assert.deepEqual(r.executions.map(call => call.requests.filter(req => req.method === 'turn/start').length), [0, 0, 1]);
   assert.deepEqual(resumeIds, [thread, thread, null], 'One CLI invocation for each distinct user message');
   assert.deepEqual(r.diary.map(row => row.status), ['error', 'error', 'ok']);
   const { afterRefusal, afterSecondRefusal, storeAfterRefusal, afterReset } = r.recovery;

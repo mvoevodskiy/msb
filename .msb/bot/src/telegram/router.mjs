@@ -12,6 +12,7 @@
  * Остальные семейства видны в прямых imports ниже; rendering → [screens](./screens.mjs).
  * Состояние → [state](../state.mjs), shared pending принадлежит createBot.
  * Prepared views → [view delivery](./view-delivery.mjs); short views stay unchanged.
+ * Queued correction callbacks → [steer action](./steer-action.mjs).
  * Presentation/read lifecycle → [shared scopes](../../shared/callback-renders.mjs),
  * [async status checks](../../tests/callback-refresh.test.mjs).
  * Проверка переходов/отмены/owner: [menu handlers](../../tests/menu-handlers.test.mjs).
@@ -69,8 +70,9 @@ const ROUTES = [
  * @param {object} opts.cfg
  * @param {Map<number, string>} opts.pending
  */
-export async function handleCallback({ bot, cfg, pending, ctx, plan, now = Date.now }) {
+export async function handleCallback({ bot, cfg, pending, ctx, plan, steerAction, now = Date.now }) {
   const data = ctx.callbackQuery.data || '';
+  if (data.startsWith('steer:') && steerAction) return steerAction(ctx);
   const chatId = ctx.chat?.id;
   const msgId = ctx.callbackQuery.message?.message_id;
   const scope = beginCallbackRender(bot, ctx.callbackQuery);

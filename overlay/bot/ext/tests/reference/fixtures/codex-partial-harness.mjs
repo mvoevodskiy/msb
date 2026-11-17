@@ -1,4 +1,4 @@
-/** Real Telegram turn → PATH shim → synthetic Codex JSONL. No network or working profile. */
+/** Real Telegram turn → PATH shim → synthetic Codex app-server JSON-RPC. No network or working profile. */
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -100,12 +100,13 @@ try {
   await bot.stop();
   const state = JSON.parse(await fs.readFile(stateFile, 'utf8'));
   const store = JSON.parse(await fs.readFile(storeFile, 'utf8'));
-  const executions = (await fs.readFile(trace, 'utf8')).trim().split('\n').map(JSON.parse)
-    .filter(entry => entry.name === 'codex' && entry.argv[0] === 'exec');
+  const traceRows = (await fs.readFile(trace, 'utf8')).trim().split('\n').map(JSON.parse);
+  const executions = traceRows.filter(entry => entry.name === 'codex' && entry.kind === 'app-server')
+    .map(entry => ({ argv: entry.argv, requests: traceRows.filter(row => row.pid === entry.pid && row.kind === 'rpc').map(row => row.rpc) }));
   const diary = (await fs.readFile(diaryFile, 'utf8')).trim().split('\n').map(JSON.parse);
   const written = await fs.readdir(home, { recursive: true });
   process.stdout.write(JSON.stringify({
-    calls, executions: executions.map(call => call.argv), recovery,
+    calls, executions, recovery,
     active: state.ccSessionId ?? null, usage: state.lastCcUsage ?? null, priorUsage,
     parked: state.parkedCcSessions?.codex ?? null, pending: state.pendingCcSessionStarts ?? null,
     history: (state.sessionHistory ?? []).map(({id, providerId, messageCount}) => ({id, providerId, messageCount})),

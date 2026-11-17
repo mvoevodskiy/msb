@@ -2,6 +2,7 @@
 import { writeFileSync } from 'node:fs';
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { createInterface } from 'node:readline';
 
 if (!globalThis[Symbol.for('msb.reference.networkBlocked')]) {
   throw new Error('The fake CLI must inherit the network-deny preload');
@@ -10,6 +11,66 @@ const name = path.basename(process.argv[1]);
 const argv = process.argv.slice(2);
 if (name === 'claude' && argv.length === 1 && argv[0] === '--version') {
   process.stdout.write('2.1.154 (Claude Code)');
+  process.exit(0);
+}
+// The foreground bot uses a real app-server transport: keep stdin open and
+// trace actual JSON-RPC requests, not fabricated exec arguments.
+if (name === 'codex' && argv.at(-1) === 'app-server') {
+  const trace = process.env.REFERENCE_TRACE, scenario = process.env.REFERENCE_SCENARIO || '';
+  const thread = '0199a213-81c0-7800-8aa1-bbab2a035a53';
+  const otherThread = '0299a213-81c0-7800-8aa1-bbab2a035a53';
+  const send = value => process.stdout.write(JSON.stringify(value) + '\n');
+  const log = value => fs.appendFile(trace, JSON.stringify({ name, argv, pid: process.pid, ...value }) + '\n');
+  await log({ kind: 'app-server' });
+  let opened;
+  for await (const line of createInterface({ input: process.stdin })) {
+    const request = JSON.parse(line);
+    await log({ kind: 'rpc', rpc: request });
+    if (!request.id) continue;
+    if (request.method === 'initialize') { send({ id: request.id, result: {} }); continue; }
+    if (request.method === 'thread/start' || request.method === 'thread/resume') {
+      if (request.method === 'thread/resume' && scenario === 'codex-recovery-missing') {
+        send({ id: request.id, error: { code: -32600, message: 'no rollout found for thread id' } }); continue;
+      }
+      opened = scenario.endsWith('-mismatch') ? otherThread : request.method === 'thread/resume' ? request.params.threadId : (scenario === 'codex-recovery-missing' ? otherThread : thread);
+      send({ id: request.id, result: { thread: { id: opened } } }); continue;
+    }
+    if (request.method !== 'turn/start' || request.params.threadId !== opened) {
+      send({ id: request.id, error: { code: -32600, message: 'unexpected fixture request' } }); continue;
+    }
+    const turnId = 'fixture-turn';
+    send({ id: request.id, result: { turn: { id: turnId } } });
+    const notify = (method, params) => send({ method, params: { threadId: opened, ...params } });
+    const message = (id, text) => notify('item/completed', { turnId, item: { id, type: 'agentMessage', text } });
+    if (scenario === 'codex-recovery-missing') {
+      message('final', 'Новая тестовая беседа');
+      notify('turn/completed', { turn: { id: turnId, status: 'completed', items: [] } });
+      continue;
+    }
+    const skill = name => '[INSTALL_SKILL]' + JSON.stringify({ name, description: 'Fixture skill', body: 'draft' }) + '[/INSTALL_SKILL]';
+    const diagnostic = scenario.endsWith('-diagnostic');
+    const transportActions = scenario.endsWith('-transport-actions');
+    if (scenario.endsWith('-long')) message('one', '🧠'.repeat(40_001));
+    else if (!diagnostic) { message('one', 'Первый фрагмент'); message('two', 'Второй фрагмент'); }
+    if (scenario.endsWith('-resume')) message('skill', '[КНОПКИ: plan]\n\n' + skill('failed-turn-skill'));
+    if (transportActions) message('skill', skill('failed-turn-skill'));
+    if (scenario.endsWith('-metered')) {
+      const file = path.join(process.env.HOME, '.codex', 'sessions', 'rollout-fixture-' + thread + '.jsonl');
+      const timestamp = new Date().toISOString();
+      const start = { type: 'event_msg', timestamp, payload: { type: 'task_started', turn_id: turnId } };
+      const sample = { type: 'event_msg', timestamp, payload: { type: 'token_count',
+        info: { model_context_window: 1000, last_token_usage: { total_tokens: 520 } } } };
+      await fs.appendFile(file, [start, sample].map(row => JSON.stringify(row) + '\n').join(''));
+    }
+    const failure = scenario.includes('-transport') ? 'websocket closed before completion'
+      : scenario.endsWith('-context-limit')
+        ? "Codex ran out of room in the model's context window. Start a new thread or clear earlier history before retrying."
+        : 'Ordinary native fixture failure';
+    const mcpDiagnostic = '[ADD_MCP]{"name":"raw-mcp","headers":{"Authorization":"fixture-mcp-secret-in-diagnostic';
+    const notice = diagnostic || transportActions
+      ? failure + '\n' + skill('raw-error-skill') + '\n[КНОПКИ: plan]\n' + mcpDiagnostic : failure;
+    notify('turn/completed', { turn: { id: turnId, status: 'failed', error: { message: notice }, items: [] } });
+  }
   process.exit(0);
 }
 const chunks = [];
