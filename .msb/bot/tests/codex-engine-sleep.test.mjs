@@ -34,7 +34,7 @@ test('Codex resumes its selected conversation after the sleep gate', async t => 
   await fs.writeFile(path.join(process.env.CODEX_HOME, 'config.toml'), '# synthetic Codex profile\n');
   const native = await nativeFixtures(f);
   await native.respond('fixture Codex reply');
-  const executions = async () => (await native.trace()).filter(row => row.kind === 'codex-exec');
+  const executions = async () => (await native.trace()).filter(row => row.kind === 'codex-app-turn');
   const preferences = JSON.parse(await fs.readFile(f.storeFile, 'utf8'));
   const initial = (await loadState()).state;
 
@@ -43,8 +43,9 @@ test('Codex resumes its selected conversation after the sleep gate', async t => 
   const first = await executions();
   assert.equal(first.length, 1);
   assert.ok(first[0].prompt.includes('first synthetic message'));
-  assert.ok(first[0].argv.includes('resume'));
-  assert.ok(first[0].argv.includes(initial.ccSessionId.replace('ext:codex:', '')));
+  assert.equal(first[0].argv.at(-1), 'app-server');
+  assert.equal(first[0].threadMethod, 'thread/resume');
+  assert.equal(first[0].threadId, initial.ccSessionId.replace('ext:codex:', ''));
   const storeBeforePause = await fs.readFile(f.storeFile, 'utf8');
   const selectedBeforePause = JSON.parse(storeBeforePause);
   assert.deepEqual(selectedBeforePause.models, preferences.models);
@@ -88,8 +89,9 @@ test('Codex resumes its selected conversation after the sleep gate', async t => 
   await until(() => f.messages.filter(text => text.includes('fixture Codex reply')).length === 2, 'resumed Codex reply');
   const resumed = (await executions())[1];
   assert.ok(resumed.prompt.includes('after wake synthetic message'));
-  assert.ok(resumed.argv.includes('resume'));
-  assert.ok(resumed.argv.includes(initial.ccSessionId.replace('ext:codex:', '')));
+  assert.equal(resumed.argv.at(-1), 'app-server');
+  assert.equal(resumed.threadMethod, 'thread/resume');
+  assert.equal(resumed.threadId, initial.ccSessionId.replace('ext:codex:', ''));
   const selectedAfterWake = JSON.parse(await fs.readFile(f.storeFile, 'utf8'));
   assert.deepEqual(selectedAfterWake.models, preferences.models);
   assert.deepEqual(selectedAfterWake.efforts, preferences.efforts);

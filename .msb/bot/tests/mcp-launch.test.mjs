@@ -157,11 +157,19 @@ test('stopping the turn also stops its pending native MCP config read',async t=>
     controller.abort();
     const result=await job;
     assert.equal(result.error,'aborted');
-    assert.ok(!(await native.trace()).some(row=>row.kind==='codex-exec'));
+    assert.ok(!(await native.trace()).some(row=>row.kind==='codex-exec' || row.kind==='codex-app-turn'));
     const stopDeadline=Date.now()+2000;
     for(;;){
       try{process.kill(probe.pid,0);}
       catch(error){assert.equal(error.code,'ESRCH');break;}
+      // In a PID namespace an exited orphan can remain a zombie until PID 1
+      // reaps it. It is no longer executing, unlike a live guard process.
+      if(process.platform==='linux'){
+        let status;
+        try{status=await fs.readFile('/proc/'+probe.pid+'/status','utf8');}
+        catch(error){if(error.code==='ENOENT')break;throw error;}
+        if(/^State:\s+Z\b/m.test(status))break;
+      }
       assert.ok(Date.now()<stopDeadline,'The guard process must stop with its turn');
       await new Promise(resolve=>setTimeout(resolve,10));
     }

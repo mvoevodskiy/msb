@@ -156,7 +156,7 @@ test('Codex cannot start an unfiltered turn when a recorded native removal canno
     {compactProvider:compactCodex});
   assert.equal(compact.ok,false);
   assert.match(compact.error,/MCP/);
-  assert.ok(!(await native.trace()).some(row=>row.kind==='codex-exec' || row.kind==='codex-compact'));
+  assert.ok(!(await native.trace()).some(row=>row.kind==='codex-exec' || row.kind==='codex-compact' || row.kind==='codex-app-turn'));
 });
 
 

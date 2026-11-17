@@ -174,7 +174,8 @@ test('Codex attachment turn sends a relative file from the captured project', as
   } });
   await until(() => f.messages.some(text => text.includes('Вложение обработано')), 'Codex attachment answer');
   await f.bot.stop();
-  const call = (await native.trace()).find(row => row.kind === 'codex-exec');
+  const call = (await native.trace()).find(row => row.kind === 'codex-app-turn');
+  assert.equal(call.argv.at(-1), 'app-server');
   assert.equal(call.cwd, await fs.realpath(project));
   assert.match(call.prompt, /attachment contents fixture/);
   assert.equal(f.mediaSends.length, 1);

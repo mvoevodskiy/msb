@@ -207,6 +207,11 @@ for (const provider of ['claude', 'codex']) {
     await f.message('Сколько раз сработало?');
     await until(() => f.messages.some(text => text.includes('⏱')), 'controlled provider did not finish', 10_000);
     const call = (await native.trace()).at(-1);
+    if (provider === 'codex') {
+      assert.equal(call.kind, 'codex-app-turn');
+      assert.equal(call.argv.at(-1), 'app-server');
+      assert.ok(['thread/start', 'thread/resume'].includes(call.threadMethod));
+    }
     const prompt = provider === 'claude' ? call.argv[call.argv.indexOf('--append-system-prompt') + 1] : call.prompt;
     assert.match(prompt, /\[TASK_RUNS\].*\[TASK_RUNS:/s);
     assert.ok(f.messages.some(text => text.includes('Проверяемый прогон — 1 прогон')));

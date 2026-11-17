@@ -49,16 +49,42 @@ function presence(){
 }
 if(argv[0]==='--version'){console.log('codex-cli 0.166.0');process.exit(0);}
 if(argv.at(-1)==='app-server'){
+ let openedThread,threadMethod,resumeCwd;
  createInterface({input:process.stdin}).on('line',line=>{
   const request=JSON.parse(line);
   if(request.method==='initialize'){console.log(JSON.stringify({id:request.id,result:{}}));return;}
   if(request.method==='initialized')return;
+  if(request.method==='thread/start'){
+   openedThread=data.modelThread; threadMethod=request.method;
+   console.log(JSON.stringify({id:request.id,result:{thread:{id:openedThread}}}));
+   return;
+  }
   if(request.method==='thread/resume'){
-   record({kind:'codex-compact',argv,cwd:process.cwd(),requestedCwd:request.params.cwd});
+   openedThread=request.params.threadId; threadMethod=request.method; resumeCwd=request.params.cwd;
    console.log(JSON.stringify({id:request.id,result:{thread:{id:request.params.threadId}}}));
    return;
   }
+  if(request.method==='turn/start'){
+   if(!openedThread || request.params.threadId!==openedThread)process.exit(5);
+   const reply=fs.existsSync(data.response)?JSON.parse(fs.readFileSync(data.response,'utf8')):{text:'fixture complete'};
+   const prompt=request.params.input.map(item=>item.text || '').join('');
+   const apify=process.env.MSB_BOT_ID==='other'?data.apifyB:data.apifyA;
+   const index=argv.indexOf('--profile');
+   const profileFile=index<0?null:path.join(process.env.CODEX_HOME,argv[index+1]+'.config.toml');
+   const profile=profileFile?fs.readFileSync(profileFile,'utf8'):null;
+   record({kind:'codex-app-turn',argv,cwd:process.cwd(),threadMethod,threadId:openedThread,prompt,
+     input:request.params.input,model:request.params.model,effort:request.params.effort,...presence(),
+     profileFile,profile,profileMode:profileFile?fs.statSync(profileFile).mode&0o777:null,
+     privateHandoffPresent:Boolean(process.env.MSB_TURN_MCP_CUSTOM),bot:process.env.MSB_BOT_ID,
+     correctApify:process.env.MSB_MCP_APIFY_TOKEN===apify,correctSupadata:process.env.MSB_MCP_SUPADATA_TOKEN===data.supadata});
+   const turnId='turn-fixture';
+   console.log(JSON.stringify({id:request.id,result:{turn:{id:turnId}}}));
+   console.log(JSON.stringify({method:'item/completed',params:{threadId:openedThread,turnId,item:{id:'fixture-reply',type:'agentMessage',text:reply.text}}}));
+   console.log(JSON.stringify({method:'turn/completed',params:{threadId:openedThread,turn:{id:turnId,status:reply.error?'failed':'completed',error:reply.error?{message:typeof reply.error==='string'?reply.error:'fixture returned error'}:null,items:[]}}}));
+   return;
+  }
   if(request.method==='thread/compact/start'){
+   record({kind:'codex-compact',argv,cwd:process.cwd(),requestedCwd:resumeCwd});
    const {threadId}=request.params;
    console.log(JSON.stringify({id:request.id,result:{}}));
    console.log(JSON.stringify({method:'item/completed',params:{threadId,turnId:'turn-fixture',item:{type:'contextCompaction'}}}));
