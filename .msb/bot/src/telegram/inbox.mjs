@@ -6,7 +6,10 @@
  * IDs of merged text are retained for [Telegram handoff](./bot.mjs).
  * Publish them after the timer file is committed. Retain original timer parts so
  * [worker admission](./bot.mjs) can exclude stale rows without losing user text.
+ * Queued correction reservations and cancellation: [steering contract](../../tests/reference/codex-steer-contract.txt)
+ * and [reservation checks](../../tests/steer-inbox.test.mjs).
  */
+import { randomBytes } from 'node:crypto';
 import { buildReplyContext } from './reply-context.mjs';
 
 export const FORWARD_QUIET_MS = 2500;
@@ -16,7 +19,7 @@ export const isForwarded = message => Boolean(message?.forward_origin || message
 const keyOf = item => `${item.ctx.chat.id}:${(item.ctx.message || item.ctx.callbackQuery?.message)?.message_thread_id || 1}`;
 
 // Each queued message owns its quote. Keep raw text separately for the journal.
-function textPrompt(item) {
+export function textPrompt(item) {
   const referent = buildReplyContext(item.ctx.message, item.ctx.me?.id);
   return referent ? `${referent}\n\n${item.text}` : item.text;
 }
@@ -55,7 +58,65 @@ function occurrenceKey(legacyRun) {
 export function createInbox({ run, status, cancel, canRun = () => true, onError = console.error,
   now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout }) {
   const queue = [], collectors = new Map(), effects = new Set(), scheduledOccurrences = new Set();
-  let active, closed = false;
+  let active, closed = false, steerReservation;
+  const steerTokens = new WeakMap();
+  function eligible(item) {
+    return Boolean(item.ctx?.message && !item.scheduled && !item.legacyRun && !item.recovered &&
+      !item.items && !item.attachment && !item.isAutoTurn && !isForwarded(item.ctx.message) &&
+      (item.voice === true || (item.voice === false && typeof item.text === 'string')));
+  }
+  function tokenFor(item) {
+    let token = steerTokens.get(item);
+    if (!token) {
+      token = randomBytes(12).toString('base64url');
+      steerTokens.set(item, token);
+    }
+    return token;
+  }
+  /**
+   * Tokens identify individual queued user text/voice entries, not message contents.
+   * Candidates are snapshots { token, entry }; status IDs may appear asynchronously.
+   * reserveForSteer requires exact token, numeric chatId, topic (1 for main), and
+   * bot status messageId. Failure or an existing reservation returns null.
+   * A handle's consume/release/unknown return true once, false after invalidation.
+   * consume removes only that entry; release retains its place; both wake FIFO.
+   * unknown fences the whole FIFO until clear/shutdown. All terminal methods abort
+   * the signal; clear/shutdown also invalidate and abort an outstanding handle.
+   */
+  function steerCandidates() {
+    if (closed || steerReservation) return [];
+    return steerEntries();
+  }
+  // Rendering also needs to retire buttons while another entry is reserved.
+  function steerEntries() {
+    if (closed) return [];
+    return queue.filter(item => item.ready && !item.cancelled && eligible(item))
+      .map(entry => ({ token: tokenFor(entry), entry }));
+  }
+  function reserveForSteer({ token, chatId, threadId, messageId }) {
+    if (closed || steerReservation || !Number.isSafeInteger(chatId) ||
+        !Number.isSafeInteger(threadId) || !Number.isSafeInteger(messageId)) return null;
+    const entry = queue.find(item => item.ready && !item.cancelled && eligible(item) &&
+      steerTokens.get(item) === token && item.ctx.chat?.id === chatId &&
+      ((item.ctx.message || item.ctx.callbackQuery?.message)?.message_thread_id || 1) === threadId &&
+      item.status?.message_id === messageId);
+    if (!entry) return null;
+    const reservation = { entry, controller: new AbortController(), state: 'reserved' };
+    steerReservation = reservation;
+    const isCurrent = () => !closed && steerReservation === reservation &&
+      reservation.state === 'reserved' && !entry.cancelled && queue.includes(entry);
+    function finish(state) {
+      if (!isCurrent()) return false;
+      reservation.state = state;
+      if (state === 'consumed') queue.splice(queue.indexOf(entry), 1);
+      if (state !== 'unknown') steerReservation = undefined;
+      reservation.controller.abort();
+      if (state !== 'unknown') kick();
+      return true;
+    }
+    return { entry, signal: reservation.controller.signal, isCurrent,
+      consume: () => finish('consumed'), release: () => finish('released'), unknown: () => finish('unknown') };
+  }
   function effect(fn) {
     const p = Promise.resolve().then(fn).catch(() => onError('[msb/inbox] delivery failed'));
     effects.add(p); p.finally(() => effects.delete(p)); return p;
@@ -69,7 +130,7 @@ export function createInbox({ run, status, cancel, canRun = () => true, onError 
     kick();
   }
   function kick() {
-    if (closed || active || !canRun() || !queue[0]?.ready) return;
+    if (closed || active || steerReservation || !canRun() || !queue[0]?.ready) return;
     const entry = queue.shift();
     const occurrences = [];
     // The old worker merges adjacent, already waiting text, never voices/batches/attachments.
@@ -145,6 +206,11 @@ export function createInbox({ run, status, cancel, canRun = () => true, onError 
     };
   }
   function clear() {
+    if (steerReservation) {
+      const reservation = steerReservation;
+      steerReservation = undefined;
+      reservation.controller.abort();
+    }
     const hadPending = queue.length > 0 || Boolean(active && !active.started);
     if (active && !active.started) { active.cancelled = true; effect(() => cancel(active)); }
     for (const entry of queue.splice(0)) {
@@ -155,10 +221,11 @@ export function createInbox({ run, status, cancel, canRun = () => true, onError 
     collectors.clear(); return hadPending;
   }
   return {
-    push, reserveScheduled, kick, clear,
+    push, reserveScheduled, kick, clear, steerCandidates, steerEntries, reserveForSteer,
     isCollecting: ctx => collectors.has(keyOf({ ctx })),
     open() { closed = false; kick(); },
     get size() { return queue.length + Number(Boolean(active)); },
+    get steerBusy() { return Boolean(steerReservation); },
     get hasScheduled() { return Boolean(active?.scheduled || queue.some(item => item.scheduled)); },
     get hasLegacyScheduled() {
       return Boolean(active?.legacyParts || queue.some(item => item.legacyRun?.timer.legacyPendingRun));
