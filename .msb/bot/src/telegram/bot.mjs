@@ -814,6 +814,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       } : undefined;
       if (introPending) { turn.pendingId = introPending.id; introOwned.add(introPending.id); }
       if (!paused) providerStarted = true;
+      turn.history = history;
       let out = paused ? { ok: false, text: SPEND_PAUSED } : await runTurn({ prompt: entry.prompt ?? text, signal,
         ...(!entry.isAutoTurn && !entry.scheduled ? { onSteerReady: handle => {
           if (running.get(chatId) !== turn || (handle && (turn.completed || signal.aborted))) return;

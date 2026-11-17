@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
+import { readdirSync, existsSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { createBot } from '../src/telegram/bot.mjs';
@@ -97,7 +98,7 @@ async function fixture(t, { withSteer = true, holdVoice, holdPreview, holdQueued
     for (const key of Object.keys(process.env)) delete process.env[key]; Object.assign(process.env, previous);
     await fs.rm(root, { recursive: true, force: true });
   });
-  return { rows, calls, prompts, corrections, answers, holds, stt, input, voice, callback, buttonRow };
+  return { root, rows, calls, prompts, corrections, answers, holds, stt, input, voice, callback, buttonRow };
 }
 
 test('button disappears after queued message starts normally; stale callback cannot steer', async t => {
@@ -249,3 +250,34 @@ test('a plan callback in a topic offers steering only in that same topic', async
   await f.callback(same[0], token, 42, 7); assert.deepEqual(f.corrections, ['same topic']);
   f.holds[0].resolve();
 });
+
+for (const inputKind of ['text', 'voice']) {
+  test(`accepted ${inputKind} is recorded on the actual active Telegram turn`, async t => {
+    const f = await fixture(t); await f.input('first'); await until(() => f.prompts.length === 1, 'first turn');
+    if (inputKind === 'voice') await f.voice(); else await f.input('correction token=fixture-secret');
+    await until(() => f.buttonRow(), 'queued button');
+    const [id, row] = f.buttonRow(), token = row.keyboard.inline_keyboard[0][0].callback_data;
+    await f.callback(id, token); await until(() => f.corrections.length === 1, 'steering accepted');
+    f.holds[0].resolve();
+    const journal = path.join(f.root, '.msb/bots/default');
+    let traceFile, transcriptFile;
+    await until(() => {
+      try { const x = requireForTest(journal); traceFile=x.trace; transcriptFile=x.transcript; return true; } catch { return false; }
+    }, 'journal finished');
+    const read = async file => (await fs.readFile(file, 'utf8')).trim().split('\n').map(JSON.parse);
+    const traces = await read(traceFile), records = await read(transcriptFile);
+    assert.equal(traces.length, 1); assert.equal(traces[0].query, 'first');
+    assert.deepEqual(records.map(x => x.role), ['user', 'user', 'assistant']);
+    assert.ok(records.every(x => x.turnId === traces[0].turnId));
+    assert.equal(records[1].text.includes('fixture-secret'), false);
+    assert.match(records[1].text, inputKind === 'voice' ? /fixture voice correction/ : /^correction/);
+  });
+}
+
+function requireForTest(root) {
+  const traceDir=path.join(root,'traces'), transcriptDir=path.join(root,'transcripts');
+  const trace=path.join(traceDir,readdirSync(traceDir)[0]);
+  const transcript=path.join(transcriptDir,readdirSync(transcriptDir)[0]);
+  if (!existsSync(path.join(root,'chat-diary.jsonl'))) throw Error('not finished');
+  return {trace,transcript};
+}
