@@ -60,6 +60,8 @@ export function supportsCodexAttachments(state, env = process.env) {
  * владелец записи сессии → [result transaction](./session-result.mjs) / [state](../state.mjs),
  * [first-start token](../../shared/session-starts.mjs), [description ledger](../sessions/ledger.mjs).
  * Native Claude rejected resume uses the same launch and one new reservation.
+ * Optional foreground Codex steering → [control pipe](./steer-channel.mjs),
+ * fenced by this captured provider/session/project and the caller's active turn.
  * Partial failure telemetry is for delivery. Terminal notices carry no model actions.
  * Проверки: [polling/session fences](../../tests/turn-lifecycle.test.mjs),
  * [provider isolation](../../../../overlay/bot/ext/tests/reference/provider-switch.test.mjs),
@@ -69,6 +71,7 @@ export async function runAgentTurn({
   prompt,
   signal,
   onStatus,
+  onSteerReady,
   autonomy = false,
   isAutoTurn = false,
   reminderOwner = 0,
@@ -202,6 +205,24 @@ export async function runAgentTurn({
   let lastTool = '';
   let streamProvider = providerId, quotaWrite;
   const turnStartedAt = Date.now();
+  const steering = isCodex && !autonomy && !isAutoTurn && typeof onSteerReady === 'function'
+    ? handle => {
+      if (!handle) return onSteerReady(null);
+      onSteerReady({
+        threadId: handle.threadId, turnId: handle.turnId,
+        get active() { return handle.active; },
+        steer: text => handle.steer(text),
+        async isCurrent() {
+          if (signal?.aborted || !handle.active) return false;
+          try {
+            const current = (await loadState(env)).state;
+            return !signal?.aborted && handle.active && current.engine === state.engine &&
+              current.extAuthBypass === state.extAuthBypass && current.ccSessionId === state.ccSessionId &&
+              (current.sessionEpoch || 0) === (state.sessionEpoch || 0) && current.activeProject === state.activeProject;
+          } catch { return false; }
+        },
+      });
+    } : undefined;
   const launch = sessionId => runClaudeTurn({
     prompt,
     sessionId,
@@ -218,6 +239,7 @@ export async function runAgentTurn({
     signal,
     autonomy,
     onSpawn: pendingId ? onIntroPendingLaunched : undefined,
+    onSteerReady: steering,
     onEvent(ev) {
       if (ev.type === 'system' && typeof ev.provider_id === 'string') streamProvider = ev.provider_id;
       if (ev.type === 'system' && ev.subtype === 'provider') {
