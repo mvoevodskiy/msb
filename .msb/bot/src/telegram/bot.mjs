@@ -37,6 +37,8 @@ import { handleFormInput } from './forms.mjs';
 import { BOOTSTRAP_SERVICE_INPUT, PendingInputs, pendingInputNotice } from './pending-input.mjs';
 import { bootstrapServiceOwnsInput, deliverBootstrapServices } from './bootstrap-services.mjs';
 import { recognizeVoice, voicePreview, STT_ONBOARDING } from './voice.mjs';
+import { prepareQueuedSteerVoice } from './steer-voice.mjs';
+import { createSteerAction } from './steer-action.mjs';
 import { attachmentStatusText, createAttachmentAlbums, prepareAttachment } from './attachments.mjs';
 import { extractMediaMarkers } from './media-markers.mjs';
 import { sendMediaQueue } from './send-media.mjs';
@@ -104,7 +106,8 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     status: showInboxStatus,
     cancel: cancelInboxEntry,
     run: (entry) => {
-      const turn = { controller: new AbortController(), completed: false, done: null };
+      const turn = { controller: new AbortController(), completed: false, done: null,
+        threadId: (entry.ctx.message || entry.ctx.callbackQuery?.message)?.message_thread_id || 1, steer: null };
       running.set(entry.ctx.chat.id, turn); unfinished.add(turn);
       let introReleased = false;
       const releaseIntro = () => {
@@ -172,6 +175,9 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         .finally(() => {
           turn.completed = true;
           if (running.get(entry.ctx.chat.id) === turn) running.delete(entry.ctx.chat.id);
+          const hadSteering = Boolean(turn.steer);
+          turn.steer = null;
+          if (hadSteering) refreshSteerButtons();
           unfinished.delete(turn);
           releaseIntro();
         });
@@ -185,14 +191,34 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       inbox.push(entry);
     },
   });
+  function getSteerTurn(chatId, threadId) {
+    const turn = running.get(chatId);
+    return turn && !turn.completed && turn.threadId === threadId ? turn : null;
+  }
+  function refreshSteerButtons() {
+    for (const { entry } of inbox.steerEntries()) {
+      entry.steerOffer = null;
+      if (!entry.steerUnknown) showInboxStatus(entry, '⏳ в очереди').catch(() => {});
+    }
+  }
   function showInboxStatus(entry, text) {
     const revision = entry.statusRevision = (entry.statusRevision || 0) + 1;
     entry.presentation = (entry.presentation || Promise.resolve()).catch(() => {}).then(async () => {
       if (entry.cancelled && text !== 'Моя остановочка ✋🏽⛔️') return;
       if (text.startsWith('📥 Собираю') && revision !== entry.statusRevision) return;
       const ctx = entry.ctx, thread = (ctx.message || ctx.callbackQuery?.message)?.message_thread_id;
-      if (entry.status) await ctx.api.editMessageText(ctx.chat.id, entry.status.message_id, text, {}, presentationSignal(AbortSignal.timeout(15_000)));
-      else entry.status = await ctx.reply(text, thread && thread !== 1 ? { message_thread_id: thread } : {}, presentationSignal(AbortSignal.timeout(15_000)));
+      const candidate = text === '⏳ в очереди' && !inbox.steerBusy
+        ? inbox.steerCandidates().find(row => row.entry === entry) : null;
+      const turn = candidate && getSteerTurn(ctx.chat.id, thread || 1);
+      const canSteer = Boolean(turn?.steer?.active && !turn.controller.signal.aborted);
+      if (!canSteer) entry.steerOffer = null;
+      else if (!entry.steerOffer || entry.steerOffer.turn !== turn || entry.steerOffer.handle !== turn.steer ||
+          entry.steerOffer.candidateToken !== candidate.token) {
+        entry.steerOffer = { token: randomUUID().replaceAll('-', ''), candidateToken: candidate.token, turn, handle: turn.steer };
+      }
+      const reply_markup = { inline_keyboard: canSteer ? [[{ text: 'Учесть сейчас', callback_data: `steer:${entry.steerOffer.token}` }]] : [] };
+      if (entry.status) await ctx.api.editMessageText(ctx.chat.id, entry.status.message_id, text, { reply_markup }, presentationSignal(AbortSignal.timeout(15_000)));
+      else entry.status = await ctx.reply(text, { ...(thread && thread !== 1 ? { message_thread_id: thread } : {}), reply_markup }, presentationSignal(AbortSignal.timeout(15_000)));
     });
     return entry.presentation;
   }
@@ -209,6 +235,14 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   let stopEpoch = 0;
   let legacyCancellations = 0;
   let legacyCancellationFailed = false;
+  const steerAction = createSteerAction({ inbox, getActive: getSteerTurn, adminId: cfg.adminId,
+    prepareVoice: (entry, signal) => prepareQueuedSteerVoice(entry, cfg.botToken, signal),
+    voiceNotConfigured: entry => {
+      const ctx = entry.ctx, thread = ctx.message?.message_thread_id;
+      return ctx.reply(STT_ONBOARDING.text, { reply_markup: STT_ONBOARDING.reply_markup,
+        ...(thread && thread !== 1 ? { message_thread_id: thread } : {}) });
+    },
+    present: showInboxStatus, refresh: refreshSteerButtons });
   bot[Symbol.for('msb.scheduledTurns')] = {
     reserve({ chatId, userId, text, legacyRun }) {
       const destination = Number(chatId);
@@ -512,7 +546,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   });
 
   bot.on('callback_query:data', async (ctx) => {
-    await handleCallback({ bot, cfg, pending, ctx, plan, now });
+    await handleCallback({ bot, cfg, pending, ctx, plan, now, steerAction });
   });
 
   bot.on('message:text', async (ctx) => {
@@ -701,7 +735,8 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       status = entry.status;
       if (signal.aborted) { await stopped(); return; }
       if (voice) {
-        transcription = await ctx.reply('🎙 Расшифровываю...', thread && thread !== 1 ? { message_thread_id: thread } : {});
+        transcription = entry.preparedVoice?.transcription ||
+          await ctx.reply('🎙 Расшифровываю...', thread && thread !== 1 ? { message_thread_id: thread } : {});
         if (signal.aborted) { await stopped(); return; }
       }
       const initialText = entry.items
@@ -709,7 +744,8 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         : entry.attachment
           ? attachmentStatusText(entry.attachment === 'video' && ctx.message?.video_note ? 'video_note' : entry.attachment)
           : 'Думаю ⏳';
-      if (status) await ctx.api.editMessageText(chatId, status.message_id, initialText, {}, presentationSignal(AbortSignal.any([signal, AbortSignal.timeout(15_000)])));
+      if (status) await ctx.api.editMessageText(chatId, status.message_id, initialText,
+        { reply_markup: { inline_keyboard: [] } }, presentationSignal(AbortSignal.any([signal, AbortSignal.timeout(15_000)])));
       else {
         const request = entry.scheduled ? presentationSignal(AbortSignal.any([signal, AbortSignal.timeout(15_000)])) : undefined;
         try {
@@ -723,11 +759,13 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       if (signal.aborted) { await stopped(); return; }
       progress = startTurnProgress(ctx, status.message_id, { signal, preparing: voice || Boolean(entry.items) || Boolean(entry.attachment) });
       if (voice) {
-        const recognized = await recognizeVoice(ctx, cfg.botToken, signal);
+        const recognized = entry.preparedVoice || await recognizeVoice(ctx, cfg.botToken, signal);
         signal.throwIfAborted();
-        const preview = voicePreview(recognized.transcript);
-        try { await ctx.api.editMessageText(chatId, transcription.message_id, preview.html, { parse_mode: 'HTML' }); }
-        catch { if (!signal.aborted) await ctx.api.editMessageText(chatId, transcription.message_id, preview.plain).catch(() => {}); }
+        if (!recognized.previewDone) {
+          const preview = voicePreview(recognized.transcript);
+          try { await ctx.api.editMessageText(chatId, transcription.message_id, preview.html, { parse_mode: 'HTML' }); }
+          catch { if (!signal.aborted) await ctx.api.editMessageText(chatId, transcription.message_id, preview.plain).catch(() => {}); }
+        }
         signal.throwIfAborted();
         transcribed = true;
         text = recognized.prompt;
@@ -775,6 +813,11 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       if (introPending) { turn.pendingId = introPending.id; introOwned.add(introPending.id); }
       if (!paused) providerStarted = true;
       let out = paused ? { ok: false, text: SPEND_PAUSED } : await runTurn({ prompt: entry.prompt ?? text, signal,
+        ...(!entry.isAutoTurn && !entry.scheduled ? { onSteerReady: handle => {
+          if (running.get(chatId) !== turn || (handle && (turn.completed || signal.aborted))) return;
+          turn.steer = handle;
+          refreshSteerButtons();
+        } } : {}),
         ...(requireCodex ? { requireCodex: true } : {}),
         ...(reminderOwner ? { reminderOwner, checkSavedCodex, checkSavedCursor } : {}),
         ...(bootstrapScope ? { bootstrapScope } : {}),
