@@ -5,6 +5,8 @@ import { randomUUID } from 'node:crypto';
  * createBot собирает входящие Telegram события и lifecycle хода; UI не хранит
  * provider session отдельно. Вход: [main](../main.mjs), owner → [auth](./auth.mjs).
  * Текст/voice/вложения и [таймер](../autonomy/legacy-dispatch.mjs) → [inbox](./inbox.mjs) → executeTurn → [agent](../agent/turn.mjs).
+ * Владелец ожидающей поправки → [steer action](./steer-action.mjs), голос → [steer voice](./steer-voice.mjs);
+ * срок жизни кнопки и гонки → [Telegram steer checks](../../tests/steer-telegram.test.mjs).
  * UI read/delivery lifecycle → [shared callbacks](../../shared/callback-renders.mjs).
  * Кнопки → [router](./router.mjs) → routes/; вид → [screens](./screens.mjs).
  * Карточка после знакомства Codex → [services](./bootstrap-services.mjs).

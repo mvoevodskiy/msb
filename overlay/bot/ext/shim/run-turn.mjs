@@ -3,6 +3,8 @@ import '../../shared/preload.mjs';
 /**
  * Вход PATH-shim claude: штатный Claude либо adapter, возвращающий CLI stream-json ядру.
  * Навигация: [Исполнение CLI](../README.md#исполнение-cli) → [Codex](../adapters/codex.mjs).
+ * Необязательный Codex control fd → [steer control](./steer-control.mjs),
+ * [проверки](../tests/steer-control.test.mjs); Claude остаётся на штатном пути.
  */
 import { spawn } from 'node:child_process';
 import { resolveNativeClaude } from '../../shared/claude-binary.mjs';
