@@ -47,7 +47,9 @@ async function launch(native){
   await native.respond('fixture complete');
   const result=await runAgentTurn({prompt:'owned next-turn fixture'});
   assert.equal(result.ok,true,result.text);
-  return (await native.trace()).at(-1);
+  const call=(await native.trace()).at(-1);
+  if(result.result?.providerId==='codex')assert.equal(call.kind,'codex-exec','Direct turns retain exec transport');
+  return call;
 }
 async function remove(f,name){
   await f.callback('mcp:folder:workspace');
@@ -64,6 +66,7 @@ for(const provider of ['claude','codex']){
     const {f,native}=await prepare(t,provider);
     await ask(f,native,'ordinary response');
     const call=(await native.trace()).at(-1);
+    assert.equal(call.kind,provider==='codex'?'codex-app-turn':'claude','Telegram foreground uses its expected transport');
     const prompt=provider==='claude'?call.argv[call.argv.indexOf('--append-system-prompt')+1]:call.prompt;
     assert.match(prompt,/\[ADD_MCP\].*"type":"http"/);
     assert.match(prompt,/"type":"stdio".*"args"/);
