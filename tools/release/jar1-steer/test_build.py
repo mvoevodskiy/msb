@@ -11,6 +11,19 @@ spec.loader.exec_module(build)
 
 
 class BuildScopeTest(unittest.TestCase):
+    def test_history_is_in_the_exact_fourteen_file_bot_scope(self):
+        history = 'src/telegram/history.mjs'
+        self.assertEqual(len(build.BOT), 14)
+        self.assertEqual(len(set(build.BOT)), 14)
+        self.assertEqual(build.BOT.count(history), 1)
+        self.assertLess(build.BOT.index(history), build.BOT.index('src/telegram/bot.mjs'))
+        deploy_spec = importlib.util.spec_from_file_location('release_deployer', Path(__file__).with_name('deploy.py'))
+        deploy = importlib.util.module_from_spec(deploy_spec)
+        deploy_spec.loader.exec_module(deploy)
+        self.assertEqual([name for root, name in deploy.RELEASE_ORDER if root == 'bot'], list(build.BOT))
+        self.assertNotIn(('bot', history), deploy.ADDED)
+        self.assertEqual(len(deploy.ADDED), 6)
+
     def test_foreign_baseline_is_rejected_before_stage_creation(self):
         with tempfile.TemporaryDirectory() as tmp:
             def fake_git(_repo, *args):

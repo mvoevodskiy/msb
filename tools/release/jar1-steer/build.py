@@ -15,7 +15,7 @@ DOC_BASE = '4568242e0d319ecb72919f01ea81eb8e86b79613'
 EXT_DOC_BASE = '03a69ef181c24fcc2e6345818a100b907d47e3a9'
 BOT = ('src/agent/steer-channel.mjs', 'src/telegram/steer-action.mjs', 'src/telegram/steer-voice.mjs',
        'ext/adapters/codex-stream-cut.mjs', 'ext/adapters/codex-app-server.mjs', 'ext/shim/steer-control.mjs',
-       'src/agent/claude.mjs', 'src/agent/turn.mjs', 'src/telegram/inbox.mjs', 'src/telegram/bot.mjs',
+       'src/agent/claude.mjs', 'src/agent/turn.mjs', 'src/telegram/inbox.mjs', 'src/telegram/history.mjs', 'src/telegram/bot.mjs',
        'src/telegram/router.mjs', 'ext/adapters/codex.mjs', 'ext/shim/run-turn.mjs')
 OPS = 'tools/release/jar1-steer'
 SOURCES = (

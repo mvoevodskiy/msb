@@ -180,7 +180,8 @@ def verify(stage, home, dependencies, tmp_dir=None, host_netns_inode=None):
         # two test files compete. Run every selected test, one file at a time.
         run('node-' + str(index), ['node', '--test', '--test-concurrency=1', *map(str, tests)])
     steer_tests = [source / p for p in (
-        '.msb/bot/tests/steer-action.test.mjs',
+        '.msb/bot/tests/steer-action.test.mjs', '.msb/bot/tests/steer-history.test.mjs',
+        '.msb/bot/tests/steer-inbox.test.mjs', '.msb/bot/tests/turn-history.test.mjs',
         '.msb/bot/tests/steer-channel.test.mjs', '.msb/bot/tests/steer-envelope.test.mjs',
         '.msb/bot/tests/steer-telegram.test.mjs', '.msb/bot/tests/attachments.test.mjs',
         '.msb/bot/tests/attachment-turn.test.mjs', '.msb/bot/tests/progress.test.mjs',
@@ -188,7 +189,11 @@ def verify(stage, home, dependencies, tmp_dir=None, host_netns_inode=None):
         'overlay/bot/ext/tests/codex-session.test.mjs', 'overlay/bot/ext/tests/codex-profile-preferences.test.mjs')]
     if any(not p.is_file() or excluded.search(p.read_text()) for p in steer_tests):
         raise ValueError('Required steer test absent or references excluded provider')
-    run('steer-targeted', ['node', '--test', '--test-concurrency=1', *map(str, steer_tests)])
+    run('steer-targeted', ['node', '--test', '--test-concurrency=1', *map(str, steer_tests)],
+        expected_pass=86, expected_skipped=0,
+        expected_names=('accepted text and voice stay inside the original turn',
+                        'stop and turn completion while ack is pending',
+                        'reservation validates token, chat, topic'))
     native_proof = native_preflight(source, env, host_netns_inode)
     try:
         env['MSB_TEST_CODEX_NATIVE'] = NATIVE_CLI
