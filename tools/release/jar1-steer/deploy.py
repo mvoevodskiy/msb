@@ -26,7 +26,7 @@ SUPPORT = {'/usr/local/sbin/msb-engine', '/etc/systemd/system/msb-engine.service
 RELEASE_ORDER = [('bot', name) for name in (
     'src/agent/steer-channel.mjs', 'src/telegram/steer-action.mjs', 'src/telegram/steer-voice.mjs',
     'ext/adapters/codex-stream-cut.mjs', 'ext/adapters/codex-app-server.mjs', 'ext/shim/steer-control.mjs',
-    'src/agent/claude.mjs', 'src/agent/turn.mjs', 'src/telegram/inbox.mjs', 'src/telegram/bot.mjs',
+    'src/agent/claude.mjs', 'src/agent/turn.mjs', 'src/telegram/inbox.mjs', 'src/telegram/history.mjs', 'src/telegram/bot.mjs',
     'src/telegram/router.mjs', 'ext/adapters/codex.mjs', 'ext/shim/run-turn.mjs')]
 ALLOWED = {'lib': set(), 'bin': set(), 'engine': set(), 'bot': {path for _, path in RELEASE_ORDER}}
 ADDED = {('bot', path) for path in ('src/agent/steer-channel.mjs', 'src/telegram/steer-action.mjs',
@@ -501,6 +501,9 @@ class Deployment:
         native = next(item for item in checks if item['suite'] == 'steer-native-isolated')
         if (native.get('tests'), native.get('passed'), native.get('skipped')) != (1, 1, 0):
             raise ValueError('Native steer verification is incomplete')
+        focused = next(item for item in checks if item['suite'] == 'steer-targeted')
+        if (focused.get('tests'), focused.get('passed'), focused.get('skipped')) != (86, 86, 0):
+            raise ValueError('Steer and journal verification is incomplete')
         root_cases = next(item for item in checks if item['suite'] == 'test_client_markers')
         if (root_cases.get('tests'), root_cases.get('passed'), root_cases.get('skipped')) != (7, 0, 7):
             raise ValueError('Distinct-UID target skips are not accounted for')

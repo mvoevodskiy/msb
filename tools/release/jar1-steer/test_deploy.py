@@ -158,9 +158,9 @@ def fixture(failure=None):
                   'source_archive_sha256': manifest['source_archive_sha256'],
                   'environment': {'fixture': 'same-runtime', 'node_sha256': 'fixture-node'},
                   'checks': [{'suite': name, 'exit_code': 0,
-                              'tests': 16 if name == 'fstab-compat' else 7 if name == 'test_client_markers' else 3 if name == 'service-labels' else
+                              'tests': 86 if name == 'steer-targeted' else 16 if name == 'fstab-compat' else 7 if name == 'test_client_markers' else 3 if name == 'service-labels' else
                                        23 if name == 'legacy-timer-conversation-safe' else 287 if name == 'backlog-targeted' else 8 if name == 'recurring-safe' else 10 if name == 'menu-safe' else 9 if name == 'test_bot_off_marker' else 1,
-                              'passed': 15 if name == 'fstab-compat' else 0 if name == 'test_client_markers' else 3 if name == 'service-labels' else
+                              'passed': 86 if name == 'steer-targeted' else 15 if name == 'fstab-compat' else 0 if name == 'test_client_markers' else 3 if name == 'service-labels' else
                                         23 if name == 'legacy-timer-conversation-safe' else 287 if name == 'backlog-targeted' else 8 if name == 'recurring-safe' else 10 if name == 'menu-safe' else 9 if name == 'test_bot_off_marker' else 1,
                               'skipped': 7 if name == 'test_client_markers' else 1 if name == 'fstab-compat' else 0} for name in names]}
         next(row for row in report['checks'] if row['suite'] == 'fstab-compat')['skipped_cases'] = ['test_rewrite_preserves_posix_acl']
@@ -174,6 +174,17 @@ def fixture(failure=None):
 
 
 class DeploymentTest(unittest.TestCase):
+    def test_incomplete_steer_journal_suite_cannot_authorize_release(self):
+        with fixture() as (release, host, roots, _entries, report_path):
+            report = json.loads(report_path.read_text())
+            row = next(item for item in report['checks'] if item['suite'] == 'steer-targeted')
+            row.update(passed=85, skipped=1)
+            report_path.write_text(json.dumps(report))
+            with self.assertRaisesRegex(ValueError, 'journal verification'):
+                deploy.Deployment(release.stage, release.backup, roots, host,
+                                  deploy.digest(release.stage / 'manifest.json'), deploy.digest(report_path))
+            self.assertTrue(host.running)
+
     def test_failed_active_session_check_rolls_back_before_reporting_success(self):
         with fixture('active-session') as (release, host, roots, entries, _):
             with self.assertRaisesRegex(RuntimeError, 'active-session'):
@@ -921,7 +932,7 @@ class PendingRequestTest(unittest.TestCase):
     def test_install_and_rollback_all_bot_files(self):
         with fixture() as (release, host, roots, entries, _):
             result = release.apply()
-            self.assertEqual(result['files'], 13)
+            self.assertEqual(result['files'], 14)
             for row in entries:
                 path = roots['bot'] / row['relative']
                 self.assertEqual(deploy.digest(path), row['after_sha256'])
@@ -933,6 +944,32 @@ class PendingRequestTest(unittest.TestCase):
                 path = roots['bot'] / row['relative']
                 if row['before_sha256'] is None: self.assertFalse(path.exists())
                 else: self.assertEqual(deploy.digest(path), row['before_sha256'])
+
+    def test_history_is_existing_and_is_restored_with_its_metadata(self):
+        key = ('bot', 'src/telegram/history.mjs')
+        self.assertIn(key, deploy.RELEASE_ORDER)
+        self.assertNotIn(key, deploy.ADDED)
+        self.assertEqual(len(deploy.RELEASE_ORDER), 14)
+        self.assertEqual(len(deploy.ADDED), 6)
+        self.assertLess(deploy.RELEASE_ORDER.index(key), deploy.RELEASE_ORDER.index(('bot', 'src/telegram/bot.mjs')))
+        with fixture() as (release, host, roots, entries, _):
+            row = next(item for item in entries if (item['root'], item['relative']) == key)
+            self.assertIsNotNone(row['before_sha256'])
+            live = roots['bot'] / row['relative']
+            before = deploy.info(live)
+            release.apply()
+            self.assertEqual(deploy.digest(live), row['after_sha256'])
+            self.assertEqual(deploy.digest(release.backup / 'code' / 'bot' / row['relative']), row['before_sha256'])
+            release.rollback()
+            self.assertEqual(deploy.info(live), before)
+
+    def test_history_drift_stops_before_service_is_stopped(self):
+        with fixture() as (release, host, roots, entries, _):
+            live = roots['bot'] / 'src/telegram/history.mjs'
+            live.write_text('independent change')
+            with self.assertRaises(RuntimeError): release.apply()
+            self.assertTrue(host.running)
+            self.assertEqual(live.read_text(), 'independent change')
 
     def test_new_path_drift_is_rejected_before_stop(self):
         with fixture() as (release, host, roots, entries, _):
