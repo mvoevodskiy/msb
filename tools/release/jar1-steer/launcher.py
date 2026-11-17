@@ -44,6 +44,22 @@ def validate_stage(stage, manifest_sha):
             raise RuntimeError('Sealed operator code mismatch')
     if Path(__file__).resolve() != (stage / 'launcher.py').resolve(): raise RuntimeError('Wrong launcher')
 
+def run_reaping(argv, *, cwd):
+    """PID 1 must reap orphaned fixture descendants while the verifier runs."""
+    child = subprocess.Popen(argv, cwd=cwd)
+    try:
+        while True:
+            try: pid, status = os.waitpid(-1, 0)
+            except InterruptedError: continue
+            if pid == child.pid:
+                child.returncode = os.waitstatus_to_exitcode(status)
+                return child.returncode
+    except BaseException:
+        if child.poll() is None:
+            child.terminate()
+            child.wait()
+        raise
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--stage', required=True); parser.add_argument('--manifest-sha', required=True)
@@ -64,9 +80,9 @@ def main():
     subprocess.run(['mount', '-t', 'tmpfs', '-o', 'mode=755,size=4m', 'tmpfs', '/run'], check=True)
     subprocess.run(['mount', '-t', 'tmpfs', '-o', 'mode=1777,size=256m', 'tmpfs', '/tmp'], check=True)
     os.umask(0o022)
-    return subprocess.run(['runuser', '-u', 'client', '--', 'env', '-i', 'PATH=/usr/bin:/bin', 'LANG=C.UTF-8',
+    return run_reaping(['runuser', '-u', 'client', '--', 'env', '-i', 'PATH=/usr/bin:/bin', 'LANG=C.UTF-8',
         sys.executable, '-B', str(stage / 'verify.py'), '--stage', str(stage), '--home', str(stage / 'test-home'),
         '--dependencies', '/home/client/.msb/bot/node_modules', '--tmp-dir', '/tmp',
-        '--host-netns-inode', str(args.child_host_netns)], cwd=stage / 'source', check=False).returncode
+        '--host-netns-inode', str(args.child_host_netns)], cwd=stage / 'source')
 
 if __name__ == '__main__': sys.exit(main())
