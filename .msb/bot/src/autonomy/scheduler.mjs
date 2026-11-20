@@ -1,4 +1,3 @@
-import fs from 'node:fs/promises';
 import path from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
 import { autonomyDir, ensureDir } from '../paths.mjs';
@@ -12,6 +11,7 @@ import { createCodexSleep } from '../engines/codex-sleep.mjs';
 import { createReminderDispatcher } from './reminder-dispatch.mjs';
 import { createOpenClawReminderDispatcher } from './openclaw-reminder-dispatch.mjs';
 import { dispatchLegacyTimers } from './legacy-dispatch.mjs';
+import { appendRunRecord } from './run-journal.mjs';
 
 const START_DELAY_MS = 30_000;
 const TICK_MS = 60_000;
@@ -27,6 +27,7 @@ const TICK_MS = 60_000;
  * [Store](./store.mjs) условно сохраняет одну неизменённую задачу после каждого хода,
  * не весь старый список; active run не держит lock tasks.json.
  * [Interval claim](./interval-claim.mjs) сериализует интервалы одного бота до сохранения.
+ * [Run journal](./run-journal.mjs) сохраняет границы записей после оборванной строки.
  * После I/O допуска snapshot и паузы сверяются снова; финальный snapshot и
  * вызов runner сериализованы с записью tasks.json, независимые паузы — нет.
  * Проверки: [persistence](../../tests/autonomy-store-concurrency.test.mjs),
@@ -34,6 +35,7 @@ const TICK_MS = 60_000;
  * [claim regression](../../tests/autonomy-same-bot-claim.test.mjs),
  * [Telegram stop](../../tests/autonomy-stop-admission.test.mjs),
  * [shutdown drain](../../tests/autonomy-shutdown.test.mjs),
+ * [journal recovery](../../tests/run-journal-recovery.test.mjs),
  * [provider/pause](../../tests/interval-provider-pause.test.mjs),
  * [shared interval probe](../../tests/reference/probe-shared-interval-race.mjs),
  * [saved spend/stop](../../tests/saved-spend-pause.test.mjs). [Контракт](./README.md).
@@ -201,14 +203,13 @@ async function executeTask(task, api, adminId, log, runTurn, isStopped, codexSle
 
   const dir = autonomyDir();
   ensureDir(dir);
-  const line = JSON.stringify({
+  await appendRunRecord(path.join(dir, 'runs.jsonl'), {
     at: new Date().toISOString(),
     taskId: task.id,
     ok: result.ok,
     error: result.error || null,
     preview: (result.text || '').slice(0, 200),
   });
-  await fs.appendFile(path.join(dir, 'runs.jsonl'), `${line}\n`);
 
   if (!result.ok && result.error === 'setup') {
     task.failStreak = (task.failStreak || 0) + 1;
