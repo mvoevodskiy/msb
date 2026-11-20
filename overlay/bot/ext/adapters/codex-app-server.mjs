@@ -1,6 +1,7 @@
-/** Codex app-server transport; caller owns session persistence and process group.
- * Adapter: ./codex.mjs; protocol/steering tests: ../tests/codex-app-server.test.mjs.
- * No retries: an unanswered RPC may already have been accepted.
+/** Codex app-server transport owns native child cleanup on completion or stop.
+ * [Adapter](./codex.mjs), [shim signals](../shim/run-turn.mjs), [protocol tests](../tests/codex-app-server.test.mjs).
+ * [Group stop regression](../../../../.msb/bot/tests/codex-steer-stop.test.mjs).
+ * Caller owns the process group and session persistence. An unanswered RPC may already have been accepted.
  */
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
@@ -16,7 +17,7 @@ const normalizeUsage = value => {
 };
 
 export async function runCodexAppServerTurn({ bin, cwd, childEnv, model, effort, resumeId, prompt,
-  mcpArgs = [], forceHttp, httpProviderId, onThreadStarted, onSteerReady, timeoutMs = 1_800_000 }) {
+  mcpArgs = [], forceHttp, httpProviderId, onThreadStarted, onSteerReady, signal, timeoutMs = 1_800_000 }) {
   const parsedOut = { text: '', assistantText: '', lastAssistantText: '', threadId: null,
     usage: null, turnCompleted: false, turnFailed: null, streamCut: false };
   let child, closed = false, terminal = false, threadId, turnId, ready = false, serverFailure = false, stderrTail = '';
@@ -26,7 +27,8 @@ export async function runCodexAppServerTurn({ bin, cwd, childEnv, model, effort,
   const invalidate = () => { if (ready) { ready = false; try { onSteerReady?.(null); } catch {} } };
   const fail = (reason, streamCut = false) => { if (terminal) return; terminal = true; invalidate(); parsedOut.turnFailed = reason; parsedOut.streamCut = streamCut; const texts = [...messages.values()].filter(t => t.trim()); parsedOut.text = texts.at(-1) || ''; parsedOut.lastAssistantText = parsedOut.text; parsedOut.assistantText = texts.join('\n\n'); failPending(); terminalResolve(); };
   const failPending = () => { for (const p of pending.values()) { clearTimeout(p.timer); p.reject(Error('RPC outcome unknown')); } pending.clear(); };
-  const send = msg => { if (closed || !child?.stdin.writable) throw Error('connection closed'); child.stdin.write(JSON.stringify(msg) + '\n'); };
+  const onAbort = () => fail('Codex stopped');
+  const send = msg => { if (closed || signal?.aborted || !child?.stdin.writable) throw Error('connection closed'); child.stdin.write(JSON.stringify(msg) + '\n'); };
   const request = (method, params) => new Promise((resolve, reject) => {
     const id = nextId++;
     const timer = setTimeout(() => { pending.delete(id); reject(Error('RPC outcome unknown')); }, timeoutMs);
@@ -55,6 +57,7 @@ export async function runCodexAppServerTurn({ bin, cwd, childEnv, model, effort,
     }
   };
   try {
+    signal?.throwIfAborted();
     const args = [...codexHttpProviderOverrides(forceHttp, httpProviderId), ...mcpArgs, 'app-server'];
     child = spawn(bin, args, { cwd, env: childEnv, stdio: ['pipe', 'pipe', 'pipe'] });
     child.stderr.setEncoding('utf8');
@@ -64,6 +67,7 @@ export async function runCodexAppServerTurn({ bin, cwd, childEnv, model, effort,
     child.on('close', () => { closed = true; failPending(); fail('Codex process exited unexpectedly', isCodexStreamCutMessage(stderrTail)); });
     const lines = createInterface({ input: child.stdout, crlfDelay: Infinity });
     lines.on('line', line => {
+      if (signal?.aborted) return;
       let msg; try { msg = JSON.parse(line); } catch { return; }
       if (msg.method && msg.id !== undefined) {
         serverFailure = true;
@@ -75,6 +79,7 @@ export async function runCodexAppServerTurn({ bin, cwd, childEnv, model, effort,
       pending.delete(msg.id); clearTimeout(p.timer);
       if (msg.error) p.reject(Object.assign(Error('RPC error'), { rejected: true })); else p.resolve(msg.result);
     });
+    signal?.addEventListener('abort', onAbort, { once: true });
     finishTimer = setTimeout(() => fail('Codex timeout', true), timeoutMs);
     await request('initialize', { clientInfo: { name: 'msb_codex', version: '1' } });
     send({ method: 'initialized' });
@@ -101,8 +106,9 @@ export async function runCodexAppServerTurn({ bin, cwd, childEnv, model, effort,
       try { onSteerReady?.(handle); } catch { invalidate(); }
     }
     await done;
-  } catch { fail('Codex app-server request failed'); }
+  } catch { fail(signal?.aborted ? 'Codex stopped' : 'Codex app-server request failed'); }
   finally {
+    signal?.removeEventListener('abort', onAbort);
     clearTimeout(finishTimer); invalidate(); failPending();
     if (child && !closed) {
       child.stdin.end();
