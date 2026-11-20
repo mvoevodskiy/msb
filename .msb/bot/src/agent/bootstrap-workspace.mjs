@@ -1,7 +1,9 @@
 /**
  * Old workspace readiness and non-overwriting bootstrap completion. The exact
  * shipped cold-install seed is not an owner identity; compare bytes before
- * allowing an introduction, and treat all other files as owner data.
+ * allowing an introduction, and treat all other files as owner data. A scoped
+ * active attempt remains unfinished until its completion marker is published;
+ * partial model writes are preserved but cannot bypass guarded finalization.
  * Used by [Codex introduction](./codex-bootstrap.mjs) and verified through
  * [Telegram/native shim](../../tests/codex-bootstrap.test.mjs).
  */
@@ -62,12 +64,13 @@ export const bootstrapIdentityExists = async workspace => await identityKind(wor
 
 export async function bootstrapWorkspaceReady(workspace, { introductionActive = false } = {}) {
   if (await bootstrapMarkerExists(workspace)) return true;
+  // The caller already matched this attempt's chat/topic, workspace and native
+  // profile. A model may write SOUL before failing, stopping or waiting for its
+  // private summary. Only a successful checkpoint may finalize that identity.
+  if (introductionActive) return false;
   const identity = await identityKind(workspace);
   if (identity === 'owner') return true;
-  // This scoped attempt started only after checking an empty seed. Notes it
-  // creates during the conversation are not a completed identity by themselves.
-  if (identity === 'seed' && introductionActive) return false;
-  if (identity === 'seed' && !introductionActive) {
+  if (identity === 'seed') {
     for (const name of ownerFiles) if (await exists(path.join(workspace, name))) return true;
   }
   return await hasEntries(path.join(workspace, 'memory'), { ignoreSeedPlaceholder: identity === 'seed' }) ||
