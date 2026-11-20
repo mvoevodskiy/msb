@@ -54,9 +54,10 @@ test('a forwarded document reaches the selected Codex through Telegram and its s
     forward_origin: { type: 'hidden_user', sender_user_name: 'Fixture' },
     document: { file_id: 'fixture', file_name: 'fixture.txt', mime_type: 'text/plain', file_size: Buffer.byteLength(body) },
   } });
-  await until(() => f.edits.some(text => text.includes('Документ получен.')), 'Codex response');
-  const calls = (await native.trace()).filter(row => row.kind === 'codex-exec');
+  await until(() => f.messages.some(text => text.includes('Документ получен.')), 'Codex response');
+  const calls = (await native.trace()).filter(row => ['codex-app-turn', 'codex-exec'].includes(row.kind));
   assert.equal(calls.length, 1);
+  assert.equal(calls[0].kind, 'codex-app-turn');
   assert.ok(calls[0].prompt.includes(body), 'the model receives the document contents');
   assert.ok(calls[0].prompt.includes('fixture.txt'), 'the model receives the document name');
 });
