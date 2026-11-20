@@ -33,6 +33,7 @@ const TICK_MS = 60_000;
  * [compact guard](../../tests/autonomy-compact-guard.test.mjs),
  * [claim regression](../../tests/autonomy-same-bot-claim.test.mjs),
  * [Telegram stop](../../tests/autonomy-stop-admission.test.mjs),
+ * [shutdown drain](../../tests/autonomy-shutdown.test.mjs),
  * [provider/pause](../../tests/interval-provider-pause.test.mjs),
  * [shared interval probe](../../tests/reference/probe-shared-interval-race.mjs),
  * [saved spend/stop](../../tests/saved-spend-pause.test.mjs). [Контракт](./README.md).
@@ -40,8 +41,7 @@ const TICK_MS = 60_000;
 export function startScheduler({ api, adminId, scheduledTurns, timezone, now = Date.now,
   log = console.error, runTurn = runAgentTurn, runCodexPrompt, runCursorPrompt, readCodexQuota } = {}) {
   let stopped = false;
-  let busy = false;
-  let legacyTick, reminderTick, openClawTick;
+  let taskTick, reminderTick, openClawTick;
   const shutdown = new AbortController();
   const codexSleep = createCodexSleep({ pending: new Map() });
   const reminders = createReminderDispatcher({
@@ -59,16 +59,19 @@ export function startScheduler({ api, adminId, scheduledTurns, timezone, now = D
   async function tick() {
     if (stopped) return;
     const direct = Promise.all([dispatchReminders(), dispatchOpenClaw()]);
-    if (busy) return direct;
-    busy = true;
+    if (taskTick) return direct;
+    taskTick = dispatchLegacyAndIntervalTasks().finally(() => { taskTick = undefined; });
+    await Promise.all([taskTick, direct]);
+  }
+
+  async function dispatchLegacyAndIntervalTasks() {
     const stopEpoch = scheduledTurns?.stopEpoch;
     const isInterrupted = () => stopped || scheduledTurns?.stopEpoch !== stopEpoch;
     const mayNotStart = () => isInterrupted() || Boolean(scheduledTurns?.pending);
     try {
       if (scheduledTurns) {
-        legacyTick = dispatchLegacyTimers({ scheduledTurns, timezone, now, isInterrupted })
+        await dispatchLegacyTimers({ scheduledTurns, timezone, now, isInterrupted })
           .catch(error => log('[msb/scheduler] legacy timer error: ' + error.message));
-        try { await legacyTick; } finally { legacyTick = undefined; }
       }
       if (mayNotStart()) return;
       const tasks = await listTasks();
@@ -89,16 +92,13 @@ export function startScheduler({ api, adminId, scheduledTurns, timezone, now = D
           const isCurrent = async () => isDeepStrictEqual(
             (await listTasks()).find(entry => entry.id === before.id), before,
           );
-          if (!await runTask(task, api, adminId, log, runTurn, mayNotStart, codexSleep.sleeping, isCurrent)) return;
+          if (!await runTask(task, api, adminId, log, runTurn, mayNotStart, codexSleep.sleeping, isCurrent, shutdown.signal)) return;
           task.nextAt = tickAt + Math.max(1, task.everyHours || 24) * 3600 * 1000;
           await saveTaskResult(before, task);
         });
       }
     } catch (err) {
       log(`[msb/scheduler] tick error: ${err.message}`);
-    } finally {
-      busy = false;
-      await direct;
     }
   }
 
@@ -126,28 +126,28 @@ export function startScheduler({ api, adminId, scheduledTurns, timezone, now = D
       shutdown.abort();
       clearTimeout(boot);
       clearInterval(timer);
-      return Promise.all([legacyTick, reminderTick, openClawTick]);
+      return Promise.all([taskTick, reminderTick, openClawTick]);
     },
     tickNow: tick,
   };
 }
 
-async function runTask(task, api, adminId, log, runTurn, isStopped, codexSleeping, isCurrent) {
+async function runTask(task, api, adminId, log, runTurn, isStopped, codexSleeping, isCurrent, shutdownSignal) {
   const release = trySessionOperation();
   if (!release) return false;
   try {
-    return await executeTask(task, api, adminId, log, runTurn, isStopped, codexSleeping, isCurrent);
+    return await executeTask(task, api, adminId, log, runTurn, isStopped, codexSleeping, isCurrent, shutdownSignal);
   } finally {
     release();
   }
 }
 
-async function executeTask(task, api, adminId, log, runTurn, isStopped, codexSleeping, isCurrent) {
+async function executeTask(task, api, adminId, log, runTurn, isStopped, codexSleeping, isCurrent, shutdownSignal) {
   const turn = trackAutonomyTurn();
   // If releasing the short task-store lock fails after launch, abort and wait
   // for the owned run before releasing its separate interval/session claims.
   const admissionAbort = new AbortController();
-  const signal = AbortSignal.any([turn.signal, admissionAbort.signal]);
+  const signal = AbortSignal.any([turn.signal, admissionAbort.signal, shutdownSignal]);
   let result, started;
   try {
     const spendPaused = async () => Boolean((await loadState()).state.costPaused);
@@ -192,7 +192,7 @@ async function executeTask(task, api, adminId, log, runTurn, isStopped, codexSle
     if (!outcome.ok) throw outcome.error;
     result = outcome.value;
   } catch (error) {
-    if (turn.signal.aborted) return false;
+    if (turn.signal.aborted || shutdownSignal.aborted) return false;
     throw error;
   } finally {
     turn.release();
@@ -231,13 +231,13 @@ async function executeTask(task, api, adminId, log, runTurn, isStopped, codexSle
     task.failStreak = 0;
   }
 
-  if (adminId && api && (result.text || !task.silenceOk)) {
+  if (adminId && api && !shutdownSignal.aborted && (result.text || !task.silenceOk)) {
     const header = `🥷 <b>${escapeHtml(task.title)}</b>`;
     const body = escapeHtml((result.text || 'пустой прогон').slice(0, 3500));
     try {
-      await api.sendMessage(adminId, `${header}\n\n${body}`, { parse_mode: 'HTML' });
+      await api.sendMessage(adminId, `${header}\n\n${body}`, { parse_mode: 'HTML' }, shutdownSignal);
     } catch (err) {
-      log(`[msb/scheduler] notify failed: ${err.message}`);
+      if (!shutdownSignal.aborted) log(`[msb/scheduler] notify failed: ${err.message}`);
     }
   }
   return true;
