@@ -6,7 +6,8 @@
  * and [breaker](./reminder-breaker.mjs) use the old spacing estimate.
  * [Cost-pause pending](./cost-pause-pending.mjs) can be due outside its cron minute.
  * [Scheduler checks](../../tests/recurring-reminder.test.mjs), [pause checks](../../tests/saved-spend-pause.test.mjs).
- * [Annual slots](../../tests/recurring-reminder-annual.test.mjs) include the local year.
+ * [Annual slots](../../tests/recurring-reminder-annual.test.mjs) include the local year;
+ * [repeated field values](../../tests/recurring-reminder-cron-duplicates.test.mjs) share one slot.
  */
 import { hasCostPausePending } from './cost-pause-pending.mjs';
 
@@ -167,9 +168,9 @@ function minimumFieldGap(field, cycle) {
   if (wildcardStep) return Number(wildcardStep[1]) || null;
   const values = field.split(',').map(value => /^\d+$/.test(value) ? Number(value) : NaN);
   if (values.some(value => !Number.isFinite(value))) return null;
-  values.sort((a, b) => a - b);
-  let gap = cycle - values.at(-1) + values[0];
-  for (let i = 1; i < values.length; i++) gap = Math.min(gap, values[i] - values[i - 1]);
+  const slots = [...new Set(values)].sort((a, b) => a - b);
+  let gap = cycle - slots.at(-1) + slots[0];
+  for (let i = 1; i < slots.length; i++) gap = Math.min(gap, slots[i] - slots[i - 1]);
   return gap;
 }
 
