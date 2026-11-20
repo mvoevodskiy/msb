@@ -4,6 +4,7 @@ import path from 'node:path';
 import { envCapabilityPrompt } from '../env/prompt.mjs';
 import { projectLocations } from '../projects/paths.mjs';
 import { workingContext } from '../projects/context.mjs';
+import { routingCapabilityPrompt } from '../projects/routing-prompt.mjs';
 import { workspaceDir } from '../paths.mjs';
 
 const FILES = ['SOUL.md', 'CLAUDE.md', 'USER.md', 'MEMORY.md', 'TELEGRAM-TOOLS.md'];
@@ -41,6 +42,8 @@ export async function buildSystemPrompt({ env = process.env, workspace = workspa
   if (local) chunks.push(local);
   const capabilities = await envCapabilityPrompt(env);
   if (capabilities) chunks.push(capabilities);
+  const routing = await routingCapabilityPrompt({ cwd, env });
+  if (routing) chunks.push(routing);
   if (extra) chunks.push(extra);
   return chunks.join('\n\n');
 }
