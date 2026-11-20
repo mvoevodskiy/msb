@@ -174,11 +174,16 @@ export function authPrompt(providerId) {
     return openaiCompatPrompt('key');
   }
   if (p.authViaNative) {
+    const loginLine =
+      p.id === 'codex' ? 'штатный ChatGPT login (device code)'
+        : p.id === 'cursor' ? 'штатный вход Cursor (ссылка в браузере)'
+          : p.id === 'grok' ? 'штатный вход Grok Build (device code)'
+            : 'штатный вход CLI';
     return {
       text:
         `${p.icon} <b>${esc(p.title)} · вход</b>\n\n` +
         `Секрет в Telegram не присылай.\n` +
-        `Бот поставит CLI (если нужно) и запустит штатный ChatGPT login.\n\n` +
+        `Бот поставит CLI (если нужно) и запустит ${loginLine}.\n\n` +
         `${esc(p.hint)}\n\n` +
         'Отмена: « Назад.',
       keyboard: keyboard([[btn('« Назад', 'settings:auth')]]),
@@ -218,6 +223,45 @@ export function codexLoginGuide({ url, code } = {}) {
       '',
       'Если ссылка не пришла — на сервере пользователя бота выполни <code>codex login --device-auth</code> или <code>codex login</code>.',
       'После появления ~/.codex/auth.json вернись в «🔌 Подключение» и выбери Codex.',
+    );
+  } else {
+    lines.push('', 'Жду подтверждения входа… Движок переключу только после успешной авторизации.');
+  }
+  return lines.join('\n');
+}
+
+export function cursorLoginGuide({ url } = {}) {
+  const lines = [
+    '🖱 <b>Cursor · вход</b>',
+    '',
+    'Открой ссылку на устройстве с браузером и войди в аккаунт Cursor (подписка).',
+  ];
+  if (url) lines.push('', `Ссылка: ${esc(url)}`);
+  if (!url) {
+    lines.push(
+      '',
+      'Если ссылка не пришла — на сервере выполни <code>NO_OPEN_BROWSER=1 agent login</code>.',
+      'После входа вернись в «🔌 Подключение» и выбери Cursor.',
+    );
+  } else {
+    lines.push('', 'Жду подтверждения входа… Движок переключу только после успешной авторизации.');
+  }
+  return lines.join('\n');
+}
+
+export function grokLoginGuide({ url, code } = {}) {
+  const lines = [
+    '⚡ <b>Grok Build · вход</b>',
+    '',
+    'Открой ссылку на устройстве с браузером, введи код и подтверди вход (подписка SuperGrok / X Premium+).',
+  ];
+  if (url) lines.push('', `Ссылка: ${esc(url)}`);
+  if (code) lines.push(`Код: <code>${esc(code)}</code>`);
+  if (!url && !code) {
+    lines.push(
+      '',
+      'Если ссылка не пришла — на сервере выполни <code>grok login --device-auth</code>.',
+      'После появления ~/.grok/auth.json вернись в «🔌 Подключение» и выбери Grok Build.',
     );
   } else {
     lines.push('', 'Жду подтверждения входа… Движок переключу только после успешной авторизации.');

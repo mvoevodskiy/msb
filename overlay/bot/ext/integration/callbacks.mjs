@@ -17,7 +17,11 @@ import { loadStore } from '../store.mjs';
 import { setLocalSshHost, setPendingLocalIp, clearPendingLocalIp } from '../local-ssh.mjs';
 import { buildLocalSshMenu, localSshPrompt } from '../menu.mjs';
 import { ccOnly, readEngine, editOrReply } from './shared.mjs';
-import { selectCodexNative, ensureAndReport, connectCodexNative } from './native-login.mjs';
+import {
+  selectCodexNative, ensureAndReport, connectCodexNative,
+  selectCursorNative, connectCursorNative,
+  selectGrokNative, connectGrokNative,
+} from './native-login.mjs';
 import { showLocalAwareSshHome } from './ssh-screen.mjs';
 import { writeBotPermissionMode } from './actions.mjs';
 import { EXT_MARKER } from './shared.mjs';
@@ -152,6 +156,29 @@ export async function handleCallback(bot, cq, closedCore = false, pauseCapture) 
       await selectCodexNative(bot, chatId, messageId);
       return true;
     }
+    if (id === 'cursor') {
+      const { hasNativeCursorAuth } = await import('../cursor-auth.mjs');
+      if (!(await providerConfigured(p))) {
+        await connectCursorNative(bot, chatId, messageId);
+        return true;
+      }
+      if (await hasNativeCursorAuth()) {
+        await selectCursorNative(bot, chatId, messageId);
+        return true;
+      }
+      // Остался только CURSOR_API_KEY — обычный setActive ниже.
+    }
+    if (id === 'grok') {
+      const { hasNativeGrokAuth } = await import('../grok-auth.mjs');
+      if (!(await providerConfigured(p))) {
+        await connectGrokNative(bot, chatId, messageId);
+        return true;
+      }
+      if (await hasNativeGrokAuth()) {
+        await selectGrokNative(bot, chatId, messageId);
+        return true;
+      }
+    }
 
     if (!(await providerConfigured(p))) {
       if (p.authViaStock) {
@@ -215,6 +242,14 @@ export async function handleCallback(bot, cq, closedCore = false, pauseCapture) 
     if (id === 'codex') {
       // Перелогин / первый вход — без запроса секрета в чат.
       await connectCodexNative(bot, chatId, messageId);
+      return true;
+    }
+    if (id === 'cursor') {
+      await connectCursorNative(bot, chatId, messageId);
+      return true;
+    }
+    if (id === 'grok') {
+      await connectGrokNative(bot, chatId, messageId);
       return true;
     }
 

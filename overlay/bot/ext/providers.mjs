@@ -15,7 +15,10 @@ export const PROVIDERS = Object.freeze([
     title: 'Cursor',
     envKey: 'CURSOR_API_KEY',
     authViaStock: false,
-    hint: 'Ключ из Cursor Dashboard → API Keys. Если CLI нет — бот поставит `agent` сам.',
+    /** Основной вход — `agent login` (подписка Cursor); ключ — запасной путь. */
+    authViaNative: true,
+    hint:
+      'Штатный вход Cursor (`agent login`, ссылка в браузере). Токены в ~/.config/cursor/, в .env не копируются. API-ключ — запасной путь для CI.',
     bin: 'agent',
     icon: '🖱',
   },
@@ -24,8 +27,10 @@ export const PROVIDERS = Object.freeze([
     title: 'Grok Build',
     envKey: 'XAI_API_KEY',
     authViaStock: false,
+    /** Основной вход — `grok login --device-auth` (подписка); ключ — запасной API-путь. */
+    authViaNative: true,
     hint:
-      'Ключ xAI (`XAI_API_KEY`, обычно `xai-…`). CLI `grok` ставится сам с x.ai/cli; headless ход идёт через `--single` + JSON.',
+      'Штатный вход Grok Build (`grok login --device-auth`). Токены в ~/.grok/auth.json, в .env не копируются. XAI_API_KEY — отдельный API-биллинг, не пул подписки.',
     bin: 'grok',
     icon: '⚡',
   },

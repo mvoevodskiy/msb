@@ -85,6 +85,14 @@ export async function providerConfigured(provider, env = process.env, home = env
     if (!directory) return false;
     if (await hasNativeCodexAuth(home, directory)) return true;
   }
+  if (provider.id === 'cursor') {
+    const { hasNativeCursorAuth } = await import('./cursor-auth.mjs');
+    if (await hasNativeCursorAuth(home)) return true;
+  }
+  if (provider.id === 'grok') {
+    const { hasNativeGrokAuth } = await import('./grok-auth.mjs');
+    if (await hasNativeGrokAuth(env, home)) return true;
+  }
   if (provider.id === 'openai') {
     const { openaiCompatConfigured } = await import('./openai-compat.mjs');
     return openaiCompatConfigured(env, home);

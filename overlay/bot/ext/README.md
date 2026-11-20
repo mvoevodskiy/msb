@@ -26,8 +26,9 @@
 | Показать Codex в «Движках» | [`engine-menu.mjs`](engine-menu.mjs): `buildEngineProviderView`, `registerEngineProviderView`; core `enginesScreen` | [core engine-menu](../../../.msb/bot/tests/engine-menu.test.mjs), [core + overlay](tests/reference/engine-menu.test.mjs) |
 | Переключить провайдера из кнопки | [`integration/callbacks.mjs`](integration/callbacks.mjs): `handleCallback`, `ext:conn:set:<id>` | [provider-switch](tests/reference/provider-switch.test.mjs), [engine-menu](tests/reference/engine-menu.test.mjs) |
 | Проверить вход Codex / начать device login | [`auth-wire.mjs`](auth-wire.mjs): `codexLoginStatus`, `startCodexDeviceLogin`; [`integration/native-login.mjs`](integration/native-login.mjs): `connectCodexNative` | [auth-wire](tests/auth-wire.test.mjs), [device login](tests/codex-device-login.test.mjs), [engine-menu](tests/reference/engine-menu.test.mjs) |
+| Native вход Cursor / Grok Build | [`cursor-auth.mjs`](cursor-auth.mjs), [`grok-auth.mjs`](grok-auth.mjs); [`native-login`](integration/native-login.mjs): `connectCursorNative`, `connectGrokNative` | [native-auth-login](tests/native-auth-login.test.mjs), [setup-bypass](tests/setup-bypass.test.mjs) |
 | Убедиться, что CLI установлен | [`ensure-cli.mjs`](ensure-cli.mjs): `ensureProviderCli` | [ensure-cli](tests/ensure-cli.test.mjs) |
-| Сохранить ключ Cursor/Grok/Qwen и настроить CLI | [`env.mjs`](env.mjs): `saveProviderSecret`; [`auth-wire.mjs`](auth-wire.mjs): `wireProviderAuth`; [`integration/text-input.mjs`](integration/text-input.mjs): `handleAuthMessage` | [env](tests/env.test.mjs), [auth-wire](tests/auth-wire.test.mjs) |
+| Сохранить ключ Qwen (и запасные API-ключи) | [`env.mjs`](env.mjs): `saveProviderSecret`; [`auth-wire.mjs`](auth-wire.mjs): `wireProviderAuth`; [`integration/text-input.mjs`](integration/text-input.mjs): `handleAuthMessage` | [env](tests/env.test.mjs), [auth-wire](tests/auth-wire.test.mjs) |
 
 Выбор Codex: готовность CLI → проверка нативного входа → обновление
 [состояния](setup-bypass.mjs) → подготовка транспорта стандартного профиля.

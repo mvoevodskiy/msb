@@ -14,6 +14,7 @@ import { readEnvKey } from '../env.mjs';
 import { getSelectedModel } from '../store.mjs';
 import { enrichPath, ensureProviderCli } from '../ensure-cli.mjs';
 import { isClaudeModelAlias } from '../codex-native.mjs';
+import { hasNativeCursorAuth } from '../cursor-auth.mjs';
 
 function sessionsFile(cwd) {
   // cwd = autonomy/cursor-workspace → sibling cursor-sessions.json under autonomy/
@@ -50,7 +51,8 @@ async function resolveBin(envPath) {
 
 export async function savedCursorPromptReady(env = process.env) {
   if (env.JARVIS_CC_ONLY === '1') return false;
-  return Boolean(await readEnvKey('CURSOR_API_KEY', env));
+  if (await readEnvKey('CURSOR_API_KEY', env)) return true;
+  return hasNativeCursorAuth(env.HOME || undefined);
 }
 
 /**
@@ -73,12 +75,14 @@ export async function runSavedCursorPrompt(options, env = process.env) {
   } = options;
   if (signal.aborted || env.JARVIS_CC_ONLY === '1') return;
   const key = await readEnvKey('CURSOR_API_KEY', env);
+  const native = await hasNativeCursorAuth(env.HOME || undefined);
   if (!await canLaunch()) return;
-  if (!key) {
-    return { providerId: 'cursor', text: 'Нет CURSOR_API_KEY для фонового Cursor', assistantTextObserved: true, isError: true };
+  if (!key && !native) {
+    return { providerId: 'cursor', text: 'Нет входа Cursor для фонового хода', assistantTextObserved: true, isError: true };
   }
 
-  const envPath = { ...env, PATH: enrichPath(env), CURSOR_API_KEY: key };
+  const envPath = { ...env, PATH: enrichPath(env) };
+  if (key) envPath.CURSOR_API_KEY = key;
   const bin = await resolveBin(envPath);
   if (!bin || signal.aborted || !await canLaunch()) return;
 

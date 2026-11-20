@@ -8,6 +8,7 @@ import { readEnvKey } from '../env.mjs';
 import { decodeExtSession, getSelectedModel } from '../store.mjs';
 import { enrichPath, ensureProviderCli } from '../ensure-cli.mjs';
 import { isClaudeModelAlias } from '../codex-native.mjs';
+import { hasNativeGrokAuth } from '../grok-auth.mjs';
 
 const sentinel = /^(norestart(?:-[a-z0-9]+)?|failed|error|unknown)$/i;
 
@@ -63,7 +64,13 @@ export async function runGrokTurn({ prompt, parsed, cwd, env }) {
     bin = ensured.bin;
   }
   const key = await readEnvKey('XAI_API_KEY', env);
-  if (!key) return { ok: false, text: 'Нет XAI_API_KEY. Добавь ключ в «🔌 Подключение».' };
+  const native = await hasNativeGrokAuth(env);
+  if (!key && !native) {
+    return {
+      ok: false,
+      text: 'Нет входа Grok Build. Нажми «🔐 Вход» в «🔌 Подключение» (подписка) или добавь XAI_API_KEY (отдельный API-биллинг).',
+    };
+  }
 
   const preferred = await getSelectedModel('grok', env);
   const fromParsed =
@@ -92,9 +99,10 @@ export async function runGrokTurn({ prompt, parsed, cwd, env }) {
 
   const childEnv = {
     ...envPath,
-    XAI_API_KEY: key,
     GROK_DISABLE_AUTOUPDATER: env.GROK_DISABLE_AUTOUPDATER || '1',
   };
+  // Native session в ~/.grok/auth.json имеет приоритет; ключ — только запасной API-рельс.
+  if (key) childEnv.XAI_API_KEY = key;
   const res = await runCli(bin, args, { cwd, env: childEnv, forwardStderr: false });
   const parsedOut = parseGrokJsonOutput(res.stdout);
   let text = '';

@@ -3,6 +3,7 @@ import { readEnvKey } from '../env.mjs';
 import { decodeExtSession, getSelectedModel } from '../store.mjs';
 import { enrichPath, ensureProviderCli } from '../ensure-cli.mjs';
 import { isClaudeModelAlias } from '../codex-native.mjs';
+import { hasNativeCursorAuth } from '../cursor-auth.mjs';
 
 /** Нативный chat/session id Cursor CLI (UUID). */
 export function isCursorSessionId(id) {
@@ -55,7 +56,13 @@ export async function runCursorTurn({ prompt, parsed, cwd, env }) {
     bin = ensured.bin;
   }
   const key = await readEnvKey('CURSOR_API_KEY', env);
-  if (!key) return { ok: false, text: 'Нет CURSOR_API_KEY. Добавь ключ в «🔌 Подключение».' };
+  const native = await hasNativeCursorAuth(env.HOME || undefined);
+  if (!key && !native) {
+    return {
+      ok: false,
+      text: 'Нет входа Cursor. Нажми «🔐 Вход» в «🔌 Подключение» (подписка) или добавь CURSOR_API_KEY.',
+    };
+  }
 
   const preferred = await getSelectedModel('cursor', env);
   const fromParsed =
@@ -73,7 +80,8 @@ export async function runCursorTurn({ prompt, parsed, cwd, env }) {
   if (resumeId) args.push('--resume', resumeId);
   args.push(prompt);
 
-  const childEnv = { ...envPath, CURSOR_API_KEY: key };
+  const childEnv = { ...envPath };
+  if (key) childEnv.CURSOR_API_KEY = key;
   if (parsed?.resume && decoded?.providerId === 'cursor' && !resumeId) {
     console.error(`[msb/ext/cursor] drop bad resume id → new chat`);
   }
