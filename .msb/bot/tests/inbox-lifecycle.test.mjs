@@ -238,6 +238,40 @@ test('reply stop parity: replying стоп aborts active work but retains the wa
   assert.equal(f.maxActive, 1);
 });
 
+test('reply stop reaches the next turn during a delayed queue receipt and retains its neighbor', async t => {
+  const first = gate();
+  const f = await fixture(t, async (_args, n, holds) => {
+    if (n === 1) { holds.push(first); await first.promise; }
+    return { ok: true, text: `answer-${n}` };
+  });
+  await f.input('first');
+  await until(() => f.prompts.length === 1, 'first turn');
+  const receipts = f.blockReply('⏳ в очереди');
+  await f.input('stop this turn');
+  await f.input('retained task');
+  await until(() => f.calls.filter(call => call.text === '⏳ в очереди').length === 2, 'two pending receipts');
+
+  const append = fs.appendFile;
+  let firstDelivered = false;
+  fs.appendFile = async (file, ...args) => {
+    await append(file, ...args);
+    if (path.basename(file) === 'chat-diary.jsonl') firstDelivered = true;
+  };
+  try {
+    first.resolve();
+    await until(() => firstDelivered, 'first turn finished while the queue receipts are pending');
+    await new Promise(resolve => setImmediate(resolve));
+    await f.input('стоп', false, 42, undefined, { reply_to_message: { from: { id: 99 }, text: 'answer-1' } });
+    assert.ok(f.calls.some(call => !call.edit && call.text === 'Моя остановочка ✋🏽⛔️'), 'reply stop acknowledges the preparing turn');
+  } finally {
+    fs.appendFile = append;
+    receipts.resolve();
+  }
+  await until(() => f.prompts.length === 2, 'the neighbor runs separately');
+  assert.deepEqual(f.prompts, ['first', 'retained task']);
+  assert.equal(f.maxActive, 1);
+});
+
 test('reply stop parity: idle reply стоп is consumed silently, while plain стоп remains an agent input', async t => {
   const f = await fixture(t);
   await f.input('стоп', false, 42, undefined, { reply_to_message: { from: { id: 99 }, text: 'старый ответ' } });
