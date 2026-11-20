@@ -157,6 +157,7 @@ test('two album photos saved in the same millisecond retain their own bytes', as
   assert.equal(files[0], path.join(f.workspace, '.media', `${instant}_album_photo.jpg`));
   assert.deepEqual(await Promise.all(files.map(file => fs.readFile(file))), Object.values(images).map(bytes => Buffer.from(bytes)));
   assert.equal(new Set(files).size, 2);
+  assert.equal(prompts[0], `Пользователь отправил 2 фото. Файлы уже сохранены — открой через Read:\nФото 1: ${files[0]}\nФото 2: ${files[1]}\n\nГалерея из 2 изображений. Проанализируй.`);
 });
 
 test('model voice markers are stripped from text and sent as sendVoice', async (t) => {

@@ -7,6 +7,8 @@
  * Download → [telegram-download](../media/telegram-download.mjs); STT → [stt](../media/stt.mjs).
  * Exclusive media writes preserve distinct payloads when names/timestamps collide.
  * Checks: [attachments](../../tests/attachments.test.mjs), [album ingress](../../tests/attachment-turn.test.mjs).
+ * Partial albums: [contract](../../tests/reference/partial-album-contract.txt),
+ * [handler checks](../../tests/album-partial-turn.test.mjs), [download boundary](../../tests/album-download-errors.test.mjs).
  */
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -301,37 +303,62 @@ async function prepareAlbum(entry, botToken, signal) {
   const docs = entry.docs || [];
   const parts = [];
   const imagePaths = [];
+  const availability = [];
+  let firstDownloadError;
+  let photoCount = 0, videoCount = 0, docCount = 0;
 
-  for (const photo of photos) {
-    imagePaths.push(await saveImage(entry.ctx.api, botToken, photo.fileId, 'album_photo.jpg', {
-      signal, sizeHint: photo.fileSize, env: entry.env,
-    }));
+  async function saveAlbumFile(media, name, label) {
+    signal?.throwIfAborted?.();
+    let bytes;
+    try {
+      ({ bytes } = await downloadTelegramFile(entry.ctx.api, botToken, media.fileId, {
+        signal, sizeHint: media.fileSize,
+      }));
+    } catch (error) {
+      signal?.throwIfAborted?.();
+      firstDownloadError ??= error;
+      availability.push(`${label}: не удалось скачать`);
+      return null;
+    }
+    signal?.throwIfAborted?.();
+    // Required local I/O remains fatal; only the download above is recoverable.
+    const saved = await saveBytes(bytes, name, entry.env);
+    signal?.throwIfAborted?.();
+    availability.push(`${label}: ${saved}`);
+    return { bytes, saved };
+  }
+
+  for (let i = 0; i < photos.length; i++) {
+    const file = await saveAlbumFile(photos[i], 'album_photo.jpg', `Исходное фото №${i + 1}`);
+    if (!file) continue;
+    imagePaths.push(file.saved);
+    photoCount++;
   }
   for (let i = 0; i < videos.length; i++) {
     const video = videos[i];
-    const { bytes } = await downloadTelegramFile(entry.ctx.api, botToken, video.fileId, {
-      signal, sizeHint: video.fileSize,
-    });
-    const saved = await saveBytes(bytes, `album_video_${i + 1}.mp4`, entry.env);
+    const file = await saveAlbumFile(video, `album_video_${i + 1}.mp4`, `Исходное видео №${i + 1}`);
+    if (!file) continue;
+    const { bytes, saved } = file;
     const insights = await extractVideoInsights(bytes, video.duration || 0, { signal, isNote: video.isNote });
     parts.push(`--- Видео ${i + 1} (${video.duration || 0}с${video.isNote ? ', кружок' : ''}) ---\nФайл: ${saved}`);
     if (insights.transcript) parts.push(`Транскрипт: ${insights.transcript}`);
     for (const frame of insights.frames) imagePaths.push(frame);
     if (insights.frames.length) parts.push(`(${insights.frames.length} ключевых кадров приложены)`);
+    videoCount++;
   }
   const docNotes = [];
-  for (const doc of docs) {
+  for (let i = 0; i < docs.length; i++) {
+    const doc = docs[i];
     const ext = path.extname(doc.fileName).toLowerCase();
+    const file = await saveAlbumFile(doc, doc.fileName, `Исходный документ №${i + 1} (${doc.fileName})`);
+    if (!file) continue;
+    const { saved } = file;
+    docCount++;
     if (doc.mimeType.startsWith('image/') || IMAGE_EXT.has(ext)) {
-      imagePaths.push(await saveImage(entry.ctx.api, botToken, doc.fileId, doc.fileName, {
-        signal, sizeHint: doc.fileSize, env: entry.env,
-      }));
+      imagePaths.push(saved);
       docNotes.push(`🖼 ${doc.fileName}`);
       continue;
     }
-    const saved = await downloadToWorkspace(entry.ctx.api, botToken, doc.fileId, doc.fileName, {
-      signal, sizeHint: doc.fileSize, env: entry.env,
-    });
     const textual = doc.mimeType.startsWith('text/') || TEXT_EXT.has(ext);
     if (textual && doc.fileSize <= TEXT_INLINE_MAX) {
       const body = await fs.readFile(saved, 'utf8');
@@ -341,16 +368,21 @@ async function prepareAlbum(entry, botToken, signal) {
     }
   }
 
+  signal?.throwIfAborted?.();
+  if (firstDownloadError && photoCount + videoCount + docCount === 0) throw firstDownloadError;
   if (imagePaths.length) parts.unshift(photoPrompt(imagePaths, '', { includeTask: false }));
   if (docNotes.length) {
-    parts.push(`Пользователь отправил ${docs.length} файл(ов):\n\n${docNotes.join('\n\n')}`);
+    parts.push(`Пользователь отправил ${docCount} файл(ов):\n\n${docNotes.join('\n\n')}`);
+  }
+  if (firstDownloadError) {
+    parts.unshift(`Состав исходного альбома (часть вложений недоступна):\n${availability.join('\n')}`);
   }
   const caption = entry.caption
-    || (photos.length && videos.length ? 'Проанализируй медиа.'
-      : photos.length > 1 ? `Галерея из ${photos.length} изображений. Проанализируй.`
-        : videos.length > 1 ? `Галерея из ${videos.length} видео. Проанализируй.`
-          : docs.length ? 'Проанализируй файлы'
-            : photos.length ? 'Что на этом изображении?'
+    || (photoCount && videoCount ? 'Проанализируй медиа.'
+      : photoCount > 1 ? `Галерея из ${photoCount} изображений. Проанализируй.`
+        : videoCount > 1 ? `Галерея из ${videoCount} видео. Проанализируй.`
+          : docCount ? 'Проанализируй файлы'
+            : photoCount ? 'Что на этом изображении?'
               : 'Проанализируй это видео.');
   const body = [...parts, caption].filter(Boolean).join('\n\n');
   if (!body.trim()) throw Error('Не удалось обработать медиа.');
