@@ -1,6 +1,7 @@
 /**
  * Model final -> Telegram HTML/plan/footer; shared pure HTML length/split utilities.
- * Unwraps Telegram-HTML markdown fences before `<pre><code>`; ordinary code stays fenced.
+ * Protects code regions in source order. Telegram-HTML fences unwrap and keep
+ * raw code opaque; ordinary fenced/inline code keeps literal HTML tags.
  * Caller [bot](./bot.mjs); prepared [views](./view-delivery.mjs) use only pure exports.
  * Saved-prompt digests: [prompt-delivery](../autonomy/prompt-delivery.mjs).
  * [Response checks](../../tests/response-delivery.test.mjs), [plan checks](../../tests/plan-handoff.test.mjs).
@@ -59,24 +60,50 @@ function isTelegramHtmlFence(lang, inner) {
   return /^\s*(?:<(?:b|i)\b|🟢|🔴)/.test(first);
 }
 
+function telegramHtmlFenceEnd(text, start) {
+  // A recognized HTML fence may contain Markdown source in its raw code tags.
+  const markers = /```|<(pre|code)(?:\s[^>]*)?>[\s\S]*?<\/\1>/gi;
+  markers.lastIndex = start;
+  for (let marker; (marker = markers.exec(text));) {
+    if (!marker[1]) return marker.index;
+  }
+}
+
 /** Common old Markdown forms and Telegram HTML; unknown tags remain visible text. */
 export function renderResponseHtml(value) {
   const input = String(value ?? '').toWellFormed();
   const saved = [];
   const hold = (value) => `\0${saved.push(value) - 1}\0`;
-  let body = input.replace(/\0/g, '�');
-  body = body.replace(/<(pre|code)(?:\s[^>]*)?>([\s\S]*?)<\/\1>/gi, (_all, name, code) => {
-    const tag = name.toLowerCase();
-    const inner = tag === 'pre' && /^<code(?:\s[^>]*)?>([\s\S]*?)<\/code>$/i.exec(code);
-    return hold(inner ? `<pre><code>${escapeText(inner[1])}</code></pre>` : `<${tag}>${escapeText(code)}</${tag}>`);
-  });
-  // Unwrap ```html / bare Telegram-HTML fences before treating them as code blocks.
-  body = body.replace(/```([\w+-]*)\n([\s\S]*?)```/g, (_all, lang, code) => {
-    const inner = code.trimEnd();
-    if (isTelegramHtmlFence(lang, inner)) return inner.trim();
-    return hold(`<pre><code>${escape(inner)}</code></pre>`);
-  });
-  body = body.replace(/`([^`\n]+)`/g, (_all, code) => hold(`<code>${escape(code)}</code>`));
+  // Match the outermost region first. Separate HTML/fence/inline passes can put
+  // an existing placeholder inside another, losing source text on restoration.
+  const protectCode = text => {
+    const regions = /```([\w+-]*)\n([\s\S]*?)```|<(pre|code)(?:\s[^>]*)?>([\s\S]*?)<\/\3>|`([^`\n]+)`/dgi;
+    let protectedText = '';
+    let consumed = 0;
+    for (let match; (match = regions.exec(text));) {
+      const [, lang, fenced, name, code, inline] = match;
+      protectedText += text.slice(consumed, match.index);
+      if (fenced !== undefined) {
+        if (isTelegramHtmlFence(lang, fenced)) {
+          const [start, initialEnd] = match.indices[2];
+          const end = telegramHtmlFenceEnd(text, start) ?? initialEnd;
+          protectedText += protectCode(text.slice(start, end).trim());
+          regions.lastIndex = end + 3;
+        } else {
+          protectedText += hold(`<pre><code>${escape(fenced.trimEnd())}</code></pre>`);
+        }
+      } else if (name) {
+        const tag = name.toLowerCase();
+        const inner = tag === 'pre' && /^<code(?:\s[^>]*)?>([\s\S]*?)<\/code>$/i.exec(code);
+        protectedText += hold(inner ? `<pre><code>${escapeText(inner[1])}</code></pre>` : `<${tag}>${escapeText(code)}</${tag}>`);
+      } else {
+        protectedText += hold(`<code>${escape(inline)}</code>`);
+      }
+      consumed = regions.lastIndex;
+    }
+    return protectedText + text.slice(consumed);
+  };
+  let body = protectCode(input.replace(/\0/g, '�'));
   body = body.replace(/<[^>]*>/g, (raw) => {
     const tag = safeTag(raw);
     return tag ? hold(tag.raw) : raw;
