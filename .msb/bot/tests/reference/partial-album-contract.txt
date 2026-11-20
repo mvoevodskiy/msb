@@ -1,0 +1,63 @@
+Partial Telegram albums: narrow functional follow-up, 2026-11-20
+
+Context
+The second audit left partial-album failure as a product decision. Following
+the owner's request to carefully finish functionality, this stage addresses
+that specific scenario. The general code-audit/UI freeze in AGENTS.md remains;
+this is not permission for unrelated feature, retry or interface changes.
+
+Baseline
+Jarvis a2648fa6e92302a42f18b1db5a5d2c1a54b8a7fc, local equivalent
+18cffc7575ea24bb8056796647b2452810f38626. prepareAlbum in
+.msb/bot/src/telegram/attachments.mjs throws on the first failed download.
+createBot's existing executeTurn error handling presents that failure.
+
+Selected behavior
+- Recover only downloadTelegramFile failures for individual album entries:
+  getFile, missing file_path, HTTP/transport, timeout or response-body failure.
+  Exactly one attempt per entry; no retry, additional provider call or replay.
+- Keep preparing remaining entries in the current photo/video/document order.
+  With at least one successfully prepared original file, run one model turn.
+  An original video saved without optional frames/transcript counts as a file.
+- On partial success only, include model context mapping original per-type
+  positions to saved paths or an unavailable marker. It must distinguish a
+  missing original photo from the renumbered available images/video frames.
+  No raw transport error or Telegram token appears in that context.
+- Preserve the collector's caption and quoted reply, including when their
+  message's attachment cannot be downloaded. Default task/count text uses
+  available original photos/videos/documents; optional frames do not inflate it.
+- If all downloads fail, rethrow the first sanitized download error. Keep the
+  existing error display and do not call the model with only a caption.
+- Required workspace mkdir/write and text-document read failures remain fatal.
+  A catch around the whole per-file preparation would be too broad.
+- Cancellation wins before/after download/save and at the end of preparation.
+  /stop must not start the next download or a model turn after cancellation.
+  Previously saved files are not removed or retried.
+- Fully successful prompt content, album quiet time, queue/forwarded-document
+  routing, UI/status/button strings, single attachments and other providers'
+  behavior remain unchanged. Do not enable or separately test OpenClaw.
+
+Old evidence, not a blanket parity claim
+Master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf; readable blob
+73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11; .msb/bot/vendor/deobfuscated.js:
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | sed -n '120041,120174p'
+i$ at120122-150 continued after per-photo/video failures;120152-174 required
+visual data. mGA at120041-97 collected documents with per-file error notes,
+even for an entirely failed document group. Its broad filesystem recovery and
+all-failed behavior are not copied. Current local-I/O failures remain fatal,
+and the existing current error route is used for every all-failed album type.
+a$A at20340-73 converted image payloads to workspace paths. Collector referents:
+Wj105006-8, photo120199-229, video120364-400, document120535-571.
+
+Acceptance
+Real bot ingress must cover partial photos, mixed video/photo, document groups,
+caption/reply preservation, source positions/bytes, one download per item,
+all-failed/no model, active /stop and required local-I/O failure. Unit boundary
+checks may cover additional transport modes. Existing successful-prompt,
+forwarded-document, queue, stop and response-delivery regressions must pass.
+Tests use only synthetic profiles, media, APIs and controlled child processes.
+No JAR1 deployment, real Telegram/model call or real file undo in this stage.
+
+Rollback
+Revert the runtime implementation commit independently from this contract.
+No data migration, new configuration or persistent-format changes are needed.
