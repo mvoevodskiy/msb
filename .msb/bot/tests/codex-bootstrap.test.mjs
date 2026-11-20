@@ -278,6 +278,56 @@ async function nativeFixture(t, { ordinarySession = false, seed = false } = {}) 
   return { ...f, profile, project, resume, started, holdSummary, failSummary, release, calls, config };
 }
 
+test('first Codex input creates a missing base workspace before resolving its cwd', async t => {
+  const f = await nativeFixture(t);
+  await saveState({ ...(await loadState()).state, activeProject: undefined });
+  process.env.CODEX_HOME = f.profile;
+  await fs.rmdir(f.workspace);
+  await f.message('/start');
+  assert.equal(f.messages.at(-1), greeting);
+  await assert.rejects(fs.stat(f.workspace), { code: 'ENOENT' });
+
+  const prompt = 'fixture first answer without a workspace';
+  await f.message(prompt);
+  await waitFor(() => f.messages.some(text => text.includes('fixture native reply') || text.includes('ENOENT')));
+  assert.equal(f.messages.some(text => text.includes('ENOENT')), false, 'first input must reach the existing workspace initializer');
+  const calls = await f.calls();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].kind, 'codex-exec');
+  assert.equal(calls[0].resumed, null);
+  assert.equal(calls[0].cwd, await fs.realpath(f.workspace));
+  assert.equal(calls[0].profile, await fs.realpath(f.profile));
+  assert.equal(calls[0].prompt.split(prompt).length - 1, 1);
+  assert.match(calls[0].prompt, /первую настройку с новым владельцем/);
+  const state = (await loadState()).state;
+  assert.equal(state.codexBootstrap[scope].turns, 1);
+  assert.equal(state.codexBootstrap[scope].sessionId, 'ext:codex:' + introduction);
+  assert.equal(state.ccSessionId, undefined);
+  assert.equal(await fs.readFile(path.join(f.profile, 'config.toml'), 'utf8'), f.config);
+  await f.message('/start');
+  assert.equal(f.messages.at(-1), greeting);
+});
+
+test('an existing introduction does not recreate its disappeared workspace or launch again', async t => {
+  const f = await nativeFixture(t);
+  await saveState({ ...(await loadState()).state, activeProject: undefined });
+  process.env.CODEX_HOME = f.profile;
+  await f.message('fixture first existing workspace');
+  await waitFor(() => f.messages.some(text => text.includes('fixture native reply')));
+  const before = (await loadState()).state.codexBootstrap[scope];
+  assert.equal(before.turns, 1);
+  assert.equal((await f.calls()).length, 1);
+  await fs.rename(f.workspace, path.join(f.home, 'preserved-old-workspace'));
+
+  await f.message('fixture followup after workspace disappeared');
+  await waitFor(() => f.messages.some(text => text.includes('ENOENT')));
+  await assert.rejects(fs.stat(f.workspace), { code: 'ENOENT' });
+  const state = (await loadState()).state;
+  assert.deepEqual(state.codexBootstrap[scope], before);
+  assert.equal(state.ccSessionId, undefined);
+  assert.equal((await f.calls()).length, 1);
+});
+
 for (const interruption of ['stop', 'failure']) {
   test(`a seeded introduction keeps finalization after ${interruption} following an identity write`, async t => {
     const f = await nativeFixture(t, { seed: true });
