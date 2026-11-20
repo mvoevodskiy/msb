@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isGrokSessionId, parseGrokJsonOutput } from '../adapters/grok.mjs';
+import { isGrokSessionId, parseGrokJsonOutput, applyGrokAuthEnv } from '../adapters/grok.mjs';
 
 test('isGrokSessionId accepts native ids and rejects sentinels', () => {
   assert.equal(isGrokSessionId('bf4fd6ef-0ad8-46c3-9486-5422d21d7ac2'), true);
@@ -28,4 +28,18 @@ test('parseGrokJsonOutput reads text + sessionId', () => {
 test('parseGrokJsonOutput empty → null', () => {
   assert.equal(parseGrokJsonOutput(''), null);
   assert.equal(parseGrokJsonOutput('not-json'), null);
+});
+
+test('applyGrokAuthEnv drops XAI_API_KEY when native login is present', () => {
+  const withNative = applyGrokAuthEnv(
+    { XAI_API_KEY: 'stale-key', PATH: '/bin' },
+    { key: 'stale-key', native: true },
+  );
+  assert.equal(withNative.XAI_API_KEY, undefined);
+
+  const keyOnly = applyGrokAuthEnv(
+    { XAI_API_KEY: 'from-process' },
+    { key: 'bot-key', native: false },
+  );
+  assert.equal(keyOnly.XAI_API_KEY, 'bot-key');
 });

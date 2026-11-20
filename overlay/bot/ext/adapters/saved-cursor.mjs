@@ -9,7 +9,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { findBin } from './run-cli.mjs';
 import { runOwnedCli } from './owned-cli.mjs';
-import { isCursorSessionId, parseCursorJsonOutput } from './cursor.mjs';
+import { isCursorSessionId, parseCursorJsonOutput, applyCursorAuthEnv } from './cursor.mjs';
 import { readEnvKey } from '../env.mjs';
 import { getSelectedModel } from '../store.mjs';
 import { enrichPath, ensureProviderCli } from '../ensure-cli.mjs';
@@ -81,8 +81,7 @@ export async function runSavedCursorPrompt(options, env = process.env) {
     return { providerId: 'cursor', text: 'Нет входа Cursor для фонового хода', assistantTextObserved: true, isError: true };
   }
 
-  const envPath = { ...env, PATH: enrichPath(env) };
-  if (key) envPath.CURSOR_API_KEY = key;
+  const envPath = applyCursorAuthEnv({ ...env, PATH: enrichPath(env) }, { key, native });
   const bin = await resolveBin(envPath);
   if (!bin || signal.aborted || !await canLaunch()) return;
 

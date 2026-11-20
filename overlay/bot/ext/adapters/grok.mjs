@@ -12,6 +12,13 @@ import { hasNativeGrokAuth } from '../grok-auth.mjs';
 
 const sentinel = /^(norestart(?:-[a-z0-9]+)?|failed|error|unknown)$/i;
 
+/** Env для CLI: native session без XAI_API_KEY (ключ — отдельный API-рельс). */
+export function applyGrokAuthEnv(childEnv, { key, native } = {}) {
+  delete childEnv.XAI_API_KEY;
+  if (!native && key) childEnv.XAI_API_KEY = key;
+  return childEnv;
+}
+
 /** Нативный session id Grok Build (UUID или иной непустой id без sentinel). */
 export function isGrokSessionId(id) {
   if (typeof id !== 'string') return false;
@@ -97,12 +104,10 @@ export async function runGrokTurn({ prompt, parsed, cwd, env }) {
   }
   args.push(`--single=${prompt}`);
 
-  const childEnv = {
-    ...envPath,
-    GROK_DISABLE_AUTOUPDATER: env.GROK_DISABLE_AUTOUPDATER || '1',
-  };
-  // Native session в ~/.grok/auth.json имеет приоритет; ключ — только запасной API-рельс.
-  if (key) childEnv.XAI_API_KEY = key;
+  const childEnv = applyGrokAuthEnv(
+    { ...envPath, GROK_DISABLE_AUTOUPDATER: env.GROK_DISABLE_AUTOUPDATER || '1' },
+    { key, native },
+  );
   const res = await runCli(bin, args, { cwd, env: childEnv, forwardStderr: false });
   const parsedOut = parseGrokJsonOutput(res.stdout);
   let text = '';

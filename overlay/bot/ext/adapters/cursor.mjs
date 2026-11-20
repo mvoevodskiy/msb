@@ -5,6 +5,13 @@ import { enrichPath, ensureProviderCli } from '../ensure-cli.mjs';
 import { isClaudeModelAlias } from '../codex-native.mjs';
 import { hasNativeCursorAuth } from '../cursor-auth.mjs';
 
+/** Env для CLI: native login без CURSOR_API_KEY (ключ иначе перекрывает сессию). */
+export function applyCursorAuthEnv(childEnv, { key, native } = {}) {
+  delete childEnv.CURSOR_API_KEY;
+  if (!native && key) childEnv.CURSOR_API_KEY = key;
+  return childEnv;
+}
+
 /** Нативный chat/session id Cursor CLI (UUID). */
 export function isCursorSessionId(id) {
   return typeof id === 'string'
@@ -80,8 +87,8 @@ export async function runCursorTurn({ prompt, parsed, cwd, env }) {
   if (resumeId) args.push('--resume', resumeId);
   args.push(prompt);
 
-  const childEnv = { ...envPath };
-  if (key) childEnv.CURSOR_API_KEY = key;
+  // CLI предпочитает CURSOR_API_KEY над native login — неверный ключ в .env ломает рабочий вход.
+  const childEnv = applyCursorAuthEnv({ ...envPath }, { key, native });
   if (parsed?.resume && decoded?.providerId === 'cursor' && !resumeId) {
     console.error(`[msb/ext/cursor] drop bad resume id → new chat`);
   }
