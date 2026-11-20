@@ -19,22 +19,44 @@ file changed after the recorded operation before overwriting/removing it. These
 are observations of historical behavior, not a safe contract for arbitrary
 Codex work or a recommendation to reproduce destructive errors.
 
-Current new-core command .msb/bot/src/telegram/bot.mjs replies that automatic
-undo is unavailable. The Codex path overlay/bot/ext/shim/run-turn.mjs ->
-adapters/codex.mjs invokes codex exec --json; parseCodexStdout extracts agent
-text, thread, usage and completion/failure, not prior file bytes or a complete
-list of changes. The standard execution argument is danger-full-access. No
-snapshot caller or native rollback invocation is established in the inspected
-Codex path. This does not prove that Codex CLI can never offer such a feature;
-its observable capabilities and target version need separate evidence.
+Current new-core command .msb/bot/src/telegram/bot.mjs:465–467 replies that
+automatic undo is unavailable. The shim (overlay/bot/ext/shim/run-turn.mjs)
+delegates to adapters/codex.mjs:341–366. Ordinary foreground turns with a
+steering hook use app-server. Introduction summaries and callers without the
+hook use codex exec --json. That choice is made before the turn starts. The
+adapter does not replay a failed app-server turn via exec. Both ordinary paths
+use danger-full-access. Introduction summaries use read-only exec. App-server
+(codex-app-server.mjs:38–55,86–106) handles thread and turn IDs, assistant text,
+usage and status. The exec parser (codex.mjs:32–85) handles thread ID, assistant
+text, usage and status. Neither path records prior file bytes or a complete,
+attributable list of file changes.
 
-A safe implementation requires a reliable scope and capture/rollback contract
-for the specific provider, project and turn, including shell-created, deleted,
-binary and externally modified files; refusal for missing/corrupt snapshots and
-protection for later changes; explicit tests of cancellation, conflicts and
-concurrency. Do not implement an apparent undo by guessing from model text,
-reversing an incomplete diff or applying git reset. No real files, CLI account,
-network, JAR1 or unrelated engine were touched during this read-only audit.
+Bot-controlled writes have narrower backups. The introduction writer
+(.msb/bot/src/agent/intro-memory.mjs:46–85,90–102) backs up existing USER.md and
+MEMORY.md when updating them. The skill writer
+(.msb/bot/src/skills/install-writer.mjs:28–41) backs up SKILL.md.
+The native configuration writer (overlay/bot/ext/codex-config-write.mjs:25–63)
+stages the previous config.toml to restore it if the companion write fails.
+These backups provide no filesystem snapshot of a Codex turn.
+
+A Git diff alone omits untracked and ignored files and cannot attribute
+pre-existing or overlapping edits to the selected turn. One bot's inbox
+serializes its own turns. The session guard
+(.msb/bot/src/agent/session-operation.mjs:3–12) is process-local, so other bots,
+processes or editors can still write to the workspace. Project and session
+checks protect the active conversation. The turn's cwd does not confine
+full-access writes.
+
+Before exposing file undo, validate a capture and restore contract in a
+synthetic workspace. For a narrow, bot-controlled file operation, record the
+prior bytes or confirmed absence and the resulting file state, bound to the
+exact bot profile, physical project, provider, session and operation. Verify
+that undo refuses a missing or corrupt record, a changed scope or a file
+changed after the operation. Test cancellation and competing writes. Arbitrary
+Codex turns also require complete provenance for shell writes, additions,
+deletions and binary changes, including changes to untracked files. This was
+local source inspection only. No live files, CLI account, conversation,
+network, JAR1 or unrelated engine was accessed.
 
 Local native-protocol follow-up (not JAR1): the installed macOS aarch64 Codex
 CLI package reports 0.169.0-alpha.11.1; binary SHA-256
