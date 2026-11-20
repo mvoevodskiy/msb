@@ -21,6 +21,7 @@ reader.on('line',line=>{const m=JSON.parse(line); if(!m.id)return;
 if(m.method==='initialize')send({id:m.id,result:{}});
 if(m.method==='thread/start'||m.method==='thread/resume'){if(scenario==='server')return send({id:999,method:'item/tool/requestUserInput',params:{}}); if(scenario==='resume-error')return send({id:m.id,error:{code:-32600,message:'no rollout'}}); send({id:m.id,result:{thread:{id:scenario==='wrong'?other:tid}}});}
 if(m.method==='turn/start'){
+ if(scenario==='record-start')require('node:fs').writeFileSync(process.env.MARKER,'started');
  send({id:m.id,result:{turn:{id:'turn-1'}}});
  if(scenario==='steer'||scenario==='unknown'||scenario==='stopped')return;
  if(scenario==='close-partial'||scenario==='close-websocket'){
@@ -62,3 +63,32 @@ test('invalidated handle rejects without sending input',async()=>{let status;con
 test('resume retains one total or repeated identical totals',async()=>{const a=await run('one-usage',{resumeId:id});assert.equal(a.parsedOut.usage.input_tokens,300);const b=await run('same-usage',{resumeId:id});assert.equal(b.parsedOut.usage.input_tokens,100)});
 
 test('allows graceful EOF flush before sending a signal',async()=>{const dir=await fs.mkdtemp(path.join(os.tmpdir(),'app-server-flush-'));const bin=path.join(dir,'peer'),marker=path.join(dir,'marker');await fs.writeFile(bin,peer,{mode:0o700});try{const out=await runCodexAppServerTurn({bin,cwd:dir,childEnv:{...process.env,SCENARIO:'graceful',MARKER:marker},prompt:'test',timeoutMs:1000});assert.equal(out.res.code,0);assert.equal(await fs.readFile(marker,'utf8'),'flushed')}finally{await fs.rm(dir,{recursive:true,force:true})}});
+
+test('a stop before launch does not try to spawn app-server', async () => {
+  const out = await runCodexAppServerTurn({ signal: AbortSignal.abort(), bin: undefined });
+  assert.equal(out.parsedOut.turnFailed, 'Codex stopped');
+  assert.equal(out.parsedOut.threadId, null);
+});
+
+test('a stop on thread announcement settles before submitting the prompt', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'app-server-stop-before-turn-'));
+  const bin = path.join(dir, 'peer');
+  const marker = path.join(dir, 'turn-start');
+  const controller = new AbortController();
+  let readiness = 0;
+  try {
+    await fs.writeFile(bin, peer, { mode: 0o700 });
+    const out = await runCodexAppServerTurn({
+      bin, cwd: dir, childEnv: { ...process.env, SCENARIO: 'record-start', MARKER: marker },
+      prompt: 'fixture', timeoutMs: 1000, signal: controller.signal,
+      onThreadStarted: () => controller.abort(),
+      onSteerReady: () => { readiness++; },
+    });
+    assert.equal(out.parsedOut.threadId, id);
+    assert.equal(out.parsedOut.turnFailed, 'Codex stopped');
+    assert.equal(readiness, 0);
+    await assert.rejects(fs.stat(marker), { code: 'ENOENT' });
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});

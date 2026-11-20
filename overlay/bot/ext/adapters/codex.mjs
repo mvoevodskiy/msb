@@ -3,6 +3,7 @@
  * При обычном сбое сохраняет завершённые фрагменты.
  * [Обвязка](../shim/run-turn.mjs) передаёт результат, [проверки](../tests/reference/provider-switch.test.mjs)
  * проходят от Telegram до CLI. Transport error не запускает повтор в новом thread.
+ * Foreground stop is propagated from the shim to MCP preflight and app-server.
  */
 import os from 'node:os';
 import profile from '../../shared/profile.cjs';
@@ -274,7 +275,7 @@ export function finalizeParsed({ res, parsedOut, model, resumeRequested }) {
   };
 }
 
-export async function runCodexTurn({ prompt, parsed, cwd, env = process.env, home = env.HOME || os.homedir(), onThreadStarted, onSteerReady }) {
+export async function runCodexTurn({ prompt, parsed, cwd, env = process.env, home = env.HOME || os.homedir(), onThreadStarted, onSteerReady, signal }) {
   const introSummary = env.MSB_CODEX_INTRO_SUMMARY === '1';
   const envPath = { ...env, PATH: enrichPath(env, home) };
   let bin = findBin('codex', envPath);
@@ -332,7 +333,7 @@ export async function runCodexTurn({ prompt, parsed, cwd, env = process.env, hom
     delete childEnv.MSB_TURN_MCP_CUSTOM;
     mcpArgs=[]; summaryArgs=policy.args;
   } else {
-    const prepared=await prepareCodexMcp(bin,cwd,auth.env);
+    const prepared=await prepareCodexMcp(bin,cwd,auth.env,{signal});
     if(prepared.blocked)return {ok:false,text:'Codex: '+prepared.error};
     childEnv=prepared.env; mcpArgs=prepared.args;
   }
@@ -355,7 +356,7 @@ export async function runCodexTurn({ prompt, parsed, cwd, env = process.env, hom
     // The control channel exists only for ordinary foreground Codex turns.
     // Summaries and callers without one retain the existing exec route.
     return typeof onSteerReady === 'function' && !introSummary
-      ? runCodexAppServerTurn({ ...options, onSteerReady })
+      ? runCodexAppServerTurn({ ...options, onSteerReady, signal })
       : execOnce(options);
   };
 
