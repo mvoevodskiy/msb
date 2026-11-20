@@ -15,6 +15,7 @@ import { createAttachmentAlbums } from '../src/telegram/attachments.mjs';
 
 const ordinary = '0199a213-81c0-7800-8aa1-bbab2a035a53';
 const introduction = '0299a213-81c0-7800-8aa1-bbab2a035a53';
+const freshOrdinary = '0399a213-81c0-7800-8aa1-bbab2a035a53';
 const greeting = 'Меня только что подключили к твоему серверу. Давай настроюсь — как тебя зовут и чем занимаешься?';
 const hub = /^Готов\. Пиши задачу или выбери действие\./;
 const scope = '42:42:0';
@@ -179,34 +180,20 @@ async function nativeFixture(t, { ordinarySession = false, seed = false } = {}) 
   const fake = '#!' + process.execPath + '\n' + [
     'const fs = require("node:fs");',
     'const path = require("node:path");',
-    'if (process.argv[2] === "app-server") {',
-    '  require("node:readline").createInterface({input:process.stdin}).on("line", line => {',
-    '    const req = JSON.parse(line);',
-    '    if (req.id === 1) console.log(JSON.stringify({id:1,result:{}}));',
-    '    if (req.id === 2) console.log(JSON.stringify({id:2,result:{config:{mcp_servers:{}}}}));',
-    '  });',
-    '} else {',
-    'const chunks = [];',
-    '(async () => {',
-    '  for await (const data of process.stdin) chunks.push(data);',
-    '  const prompt = Buffer.concat(chunks).toString("utf8");',
-    '  const argv = process.argv.slice(2);',
-    '  const resumed = argv.includes("resume") ? argv[argv.indexOf("resume") + 1] : null;',
-    '  fs.appendFileSync(' + JSON.stringify(trace) + ', JSON.stringify({ cwd: process.cwd(),',
-    '    profile: path.resolve(process.env.CODEX_HOME), prompt, resumed }) + "\\n");',
-    '  const id = resumed || ' + JSON.stringify(introduction) + ';',
-    '  console.log(JSON.stringify({type:"thread.started",thread_id:id}));',
+    'const send = frame => console.log(JSON.stringify(frame));',
+    'function record(kind, prompt, resumed) {',
+    '  fs.appendFileSync(' + JSON.stringify(trace) + ', JSON.stringify({kind,cwd:process.cwd(),',
+    '    profile:path.resolve(process.env.CODEX_HOME),prompt,resumed}) + "\\n");',
+    '}',
+    'async function fixtureReply(prompt, inputClosed = () => false) {',
     '  if (prompt.includes("fixture wait for stop")) {',
     '    fs.writeFileSync(' + JSON.stringify(started) + ', "started");',
-    '    setInterval(() => {}, 1000); return;',
+    '    return null;',
     '  }',
-    '  if (prompt.includes("fixture wait for clear")) {',
+    '  if (prompt.includes("fixture wait for clear") || prompt.includes("fixture wait for release")) {',
     '    fs.writeFileSync(' + JSON.stringify(started) + ', "started");',
-    '    while (!fs.existsSync(' + JSON.stringify(release) + ')) await new Promise(r => setTimeout(r, 10));',
-    '  }',
-    '  if (prompt.includes("fixture wait for release")) {',
-    '    fs.writeFileSync(' + JSON.stringify(started) + ', "started");',
-    '    while (!fs.existsSync(' + JSON.stringify(release) + ')) await new Promise(r => setTimeout(r, 10));',
+    '    while (!inputClosed() && !fs.existsSync(' + JSON.stringify(release) + ')) await new Promise(r => setTimeout(r, 10));',
+    '    if (inputClosed()) return null;',
     '  }',
     '  if (prompt.includes("fixture record owner")) {',
     '    fs.writeFileSync("USER.md", "# Fixture owner\\n");',
@@ -214,26 +201,67 @@ async function nativeFixture(t, { ordinarySession = false, seed = false } = {}) 
     '    fs.writeFileSync("memory/intro-note.md", "Fixture memory\\n");',
     '    fs.writeFileSync("knowledge/intro-note.md", "Fixture knowledge\\n");',
     '  }',
-    '  if (prompt.includes("Верни только один JSON-объект строго вида")) {',
-    '    if (fs.existsSync(' + JSON.stringify(failSummary) + ')) {',
-    '      console.log(JSON.stringify({type:"turn.failed",error:{message:"synthetic summary failure"}})); return;',
-    '    }',
-    '    if (fs.existsSync(' + JSON.stringify(holdSummary) + ')) {',
-    '      fs.writeFileSync(' + JSON.stringify(started) + ', "summary started");',
-    '      while (fs.existsSync(' + JSON.stringify(holdSummary) + ')) await new Promise(r => setTimeout(r, 10));',
-    '    }',
-    '    console.log(JSON.stringify({type:"item.completed",item:{type:"agent_message",text:JSON.stringify({version:1,save:false,user:[],memory:[]})}}));',
-    '    console.log(JSON.stringify({type:"turn.completed",usage:{input_tokens:8,output_tokens:2}})); return;',
-    '  }',
     '  const finished = prompt.includes("fixture finish the introduction");',
     '  if (finished) {',
     '    fs.appendFileSync("SOUL.md", "\\n# Fixture identity\\n");',
     '    if (!fs.existsSync("USER.md")) fs.writeFileSync("USER.md", "# Fixture owner\\n");',
     '  }',
-    '  const text = finished ? "fixture finished" : "fixture native reply";',
-    '  console.log(JSON.stringify({type:"item.completed",item:{type:"agent_message",text}}));',
-    '  console.log(JSON.stringify({type:"turn.completed",usage:{input_tokens:8,output_tokens:2}}));',
-    '})();',
+    '  return finished ? "fixture finished" : "fixture native reply";',
+    '}',
+    'const argv = process.argv.slice(2);',
+    'if (argv[0] === "app-server" || argv.at(-1) === "app-server") {',
+    '  let initialized = false, inputClosed = false, resumed = null, threadId;',
+    '  const turnId = "fixture-bootstrap-turn";',
+    '  const input = require("node:readline").createInterface({input:process.stdin});',
+    '  input.on("close", () => { inputClosed = true; });',
+    '  input.on("line", async line => {',
+    '    const {id,method,params} = JSON.parse(line);',
+    '    if (method === "initialize") return send({id,result:{}});',
+    '    if (method === "initialized") { initialized = true; return; }',
+    '    if (!initialized) process.exit(7);',
+    '    if (method === "config/read") return send({id,result:{config:{mcp_servers:{}}}});',
+    '    if (method === "thread/start" || method === "thread/resume") {',
+    '      if (params.cwd !== process.cwd()) process.exit(8);',
+    '      resumed = method === "thread/resume" ? params.threadId : null;',
+    '      threadId = resumed || ' + JSON.stringify(freshOrdinary) + ';',
+    '      return send({id,result:{thread:{id:threadId}}});',
+    '    }',
+    '    if (method !== "turn/start" || !threadId || params.threadId !== threadId) process.exit(9);',
+    '    const prompt = params.input.map(item => item.text).join("");',
+    '    record("codex-app-turn", prompt, resumed);',
+    '    send({id,result:{turn:{id:turnId}}});',
+    '    const text = await fixtureReply(prompt, () => inputClosed);',
+    '    if (text === null) return;',
+    '    send({method:"item/completed",params:{threadId,turnId,item:{id:"fixture-reply",type:"agentMessage",text}}});',
+    '    const total = {inputTokens:8,outputTokens:2,cachedInputTokens:0,cacheWriteInputTokens:0,reasoningOutputTokens:0};',
+    '    send({method:"thread/tokenUsage/updated",params:{threadId,turnId,tokenUsage:{total}}});',
+    '    send({method:"turn/completed",params:{threadId,turn:{id:turnId,status:"completed"}}});',
+    '  });',
+    '} else {',
+    '  (async () => {',
+    '    const chunks = [];',
+    '    for await (const data of process.stdin) chunks.push(data);',
+    '    const prompt = Buffer.concat(chunks).toString("utf8");',
+    '    const resumed = argv.includes("resume") ? argv[argv.indexOf("resume") + 1] : null;',
+    '    record("codex-exec", prompt, resumed);',
+    '    send({type:"thread.started",thread_id:resumed || ' + JSON.stringify(introduction) + '});',
+    '    let text;',
+    '    if (prompt.includes("Верни только один JSON-объект строго вида")) {',
+    '      if (fs.existsSync(' + JSON.stringify(failSummary) + ')) {',
+    '        return send({type:"turn.failed",error:{message:"synthetic summary failure"}});',
+    '      }',
+    '      if (fs.existsSync(' + JSON.stringify(holdSummary) + ')) {',
+    '        fs.writeFileSync(' + JSON.stringify(started) + ', "summary started");',
+    '        while (fs.existsSync(' + JSON.stringify(holdSummary) + ')) await new Promise(r => setTimeout(r, 10));',
+    '      }',
+    '      text = JSON.stringify({version:1,save:false,user:[],memory:[]});',
+    '    } else {',
+    '      text = await fixtureReply(prompt);',
+    '      if (text === null) { setInterval(() => {}, 1000); return; }',
+    '    }',
+    '    send({type:"item.completed",item:{type:"agent_message",text}});',
+    '    send({type:"turn.completed",usage:{input_tokens:8,output_tokens:2}});',
+    '  })();',
     '}',
   ].join('\n');
   await fs.writeFile(path.join(bin, 'codex'), fake, { mode: 0o700 });
@@ -428,7 +456,7 @@ test('newtask leaves the introduction resume available, and clear fences a late 
   await waitFor(() => fs.access(f.started).then(() => true, () => false));
   await f.message('/clear');
   await fs.writeFile(f.release, 'release');
-  await waitFor(() => f.edits.some(text => text.includes('Контекст знакомства изменился.')));
+  await waitFor(() => f.messages.some(text => text.includes('Контекст знакомства изменился.')));
   state = (await loadState()).state;
   assert.equal(state.codexBootstrap, undefined);
   assert.equal(state.ccSessionId, undefined);
@@ -463,8 +491,10 @@ test('existing open-core Codex conversations bypass introduction even after rese
 test('Telegram delivers the introduction, offers services once, and then opens the ready hub', async t => {
   const f = await nativeFixture(t);
   await f.message('fixture finish the introduction');
-  await waitFor(() => f.edits.some(text => text === 'fixture finished'));
-  assert.doesNotMatch(f.edits.find(text => text.includes('fixture finished')), /⏱|blockquote/);
+  await waitFor(() => f.messages.some(text => text.includes('fixture finished')));
+  const introductionReply = f.messages.find(text => text.includes('fixture finished'));
+  assert.doesNotMatch(introductionReply, /⏱|blockquote/);
+  assert.equal(introductionReply, 'fixture finished');
   await waitFor(async () => (await loadState()).state.servicesSetupShown === true);
   const card = f.messages.findIndex(text => text.startsWith('<b>Какие сервисы подключить?</b>'));
   assert.ok(card >= 0);
@@ -481,17 +511,19 @@ async function prepareNinth(f) {
   } } });
 }
 async function assertOrdinaryAndCard(f, distinctive) {
-  await waitFor(() => f.edits.some(text => text.includes('fixture native reply')));
+  await waitFor(() => f.messages.some(text => text.includes('fixture native reply')));
   await waitFor(async () => (await loadState()).state.servicesSetupShown === true);
   const calls = await f.calls();
   assert.equal(calls.length, 2, 'one private summary and one ordinary execution');
+  assert.deepEqual(calls.map(call => call.kind), ['codex-exec', 'codex-app-turn']);
   assert.match(calls[0].prompt, /Верни только один JSON-объект строго вида/);
   assert.equal(calls[0].resumed, introduction);
   assert.ok(calls[1].prompt.includes(distinctive), 'the prepared ninth input reached the real native CLI path');
   assert.equal(calls[1].prompt.split(distinctive).length - 1, 1, 'input appears once');
   assert.equal(calls[1].cwd, await fs.realpath(f.project));
+  assert.equal(calls[1].profile, await fs.realpath(f.profile));
   assert.equal(calls[1].resumed, null, 'the introduction cwd must not be resumed in a different project');
-  const output = f.edits.find(text => text.includes('fixture native reply'));
+  const output = f.messages.find(text => text.includes('fixture native reply'));
   assert.match(output, /<blockquote>⏱/);
   assert.equal(f.messages.filter(text => text.startsWith('<b>Какие сервисы подключить?</b>')).length, 1);
   await f.message('/start');
@@ -548,6 +580,7 @@ test('/stop interrupts the ninth ordinary native turn after summary without repl
   await f.bot.stop();
   const calls = await f.calls();
   assert.equal(calls.length, 2);
+  assert.deepEqual(calls.map(call => call.kind), ['codex-exec', 'codex-app-turn']);
   assert.match(calls[0].prompt, /Верни только один JSON-объект строго вида/);
   assert.equal((calls[1].prompt.match(/fixture wait for stop/g) || []).length, 1);
   assert.equal(f.messages.filter(text => text.startsWith('<b>Какие сервисы подключить?</b>')).length, 0);
@@ -574,7 +607,7 @@ test('restart recovers prepared ninth input without repeating document download 
   let downloads=0;
   t.mock.method(globalThis,'fetch',async()=>{downloads++;throw Error('unexpected download');});
   await f.bot[Symbol.for('msb.recoverIntroPending')]();
-  await waitFor(async()=>f.edits.some(text=>text.includes('fixture native reply')) && (await journal.list()).length===0);
+  await waitFor(async()=>f.messages.some(text=>text.includes('fixture native reply')) && (await journal.list()).length===0);
   const calls=await f.calls();
   assert.equal(calls.length,2);
   assert.match(calls[1].prompt,/prepared document content is already available/);
@@ -640,7 +673,7 @@ test('service shutdown preserves an unstarted handoff and restart processes it o
   assert.equal((await journal.list())[0].status,'prepared');
   await fs.unlink(f.holdSummary);
   await f.bot.start();
-  await waitFor(async()=>f.edits.some(text=>text.includes('fixture native reply')) && (await journal.list()).length===0);
+  await waitFor(async()=>f.messages.some(text=>text.includes('fixture native reply')) && (await journal.list()).length===0);
   const calls=await f.calls();
   assert.equal(calls.filter(call=>call.prompt.includes('prepared owner request')).length,1);
 });
@@ -650,11 +683,11 @@ test('concurrent recovery requests enqueue and deliver the pending input only on
   const {journal}=await stagedRecovery(f);
   const recover=f.bot[Symbol.for('msb.recoverIntroPending')];
   await Promise.all([recover(),recover(),recover()]);
-  await waitFor(async()=>f.edits.some(text=>text.includes('fixture native reply')) && (await journal.list()).length===0);
+  await waitFor(async()=>f.messages.some(text=>text.includes('fixture native reply')) && (await journal.list()).length===0);
   const calls=await f.calls();
   assert.equal(calls.filter(call=>call.prompt.includes('prepared owner request')).length,1);
-  assert.equal(f.edits.filter(text=>text.includes('fixture native reply')).length,1);
-  assert.equal(f.edits.some(text=>text.includes('Контекст предыдущего запроса изменился')),false);
+  assert.equal(f.messages.filter(text=>text.includes('fixture native reply')).length,1);
+  assert.equal([...f.edits,...f.messages].some(text=>text.includes('Контекст предыдущего запроса изменился')),false);
 });
 
 test('a new ordinary session without an epoch bump prevents recovery into the wrong conversation', async t => {
@@ -674,7 +707,7 @@ test('an in-flight first-session reservation is not overwritten by the recovered
   const {state}=await loadState();
   await saveState({...state,pendingCcSessionStarts:{codex:'another-reservation'}});
   await f.bot[Symbol.for('msb.recoverIntroPending')]();
-  await waitFor(()=>f.edits.some(text=>text.includes('Запрос сохранён')));
+  await waitFor(()=>f.messages.some(text=>text.includes('Запрос сохранён')));
   const calls=await f.calls();
   assert.equal(calls.length,1);
   assert.ok(!calls[0].prompt.includes('prepared owner request'));
@@ -688,11 +721,11 @@ test('summary failure retains the input, explains no repeat is needed, and a rep
   const {journal}=await stagedRecovery(f,{prompt});
   await fs.writeFile(f.failSummary,'fail');
   await f.bot[Symbol.for('msb.recoverIntroPending')]();
-  await waitFor(()=>f.edits.some(text=>text.includes('повторно отправлять его не нужно')));
+  await waitFor(()=>f.messages.some(text=>text.includes('повторно отправлять его не нужно')));
   assert.equal((await journal.list())[0].status,'prepared');
   await fs.unlink(f.failSummary);
   await f.message(prompt);
-  await waitFor(async()=>f.edits.some(text=>text.includes('fixture native reply')) && (await journal.list()).length===0);
+  await waitFor(async()=>f.messages.some(text=>text.includes('fixture native reply')) && (await journal.list()).length===0);
   const calls=await f.calls();
   assert.equal(calls.filter(call=>call.prompt.includes(prompt)).length,1);
 });
@@ -706,7 +739,7 @@ test('an identical retry while the recovered ordinary model runs is not queued a
   assert.equal((await journal.list())[0].status,'started');
   await f.message(prompt);
   await fs.writeFile(f.release,'release');
-  await waitFor(async()=>f.edits.some(text=>text.includes('fixture native reply')) && (await journal.list()).length===0);
+  await waitFor(async()=>f.messages.some(text=>text.includes('fixture native reply')) && (await journal.list()).length===0);
   await new Promise(resolve=>setTimeout(resolve,150));
   const calls=await f.calls();
   assert.equal(calls.filter(call=>call.prompt.includes(prompt)).length,1);
@@ -727,7 +760,7 @@ test('a known pre-launch failure restores prepared state and tells the owner not
     project:null,epoch:0,profileDir:path.join(f.home,'.codex'),workspace:f.workspace,
     cwd:await fs.realpath(f.workspace),sessionId:null,activeSessionId:null});
   await f.bot[Symbol.for('msb.recoverIntroPending')]();
-  await waitFor(async()=>f.edits.some(text=>text.includes('повторно отправлять его не нужно')) &&
+  await waitFor(async()=>f.messages.some(text=>text.includes('повторно отправлять его не нужно')) &&
     (await journal.list())[0]?.status==='prepared');
   assert.equal((await journal.list())[0].prompt,'owner original');
 });
@@ -747,7 +780,7 @@ test('a missing actual launcher leaves the request prepared instead of claiming 
     project:null,epoch:0,profileDir:path.join(f.home,'.codex'),workspace:f.workspace,
     cwd:await fs.realpath(f.workspace),sessionId:null,activeSessionId:null});
   await f.bot[Symbol.for('msb.recoverIntroPending')]();
-  await waitFor(async()=>f.edits.some(text=>text.includes('повторно отправлять его не нужно')) &&
+  await waitFor(async()=>f.messages.some(text=>text.includes('повторно отправлять его не нужно')) &&
     (await journal.list())[0]?.status==='prepared');
   assert.equal((await journal.list())[0].prompt,'owner never started');
 });
@@ -763,7 +796,7 @@ test('a new repeat after reset is not swallowed when the old pending input is st
     project:null,epoch:0,profileDir:path.join(f.home,'.codex'),workspace:f.workspace,
     cwd:await fs.realpath(f.workspace),sessionId:null,activeSessionId:null});
   await f.message('resend after clear');
-  await waitFor(()=>calls===1 && f.edits.some(text=>text.includes('new request handled')));
+  await waitFor(()=>calls===1 && f.messages.some(text=>text.includes('new request handled')));
   assert.equal((await journal.list()).length,0);
 });
 
@@ -778,7 +811,7 @@ test('/clear during a running recovery does not swallow the next identical messa
   await f.message(prompt);
   await fs.unlink(f.holdSummary);
   await waitFor(async()=>{
-    try { return f.edits.some(text=>text.includes('fixture native reply')) &&
+    try { return f.messages.some(text=>text.includes('fixture native reply')) &&
       (await f.calls()).some(call=>call.prompt.includes(prompt)); } catch { return false; }
   });
   const calls=await f.calls();
