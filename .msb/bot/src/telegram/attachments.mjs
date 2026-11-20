@@ -5,7 +5,8 @@
  * Caller [bot](./bot.mjs) → [inbox](./inbox.mjs) → executeTurn → prepareAttachment.
  * [Forwarded batches](./batch.mjs) share the document download and type rules.
  * Download → [telegram-download](../media/telegram-download.mjs); STT → [stt](../media/stt.mjs).
- * Checks: [attachments](../../tests/attachments.test.mjs).
+ * Exclusive media writes preserve distinct payloads when names/timestamps collide.
+ * Checks: [attachments](../../tests/attachments.test.mjs), [album ingress](../../tests/attachment-turn.test.mjs).
  */
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -35,9 +36,18 @@ function safeName(name) {
 async function saveBytes(bytes, name, env = process.env) {
   const dir = mediaDir(env);
   await fs.mkdir(dir, { recursive: true });
-  const file = path.join(dir, `${Date.now()}_${safeName(name)}`);
-  await fs.writeFile(file, bytes);
-  return file;
+  const timestamp = Date.now();
+  const filename = safeName(name);
+  for (let attempt = 0; ; attempt++) {
+    const suffix = attempt ? `${attempt}_` : '';
+    const file = path.join(dir, `${timestamp}_${suffix}${filename}`);
+    try {
+      await fs.writeFile(file, bytes, { flag: 'wx' });
+      return file;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+    }
+  }
 }
 
 function withReply(ctx, prompt, referent = buildReplyContext(ctx.message, ctx.me?.id)) {

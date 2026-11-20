@@ -9,9 +9,9 @@ import { mcpFixture } from './helpers/mcp-fixture.mjs';
 import { nativeFixtures } from './helpers/mcp-launch-fixture.mjs';
 
 async function until(check, label = 'condition') {
-  const end = Date.now() + 5000;
+  const end = performance.now() + 5000;
   while (!check()) {
-    if (Date.now() > end) throw Error(`Timed out waiting for ${label}`);
+    if (performance.now() > end) throw Error(`Timed out waiting for ${label}`);
     await new Promise(r => setTimeout(r, 10));
   }
 }
@@ -132,6 +132,31 @@ test('the album preserves the quoted reply when a later photo has no reply', asy
   assert.match(prompts[0], /Выбранная цитата альбома/);
   assert.match(prompts[0], /Фото 2:/);
   assert.match(prompts[0], /Сравни эти фотографии/);
+});
+
+test('two album photos saved in the same millisecond retain their own bytes', async t => {
+  const prompts = [];
+  const f = await fixture(t, async ({ prompt }) => {
+    prompts.push(prompt);
+    return { ok: true, text: 'Альбом получен.' };
+  }, { overlay: false });
+  t.mock.method(f.bot.api, 'getFile', async fileId => ({ file_path: fileId }));
+  const images = { 'photo-64': [1, 2, 3], 'photo-65': [4, 5, 6] };
+  t.mock.method(globalThis, 'fetch', async url => ({
+    ok: true,
+    arrayBuffer: async () => Uint8Array.from(images[new URL(url).pathname.split('/').at(-1)]).buffer,
+  }));
+  const instant = Date.now();
+  t.mock.method(Date, 'now', () => instant);
+
+  await albumPhoto(f, 64);
+  await albumPhoto(f, 65);
+  await until(() => prompts.length === 1, 'album prompt');
+
+  const files = [...prompts[0].matchAll(/^Фото \d+: (.+)$/gm)].map(match => match[1]);
+  assert.equal(files[0], path.join(f.workspace, '.media', `${instant}_album_photo.jpg`));
+  assert.deepEqual(await Promise.all(files.map(file => fs.readFile(file))), Object.values(images).map(bytes => Buffer.from(bytes)));
+  assert.equal(new Set(files).size, 2);
 });
 
 test('model voice markers are stripped from text and sent as sendVoice', async (t) => {
