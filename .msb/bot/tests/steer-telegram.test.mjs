@@ -15,7 +15,9 @@ async function until(fn, label, timeout = 4000) {
 }
 function gate() { let resolve; const promise = new Promise(r => { resolve = r; }); return { promise, resolve }; }
 
-async function fixture(t, { withSteer = true, holdVoice, holdPreview, holdQueuedReply, withoutStt = false } = {}) {
+async function fixture(t, {
+  withSteer = true, holdVoice, holdPreview, holdQueuedReply, withoutStt = false, voiceFileFailure, loseSttResponse = false,
+} = {}) {
   const root = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-steer-telegram-'));
   const previous = { ...process.env }, originalFetch = globalThis.fetch;
   for (const key of Object.keys(process.env)) delete process.env[key];
@@ -40,7 +42,11 @@ async function fixture(t, { withSteer = true, holdVoice, holdPreview, holdQueued
       sendChatAction: async () => true, editMessageText: edit,
       deleteMessage: async (_chat, id) => { const row = rows.get(id); if (row) row.deleted = true; },
       editMessageReplyMarkup: async () => true,
-      getFile: async id => ({ file_path: id, file_size: 1 }),
+      getFile: async id => {
+        if (voiceFileFailure === 'getFile') throw Error('fixture Telegram getFile 400');
+        if (voiceFileFailure === 'file path') return { file_size: 1 };
+        return { file_path: id, file_size: 1 };
+      },
       sendMessage: async (_chat, text, options) => reply(text, options),
     };
     async start() {} async stop() {}
@@ -69,9 +75,18 @@ async function fixture(t, { withSteer = true, holdVoice, holdPreview, holdQueued
     return { message_id: id };
   };
   globalThis.fetch = async (url, options) => {
-    if (String(url).startsWith('https://api.telegram.org/file/')) return { ok: true, arrayBuffer: async () => new TextEncoder().encode('fixture').buffer };
+    if (String(url).startsWith('https://api.telegram.org/file/')) {
+      if (voiceFileFailure === 'download transport') throw Error('fixture download failed: ' + url);
+      if (voiceFileFailure === 'HTTP status') return { ok: false, status: 404 };
+      return { ok: true, arrayBuffer: async () => {
+        if (voiceFileFailure === 'download read') throw Error('fixture body failed: ' + url);
+        return new TextEncoder().encode('fixture').buffer;
+      } };
+    }
     assert.ok(String(url).startsWith('https://api.deepgram.com/v1/listen?'), 'real network must not be used');
-    stt.push('called'); if (holdVoice) await holdVoice.promise;
+    stt.push('called');
+    if (loseSttResponse) throw Error('fixture lost the transcription response');
+    if (holdVoice) await holdVoice.promise;
     return { ok: true, json: async () => ({ results: { channels: [{ alternatives: [{ transcript: 'fixture voice correction' }] }] } }) };
   };
   const harness = new Harness();
@@ -180,6 +195,53 @@ test('a queued voice is transcribed once and steered as text', async t => {
   assert.deepEqual(f.rows.get(id).keyboard.inline_keyboard, []);
   assert.ok([...f.rows.values()].some(value => value.text.includes('fixture voice correction') && value.text.includes('🎙')));
   f.holds[0].resolve();
+});
+
+for (const [voiceFileFailure, detail] of [
+  ['getFile', 'Не удалось получить голосовое из Telegram'],
+  ['file path', 'Не удалось скачать voice: нет пути файла'],
+  ['HTTP status', 'Не удалось скачать voice: HTTP 404'],
+  ['download transport', 'Не удалось скачать voice'],
+  ['download read', 'Не удалось скачать voice'],
+]) {
+  test('voice ' + voiceFileFailure + ' failure ends only that entry before STT', async t => {
+    const f = await fixture(t, { voiceFileFailure });
+    await f.input('first');
+    await until(() => f.prompts.length === 1, 'first turn');
+    await f.voice();
+    await until(() => f.buttonRow(), 'voice button');
+    const [id, row] = f.buttonRow();
+    const token = row.keyboard.inline_keyboard[0][0].callback_data;
+    await f.input('queued after voice');
+    await f.callback(id, token);
+    assert.deepEqual(f.stt, []);
+    assert.deepEqual(f.corrections, []);
+    assert.equal(f.rows.get(id)?.text, '❌ Не удалось обработать голосовое: ' + detail + '\n\nПопробуй ещё раз или напиши текстом.');
+    assert.deepEqual(f.rows.get(id).keyboard.inline_keyboard, []);
+    f.holds[0].resolve();
+    await until(() => f.prompts.length === 2, 'next text runs after the failed voice');
+    assert.equal(f.prompts[1], 'queued after voice');
+    f.holds[1].resolve();
+  });
+}
+
+test('a lost STT response still fences the FIFO without resubmitting voice', async t => {
+  const f = await fixture(t, { loseSttResponse: true });
+  await f.input('first');
+  await until(() => f.prompts.length === 1, 'first turn');
+  await f.voice();
+  await until(() => f.buttonRow(), 'voice button');
+  const [id, row] = f.buttonRow();
+  await f.input('queued after voice');
+  await f.callback(id, row.keyboard.inline_keyboard[0][0].callback_data);
+  assert.match(f.rows.get(id)?.text, /Очередь приостановлена/);
+  f.holds[0].resolve();
+  await until(() => [...f.rows.values()].some(value => value.text.includes('fixture response')), 'first reply delivered');
+  assert.deepEqual(f.stt, ['called']);
+  assert.deepEqual(f.corrections, []);
+  assert.deepEqual(f.prompts, ['first']);
+  await f.input('/stop');
+  await until(() => f.rows.get(id)?.text === 'Моя остановочка ✋🏽⛔️', 'stop clears uncertain voice');
 });
 
 test('/stop during voice recognition removes the button and fences a late transcript', async t => {

@@ -1,6 +1,7 @@
 /**
  * Telegram download, reply-context и прежний preview голоса.
  * Навигация: [Голос](./README.md#голос) → [STT backend](../media/README.md).
+ * Telegram file failures precede STT and are safe to finish in [steering](./steer-action.mjs).
  */
 import { resolveSttConfig, transcribeVoice, audioTimeoutMs } from '../media/stt.mjs';
 import { buildReplyContext } from './reply-context.mjs';
@@ -17,28 +18,36 @@ export const STT_ONBOARDING = {
   reply_markup: { inline_keyboard: [[{ text: '🎤 Подключить Deepgram', callback_data: 'settings:env:quick:DEEPGRAM_API_KEY' }], [{ text: 'Не сейчас', callback_data: 'whisper:skip' }]] },
 };
 
+class TelegramVoiceFileError extends Error {
+  code = 'TELEGRAM_VOICE_FILE_UNAVAILABLE';
+}
+
 export async function recognizeVoice(ctx, botToken, signal) {
   signal.throwIfAborted();
   await resolveSttConfig(); // Fail before downloading when no STT provider is configured.
   signal.throwIfAborted();
   let file;
   try { file = await ctx.api.getFile(ctx.message.voice.file_id, signal); }
-  catch { signal.throwIfAborted(); throw Error('Не удалось получить голосовое из Telegram'); }
+  catch {
+    signal.throwIfAborted();
+    throw new TelegramVoiceFileError('Не удалось получить голосовое из Telegram');
+  }
   signal.throwIfAborted();
+  if (!file?.file_path) throw new TelegramVoiceFileError('Не удалось скачать voice: нет пути файла');
   const timeout = audioTimeoutMs(file.file_size);
   let bytes;
   try {
-    if (!file.file_path) throw Error('Не удалось скачать voice: нет пути файла');
     const response = await fetch(`https://api.telegram.org/file/bot${botToken}/${file.file_path}`, {
       signal: AbortSignal.any([signal, AbortSignal.timeout(timeout)]),
     });
-    if (!response.ok) throw Error(`Не удалось скачать voice: HTTP ${response.status}`);
+    if (!response.ok) throw new TelegramVoiceFileError(`Не удалось скачать voice: HTTP ${response.status}`);
     bytes = await response.arrayBuffer();
   } catch (err) {
     signal.throwIfAborted();
-    if (err.name === 'TimeoutError') throw Error(`Телеграм не ответил за ${Math.round(timeout / 1000)} с`);
+    if (err instanceof TelegramVoiceFileError) throw err;
+    if (err?.name === 'TimeoutError') throw new TelegramVoiceFileError(`Телеграм не ответил за ${Math.round(timeout / 1000)} с`);
     // Do not surface a transport URL containing the bot token.
-    throw Error(/^Не удалось скачать voice:/.test(err.message) ? err.message : 'Не удалось скачать voice');
+    throw new TelegramVoiceFileError('Не удалось скачать voice');
   }
   signal.throwIfAborted();
   const transcript = await transcribeVoice(bytes, { signal });
