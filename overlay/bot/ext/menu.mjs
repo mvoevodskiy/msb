@@ -234,13 +234,13 @@ export function cursorLoginGuide({ url } = {}) {
   const lines = [
     '🖱 <b>Cursor · вход</b>',
     '',
-    'Открой ссылку на устройстве с браузером и войди в аккаунт Cursor (подписка).',
+    'Прежний локальный вход сброшен. Открой ссылку на устройстве с браузером и войди в аккаунт Cursor (подписка).',
   ];
   if (url) lines.push('', `Ссылка: ${esc(url)}`);
   if (!url) {
     lines.push(
       '',
-      'Если ссылка не пришла — на сервере выполни <code>NO_OPEN_BROWSER=1 agent login</code>.',
+      'Если ссылка не пришла — на сервере выполни <code>agent logout</code>, затем <code>NO_OPEN_BROWSER=1 agent login</code>.',
       'После входа вернись в «🔌 Подключение» и выбери Cursor.',
     );
   } else {
@@ -253,14 +253,14 @@ export function grokLoginGuide({ url, code } = {}) {
   const lines = [
     '⚡ <b>Grok Build · вход</b>',
     '',
-    'Открой ссылку на устройстве с браузером, введи код и подтверди вход (подписка SuperGrok / X Premium+).',
+    'Прежний локальный вход сброшен. Открой ссылку на устройстве с браузером, введи код и подтверди вход (подписка SuperGrok / X Premium+).',
   ];
   if (url) lines.push('', `Ссылка: ${esc(url)}`);
   if (code) lines.push(`Код: <code>${esc(code)}</code>`);
   if (!url && !code) {
     lines.push(
       '',
-      'Если ссылка не пришла — на сервере выполни <code>grok login --device-auth</code>.',
+      'Если ссылка не пришла — на сервере выполни <code>grok logout</code>, затем <code>grok login --device-auth</code>.',
       'После появления ~/.grok/auth.json вернись в «🔌 Подключение» и выбери Grok Build.',
     );
   } else {

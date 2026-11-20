@@ -11,10 +11,12 @@ import { buildConnMenu, switchedText, codexLoginGuide, cursorLoginGuide, grokLog
 import { ensureProviderCli, enrichPath } from '../ensure-cli.mjs';
 import { captureCodexLogin, startCodexDeviceLogin, waitCodexNativeAuth, codexLoginStatus } from '../auth-wire.mjs';
 import {
-  hasNativeCursorAuth, cursorLoginStatus, startCursorBrowserLogin, waitCursorNativeAuth,
+  hasNativeCursorAuth, clearNativeCursorAuth, cursorLoginStatus,
+  startCursorBrowserLogin, waitCursorNativeAuth,
 } from '../cursor-auth.mjs';
 import {
-  hasNativeGrokAuth, grokLoginStatus, startGrokDeviceLogin, waitGrokNativeAuth,
+  hasNativeGrokAuth, clearNativeGrokAuth, grokLoginStatus,
+  startGrokDeviceLogin, waitGrokNativeAuth,
 } from '../grok-auth.mjs';
 import { syncExtAuthGate } from '../setup-bypass.mjs';
 import { setActive } from '../store.mjs';
@@ -238,14 +240,16 @@ async function finishNativeLogin(bot, chatId, providerId) {
 
 /**
  * Общий цикл: CLI печатает URL(/код) → гид в Telegram → poll native auth.
- * @param {{ requireCode?: boolean }} opts — Cursor browser login может дать только URL.
+ * `force` (кнопка «🔐 Вход») сбрасывает протухшие credentials и всегда запускает login.
+ * @param {{ requireCode?: boolean, force?: boolean, clearAuth?: () => Promise<unknown> }} opts
  */
 async function runNativeLoginFlow(bot, chatId, messageId, {
-  providerId, title, startLabel, startLogin, waitAuth, hasAuth, guide, requireCode = true,
+  providerId, title, startLabel, startLogin, waitAuth, hasAuth, guide,
+  requireCode = true, force = false, clearAuth,
 }) {
   if (!await ensureAndReport(bot, chatId, messageId, providerId)) return false;
 
-  if (await hasAuth()) {
+  if (!force && await hasAuth()) {
     const activated = await activateExtProvider(providerId, true);
     if (!activated) {
       await rejectNativeSelection(bot, chatId, messageId, providerId, title);
@@ -254,6 +258,15 @@ async function runNativeLoginFlow(bot, chatId, messageId, {
     await showProviderSelection(bot, chatId, messageId, providerId);
     console.error(`${EXT_MARKER} active provider → ${providerId} (native auth)`);
     return true;
+  }
+
+  if (force && clearAuth) {
+    await editOrReply(bot, chatId, messageId, `⏳ Сбрасываю прежний вход ${title}…`, undefined);
+    try {
+      await clearAuth();
+    } catch (err) {
+      console.error(`${EXT_MARKER} ${providerId} clear auth failed:`, err?.message || err);
+    }
   }
 
   await editOrReply(bot, chatId, messageId, startLabel, undefined);
@@ -331,7 +344,11 @@ async function runNativeLoginFlow(bot, chatId, messageId, {
 export async function selectCursorNative(bot, chatId, messageId) {
   if (!await ensureAndReport(bot, chatId, messageId, 'cursor')) return false;
   const status = await cursorLoginStatus();
-  if (!status.ok || !await activateExtProvider('cursor', true)) {
+  if (!status.ok) {
+    // Протухший auth.json: сразу повторный вход, а не тупик «не подтвердил».
+    return connectCursorNative(bot, chatId, messageId);
+  }
+  if (!await activateExtProvider('cursor', true)) {
     await rejectNativeSelection(bot, chatId, messageId, 'cursor', 'Cursor');
     return false;
   }
@@ -346,16 +363,21 @@ export async function connectCursorNative(bot, chatId, messageId) {
     startLabel: '⏳ Запускаю штатный вход Cursor (ссылка в браузере)…',
     startLogin: () => startCursorBrowserLogin(),
     waitAuth: () => waitCursorNativeAuth({ timeoutMs: 300_000 }),
-    hasAuth: () => hasNativeCursorAuth(),
+    hasAuth: async () => (await cursorLoginStatus()).ok,
     guide: cursorLoginGuide,
     requireCode: false,
+    force: true,
+    clearAuth: () => clearNativeCursorAuth(),
   });
 }
 
 export async function selectGrokNative(bot, chatId, messageId) {
   if (!await ensureAndReport(bot, chatId, messageId, 'grok')) return false;
   const status = await grokLoginStatus();
-  if (!status.ok || !await activateExtProvider('grok', true)) {
+  if (!status.ok) {
+    return connectGrokNative(bot, chatId, messageId);
+  }
+  if (!await activateExtProvider('grok', true)) {
     await rejectNativeSelection(bot, chatId, messageId, 'grok', 'Grok Build');
     return false;
   }
@@ -373,5 +395,7 @@ export async function connectGrokNative(bot, chatId, messageId) {
     hasAuth: () => hasNativeGrokAuth(),
     guide: grokLoginGuide,
     requireCode: true,
+    force: true,
+    clearAuth: () => clearNativeGrokAuth(),
   });
 }

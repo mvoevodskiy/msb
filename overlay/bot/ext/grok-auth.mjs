@@ -41,6 +41,31 @@ export async function hasNativeGrokAuth(env = process.env, home = env.HOME || os
   }
 }
 
+/**
+ * Сброс локального входа перед повторной авторизацией.
+ * `grok logout` + удаление auth.json; значения токенов не читаем в ответы.
+ */
+export async function clearNativeGrokAuth(env = process.env, home = env.HOME || os.homedir()) {
+  const childEnv = { ...env, HOME: home, PATH: enrichPath(env, home) };
+  const bin = grokBin(childEnv);
+  if (bin) {
+    await new Promise((resolve) => {
+      const child = spawn(bin, ['logout'], {
+        env: childEnv,
+        stdio: ['ignore', 'ignore', 'ignore'],
+      });
+      const timer = setTimeout(() => {
+        try { child.kill('SIGTERM'); } catch { /* ignore */ }
+        resolve();
+      }, 15_000);
+      child.on('error', () => { clearTimeout(timer); resolve(); });
+      child.on('close', () => { clearTimeout(timer); resolve(); });
+    });
+  }
+  await fs.rm(authJsonPath(childEnv, home), { force: true }).catch(() => {});
+  return { ok: !(await hasNativeGrokAuth(childEnv, home)) };
+}
+
 export async function grokLoginStatus(env = process.env, home = env.HOME || os.homedir()) {
   const childEnv = { ...env, HOME: home, PATH: enrichPath(env, home) };
   if (!grokBin(childEnv)) return { ok: false, error: 'Grok Build CLI ещё не установлен' };

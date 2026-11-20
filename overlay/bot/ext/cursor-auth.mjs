@@ -20,6 +20,10 @@ function authJsonPath(home = os.homedir()) {
   return path.join(home, '.config', 'cursor', 'auth.json');
 }
 
+function cliConfigPath(home = os.homedir()) {
+  return path.join(home, '.cursor', 'cli-config.json');
+}
+
 /** Presence-only: есть access/refresh token, значения наружу не отдаём. */
 export async function hasNativeCursorAuth(home = os.homedir()) {
   try {
@@ -33,6 +37,43 @@ export async function hasNativeCursorAuth(home = os.homedir()) {
   } catch {
     return false;
   }
+}
+
+/**
+ * Сброс локального входа перед повторной авторизацией.
+ * Сначала `agent logout`, затем удаление auth.json; значения токенов не читаем в ответы.
+ */
+export async function clearNativeCursorAuth(env = process.env, home = env.HOME || os.homedir()) {
+  const childEnv = { ...env, HOME: home, PATH: enrichPath(env, home) };
+  const bin = cursorBin(childEnv);
+  if (bin) {
+    await new Promise((resolve) => {
+      const child = spawn(bin, ['logout'], {
+        env: childEnv,
+        stdio: ['ignore', 'ignore', 'ignore'],
+      });
+      const timer = setTimeout(() => {
+        try { child.kill('SIGTERM'); } catch { /* ignore */ }
+        resolve();
+      }, 15_000);
+      child.on('error', () => { clearTimeout(timer); resolve(); });
+      child.on('close', () => { clearTimeout(timer); resolve(); });
+    });
+  }
+  await fs.rm(authJsonPath(home), { force: true }).catch(() => {});
+  // cli-config может держать authInfo после logout — убираем только этот ключ.
+  try {
+    const file = cliConfigPath(home);
+    const raw = await fs.readFile(file, 'utf8');
+    const data = JSON.parse(raw);
+    if (data && typeof data === 'object' && 'authInfo' in data) {
+      delete data.authInfo;
+      await fs.writeFile(file, `${JSON.stringify(data, null, 2)}\n`, { mode: 0o600 });
+    }
+  } catch {
+    /* нет файла / битый JSON — достаточно удаления auth.json */
+  }
+  return { ok: !(await hasNativeCursorAuth(home)) };
 }
 
 export async function cursorLoginStatus(env = process.env, home = env.HOME || os.homedir()) {
@@ -58,9 +99,7 @@ export async function cursorLoginStatus(env = process.env, home = env.HOME || os
   if (res.code === 0 && loggedIn) {
     return { ok: true, mode: 'cli-status', detail: text.slice(0, 120) };
   }
-  if (await hasNativeCursorAuth(home)) {
-    return { ok: true, mode: 'auth-file', detail: 'cursor auth.json' };
-  }
+  // Не считать «ок» только по наличию auth.json — протухший файл блокировал повторный вход.
   return { ok: false, error: text.slice(0, 200) || 'Cursor не авторизован' };
 }
 
@@ -125,10 +164,8 @@ export async function waitCursorNativeAuth({
   const loginEnv = { ...env, HOME: home };
   const started = Date.now();
   while (Date.now() - started < timeoutMs) {
-    if (await hasNativeCursorAuth(home)) {
-      const status = await cursorLoginStatus(loginEnv, home);
-      if (status.ok) return status;
-    }
+    const status = await cursorLoginStatus(loginEnv, home);
+    if (status.ok) return status;
     await new Promise((r) => setTimeout(r, pollMs));
   }
   return { ok: false, error: 'таймаут ожидания входа Cursor' };

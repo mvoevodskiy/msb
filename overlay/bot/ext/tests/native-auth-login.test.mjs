@@ -3,8 +3,12 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
-import { hasNativeCursorAuth, cursorLoginStatus, startCursorBrowserLogin } from '../cursor-auth.mjs';
-import { hasNativeGrokAuth, grokLoginStatus, startGrokDeviceLogin } from '../grok-auth.mjs';
+import {
+  hasNativeCursorAuth, clearNativeCursorAuth, cursorLoginStatus, startCursorBrowserLogin,
+} from '../cursor-auth.mjs';
+import {
+  hasNativeGrokAuth, clearNativeGrokAuth, grokLoginStatus, startGrokDeviceLogin,
+} from '../grok-auth.mjs';
 import { extractDeviceLoginInfo } from '../device-login-parse.mjs';
 import { providerConfigured } from '../env.mjs';
 import { getProvider } from '../providers.mjs';
@@ -34,6 +38,43 @@ test('hasNativeCursorAuth is presence-only on auth.json', async (t) => {
   assert.equal(await hasNativeCursorAuth(home), true);
 });
 
+test('clearNativeCursorAuth removes stale auth.json and authInfo', async (t) => {
+  const home = await tmpHome(t);
+  const env = { HOME: home, PATH: path.join(home, 'bin') };
+  await fs.mkdir(path.join(home, 'bin'), { recursive: true });
+  await fs.writeFile(path.join(home, 'bin', 'agent'), '#!/bin/sh\nexit 0\n', { mode: 0o700 });
+  const auth = path.join(home, '.config', 'cursor', 'auth.json');
+  const cli = path.join(home, '.cursor', 'cli-config.json');
+  await fs.mkdir(path.dirname(auth), { recursive: true });
+  await fs.mkdir(path.dirname(cli), { recursive: true });
+  await fs.writeFile(auth, JSON.stringify({ accessToken: 'stale', refreshToken: 'stale' }), { mode: 0o600 });
+  await fs.writeFile(cli, JSON.stringify({ authInfo: { email: 'x' }, other: 1 }, null, 2), { mode: 0o600 });
+  const cleared = await clearNativeCursorAuth(env, home);
+  assert.equal(cleared.ok, true);
+  assert.equal(await hasNativeCursorAuth(home), false);
+  await assert.rejects(fs.stat(auth), { code: 'ENOENT' });
+  assert.deepEqual(JSON.parse(await fs.readFile(cli, 'utf8')), { other: 1 });
+});
+
+test('cursorLoginStatus does not treat auth.json alone as logged in', async (t) => {
+  const home = await tmpHome(t);
+  const bin = path.join(home, 'bin');
+  await fs.mkdir(bin);
+  await fs.writeFile(
+    path.join(bin, 'agent'),
+    `#!${process.execPath}\nif (process.argv[2]==='status') { console.log('Not logged in'); process.exit(1); }\nprocess.exit(0);\n`,
+    { mode: 0o700 },
+  );
+  await fs.mkdir(path.join(home, '.config', 'cursor'), { recursive: true });
+  await fs.writeFile(
+    path.join(home, '.config', 'cursor', 'auth.json'),
+    JSON.stringify({ accessToken: 'stale' }),
+    { mode: 0o600 },
+  );
+  const status = await cursorLoginStatus({ HOME: home, PATH: bin }, home);
+  assert.equal(status.ok, false);
+});
+
 test('hasNativeGrokAuth recognizes auth.x.ai session entry', async (t) => {
   const home = await tmpHome(t);
   const env = { HOME: home };
@@ -46,6 +87,20 @@ test('hasNativeGrokAuth recognizes auth.x.ai session entry', async (t) => {
     { mode: 0o600 },
   );
   assert.equal(await hasNativeGrokAuth(env, home), true);
+});
+
+test('clearNativeGrokAuth removes stale auth.json', async (t) => {
+  const home = await tmpHome(t);
+  const env = { HOME: home, PATH: path.join(home, 'bin') };
+  await fs.mkdir(path.join(home, 'bin'), { recursive: true });
+  await fs.writeFile(path.join(home, 'bin', 'grok'), '#!/bin/sh\nexit 0\n', { mode: 0o700 });
+  const file = path.join(home, '.grok', 'auth.json');
+  await fs.mkdir(path.dirname(file), { recursive: true });
+  await fs.writeFile(file, JSON.stringify({ 'https://auth.x.ai::default': { key: 'stale' } }), { mode: 0o600 });
+  const cleared = await clearNativeGrokAuth(env, home);
+  assert.equal(cleared.ok, true);
+  assert.equal(await hasNativeGrokAuth(env, home), false);
+  await assert.rejects(fs.stat(file), { code: 'ENOENT' });
 });
 
 test('providerConfigured accepts native cursor/grok without env keys', async (t) => {
