@@ -1,0 +1,4 @@
+[
+  "a seeded workspace does not introduce Claude or OpenClaw as Codex",
+  "valid history remains available but is not activated after a provider, engine, project, epoch, profile or workspace change"
+]

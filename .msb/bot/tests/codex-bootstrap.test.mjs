@@ -186,6 +186,11 @@ async function nativeFixture(t, { ordinarySession = false, seed = false } = {}) 
     '    profile:path.resolve(process.env.CODEX_HOME),prompt,resumed}) + "\\n");',
     '}',
     'async function fixtureReply(prompt, inputClosed = () => false) {',
+    '  if (prompt.includes("fixture identity before stop")) {',
+    '    fs.appendFileSync("SOUL.md", "\\n# Fixture interrupted identity\\n");',
+    '    fs.writeFileSync(' + JSON.stringify(started) + ', "identity written");',
+    '    return null;',
+    '  }',
     '  if (prompt.includes("fixture wait for stop")) {',
     '    fs.writeFileSync(' + JSON.stringify(started) + ', "started");',
     '    return null;',
@@ -245,6 +250,10 @@ async function nativeFixture(t, { ordinarySession = false, seed = false } = {}) 
     '    const resumed = argv.includes("resume") ? argv[argv.indexOf("resume") + 1] : null;',
     '    record("codex-exec", prompt, resumed);',
     '    send({type:"thread.started",thread_id:resumed || ' + JSON.stringify(introduction) + '});',
+    '    if (prompt.includes("fixture identity before failure")) {',
+    '      fs.appendFileSync("SOUL.md", "\\n# Fixture interrupted identity\\n");',
+    '      return send({type:"turn.failed",error:{message:"synthetic introduction failure"}});',
+    '    }',
     '    let text;',
     '    if (prompt.includes("Верни только один JSON-объект строго вида")) {',
     '      if (fs.existsSync(' + JSON.stringify(failSummary) + ')) {',
@@ -268,6 +277,119 @@ async function nativeFixture(t, { ordinarySession = false, seed = false } = {}) 
   const calls = async () => (await fs.readFile(trace, 'utf8')).trim().split('\n').map(JSON.parse);
   return { ...f, profile, project, resume, started, holdSummary, failSummary, release, calls, config };
 }
+
+test('first Codex input creates a missing base workspace before resolving its cwd', async t => {
+  const f = await nativeFixture(t);
+  await saveState({ ...(await loadState()).state, activeProject: undefined });
+  process.env.CODEX_HOME = f.profile;
+  await fs.rmdir(f.workspace);
+  await f.message('/start');
+  assert.equal(f.messages.at(-1), greeting);
+  await assert.rejects(fs.stat(f.workspace), { code: 'ENOENT' });
+
+  const prompt = 'fixture first answer without a workspace';
+  await f.message(prompt);
+  await waitFor(() => f.messages.some(text => text.includes('fixture native reply') || text.includes('ENOENT')));
+  assert.equal(f.messages.some(text => text.includes('ENOENT')), false, 'first input must reach the existing workspace initializer');
+  const calls = await f.calls();
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].kind, 'codex-exec');
+  assert.equal(calls[0].resumed, null);
+  assert.equal(calls[0].cwd, await fs.realpath(f.workspace));
+  assert.equal(calls[0].profile, await fs.realpath(f.profile));
+  assert.equal(calls[0].prompt.split(prompt).length - 1, 1);
+  assert.match(calls[0].prompt, /первую настройку с новым владельцем/);
+  const state = (await loadState()).state;
+  assert.equal(state.codexBootstrap[scope].turns, 1);
+  assert.equal(state.codexBootstrap[scope].sessionId, 'ext:codex:' + introduction);
+  assert.equal(state.ccSessionId, undefined);
+  assert.equal(await fs.readFile(path.join(f.profile, 'config.toml'), 'utf8'), f.config);
+  await f.message('/start');
+  assert.equal(f.messages.at(-1), greeting);
+});
+
+test('an existing introduction does not recreate its disappeared workspace or launch again', async t => {
+  const f = await nativeFixture(t);
+  await saveState({ ...(await loadState()).state, activeProject: undefined });
+  process.env.CODEX_HOME = f.profile;
+  await f.message('fixture first existing workspace');
+  await waitFor(() => f.messages.some(text => text.includes('fixture native reply')));
+  const before = (await loadState()).state.codexBootstrap[scope];
+  assert.equal(before.turns, 1);
+  assert.equal((await f.calls()).length, 1);
+  await fs.rename(f.workspace, path.join(f.home, 'preserved-old-workspace'));
+
+  await f.message('fixture followup after workspace disappeared');
+  await waitFor(() => f.messages.some(text => text.includes('ENOENT')));
+  await assert.rejects(fs.stat(f.workspace), { code: 'ENOENT' });
+  const state = (await loadState()).state;
+  assert.deepEqual(state.codexBootstrap[scope], before);
+  assert.equal(state.ccSessionId, undefined);
+  assert.equal((await f.calls()).length, 1);
+});
+
+for (const interruption of ['stop', 'failure']) {
+  test(`a seeded introduction keeps finalization after ${interruption} following an identity write`, async t => {
+    const f = await nativeFixture(t, { seed: true });
+    const soul = path.join(f.workspace, 'SOUL.md');
+    const original = await fs.readFile(soul, 'utf8');
+    const prompt = `fixture identity before ${interruption}`;
+    await f.message('/start');
+    assert.equal(f.messages.at(-1), greeting);
+    await f.message(prompt);
+    if (interruption === 'stop') {
+      await waitFor(() => fs.access(f.started).then(() => true, () => false));
+      await f.message('/stop');
+      await waitFor(() => f.edits.some(text => text.includes('Моя остановочка')));
+    } else {
+      await waitFor(() => f.messages.some(text => text.includes('synthetic introduction failure')));
+    }
+    const partial = await fs.readFile(soul, 'utf8');
+    assert.ok(partial.startsWith(original));
+    assert.match(partial, /Fixture interrupted identity/);
+    const state = (await loadState()).state;
+    assert.equal(state.codexBootstrap[scope].finish, undefined);
+    assert.equal(state.ccSessionId, undefined);
+    assert.equal(state.codexServiceSetup, undefined);
+    await assert.rejects(fs.stat(path.join(f.workspace, '.iia-bootstrapped')), { code: 'ENOENT' });
+
+    await f.message('/start');
+    assert.equal(f.messages.at(-1), greeting, 'a partial identity is not completed introduction');
+    assert.equal((await f.calls()).length, 1, '/start does not replay the interrupted model call');
+    await f.message('fixture resume introduction');
+    await waitFor(async () => (await loadState()).state.servicesSetupShown === true);
+    const calls = await f.calls();
+    assert.deepEqual(calls.map(call => call.kind), ['codex-exec', 'codex-exec', 'codex-exec']);
+    assert.deepEqual(calls.map(call => call.resumed), [null, null, introduction]);
+    assert.equal(calls.filter(call => call.prompt.includes(prompt)).length, 1);
+    assert.match(calls[1].prompt, /fixture resume introduction/);
+    assert.match(calls[1].prompt, /первую настройку с новым владельцем/);
+    assert.match(calls[2].prompt, /Верни только один JSON-объект строго вида/);
+    assert.equal(await fs.readFile(soul, 'utf8'), partial, 'completion preserves the partially written owner file');
+    assert.equal((await loadState()).state.codexBootstrap, undefined);
+    await fs.stat(path.join(f.workspace, '.iia-bootstrapped'));
+    assert.equal(f.messages.filter(text => text.startsWith('<b>Какие сервисы подключить?</b>')).length, 1);
+    await f.message('/start');
+    assert.match(f.messages.at(-1), hub);
+  });
+}
+
+test('start keeps the introduction open while its private summary is pending', async t => {
+  const f = await nativeFixture(t, { seed: true });
+  await fs.writeFile(f.holdSummary, 'hold');
+  await f.message('fixture finish the introduction');
+  await waitFor(() => fs.readFile(f.started, 'utf8').then(text => text === 'summary started', () => false));
+  assert.equal((await loadState()).state.codexBootstrap[scope].finish, 'profile');
+  await assert.rejects(fs.stat(path.join(f.workspace, '.iia-bootstrapped')), { code: 'ENOENT' });
+  await f.message('/start');
+  assert.equal(f.messages.at(-1), greeting);
+  assert.equal((await f.calls()).length, 2, '/start does not start a second summary');
+  await fs.unlink(f.holdSummary);
+  await waitFor(async () => (await loadState()).state.servicesSetupShown === true);
+  assert.equal((await f.calls()).length, 2);
+  await f.message('/start');
+  assert.match(f.messages.at(-1), hub);
+});
 
 test('the shipped seed and stock flag permit multiple Codex introduction turns without losing the identity', async t => {
   const f = await nativeFixture(t, { seed: true });
@@ -435,6 +557,8 @@ test('a failed defaults write can be retried without another native introduction
   assert.equal(injected, true);
   await assert.rejects(fs.stat(path.join(f.workspace, '.iia-bootstrapped')), { code: 'ENOENT' });
   assert.equal((await loadState()).state.codexBootstrap[scope].finish, 'profile');
+  await f.message('/start');
+  assert.equal(f.messages.at(-1), greeting, 'a failed publication must not expose the ready hub');
   const output = await runAgentTurn({ prompt: 'fixture retry defaults', bootstrapScope: scope });
   assert.equal(output.bootstrapComplete, true);
   assert.equal(output.ok, true);
