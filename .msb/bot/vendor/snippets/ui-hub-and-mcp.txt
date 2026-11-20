@@ -1,0 +1,421 @@
+111780|async function Ph(A, Q, B) {
+111781|  let Y = new JA().text("🆕 Новая сессия", "menu:newtask").text("📁 Проекты", "menu:projects").row().text("💬 Сессии", "menu:sessions").text("🧩 Навыки", "menu:skills").row().text("🧠 Агент", "menu:agent").text("🔌 MCP", "menu:mcp").row().text("⚙️ Настройки", "menu:settings").text("🥷 Автономка", "menu:autonomy");
+111782|  let J = `Готов. Пиши задачу или выбери действие.
+111783|⠀`;
+111784|  if (B) {
+111785|    try {
+111786|      await A.editMessageText(Q, B, `Готов. Пиши задачу или выбери действие.
+111787|⠀`, {
+111788|        reply_markup: Y
+111789|      });
+111790|    } catch {}
+111791|  } else {
+111792|    await A.sendMessage(Q, `Готов. Пиши задачу или выбери действие.
+111793|⠀`, {
+111794|      reply_markup: Y
+111795|    });
+111796|  }
+111797|}
+111798|async function c2Q() {
+111799|  let A = await a4();
+111800|  return Object.keys(A.mcpServers || {}).length;
+111801|}
+111802|async function d2Q() {
+111803|  return (await a4()).mcpServers || {};
+111804|}
+111805|async function yGA(A, Q, B) {
+111806|  if ((await m())?.engine === "oc") {
+111807|    let U = new JA();
+111808|    U.text("➕ Добавить", "mcp:add").row();
+111809|    U.text("« Назад", "menu:back");
+111810|    let Z = JP(await s7());
+111811|    if (B) {
+111812|      await A.editMessageText(Q, B, Z, {
+111813|        parse_mode: "HTML",
+111814|        reply_markup: U
+111815|      }).catch(async () => {
+111816|        await A.sendMessage(Q, Z, {
+111817|          parse_mode: "HTML",
+111818|          reply_markup: U
+111819|        });
+111820|      });
+111821|    } else {
+111822|      await A.sendMessage(Q, Z, {
+111823|        parse_mode: "HTML",
+111824|        reply_markup: U
+111825|      });
+111826|    }
+111827|    return;
+111828|  }
+111829|  let J = await c2Q();
+111830|  let C = `\uD83D\uDD0C <b>MCP серверы</b>
+111831|
+111832|Внешние сервисы — транскрипты, скрейпинг, базы данных и другие инструменты.
+111833|⠀`;
+111834|  let F = new JA();
+111835|  F.text(`\uD83D\uDCC2 workspace (${J})`, "mcp:folder:workspace").row();
+111836|  F.text("« Назад", "menu:back");
+111837|  if (B) {
+111838|    await A.editMessageText(Q, B, C, {
+111839|      parse_mode: "HTML",
+111840|      reply_markup: F
+111841|    }).catch(async () => {
+111842|      await A.sendMessage(Q, C, {
+111843|        parse_mode: "HTML",
+111844|        reply_markup: F
+111845|      });
+111846|    });
+111847|  } else {
+111848|    await A.sendMessage(Q, C, {
+111849|      parse_mode: "HTML",
+111850|      reply_markup: F
+111851|    });
+111852|  }
+111853|}
+111854|async function SGA(A, Q, B) {
+111855|  let Y = await d2Q();
+111856|  let J = Object.keys(Y);
+111857|  let C = new JA();
+111858|  let F;
+111859|  if (J.length === 0) {
+111860|    F = `<b>\uD83D\uDCC2 workspace</b>
+111861|
+111862|Доступны агенту во всех проектах.
+111863|
+111864|<i>Нет серверов</i>
+111865|⠀`;
+111866|  } else {
+111867|    let U = await l0A();
+111868|    let Z = new Map(Object.values(U?.servers ?? {}).map(W => [W.name, W.status]));
+111869|    let E = J.map(W => {
+111870|      let G = Y[W];
+111871|      let D = G?.type === "http" || G?.url;
+111872|      return h0A(W, D ? "http" : "stdio", Z.get(W), _);
+111873|    });
+111874|    let X = U?.at ? new Date(U.at) : null;
+111875|    let V = X && !Number.isNaN(X.getTime()) ? `
+111876|
+111877|<i>Состояние на ${String(X.getUTCHours()).padStart(2, "0")}:${String(X.getUTCMinutes()).padStart(2, "0")} UTC</i>` : "";
+111878|    F = `<b>\uD83D\uDCC2 workspace</b>
+111879|
+111880|Доступны агенту во всех проектах.
+111881|
+111882|${E.join(`
+111883|`)}${V}
+111884|⠀`;
+111885|    for (let W of J) {
+111886|      C.text(W, `mcp:server:${W}`).row();
+111887|    }
+111888|  }
+111889|  C.text("➕ Добавить", "mcp:add").row();
+111890|  C.text("« Назад", "menu:mcp");
+111891|  if (B) {
+111892|    await A.editMessageText(Q, B, F, {
+111893|      parse_mode: "HTML",
+111894|      reply_markup: C
+111895|    }).catch(async () => {
+111896|      await A.sendMessage(Q, F, {
+111897|        parse_mode: "HTML",
+111898|        reply_markup: C
+111899|      });
+111900|    });
+111901|  } else {
+111902|    await A.sendMessage(Q, F, {
+111903|      parse_mode: "HTML",
+111904|      reply_markup: C
+111905|    });
+111906|  }
+111907|}
+111908|R.command("start", async A => {
+111909|  let Q = A.chat?.id;
+111910|  let B = A.from?.id;
+111911|  if (!Q || !B) {
+111912|    return;
+111913|  }
+111914|  if (await e1()) {
+111915|    await ny(R.api, Q, B, "/start");
+111916|    return;
+111917|  }
+111918|  if (await dy()) {
+111919|    await A.reply("Меня только что подключили к твоему серверу. Давай настроюсь — как тебя зовут и чем занимаешься?");
+111920|  } else {
+111921|    await Ph(A.api, Q);
+111922|  }
+111923|});
+111924|R.command("help", async A => {
+111925|  let Q = await m();
+111926|  await A.reply(A0A(Q?.engine), {
+111927|    parse_mode: "HTML"
+111928|  });
+111929|});
+111930|R.command("claude", async A => {
+111931|  await A.reply(Jy("cc"), {
+111932|    parse_mode: "HTML"
+111933|  });
+111934|});
+111935|R.command("openclaw", async A => {
+111936|  if (QQ(await m())) {
+111937|    let Q = await ay("command");
+111938|    await A.reply(Q.text, {
+111939|      parse_mode: "HTML",
+111940|      link_preview_options: {
+111941|        is_disabled: true
+111942|      },
+111943|      reply_markup: Q.keyboard
+111944|    });
+111945|    return;
+111946|  }
+111947|  await A.reply(Jy("oc"), {
+111948|    parse_mode: "HTML"
+111949|  });
+111950|});
+111951|R.command("clear", async A => {
+111952|  let Q = A.from?.id;
+111953|  if (!Q) {
+111954|    return;
+111955|  }
+111956|  let B = A.message?.message_thread_id;
+111957|  v$.delete(xh(Q, B));
+111958|  await I4A(Q, B);
+111959|  let Y = await m();
+111960|  if (Y) {
+111961|    let J = false;
+111962|    if (Y.ccSessionId) {
+111963|      Y.ccSessionId = undefined;
+111964|      J = true;
+111965|    }
+111966|    if (Y.engine === "oc") {
+111967|      pQ(Y, "/clear");
+111968|      J = true;
+111969|    }
+111970|    if (J) {
+111971|      await e(Y);
+111972|    }
+111973|  }
+111974|  await A.reply("🧹 Контекст сброшен. Начинаем с чистого листа.");
+111975|});
+111976|R.command("newtask", async A => {
+111977|  let Q = await m();
+111978|  if (Q) {
+111979|    let B = false;
+111980|    if (Q.ccSessionId) {
+111981|      Q.ccSessionId = undefined;
+111982|      B = true;
+111983|    }
+111984|    if (Q.engine === "oc") {
+111985|      pQ(Q, "/newtask");
+111986|      B = true;
+111987|    }
+111988|    if (B) {
+111989|      await e(Q);
+111990|    }
+111991|  }
+111992|  await A.reply("🆕 Новая сессия. Предыдущий контекст сброшен.");
+111993|});
+111994|var BC = 10;
+111995|function Oh(A, Q, B, Y = {}) {
+111996|  let J = Math.max(1, Math.ceil(A.length / BC));
+111997|  let C = Math.max(0, Math.min(B, J - 1));
+111998|  let F = C * BC;
+111999|  let U = A.slice(F, F + BC);
+112000|  let Z = U.map((W, G) => {
+112001|    let D = F + G + 1;
+112002|    let z = W.id === Q;
+112003|    let H = _(Yj(W.firstPrompt, 200) || "без описания");
+112004|    let j = ky(W, 120);
+112005|    let I = j ? `
+112006|   ↳ остановились на: «${_(j)}»` : "";
+112007|    let q = m2Q(W.lastActivity);
+112008|    let $ = W.project ? `[${_(W.project)}]` : "[workspace]";
+112009|    let N = Y.journalIds?.has(W.id) ? " · ⟲ контекст восстановится из журнала" : "";
+112010|    return `${D}. ${H}${z ? " ← текущая" : ""}${I}
+112011|   ${$} · ${q} · ${W.messageCount} сообщ.${N}`;
+112012|  });
+112013|  let E = J > 1 ? ` — стр. ${C + 1}` : "";
+112014|  let X = `\uD83D\uDCCB <b>Сессии</b> (${A.length})${E}:
+112015|
+112016|${Z.slice().reverse().join(`
+112017|
+112018|`)}`;
+112019|  let V = [];
+112020|  for (let W = 0; W < U.length; W += 5) {
+112021|    V.push(U.slice(W, W + 5).map((G, D) => ({
+112022|      text: `${F + W + D + 1}${G.id === Q ? " ✓" : ""}`,
+112023|      callback_data: `session:${G.id}`
+112024|    })));
+112025|  }
+112026|  if (J > 1) {
+112027|    let W = [];
+112028|    if (C > 0) {
+112029|      let G = (C - 1) * BC + 1;
+112030|      let D = C * BC;
+112031|      W.push({
+112032|        text: `« ${G}-${D}`,
+112033|        callback_data: `sessions:page:${C - 1}`
+112034|      });
+112035|    }
+112036|    if (C < J - 1) {
+112037|      let G = (C + 1) * BC + 1;
+112038|      let D = Math.min((C + 2) * BC, A.length);
+112039|      W.push({
+112040|        text: `${G}-${D} »`,
+112041|        callback_data: `sessions:page:${C + 1}`
+112042|      });
+112043|    }
+112044|    if (W.length > 0) {
+112045|      V.push(W);
+112046|    }
+112047|  }
+112048|  if (Y.showRestorePrev) {
+112049|    V.push([{
+112050|      text: "⟲ Вернуть предыдущую",
+112051|      callback_data: "sessions:restoreprev"
+112052|    }]);
+112053|  }
+112054|  V.push([{
+112055|    text: "« Назад",
+112056|    callback_data: "menu:back"
+112057|  }]);
+112058|  return {
+112059|    text: X,
+112060|    buttons: V
+112061|  };
+112062|}
+112063|R.command("sessions", async A => {
+112064|  let {
+112065|    entries: Q,
+112066|    currentId: B,
+112067|    showRestorePrev: Y,
+112068|    journalIds: J
+112069|  } = await wh();
+112070|  if (Q.length === 0) {
+112071|    return A.reply("Нет сохранённых сессий. Напиши что-нибудь, чтобы начать первую.");
+112072|  }
+112073|  let {
+112074|    text: C,
+112075|    buttons: F
+112076|  } = Oh(Q, B, 0, {
+112077|    showRestorePrev: Y,
+112078|    journalIds: J
+112079|  });
+112080|  await A.reply(C, {
+112081|    parse_mode: "HTML",
+112082|    link_preview_options: {
+112083|      is_disabled: true
+112084|    },
+112085|    reply_markup: {
+112086|      inline_keyboard: F
+112087|    }
+112088|  });
+112089|});
+112090|async function YC(A, Q) {
+112091|  let B = await m();
+112092|  if (B?.engine === "oc") {
+112093|    let X = new JA().text("« Назад", "skills:back-menu");
+112094|    try {
+112095|      await A.api.sendChatAction(A.chat.id, "typing");
+112096|    } catch {}
+112097|    if (Q) {
+112098|      try {
+112099|        await A.api.editMessageText(A.chat.id, Q, "⏳ Загружаю навыки…", {
+112100|          parse_mode: "HTML"
+112101|        });
+112102|      } catch {}
+112103|    }
+112104|    let V = aw(await rw());
+112105|    if (Q) {
+112106|      try {
+112107|        await A.api.editMessageText(A.chat.id, Q, V, {
+112108|          parse_mode: "HTML",
+112109|          reply_markup: X
+112110|        });
+112111|      } catch {
+112112|        await A.reply(V, {
+112113|          parse_mode: "HTML",
+112114|          reply_markup: X
+112115|        });
+112116|      }
+112117|    } else {
+112118|      await A.reply(V, {
+112119|        parse_mode: "HTML",
+112120|        reply_markup: X
+112121|      });
+112122|    }
+112123|    return;
+112124|  }
+112125|  let J = (await Z4()).filter(X => X.name !== "system");
+112126|  let C = B?.activeProject;
+112127|  let F = new JA();
+112128|  let U = `\uD83E\uDDE9 <b>Навыки</b>
+112129|
+112130|Инструкции и правила, которые расширяют возможности агента.
+112131|⠀`;
+112132|  let Z = J.filter(X => X.source === "workspace");
+112133|  let E = J.filter(X => X.source === "project");
+112134|  F.text(`\uD83D\uDCC2 workspace (${Z.length})`, "skills:folder:workspace").row();
+112135|  if (E.length > 0) {
+112136|    F.text(`\uD83D\uDCC2 ${C || "project"} (${E.length})`, "skills:folder:project").row();
+112137|  }
+112138|  F.text("« Назад", "skills:back-menu");
+112139|  if (Q) {
+112140|    try {
+112141|      await A.api.editMessageText(A.chat.id, Q, U, {
+112142|        parse_mode: "HTML",
+112143|        reply_markup: F
+112144|      });
+112145|    } catch {
+112146|      await A.reply(U, {
+112147|        parse_mode: "HTML",
+112148|        reply_markup: F
+112149|      });
+112150|    }
+112151|  } else {
+112152|    await A.reply(U, {
+112153|      parse_mode: "HTML",
+112154|      reply_markup: F
+112155|    });
+112156|  }
+112157|}
+112158|R.command("skills", async A => {
+112159|  await YC(A);
+112160|});
+112161|R.command("modules", async A => {
+112162|  await YC(A);
+112163|});
+112164|R.command("catalog", async A => {
+112165|  let Q = await sWA();
+112166|  let B = tWA(Q);
+112167|  try {
+112168|    await A.reply(B, {
+112169|      parse_mode: "HTML"
+112170|    });
+112171|  } catch {
+112172|    await A.reply(B);
+112173|  }
+112174|});
+112175|R.command("settings", async A => {
+112176|  await iF(R.api, A.chat.id, undefined, A.from?.id);
+112177|});
+112178|var qh = 9;
+112179|function _h(A, Q, B, Y) {
+112180|  let J = Math.ceil(A.length / qh);
+112181|  let C = Math.max(0, Math.min(B, J - 1));
+112182|  let F = A.slice(C * qh, (C + 1) * qh);
+112183|  let U = A.map(G => {
+112184|    if (G === Q) {
+112185|      return `▸ ${G} — текущий`;
+112186|    }
+112187|    return `  ${G}`;
+112188|  });
+112189|  let E = [!Q ? "▸ ~/workspace — текущий" : "  ~/workspace", ...U].join(`
+112190|`);
+112191|  let X = `\uD83D\uDCC1 <b>Проекты</b> (${A.length}):
+112192|
+112193|<code>${E}</code>
+112194|
+112195|Переключить: /project <i>название</i>`;
+112196|  let V = [];
+112197|  let W = Q ? "📂 ~/workspace" : "📂 ~/workspace ✓";
+112198|  V.push([{
+112199|    text: W,
+112200|    callback_data: "project:__default__"

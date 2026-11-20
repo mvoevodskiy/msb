@@ -1,0 +1,127 @@
+{
+  "base": "8e8ae2140697e1c4d28eb23f50488858e669c2f9",
+  "screens": {
+    "hubScreen": [
+      "menu:newtask",
+      "menu:projects",
+      "menu:sessions",
+      "menu:skills",
+      "menu:agent",
+      "menu:mcp",
+      "menu:settings",
+      "menu:autonomy"
+    ],
+    "settingsScreen": [
+      "settings:env",
+      "settings:auth",
+      "eng:home",
+      "settings:bots",
+      "settings:tz",
+      "nm:list",
+      "settings:limit",
+      "settings:server-status",
+      "settings:extras",
+      "menu:back"
+    ],
+    "extrasScreen": [
+      "settings:ssh",
+      "settings:restart",
+      "settings:stt",
+      "settings:pult",
+      "settings:updates",
+      "settings:back"
+    ],
+    "envScreen": [
+      "settings:env:quick:DEEPGRAM_API_KEY",
+      "settings:env:quick:GITHUB_TOKEN_FINE",
+      "settings:env:quick:GITHUB_TOKEN_CLASSIC",
+      "settings:env:quick:GITHUB_TOKEN",
+      "settings:env:quick:X_BEARER_TOKEN",
+      "settings:env:quick:OPENROUTER_API_KEY",
+      "settings:env:add",
+      "settings:env:delete:NODE_ENV",
+      "settings:back"
+    ],
+    "limitScreen": [
+      "settings:limit:set:10",
+      "settings:limit:set:25",
+      "settings:limit:set:50",
+      "settings:limit:set:0",
+      "settings:back"
+    ],
+    "enginesScreen": [
+      "settings:engine:set:cc",
+      "eng:add",
+      "menu:settings"
+    ],
+    "autonomyHomeScreen": [
+      "auto:tasks",
+      "auto:monitor",
+      "auto:history",
+      "auto:timers",
+      "auto:what",
+      "auto:rights",
+      "menu:back"
+    ],
+    "autonomyTasksScreen": [
+      "auto:task:scope-fixture",
+      "auto:home"
+    ],
+    "autonomyRightsScreen": [
+      "auto:rights-toggle",
+      "auto:home"
+    ],
+    "monitorSettingsScreen": [
+      "mon:storage:set:jsonl",
+      "mon:storage:set:sqlite",
+      "mon:poll:all",
+      "mon:back"
+    ],
+    "mcpScreen": [
+      "mcp:folder:workspace",
+      "menu:back"
+    ],
+    "mcpWorkspaceScreen": [
+      "mcp:add",
+      "menu:mcp"
+    ],
+    "mcpAddScreen": [
+      "mcp:setup:supadata",
+      "mcp:setup:apify",
+      "mcp:folder:workspace"
+    ],
+    "setupScreen": [
+      "setup:subscription",
+      "setup:help"
+    ],
+    "projectsScreen": [
+      "menu:newproject",
+      "menu:back"
+    ]
+  },
+  "overlay": {
+    "buildConnMenu": [
+      "ext:conn:noop",
+      "settings:auth:switch-sub",
+      "settings:auth:openrouter",
+      "settings:engine:set:oc",
+      "settings:engine:set:cc",
+      "settings:auth:help",
+      "ext:conn:noop",
+      "ext:conn:set:claude",
+      "ext:conn:set:cursor",
+      "ext:auth:cursor",
+      "ext:conn:set:codex",
+      "ext:auth:codex",
+      "ext:conn:set:qwen",
+      "ext:auth:qwen",
+      "menu:settings"
+    ],
+    "buildPermModeMenu": [
+      "ext:permmode:set:auto",
+      "ext:permmode:set:control",
+      "ext:permmode:set:plan",
+      "menu:agent"
+    ]
+  }
+}

@@ -1,0 +1,36 @@
+{
+  "version": "codex-cli 0.166.0",
+  "native_chatgpt_fixture_bearer": true,
+  "native_profile_files_byte_exact": true,
+  "fresh_ephemeral_threads": true,
+  "built_in_text_file_tools_without_shell": false,
+  "outside_fixture_path_denied": true,
+  "owner_and_project_mcp_never_started": true,
+  "tools": {
+    "seed": [
+      "request_user_input"
+    ],
+    "narrow": [
+      "list_mcp_resource_templates",
+      "list_mcp_resources",
+      "read_mcp_resource",
+      "request_user_input",
+      "workspace_read"
+    ],
+    "standard": [
+      "list_mcp_resource_templates",
+      "list_mcp_resources",
+      "read_mcp_resource",
+      "request_user_input",
+      "workspace_read",
+      "workspace_write"
+    ],
+    "shellControl": [
+      "exec_command",
+      "request_user_input",
+      "write_stdin"
+    ]
+  },
+  "production_auth": false,
+  "network": "loopback-only"
+}

@@ -1,0 +1,80 @@
+/**
+ * Bounded app-server stdio: initialize, one allowlisted read, close owned process.
+ * Consumers: [Skills](./codex-skills-rpc.mjs), [MCP](./codex-mcp.mjs), [quota](./adapters/saved-codex-quota.mjs).
+ * [Transport ownership](./tests/codex-skills-rpc.test.mjs) and
+ * [MCP protocol ingress](../../../.msb/bot/tests/mcp-catalog.test.mjs).
+ */
+import {spawn} from 'node:child_process';
+const reads=new Map([
+  ['skills/list',{clientName:'msb_skills',error:'list',params:({cwd})=>({cwds:[cwd],forceReload:true})}],
+  ['config/read',{clientName:'msb_mcp',error:'config',params:({cwd,includeLayers})=>({includeLayers,cwd})}],
+  ['account/rateLimits/read',{clientName:'msb_quota',error:'quota',params:()=>undefined}],
+]);
+
+export function readCodexAppServer(method,{command,cwd,env=process.env,signal,timeoutMs=12_000,cleanupGraceMs=5_000,maxBytes=4*1024*1024,includeLayers=true,ownProcessGroup=true,appArgs=[],spawnProcess=spawn}) {
+  if(signal?.aborted)return Promise.resolve({ok:false,aborted:true});
+  const read=reads.get(method);
+  if(!read)return Promise.resolve({ok:false,error:'method'});
+  return new Promise(resolve=>{
+    let child;
+    try{child=spawnProcess(command,['app-server',...appArgs],{cwd,env,detached:ownProcessGroup,stdio:['pipe','pipe','ignore']});}
+    catch{return resolve({ok:false,error:'spawn'});}
+    let phase='init',buffer='',bytes=0,result=null,closed=false,leaderExited=false,resolved=false,timeout,termTimer,killTimer,forceTimer;
+    function signalGroup(name) {
+      if(closed || resolved || leaderExited || child.exitCode!=null || child.signalCode!=null)return;
+      try{if(ownProcessGroup && child.pid){process.kill(-child.pid,name);return;}}catch{/* Fall back only to the still-live leader. */}
+      if(child.exitCode==null && child.signalCode==null)try{child.kill(name);}catch{}
+    }
+    function complete() {
+      if(resolved)return;resolved=true;clearTimeout(timeout);clearTimeout(termTimer);clearTimeout(killTimer);clearTimeout(forceTimer);
+      signal?.removeEventListener('abort',onAbort);resolve(result || {ok:false,error:'closed'});
+    }
+    function forceCleanup() {
+      if(resolved)return;
+      // Bounded observation failure, not proof that opaque descendants or a D-state process were reaped.
+      result={ok:false,...(result?.aborted?{aborted:true}:{}),error:result?.error || 'cleanup_timeout',cleanupTimedOut:true};
+      for(const stream of [child.stdin,child.stdout,child.stderr])try{stream?.destroy();}catch{}
+      child.unref?.();complete();
+    }
+    function finish(value) {
+      if(result)return;result=value;clearTimeout(timeout);
+      if(closed)return complete();
+      try{child.stdin.end();}catch{}
+      if(closed)return complete();
+      if(value.aborted)signalGroup('SIGINT');
+      if(closed)return complete();
+      termTimer=setTimeout(()=>signalGroup('SIGTERM'),1000);
+      killTimer=setTimeout(()=>{signalGroup('SIGKILL');if(!closed && !resolved)forceTimer=setTimeout(forceCleanup,100);},cleanupGraceMs);
+    }
+    function onAbort(){finish({ok:false,aborted:true});}
+    function send(message) {if(!result)try{child.stdin.write(JSON.stringify(message)+'\n');}catch{finish({ok:false,error:'stdin'});}}
+    child.stdin.on('error',()=>finish({ok:false,error:'stdin'}));
+    child.stdout.setEncoding('utf8');
+    child.stdout.on('data',chunk=>{
+      if(result)return;bytes+=Buffer.byteLength(chunk,'utf8');
+      if(bytes>maxBytes)return finish({ok:false,error:'output_limit'});
+      buffer+=chunk;let nl;
+      while(!result && (nl=buffer.indexOf('\n'))>=0) {
+        const line=buffer.slice(0,nl);buffer=buffer.slice(nl+1);let msg;
+        try{msg=JSON.parse(line);}catch{continue;}
+        if(!msg || typeof msg!=='object' || Array.isArray(msg))continue;
+        // A read cannot answer an approval, credential or tool request from the server.
+        if(typeof msg.method==='string' && msg.id!==undefined)return finish({ok:false,error:'server_request'});
+        if(msg.id===1 && phase==='init') {
+          if(msg.error || !msg.result || typeof msg.result!=='object' || Array.isArray(msg.result))return finish({ok:false,error:'initialize'});
+          phase='read';send({method:'initialized'});send({id:2,method,params:read.params({cwd,includeLayers})});
+        }else if(msg.id===2 && phase==='read') {
+          if(msg.error || !msg.result)return finish({ok:false,error:read.error});
+          finish({ok:true,data:msg.result});
+        }
+      }
+    });
+    child.on('error',()=>{if(!child.pid)closed=true;finish({ok:false,error:'spawn'});});
+    child.on('exit',()=>{leaderExited=true;});
+    child.on('close',()=>{closed=true;complete();});
+    timeout=setTimeout(()=>finish({ok:false,error:'timeout'}),timeoutMs);
+    signal?.addEventListener('abort',onAbort,{once:true});
+    if(signal?.aborted)onAbort();
+    else send({id:1,method:'initialize',params:{clientInfo:{name:read.clientName,version:'1'}}});
+  });
+}

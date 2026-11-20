@@ -1,0 +1,13 @@
+{
+  "key_length": 40,
+  "callback_bytes": 68,
+  "telegram_ok": false,
+  "telegram_error_code": 400,
+  "button_data_invalid": true,
+  "test_message_created": false,
+  "test_message_cleaned_up": null,
+  "temporary_env_key_created": false,
+  "real_credentials_changed": false,
+  "protected_files_unchanged": true,
+  "deployed_source_commit": "4ca87d23e039f5acbd9744ca761c0b36fd550eb4"
+}

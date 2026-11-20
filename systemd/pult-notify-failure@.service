@@ -1,0 +1,10 @@
+# Тревога в Telegram, когда служба Пульта упала и systemd перестал её поднимать.
+[Unit]
+Description=Пульт: тревога об отказе службы %i
+
+[Service]
+Type=oneshot
+User=client
+Group=client
+EnvironmentFile=-/home/client/pult-secrets/web.env
+ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning /home/client/.msb/pult/src/cli/notify-failure.ts %i

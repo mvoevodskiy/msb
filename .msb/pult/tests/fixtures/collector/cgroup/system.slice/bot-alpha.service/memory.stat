@@ -1,0 +1,4 @@
+anon 200000000
+file 3000000000
+kernel 50000000
+kernel_stack 100000

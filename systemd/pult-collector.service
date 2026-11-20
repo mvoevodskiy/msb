@@ -1,0 +1,31 @@
+# /etc/systemd/system/pult-collector.service — сборщик Пульта (снимок раз в минуту → веб).
+# Код: /home/client/.msb/pult · секреты: /home/client/pult-secrets/collector.env
+[Unit]
+Description=Пульт: сборщик состояния сервера ботов
+After=network-online.target pult-web.service
+Wants=network-online.target
+StartLimitIntervalSec=600
+StartLimitBurst=5
+OnFailure=pult-notify-failure@%n.service
+
+[Service]
+Type=simple
+User=client
+Group=client
+WorkingDirectory=/home/client/.msb/pult
+EnvironmentFile=/home/client/pult-secrets/collector.env
+ExecStart=/usr/bin/node --disable-warning=ExperimentalWarning --disallow-code-generation-from-strings /home/client/.msb/pult/src/collector/main.ts run
+Restart=on-failure
+RestartSec=10
+Nice=10
+SupplementaryGroups=systemd-journal
+KillSignal=SIGTERM
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=yes
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=pult-collector
+
+[Install]
+WantedBy=multi-user.target

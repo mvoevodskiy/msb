@@ -1,0 +1,51 @@
+{
+  "stage": "voice-deepgram-restoration",
+  "previous_stage": "6e28d3db5e28866d56a6212f81f2e701213c9cc6",
+  "backend_commit": "fedf68f",
+  "platform": "macOS",
+  "core": {
+    "passed": 70,
+    "failed": 0
+  },
+  "overlay": {
+    "passed": 55,
+    "failed": 0
+  },
+  "reference": {
+    "passed": 4,
+    "failed": 3,
+    "skipped": 0,
+    "todo": 0,
+    "voice": "passed",
+    "progress": "passed",
+    "stop": "passed"
+  },
+  "covered": [
+    "old Deepgram options and unchanged bytes",
+    "process/per-bot/shared STT configuration precedence and empty overrides",
+    "STT_COMMAND priority and temporary input cleanup",
+    "missing key and old onboarding/skip route",
+    "HTTP/timeout/empty result and reflected credential redaction",
+    "complete transcript goes directly to the agent",
+    "original 300-position quote/wave, Unicode and topic",
+    "reply-context caps, author labels and secret scrubbing",
+    "polling stop during download/STT/transcript edit",
+    "late I/O cannot launch CLI after abort",
+    "pending env form survives speech",
+    "non-owner voice ignored before I/O",
+    "preparation-to-thinking cadence and timer cleanup"
+  ],
+  "remaining_reference_failures": [
+    "invalid login",
+    "overlay owner guard",
+    "Codex error/replay"
+  ],
+  "scope_limits": [
+    "Only Telegram voice route restored; other media are outside this stage.",
+    "Real Deepgram credentials/account balance and transcription accuracy were not tested.",
+    "No JAR1 or live Telegram/Claude/Codex access.",
+    "Existing busy-turn policy remains; full legacy multi-message batching is not ported."
+  ],
+  "jar1_touched": false,
+  "real_credentials_used": false
+}

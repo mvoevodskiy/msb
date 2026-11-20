@@ -1,0 +1,1874 @@
+{
+ "schema": 1,
+ "host": "Сервер ботов",
+ "collectedAt": "2026-10-29T10:44:58.000Z",
+ "collectMs": 840,
+ "server": {
+  "cores": 8,
+  "cpuPct": 27,
+  "iowaitPct": 10,
+  "load1": 2.2,
+  "memTotalMb": 9933,
+  "memUsedMb": 3174,
+  "memCacheMb": 5632,
+  "memAvailMb": 6759,
+  "swapTotalMb": 4096,
+  "swapUsedMb": 307,
+  "diskTotalGb": 77,
+  "diskUsedGb": 44,
+  "bootAt": "2026-10-28T20:20:00.000Z"
+ },
+ "bots": [
+  {
+   "id": "default",
+   "name": "Основной",
+   "projects": [
+    "Zapcita",
+    "socpublisher"
+   ],
+   "service": {
+    "state": "active",
+    "since": "2026-10-28T20:25:00.000Z",
+    "restarts": 0,
+    "memMb": 236,
+    "cpuCores": 0.01
+   },
+   "now": {
+    "busy": false,
+    "since": null,
+    "kind": null,
+    "text": null,
+    "helpers": 0
+   },
+   "lastResult": {
+    "at": "2026-10-28T22:01:00.000Z",
+    "text": "ответ про переезд сервера",
+    "durationMin": 89,
+    "actions": 234
+   },
+   "chat24h": {
+    "requests": 5,
+    "minutes": 93
+   },
+   "bg24h": {
+    "tasks": 3,
+    "runs": 14,
+    "tokens": 8970256,
+    "minutes": 26
+   },
+   "timeline": [
+    {
+     "start": "2026-10-28T13:37:30.000Z",
+     "end": "2026-10-28T13:39:28.800Z",
+     "kind": "chat",
+     "label": "Чем сейчас занят сервер? Я сказал остановить все по завершен"
+    },
+    {
+     "start": "2026-10-28T13:55:37.200Z",
+     "end": "2026-10-28T13:55:48.000Z",
+     "kind": "chat",
+     "label": "Удалять не нужно"
+    },
+    {
+     "start": "2026-10-28T15:37:08.400Z",
+     "end": "2026-10-28T15:37:40.800Z",
+     "kind": "chat",
+     "label": "голосовое сообщение"
+    },
+    {
+     "start": "2026-10-28T15:38:02.400Z",
+     "end": "2026-10-28T15:39:28.800Z",
+     "kind": "chat",
+     "label": "голосовое сообщение"
+    },
+    {
+     "start": "2026-10-28T20:32:16.800Z",
+     "end": "2026-10-28T22:01:01.200Z",
+     "kind": "chat",
+     "label": "Поздравляю. Ты переехал на сервер с намного большим запасом"
+    },
+    {
+     "start": "2026-10-28T23:00:25.200Z",
+     "end": "2026-10-28T23:01:15.600Z",
+     "kind": "bg",
+     "status": "silent",
+     "label": "socpublisher: разработчик"
+    },
+    {
+     "start": "2026-10-29T00:00:28.800Z",
+     "end": "2026-10-29T00:01:08.400Z",
+     "kind": "bg",
+     "status": "silent",
+     "label": "socpublisher: разработчик"
+    },
+    {
+     "start": "2026-10-29T01:00:28.800Z",
+     "end": "2026-10-29T01:04:40.800Z",
+     "kind": "bg",
+     "status": "silent",
+     "label": "socpublisher: разработчик"
+    },
+    {
+     "start": "2026-10-29T02:00:28.800Z",
+     "end": "2026-10-29T02:06:07.200Z",
+     "kind": "bg",
+     "status": "silent",
+     "label": "socpublisher: разработчик"
+    },
+    {
+     "start": "2026-10-29T03:00:28.800Z",
+     "end": "2026-10-29T03:01:15.600Z",
+     "kind": "bg",
+     "status": "silent",
+     "label": "socpublisher: разработчик"
+    },
+    {
+     "start": "2026-10-29T04:00:32.400Z",
+     "end": "2026-10-29T04:17:16.800Z",
+     "kind": "bg",
+     "status": "silent",
+     "label": "socpublisher: разработчик"
+    },
+    {
+     "start": "2026-10-29T05:00:32.400Z",
+     "end": "2026-10-29T05:01:19.200Z",
+     "kind": "bg",
+     "status": "ok",
+     "label": "socpublisher: утренняя сводка"
+    },
+    {
+     "start": "2026-10-29T05:01:22.800Z",
+     "end": "2026-10-29T05:02:13.200Z",
+     "kind": "bg",
+     "status": "silent",
+     "label": "socpublisher: разработчик"
+    },
+    {
+     "start": "2026-10-29T06:00:32.400Z",
+     "end": "2026-10-29T06:01:08.400Z",
+     "kind": "bg",
+     "status": "silent",
+     "label": "socpublisher: разработчик"
+    },
+    {
+     "start": "2026-10-29T07:00:32.400Z",
+     "end": "2026-10-29T07:01:08.400Z",
+     "kind": "bg",
+     "status": "silent",
+     "label": "Баланс ProxyAPI"
+    },
+    {
+     "start": "2026-10-29T07:00:39.600Z",
+     "end": "2026-10-29T07:01:19.200Z",
+     "kind": "bg",
+     "status": "silent",
+     "label": "socpublisher: разработчик"
+    },
+    {
+     "start": "2026-10-29T08:00:32.400Z",
+     "end": "2026-10-29T08:01:08.400Z",
+     "kind": "bg",
+     "status": "silent",
+     "label": "socpublisher: разработчик"
+    },
+    {
+     "start": "2026-10-29T09:00:32.400Z",
+     "end": "2026-10-29T09:01:19.200Z",
+     "kind": "bg",
+     "status": "silent",
+     "label": "socpublisher: разработчик"
+    },
+    {
+     "start": "2026-10-29T10:00:36.000Z",
+     "end": "2026-10-29T10:05:45.600Z",
+     "kind": "bg",
+     "status": "silent",
+     "label": "socpublisher: разработчик"
+    }
+   ]
+  },
+  {
+   "id": "SMM",
+   "name": "SMM",
+   "projects": [
+    "infosecurity",
+    "Zapcita — соцсети",
+    "кемперы"
+   ],
+   "service": {
+    "state": "active",
+    "since": "2026-10-28T20:25:00.000Z",
+    "restarts": 0,
+    "memMb": 1034,
+    "cpuCores": 0.02
+   },
+   "now": {
+    "busy": true,
+    "since": "2026-10-29T09:52:48.000Z",
+    "kind": "chat",
+    "text": "infosecurity → прод",
+    "helpers": 4
+   },
+   "lastResult": {
+    "at": "2026-10-29T05:38:00.000Z",
+    "text": "пост в тест-канале InfoSecurity",
+    "durationMin": 52,
+    "actions": 780
+   },
+   "chat24h": {
+    "requests": 1,
+    "minutes": 52
+   },
+   "bg24h": {
+    "tasks": 0,
+    "runs": 0,
+    "tokens": 0,
+    "minutes": 0
+   },
+   "timeline": [
+    {
+     "start": "2026-10-29T04:46:26.400Z",
+     "end": "2026-10-29T05:38:42.000Z",
+     "kind": "chat",
+     "label": "пост для тест-канала InfoSecurity"
+    },
+    {
+     "start": "2026-10-29T09:52:48.000Z",
+     "end": "2026-10-29T10:45:00.000Z",
+     "kind": "chat",
+     "label": "infosecurity → прод",
+     "live": true
+    }
+   ]
+  },
+  {
+   "id": "personal",
+   "name": "Личный",
+   "projects": [
+    "Задачи с созвонов",
+    "Пульт",
+    "личное"
+   ],
+   "service": {
+    "state": "active",
+    "since": "2026-10-28T20:25:00.000Z",
+    "restarts": 0,
+    "memMb": 256,
+    "cpuCores": 0.01
+   },
+   "now": {
+    "busy": true,
+    "since": "2026-10-29T10:31:48.000Z",
+    "kind": "chat",
+    "text": "концепт панели мониторинга",
+    "helpers": 0
+   },
+   "lastResult": {
+    "at": "2026-10-29T10:26:00.000Z",
+    "text": "роли ботов записаны",
+    "durationMin": 2,
+    "actions": 9
+   },
+   "chat24h": {
+    "requests": 11,
+    "minutes": 59
+   },
+   "bg24h": {
+    "tasks": 0,
+    "runs": 0,
+    "tokens": 0,
+    "minutes": 0
+   },
+   "timeline": [
+    {
+     "start": "2026-10-28T20:41:16.800Z",
+     "end": "2026-10-28T21:01:55.200Z",
+     "kind": "chat",
+     "label": "личный запрос"
+    },
+    {
+     "start": "2026-10-29T04:49:15.600Z",
+     "end": "2026-10-29T04:54:39.600Z",
+     "kind": "chat",
+     "label": "личный запрос"
+    },
+    {
+     "start": "2026-10-29T05:01:01.200Z",
+     "end": "2026-10-29T05:04:37.200Z",
+     "kind": "chat",
+     "label": "личный запрос"
+    },
+    {
+     "start": "2026-10-29T05:16:15.600Z",
+     "end": "2026-10-29T05:19:08.400Z",
+     "kind": "chat",
+     "label": "личный запрос"
+    },
+    {
+     "start": "2026-10-29T05:38:24.000Z",
+     "end": "2026-10-29T05:41:38.400Z",
+     "kind": "chat",
+     "label": "личный запрос"
+    },
+    {
+     "start": "2026-10-29T05:43:12.000Z",
+     "end": "2026-10-29T05:46:08.400Z",
+     "kind": "chat",
+     "label": "личный запрос"
+    },
+    {
+     "start": "2026-10-29T06:03:21.600Z",
+     "end": "2026-10-29T06:05:45.600Z",
+     "kind": "chat",
+     "label": "личный запрос"
+    },
+    {
+     "start": "2026-10-29T10:00:54.000Z",
+     "end": "2026-10-29T10:02:52.800Z",
+     "kind": "chat",
+     "label": "личный запрос"
+    },
+    {
+     "start": "2026-10-29T10:06:32.400Z",
+     "end": "2026-10-29T10:20:27.600Z",
+     "kind": "chat",
+     "label": "личный запрос"
+    },
+    {
+     "start": "2026-10-29T10:20:27.600Z",
+     "end": "2026-10-29T10:21:32.400Z",
+     "kind": "chat",
+     "label": "личный запрос"
+    },
+    {
+     "start": "2026-10-29T10:25:37.200Z",
+     "end": "2026-10-29T10:26:56.400Z",
+     "kind": "chat",
+     "label": "личный запрос"
+    },
+    {
+     "start": "2026-10-29T10:31:48.000Z",
+     "end": "2026-10-29T10:45:00.000Z",
+     "kind": "chat",
+     "label": "концепт панели мониторинга",
+     "live": true
+    }
+   ]
+  }
+ ],
+ "tasks": [
+  {
+   "id": "socpub-dev",
+   "name": "socpublisher: разработчик",
+   "bot": "default",
+   "botName": "Основной",
+   "project": "socpublisher",
+   "kind": "prompt",
+   "schedule": {
+    "type": "cron",
+    "text": "каждый час",
+    "cron": "0 * * * *",
+    "timezone": "Europe/Moscow"
+   },
+   "expect": "в чат — только итог этапа; работа видна по коммитам",
+   "noAi": false,
+   "lastRun": {
+    "at": "2026-10-29T10:00:34.488Z",
+    "status": "silent",
+    "durationSec": 308,
+    "tokens": 1518528,
+    "helpers": 2,
+    "usd": 1.548,
+    "detail": null
+   },
+   "nextRunAt": "2026-10-29T11:00:00.000Z",
+   "stats24h": {
+    "expected": 24,
+    "runs": 12,
+    "ok": 0,
+    "silent": 12,
+    "error": 0,
+    "missed": 12,
+    "tokens": 8367471,
+    "minutes": 37.2,
+    "usd": 11.19
+   },
+   "slots24h": [
+    "missed",
+    "missed",
+    "missed",
+    "missed",
+    "missed",
+    "missed",
+    "missed",
+    "missed",
+    "missed",
+    "missed",
+    "missed",
+    "missed",
+    "silent",
+    "silent",
+    "silent",
+    "silent",
+    "silent",
+    "silent",
+    "silent",
+    "silent",
+    "silent",
+    "silent",
+    "silent",
+    "silent"
+   ],
+   "runs": [
+    {
+     "at": "2026-10-26T07:00:44.107Z",
+     "status": "ok",
+     "durationSec": 446,
+     "tokens": 878087,
+     "helpers": 2,
+     "usd": 2.256,
+     "detail": null
+    },
+    {
+     "at": "2026-10-26T08:00:39.972Z",
+     "status": "silent",
+     "durationSec": 730,
+     "tokens": 538768,
+     "helpers": 3,
+     "usd": 3.374,
+     "detail": null
+    },
+    {
+     "at": "2026-10-26T09:00:40.663Z",
+     "status": "silent",
+     "durationSec": 25,
+     "tokens": 251798,
+     "helpers": 0,
+     "usd": 0.193,
+     "detail": null
+    },
+    {
+     "at": "2026-10-26T10:00:41.472Z",
+     "status": "silent",
+     "durationSec": 193,
+     "tokens": 1296145,
+     "helpers": 1,
+     "usd": 0.61,
+     "detail": null
+    },
+    {
+     "at": "2026-10-26T11:00:43.293Z",
+     "status": "ok",
+     "durationSec": 1617,
+     "tokens": 4501385,
+     "helpers": 13,
+     "usd": 5.186,
+     "detail": null
+    },
+    {
+     "at": "2026-10-26T12:00:43.951Z",
+     "status": "silent",
+     "durationSec": 52,
+     "tokens": 825774,
+     "helpers": 0,
+     "usd": 0.339,
+     "detail": null
+    },
+    {
+     "at": "2026-10-26T13:00:44.326Z",
+     "status": "ok",
+     "durationSec": 643,
+     "tokens": 7357612,
+     "helpers": 5,
+     "usd": 4,
+     "detail": null
+    },
+    {
+     "at": "2026-10-26T14:00:45.259Z",
+     "status": "silent",
+     "durationSec": 44,
+     "tokens": 461246,
+     "helpers": 0,
+     "usd": 0.171,
+     "detail": null
+    },
+    {
+     "at": "2026-10-26T15:00:46.170Z",
+     "status": "silent",
+     "durationSec": 67,
+     "tokens": 769568,
+     "helpers": 0,
+     "usd": 0.335,
+     "detail": null
+    },
+    {
+     "at": "2026-10-26T16:00:47.572Z",
+     "status": "silent",
+     "durationSec": 43,
+     "tokens": 402254,
+     "helpers": 0,
+     "usd": 0.194,
+     "detail": null
+    },
+    {
+     "at": "2026-10-26T17:00:48.576Z",
+     "status": "ok",
+     "durationSec": 825,
+     "tokens": 5010825,
+     "helpers": 8,
+     "usd": 3.976,
+     "detail": null
+    },
+    {
+     "at": "2026-10-26T18:00:49.484Z",
+     "status": "silent",
+     "durationSec": 41,
+     "tokens": 463620,
+     "helpers": 0,
+     "usd": 0.239,
+     "detail": null
+    },
+    {
+     "at": "2026-10-26T19:00:49.852Z",
+     "status": "silent",
+     "durationSec": 1493,
+     "tokens": 6838597,
+     "helpers": 11,
+     "usd": 7.397,
+     "detail": null
+    },
+    {
+     "at": "2026-10-26T20:00:50.135Z",
+     "status": "silent",
+     "durationSec": 40,
+     "tokens": 679727,
+     "helpers": 0,
+     "usd": 0.284,
+     "detail": null
+    },
+    {
+     "at": "2026-10-26T21:00:51.054Z",
+     "status": "silent",
+     "durationSec": 50,
+     "tokens": 621612,
+     "helpers": 0,
+     "usd": 0.325,
+     "detail": null
+    },
+    {
+     "at": "2026-10-26T22:00:52.408Z",
+     "status": "silent",
+     "durationSec": 1111,
+     "tokens": 1691438,
+     "helpers": 9,
+     "usd": 5.04,
+     "detail": null
+    },
+    {
+     "at": "2026-10-26T23:00:53.294Z",
+     "status": "silent",
+     "durationSec": 41,
+     "tokens": 582305,
+     "helpers": 0,
+     "usd": 0.232,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T00:00:54.275Z",
+     "status": "silent",
+     "durationSec": 68,
+     "tokens": 949046,
+     "helpers": 0,
+     "usd": 0.442,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T01:00:55.199Z",
+     "status": "silent",
+     "durationSec": 109,
+     "tokens": 1695992,
+     "helpers": 0,
+     "usd": 0.636,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T02:00:56.350Z",
+     "status": "silent",
+     "durationSec": 1232,
+     "tokens": 2828296,
+     "helpers": 6,
+     "usd": 4.74,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T03:00:57.046Z",
+     "status": "silent",
+     "durationSec": 56,
+     "tokens": 666874,
+     "helpers": 0,
+     "usd": 0.32,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T04:00:57.911Z",
+     "status": "silent",
+     "durationSec": 66,
+     "tokens": 1192092,
+     "helpers": 0,
+     "usd": 0.411,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T05:01:40.705Z",
+     "status": "silent",
+     "durationSec": 1048,
+     "tokens": 2084070,
+     "helpers": 13,
+     "usd": 6.558,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T06:00:59.649Z",
+     "status": "silent",
+     "durationSec": 85,
+     "tokens": 465362,
+     "helpers": 0,
+     "usd": 0.188,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T07:00:07.490Z",
+     "status": "silent",
+     "durationSec": 73,
+     "tokens": 916206,
+     "helpers": 0,
+     "usd": 0.36,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T08:00:00.757Z",
+     "status": "silent",
+     "durationSec": 23,
+     "tokens": 113304,
+     "helpers": 0,
+     "usd": 0.119,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T09:00:00.967Z",
+     "status": "silent",
+     "durationSec": 42,
+     "tokens": 341793,
+     "helpers": 0,
+     "usd": 0.294,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T10:00:00.848Z",
+     "status": "silent",
+     "durationSec": 17,
+     "tokens": 132300,
+     "helpers": 0,
+     "usd": 0.151,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T11:00:01.166Z",
+     "status": "silent",
+     "durationSec": 866,
+     "tokens": 2029559,
+     "helpers": 4,
+     "usd": 3.273,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T12:00:01.645Z",
+     "status": "silent",
+     "durationSec": 32,
+     "tokens": 438431,
+     "helpers": 0,
+     "usd": 0.181,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T13:00:02.004Z",
+     "status": "silent",
+     "durationSec": 83,
+     "tokens": 941802,
+     "helpers": 0,
+     "usd": 0.429,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T14:00:02.361Z",
+     "status": "silent",
+     "durationSec": 1088,
+     "tokens": 2530470,
+     "helpers": 12,
+     "usd": 5.851,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T15:00:02.641Z",
+     "status": "silent",
+     "durationSec": 43,
+     "tokens": 568634,
+     "helpers": 0,
+     "usd": 0.209,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T16:00:03.032Z",
+     "status": "silent",
+     "durationSec": 435,
+     "tokens": 729655,
+     "helpers": 3,
+     "usd": 2.121,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T17:00:04.232Z",
+     "status": "silent",
+     "durationSec": 1584,
+     "tokens": 2680109,
+     "helpers": 8,
+     "usd": 7.195,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T18:00:05.241Z",
+     "status": "silent",
+     "durationSec": 50,
+     "tokens": 736653,
+     "helpers": 0,
+     "usd": 0.277,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T19:00:06.674Z",
+     "status": "silent",
+     "durationSec": 40,
+     "tokens": 613860,
+     "helpers": 0,
+     "usd": 0.255,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T20:00:08.007Z",
+     "status": "silent",
+     "durationSec": 302,
+     "tokens": 765060,
+     "helpers": 6,
+     "usd": 2.366,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T21:00:09.218Z",
+     "status": "silent",
+     "durationSec": 1043,
+     "tokens": 4428282,
+     "helpers": 8,
+     "usd": 4.327,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T22:00:09.598Z",
+     "status": "silent",
+     "durationSec": 16,
+     "tokens": 125901,
+     "helpers": 0,
+     "usd": 0.133,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T23:00:09.357Z",
+     "status": "silent",
+     "durationSec": 11,
+     "tokens": 95378,
+     "helpers": 0,
+     "usd": 0.08,
+     "detail": null
+    },
+    {
+     "at": "2026-10-28T00:00:09.456Z",
+     "status": "silent",
+     "durationSec": 28,
+     "tokens": 178059,
+     "helpers": 0,
+     "usd": 0.172,
+     "detail": null
+    },
+    {
+     "at": "2026-10-28T01:00:09.452Z",
+     "status": "silent",
+     "durationSec": 14,
+     "tokens": 122090,
+     "helpers": 0,
+     "usd": 0.133,
+     "detail": null
+    },
+    {
+     "at": "2026-10-28T02:00:10.442Z",
+     "status": "silent",
+     "durationSec": 36,
+     "tokens": 373438,
+     "helpers": 0,
+     "usd": 0.213,
+     "detail": null
+    },
+    {
+     "at": "2026-10-28T03:00:11.983Z",
+     "status": "silent",
+     "durationSec": 19,
+     "tokens": 137835,
+     "helpers": 0,
+     "usd": 0.064,
+     "detail": null
+    },
+    {
+     "at": "2026-10-28T04:00:13.077Z",
+     "status": "silent",
+     "durationSec": 21,
+     "tokens": 230863,
+     "helpers": 0,
+     "usd": 0.106,
+     "detail": null
+    },
+    {
+     "at": "2026-10-28T05:01:00.703Z",
+     "status": "silent",
+     "durationSec": 16,
+     "tokens": 167397,
+     "helpers": 0,
+     "usd": 0.111,
+     "detail": null
+    },
+    {
+     "at": "2026-10-28T06:00:15.552Z",
+     "status": "ok",
+     "durationSec": 31,
+     "tokens": 280881,
+     "helpers": 0,
+     "usd": 0.141,
+     "detail": null
+    },
+    {
+     "at": "2026-10-28T07:00:26.852Z",
+     "status": "silent",
+     "durationSec": 165,
+     "tokens": 750070,
+     "helpers": 2,
+     "usd": 1.171,
+     "detail": null
+    },
+    {
+     "at": "2026-10-28T23:00:26.713Z",
+     "status": "silent",
+     "durationSec": 51,
+     "tokens": 803614,
+     "helpers": 0,
+     "usd": 0.41,
+     "detail": null
+    },
+    {
+     "at": "2026-10-29T00:00:27.082Z",
+     "status": "silent",
+     "durationSec": 38,
+     "tokens": 395925,
+     "helpers": 0,
+     "usd": 0.246,
+     "detail": null
+    },
+    {
+     "at": "2026-10-29T01:00:28.463Z",
+     "status": "silent",
+     "durationSec": 252,
+     "tokens": 185783,
+     "helpers": 0,
+     "usd": 0.167,
+     "detail": null
+    },
+    {
+     "at": "2026-10-29T02:00:28.955Z",
+     "status": "silent",
+     "durationSec": 338,
+     "tokens": 910874,
+     "helpers": 2,
+     "usd": 1.939,
+     "detail": null
+    },
+    {
+     "at": "2026-10-29T03:00:29.896Z",
+     "status": "silent",
+     "durationSec": 47,
+     "tokens": 613077,
+     "helpers": 0,
+     "usd": 0.262,
+     "detail": null
+    },
+    {
+     "at": "2026-10-29T04:00:30.818Z",
+     "status": "silent",
+     "durationSec": 1005,
+     "tokens": 1238316,
+     "helpers": 7,
+     "usd": 5.512,
+     "detail": null
+    },
+    {
+     "at": "2026-10-29T05:01:24.263Z",
+     "status": "silent",
+     "durationSec": 51,
+     "tokens": 905904,
+     "helpers": 0,
+     "usd": 0.331,
+     "detail": null
+    },
+    {
+     "at": "2026-10-29T06:00:32.082Z",
+     "status": "silent",
+     "durationSec": 26,
+     "tokens": 322677,
+     "helpers": 0,
+     "usd": 0.2,
+     "detail": null
+    },
+    {
+     "at": "2026-10-29T07:00:40.021Z",
+     "status": "silent",
+     "durationSec": 38,
+     "tokens": 491451,
+     "helpers": 0,
+     "usd": 0.185,
+     "detail": null
+    },
+    {
+     "at": "2026-10-29T08:00:33.273Z",
+     "status": "silent",
+     "durationSec": 28,
+     "tokens": 358266,
+     "helpers": 0,
+     "usd": 0.152,
+     "detail": null
+    },
+    {
+     "at": "2026-10-29T09:00:34.074Z",
+     "status": "silent",
+     "durationSec": 48,
+     "tokens": 623056,
+     "helpers": 0,
+     "usd": 0.235,
+     "detail": null
+    },
+    {
+     "at": "2026-10-29T10:00:34.488Z",
+     "status": "silent",
+     "durationSec": 308,
+     "tokens": 1518528,
+     "helpers": 2,
+     "usd": 1.548,
+     "detail": null
+    }
+   ],
+   "gaps": [
+    {
+     "from": "2026-10-28T08:00:00.000Z",
+     "to": "2026-10-28T22:00:00.000Z",
+     "missed": 15
+    }
+   ],
+   "attention": "warn",
+   "attentionText": "не запускался 28.10 с 11:00 до 01:00 — 15 ходов",
+   "pulse": {
+    "updatedAt": "2026-10-29T10:05:12.000Z",
+    "phase": "ход закончен",
+    "text": "зависших нет",
+    "nextBy": "2026-10-29T11:15:00.000Z",
+    "fresh": true
+   },
+   "commits": [
+    {
+     "at": "2026-10-26T08:10:00Z",
+     "hash": "a1c03e2",
+     "subject": "Очередь публикаций: повтор при 429 от Telegram"
+    },
+    {
+     "at": "2026-10-26T11:40:00Z",
+     "hash": "4be19f0",
+     "subject": "Предпросмотр: кнопки одобрения под постом"
+    },
+    {
+     "at": "2026-10-26T13:20:00Z",
+     "hash": "9d2e771",
+     "subject": "Тесты: сценарии отклонения и правки"
+    },
+    {
+     "at": "2026-10-26T17:30:00Z",
+     "hash": "c7f4a10",
+     "subject": "Клиентский формат job.json: проверка картинок"
+    },
+    {
+     "at": "2026-10-26T19:45:00Z",
+     "hash": "0e6b5d3",
+     "subject": "Журнал публикаций: причина отказа"
+    },
+    {
+     "at": "2026-10-27T02:30:00Z",
+     "hash": "57aa0c9",
+     "subject": "outbox: результат с адресом поста"
+    },
+    {
+     "at": "2026-10-27T05:20:00Z",
+     "hash": "b3d9e48",
+     "subject": "Требования 260–271: расписание публикаций"
+    },
+    {
+     "at": "2026-10-27T11:30:00Z",
+     "hash": "e81f2c6",
+     "subject": "Telegram: альбомы до 10 картинок"
+    },
+    {
+     "at": "2026-10-27T14:25:00Z",
+     "hash": "2fd06a1",
+     "subject": "Тесты: альбомы и подписи"
+    },
+    {
+     "at": "2026-10-27T17:20:00Z",
+     "hash": "7c5b3e0",
+     "subject": "Проверки: отчёт о покрытии требований"
+    },
+    {
+     "at": "2026-10-27T21:15:00Z",
+     "hash": "d40e9b2",
+     "subject": "Повтор одобрения после правки текста"
+    },
+    {
+     "at": "2026-10-28T07:20:00Z",
+     "hash": "13ab7f5",
+     "subject": "Требования 280–288: отмена публикации"
+    },
+    {
+     "at": "2026-10-29T03:17:00Z",
+     "hash": "6acd4d8",
+     "subject": "Публикация: защита от двойной отправки"
+    },
+    {
+     "at": "2026-10-29T06:17:00Z",
+     "hash": "33c6473",
+     "subject": "Требования 289–294: статусы в outbox"
+    },
+    {
+     "at": "2026-10-29T10:23:00Z",
+     "hash": "fbca3e5",
+     "subject": "Тесты: 6 037 зелёных"
+    }
+   ]
+  },
+  {
+   "gaps": [],
+   "attention": null,
+   "attentionText": null,
+   "pulse": null,
+   "commits": [],
+   "id": "socpub-digest",
+   "name": "socpublisher: утренняя сводка",
+   "bot": "default",
+   "botName": "Основной",
+   "project": "socpublisher",
+   "kind": "digest",
+   "schedule": {
+    "type": "cron",
+    "text": "ежедневно 08:00",
+    "cron": "0 8 * * *",
+    "timezone": "Europe/Moscow"
+   },
+   "expect": "сводка в чат каждое утро",
+   "noAi": false,
+   "lastRun": {
+    "at": "2026-10-29T05:00:30.000Z",
+    "status": "ok",
+    "durationSec": 45,
+    "tokens": 558791,
+    "helpers": 0,
+    "usd": 0.53,
+    "detail": null
+   },
+   "nextRunAt": "2026-10-30T05:00:00.000Z",
+   "stats24h": {
+    "expected": 1,
+    "runs": 1,
+    "ok": 1,
+    "silent": 0,
+    "error": 0,
+    "missed": 0,
+    "tokens": 558791,
+    "minutes": 0.8,
+    "usd": 0.53
+   },
+   "slots24h": [
+    "ok"
+   ],
+   "runs": [
+    {
+     "at": "2026-10-26T05:00:30.000Z",
+     "status": "ok",
+     "durationSec": 45,
+     "tokens": 512340,
+     "helpers": 0,
+     "usd": 0.48,
+     "detail": null
+    },
+    {
+     "at": "2026-10-27T05:00:30.000Z",
+     "status": "ok",
+     "durationSec": 37,
+     "tokens": 601234,
+     "helpers": 0,
+     "usd": 0.53,
+     "detail": null
+    },
+    {
+     "at": "2026-10-28T05:00:30.000Z",
+     "status": "ok",
+     "durationSec": 41,
+     "tokens": 533900,
+     "helpers": 0,
+     "usd": 0.48,
+     "detail": null
+    },
+    {
+     "at": "2026-10-29T05:00:30.000Z",
+     "status": "ok",
+     "durationSec": 45,
+     "tokens": 558791,
+     "helpers": 0,
+     "usd": 0.53,
+     "detail": null
+    }
+   ]
+  },
+  {
+   "gaps": [],
+   "attention": null,
+   "attentionText": null,
+   "pulse": null,
+   "commits": [],
+   "id": "proxyapi-balance",
+   "name": "Баланс ProxyAPI",
+   "bot": "default",
+   "botName": "Основной",
+   "project": "Zapcita",
+   "kind": "prompt",
+   "schedule": {
+    "type": "cron",
+    "text": "ежедневно 10:00",
+    "cron": "0 10 * * *",
+    "timezone": "Europe/Moscow"
+   },
+   "expect": "пишет, только если баланс ниже порога",
+   "noAi": false,
+   "lastRun": {
+    "at": "2026-10-29T07:00:30.000Z",
+    "status": "silent",
+    "durationSec": 6,
+    "tokens": 43994,
+    "helpers": 0,
+    "usd": 0.04,
+    "detail": "баланс 334,75 ₽"
+   },
+   "nextRunAt": "2026-10-30T07:00:00.000Z",
+   "stats24h": {
+    "expected": 1,
+    "runs": 1,
+    "ok": 0,
+    "silent": 1,
+    "error": 0,
+    "missed": 0,
+    "tokens": 43994,
+    "minutes": 0.1,
+    "usd": 0.04
+   },
+   "slots24h": [
+    "silent"
+   ],
+   "runs": [
+    {
+     "at": "2026-10-26T07:00:30.000Z",
+     "status": "silent",
+     "durationSec": 6,
+     "tokens": 44120,
+     "helpers": 0,
+     "usd": 0.04,
+     "detail": "баланс 351,10 ₽"
+    },
+    {
+     "at": "2026-10-27T07:00:30.000Z",
+     "status": "silent",
+     "durationSec": 6,
+     "tokens": 43870,
+     "helpers": 0,
+     "usd": 0.04,
+     "detail": "баланс 345,62 ₽"
+    },
+    {
+     "at": "2026-10-28T07:00:30.000Z",
+     "status": "silent",
+     "durationSec": 6,
+     "tokens": 42990,
+     "helpers": 0,
+     "usd": 0.04,
+     "detail": "баланс 340,18 ₽"
+    },
+    {
+     "at": "2026-10-29T07:00:30.000Z",
+     "status": "silent",
+     "durationSec": 6,
+     "tokens": 43994,
+     "helpers": 0,
+     "usd": 0.04,
+     "detail": "баланс 334,75 ₽"
+    }
+   ]
+  },
+  {
+   "gaps": [],
+   "attention": null,
+   "attentionText": null,
+   "pulse": null,
+   "commits": [],
+   "id": "socpub-alarm",
+   "name": "socpublisher: тревога фона",
+   "bot": "default",
+   "botName": "Основной",
+   "project": "socpublisher",
+   "kind": "prompt",
+   "schedule": {
+    "type": "event",
+    "text": "по событию"
+   },
+   "expect": "сообщит, если фон завис",
+   "noAi": false,
+   "lastRun": {
+    "at": "2026-10-26T17:39:00.000Z",
+    "status": "ok",
+    "durationSec": 21,
+    "tokens": 61234,
+    "helpers": 0,
+    "usd": 0.06,
+    "detail": "фон завис — сообщение в чат"
+   },
+   "nextRunAt": null,
+   "stats24h": {
+    "expected": null,
+    "runs": 0,
+    "ok": 0,
+    "silent": 0,
+    "error": 0,
+    "missed": 0,
+    "tokens": 0,
+    "minutes": 0,
+    "usd": 0
+   },
+   "slots24h": [],
+   "runs": [
+    {
+     "at": "2026-10-26T17:39:00.000Z",
+     "status": "ok",
+     "durationSec": 21,
+     "tokens": 61234,
+     "helpers": 0,
+     "usd": 0.06,
+     "detail": "фон завис — сообщение в чат"
+    }
+   ]
+  },
+  {
+   "gaps": [],
+   "attention": null,
+   "attentionText": null,
+   "pulse": null,
+   "commits": [],
+   "id": "offer-reminder",
+   "name": "Напоминание: оферта до 31.10 закончилась",
+   "bot": "default",
+   "botName": "Основной",
+   "project": "Zapcita",
+   "kind": "reminder",
+   "schedule": {
+    "type": "once",
+    "text": "разово"
+   },
+   "expect": "текст в чат",
+   "noAi": false,
+   "lastRun": null,
+   "nextRunAt": "2026-11-01T05:44:00.000Z",
+   "stats24h": {
+    "expected": null,
+    "runs": 0,
+    "ok": 0,
+    "silent": 0,
+    "error": 0,
+    "missed": 0,
+    "tokens": 0,
+    "minutes": 0,
+    "usd": 0
+   },
+   "slots24h": [],
+   "runs": []
+  },
+  {
+   "gaps": [],
+   "attention": null,
+   "attentionText": null,
+   "pulse": null,
+   "commits": [],
+   "id": "infosec-x",
+   "name": "Сбор постов X",
+   "bot": "SMM",
+   "botName": "SMM",
+   "project": "infosecurity",
+   "kind": "timer",
+   "schedule": {
+    "type": "interval",
+    "text": "каждые 3 ч",
+    "everySec": 10800
+   },
+   "expect": "пополняет ленту сборщика; предохранитель $2 в месяц",
+   "noAi": true,
+   "lastRun": {
+    "at": "2026-10-29T10:20:05.000Z",
+    "status": "ok",
+    "durationSec": 44,
+    "tokens": 0,
+    "helpers": 0,
+    "usd": null,
+    "detail": "29 постов · $0,005"
+   },
+   "nextRunAt": "2026-10-29T13:21:00.000Z",
+   "stats24h": {
+    "expected": 3,
+    "runs": 3,
+    "ok": 3,
+    "silent": 0,
+    "error": 0,
+    "missed": 0,
+    "tokens": 0,
+    "minutes": 2.2,
+    "usd": 0
+   },
+   "slots24h": [
+    "ok",
+    "ok",
+    "ok"
+   ],
+   "runs": [
+    {
+     "at": "2026-10-29T04:20:31.000Z",
+     "status": "ok",
+     "durationSec": 48,
+     "tokens": 0,
+     "helpers": 0,
+     "usd": null,
+     "detail": "41 пост · $0,007"
+    },
+    {
+     "at": "2026-10-29T07:20:12.000Z",
+     "status": "ok",
+     "durationSec": 39,
+     "tokens": 0,
+     "helpers": 0,
+     "usd": null,
+     "detail": "12 постов · $0,002"
+    },
+    {
+     "at": "2026-10-29T10:20:05.000Z",
+     "status": "ok",
+     "durationSec": 44,
+     "tokens": 0,
+     "helpers": 0,
+     "usd": null,
+     "detail": "29 постов · $0,005"
+    }
+   ]
+  },
+  {
+   "gaps": [],
+   "attention": null,
+   "attentionText": null,
+   "pulse": null,
+   "commits": [],
+   "id": "server-backup",
+   "name": "Резервная копия сервера",
+   "bot": "server",
+   "botName": "Сервер",
+   "project": null,
+   "kind": "timer",
+   "schedule": {
+    "type": "cron",
+    "text": "ежедневно ~06:00",
+    "cron": "0 6 * * *",
+    "timezone": "Europe/Moscow"
+   },
+   "expect": "шифрованная копия сервера",
+   "noAi": true,
+   "lastRun": {
+    "at": "2026-10-29T03:08:00.000Z",
+    "status": "ok",
+    "durationSec": 439,
+    "tokens": 0,
+    "helpers": 0,
+    "usd": null,
+    "detail": "сделана · 2,1 ГБ"
+   },
+   "nextRunAt": "2026-10-30T03:00:00.000Z",
+   "stats24h": {
+    "expected": 1,
+    "runs": 1,
+    "ok": 1,
+    "silent": 0,
+    "error": 0,
+    "missed": 0,
+    "tokens": 0,
+    "minutes": 7.3,
+    "usd": 0
+   },
+   "slots24h": [
+    "ok"
+   ],
+   "runs": [
+    {
+     "at": "2026-10-26T03:08:00.000Z",
+     "status": "ok",
+     "durationSec": 436,
+     "tokens": 0,
+     "helpers": 0,
+     "usd": null,
+     "detail": "сделана · 2,0 ГБ"
+    },
+    {
+     "at": "2026-10-27T03:08:00.000Z",
+     "status": "ok",
+     "durationSec": 437,
+     "tokens": 0,
+     "helpers": 0,
+     "usd": null,
+     "detail": "сделана · 2,0 ГБ"
+    },
+    {
+     "at": "2026-10-28T03:08:00.000Z",
+     "status": "ok",
+     "durationSec": 438,
+     "tokens": 0,
+     "helpers": 0,
+     "usd": null,
+     "detail": "сделана · 2,1 ГБ"
+    },
+    {
+     "at": "2026-10-29T03:08:00.000Z",
+     "status": "ok",
+     "durationSec": 439,
+     "tokens": 0,
+     "helpers": 0,
+     "usd": null,
+     "detail": "сделана · 2,1 ГБ"
+    }
+   ]
+  }
+ ],
+ "tasksHidden": 32,
+ "services": [
+  {
+   "id": "socpub-ci",
+   "name": "Проверки socpublisher",
+   "project": "socpublisher",
+   "state": "active",
+   "since": "2026-10-28T21:02:00.000Z",
+   "restarts": 0,
+   "memMb": 4506,
+   "cpuCores": 0.89,
+   "heavy": true
+  },
+  {
+   "id": "socpub-test",
+   "name": "socpublisher, тест",
+   "project": "socpublisher",
+   "state": "active",
+   "since": "2026-10-28T21:59:00.000Z",
+   "restarts": 0,
+   "memMb": 48,
+   "cpuCores": 0.003,
+   "heavy": false
+  },
+  {
+   "id": "zapcita-outreach",
+   "name": "WhatsApp-рассылка",
+   "project": "Zapcita",
+   "state": "active",
+   "since": "2026-10-28T20:25:00.000Z",
+   "restarts": 0,
+   "memMb": 57,
+   "cpuCores": 0.004,
+   "heavy": false
+  },
+  {
+   "id": "zapcita-mail",
+   "name": "Почта",
+   "project": "Zapcita",
+   "state": "active",
+   "since": "2026-10-28T20:25:00.000Z",
+   "restarts": 0,
+   "memMb": 31,
+   "cpuCores": 0.002,
+   "heavy": false
+  },
+  {
+   "id": "zapcita-bot",
+   "name": "Бот",
+   "project": "Zapcita",
+   "state": "active",
+   "since": "2026-10-28T20:25:00.000Z",
+   "restarts": 0,
+   "memMb": 29,
+   "cpuCores": 0.002,
+   "heavy": false
+  },
+  {
+   "id": "postgresql",
+   "name": "PostgreSQL",
+   "project": null,
+   "state": "active",
+   "since": "2026-10-28T20:25:00.000Z",
+   "restarts": 0,
+   "memMb": 15,
+   "cpuCores": 0.001,
+   "heavy": false
+  },
+  {
+   "id": "zapcita-site",
+   "name": "Сайт",
+   "project": "Zapcita",
+   "state": "active",
+   "since": "2026-10-28T20:25:00.000Z",
+   "restarts": 0,
+   "memMb": 12,
+   "cpuCores": 0.001,
+   "heavy": false
+  },
+  {
+   "id": "nginx",
+   "name": "nginx",
+   "project": "все сайты",
+   "state": "active",
+   "since": "2026-10-28T20:25:00.000Z",
+   "restarts": 0,
+   "memMb": 2,
+   "cpuCores": 0.001,
+   "heavy": false
+  },
+  {
+   "id": "pult-collector",
+   "name": "Пульт: сборщик",
+   "project": "Пульт",
+   "state": "active",
+   "since": "2026-10-29T08:10:00.000Z",
+   "restarts": 0,
+   "memMb": 38,
+   "cpuCores": 0.006,
+   "heavy": false
+  }
+ ],
+ "platform": {
+  "total": 5,
+  "ok": 5,
+  "failed": 0
+ },
+ "projects": [
+  {
+   "id": "zapcita",
+   "name": "Zapcita",
+   "owner": "основной бот · соцсети — SMM",
+   "status": "ok",
+   "statusText": "работает",
+   "stage": "первые продажи, Богота",
+   "next": "01.11 — конец оферты",
+   "services": [
+    {
+     "name": "Бот",
+     "state": "active"
+    },
+    {
+     "name": "Почта",
+     "state": "active"
+    },
+    {
+     "name": "WhatsApp-рассылка",
+     "state": "active"
+    },
+    {
+     "name": "Сайт",
+     "state": "active"
+    }
+   ],
+   "commitsToday": null,
+   "lastCommit": null,
+   "facts": [
+    {
+     "label": "Деньги",
+     "value": "ProxyAPI 334,75 ₽"
+    }
+   ],
+   "asks": [],
+   "updatedAt": "2026-10-29T07:12:00.000Z"
+  },
+  {
+   "id": "socpublisher",
+   "name": "socpublisher",
+   "owner": "основной бот",
+   "status": "warn",
+   "statusText": "тест",
+   "stage": "MVP в тестовых каналах",
+   "next": "альфа в прод 30–31.10",
+   "services": [
+    {
+     "name": "socpublisher, тест",
+     "state": "active"
+    },
+    {
+     "name": "Проверки socpublisher",
+     "state": "active"
+    }
+   ],
+   "commitsToday": 3,
+   "lastCommit": {
+    "at": "2026-10-29T10:23:00.000Z",
+    "subject": "Тесты: 6 037 зелёных"
+   },
+   "facts": [
+    {
+     "label": "Тесты",
+     "value": "6 037 зелёных · требований 294 из 555"
+    }
+   ],
+   "asks": [
+    "где боевой экземпляр"
+   ],
+   "updatedAt": "2026-10-29T10:24:00.000Z"
+  },
+  {
+   "id": "infosecurity",
+   "name": "infosecurity",
+   "owner": "SMM-бот",
+   "status": "warn",
+   "statusText": "к проду",
+   "stage": "1 пост в тест-канале",
+   "next": "запуск сегодня",
+   "services": [],
+   "commitsToday": 4,
+   "lastCommit": {
+    "at": "2026-10-29T09:58:00.000Z",
+    "subject": "Сайт: лента выпусков"
+   },
+   "facts": [
+    {
+     "label": "Сбор",
+     "value": "сбор X в норме · сайт строится"
+    }
+   ],
+   "asks": [
+    "прод-ВМ и боевые каналы"
+   ],
+   "updatedAt": "2026-10-29T09:30:00.000Z"
+  },
+  {
+   "id": "meeting-tasks",
+   "name": "Задачи с созвонов",
+   "owner": "личный бот · твой сервер",
+   "status": "unknown",
+   "statusText": "нет связи",
+   "stage": "выложен 27.10, ждёт первую встречу",
+   "next": "PostgreSQL",
+   "services": [],
+   "commitsToday": null,
+   "lastCommit": null,
+   "facts": [
+    {
+     "label": "Связь",
+     "value": "статус на панель — вторым этапом"
+    },
+    {
+     "label": "Хранилище",
+     "value": "файлы, копии раз в сутки"
+    }
+   ],
+   "asks": [
+    "доступ к базе",
+    "Deepgram"
+   ],
+   "updatedAt": "2026-10-27T15:00:00.000Z"
+  },
+  {
+   "id": "campers",
+   "name": "Кемперы",
+   "owner": "SMM-бот",
+   "status": "pause",
+   "statusText": "пауза до весны",
+   "stage": "аренда до марта–апреля",
+   "next": "аудитория к сезону",
+   "services": [],
+   "commitsToday": null,
+   "lastCommit": null,
+   "facts": [
+    {
+     "label": "Соцсети",
+     "value": "ТГ, ВК, Инста, MAX — пусто"
+    }
+   ],
+   "asks": [],
+   "updatedAt": "2026-10-22T12:00:00.000Z"
+  },
+  {
+   "id": "land",
+   "name": "Земля",
+   "owner": "без бота",
+   "status": "pause",
+   "statusText": "пауза",
+   "stage": "на паузе",
+   "next": null,
+   "services": [],
+   "commitsToday": null,
+   "lastCommit": null,
+   "facts": [],
+   "asks": [],
+   "updatedAt": null
+  }
+ ],
+ "asks": [
+  {
+   "id": "a-socpub-prod",
+   "project": "socpublisher",
+   "bot": "default",
+   "botName": "Основной",
+   "text": "socpublisher: где ставить боевой экземпляр — на этом сервере или на ВМ",
+   "blocks": "прод socpublisher и infosecurity",
+   "since": "2026-10-28T21:45:00.000Z"
+  },
+  {
+   "id": "a-infosec-vm",
+   "project": "infosecurity",
+   "bot": "SMM",
+   "botName": "SMM",
+   "text": "infosecurity: адрес и доступ к прод-ВМ, боевые каналы, кнопка ✔ на первые 3 дня",
+   "blocks": "запуск infosecurity сегодня",
+   "since": "2026-10-29T10:00:00.000Z"
+  },
+  {
+   "id": "a-meet-db",
+   "project": "meeting-tasks",
+   "bot": "personal",
+   "botName": "Личный",
+   "text": "Задачи с созвонов: доступ к серверу базы и решение про голос через Deepgram",
+   "blocks": "переход на PostgreSQL и голосовые",
+   "since": "2026-10-27T09:30:00.000Z"
+  }
+ ],
+ "attention": [
+  {
+   "key": "svc-heavy:socpub-ci",
+   "level": "serious",
+   "text": "Проверки socpublisher без перерыва с 00:02: 4,4 ГБ памяти и около одного ядра",
+   "link": {
+    "tab": "server"
+   },
+   "since": "2026-10-28T21:02:00.000Z"
+  },
+  {
+   "key": "task-gap:socpub-dev",
+   "level": "warn",
+   "text": "«socpublisher: разработчик» не запускался 28.10 с 11:00 до 01:00 — 15 ходов",
+   "link": {
+    "tab": "tasks",
+    "id": "socpub-dev"
+   },
+   "since": "2026-10-28T08:00:00.000Z"
+  },
+  {
+   "key": "task-expensive:socpub-dev",
+   "level": "warn",
+   "text": "Самый дорогой фон — «socpublisher: разработчик»: 8,4 млн токенов за сутки",
+   "link": {
+    "tab": "tasks",
+    "id": "socpub-dev"
+   },
+   "since": null
+  }
+ ],
+ "subscription": {
+  "status": "allowed",
+  "resetsAt": "2026-10-29T11:00:00.000Z",
+  "windowType": "five_hour",
+  "overage": false,
+  "updatedAt": "2026-10-29T10:40:00.000Z"
+ },
+ "balances": [
+  {
+   "id": "proxyapi",
+   "name": "ProxyAPI",
+   "value": "334,75 ₽",
+   "ok": true,
+   "checkedAt": "2026-10-29T07:00:32.000Z",
+   "stale": false,
+   "note": null
+  },
+  {
+   "id": "apify",
+   "name": "Apify",
+   "value": "$0,005 из $5",
+   "ok": true,
+   "checkedAt": "2026-10-29T10:20:05.000Z",
+   "stale": false,
+   "note": null
+  },
+  {
+   "id": "deepgram",
+   "name": "Deepgram",
+   "value": "$199,92",
+   "ok": true,
+   "checkedAt": "2026-10-25T09:00:00.000Z",
+   "stale": true,
+   "note": null
+  }
+ ],
+ "upcoming": [
+  {
+   "at": "2026-10-29T11:00:00.000Z",
+   "name": "socpublisher: разработчик",
+   "taskId": "socpub-dev"
+  },
+  {
+   "at": "2026-10-29T13:21:00.000Z",
+   "name": "Сбор постов X",
+   "taskId": "infosec-x"
+  },
+  {
+   "at": "2026-10-30T03:00:00.000Z",
+   "name": "Резервная копия сервера",
+   "taskId": "server-backup"
+  },
+  {
+   "at": "2026-10-30T05:00:00.000Z",
+   "name": "socpublisher: утренняя сводка",
+   "taskId": "socpub-digest"
+  },
+  {
+   "at": "2026-10-30T07:00:00.000Z",
+   "name": "Баланс ProxyAPI",
+   "taskId": "proxyapi-balance"
+  },
+  {
+   "at": "2026-11-01T05:44:00.000Z",
+   "name": "Напоминание: оферта до 31.10 закончилась",
+   "taskId": "offer-reminder"
+  }
+ ],
+ "sourceErrors": []
+}

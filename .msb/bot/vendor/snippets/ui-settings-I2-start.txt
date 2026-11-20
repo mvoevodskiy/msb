@@ -1,0 +1,701 @@
+52500|
+52501|Сейчас: <b>${_(hK(B.cliModel, Q))}</b>${_(Z)}
+52502|
+52503|${J.map(V => `<b>${_(V.button)}</b>: ${_(V.line)}`).join(`
+52504|`)}${E ? `
+52505|
+52506|${X0A}` : ""}
+52507|
+52508|<i>Смена модели сохраняет беседу.</i>`,
+52509|    keyboard: U
+52510|  };
+52511|}
+52512|function z0A(A, Q) {
+52513|  let B = h1(A).cliModel;
+52514|  let Y = k5(Q);
+52515|  let J = [...Y.filter(E => E.model.kind === "pinned").sort((E, X) => B0A(E.model.family) - B0A(X.model.family)), ...Y.filter(E => E.model.kind === "alias" && !TK(E.model))];
+52516|  let C = J.map(({
+52517|    model: E,
+52518|    locked: X
+52519|  }) => {
+52520|    let V = E.cliModel === B;
+52521|    return {
+52522|      text: `${E.button}${V ? " ✓" : X ? " 🔒" : ""}`,
+52523|      data: W0A(E)
+52524|    };
+52525|  });
+52526|  let F = new jA();
+52527|  G0A(F, C);
+52528|  F.row().text("« Назад", "settings:model");
+52529|  let U = J.filter(E => E.model.kind === "alias" && SK[E.model.key]).map(E => `<b>${_(E.model.button)}</b>: ${_(SK[E.model.key].versions)}`);
+52530|  return {
+52531|    text: `<b>\uD83D\uDCCC Версии</b>
+52532|
+52533|Фиксированная версия не обновляется сама. Бери её, если проверил на своих задачах.${U.length ? `
+52534|
+52535|${U.join(`
+52536|`)}` : ""}${J.some(E => E.locked) ? `
+52537|
+52538|${X0A}` : ""}`,
+52539|    keyboard: F
+52540|  };
+52541|}
+52542|function Vy(A, Q, B) {
+52543|  if (Q) {
+52544|    return {
+52545|      level: Q,
+52546|      isDefault: false
+52547|    };
+52548|  }
+52549|  return {
+52550|    level: FY(A || "opus", B).shown,
+52551|    isDefault: true
+52552|  };
+52553|}
+52554|function H0A(A, Q, B) {
+52555|  let Y = A || "opus";
+52556|  return nU(Y, Q, B) ?? FY(Y, B).shown;
+52557|}
+52558|function K0A(A, Q, B) {
+52559|  let Y = A || "opus";
+52560|  if (!DC(Y, B)) {
+52561|    return {
+52562|      text: `<b>\uD83D\uDCAD Глубина мыслей</b>
+52563|
+52564|У этой модели глубина не настраивается.`,
+52565|      keyboard: new jA().text("« Назад", "menu:agent")
+52566|    };
+52567|  }
+52568|  let {
+52569|    level: J,
+52570|    isDefault: C
+52571|  } = Vy(Y, Q, B);
+52572|  let F = [{
+52573|    id: "low",
+52574|    desc: "быстро, минимум раздумий"
+52575|  }, {
+52576|    id: "medium",
+52577|    desc: "обычная глубина"
+52578|  }, {
+52579|    id: "high",
+52580|    desc: "углублённо"
+52581|  }, {
+52582|    id: "xhigh",
+52583|    desc: "глубже, для кода и сложных задач"
+52584|  }, {
+52585|    id: "max",
+52586|    desc: "максимум"
+52587|  }];
+52588|  let U = new jA();
+52589|  F.forEach((z, H) => {
+52590|    if (H > 0 && H % 3 === 0) {
+52591|      U.row();
+52592|    }
+52593|    U.text(`${z.id}${J === z.id ? " ✓" : ""}`, `settings:effort:set:${z.id}`);
+52594|  });
+52595|  U.row().text("« Назад", "menu:agent");
+52596|  let Z = Vy(Y, undefined, B).level;
+52597|  let E = ["xhigh", "max"].filter(z => yW(Y, z, B) !== z);
+52598|  let X = Y.replace(/\[1m\]$/i, "").trim().toLowerCase();
+52599|  let W = V1.some(z => z.cliModel.toLowerCase() === X || z.key.toLowerCase() === X) ? hK(Y, B) : Y;
+52600|  let G = E.length === 2 ? `
+52601|
+52602|<i>На ${_(W)} xhigh и max работают как high.</i>` : E.length === 1 ? `
+52603|
+52604|<i>На ${_(W)} ${E[0]} работает как high.</i>` : "";
+52605|  return {
+52606|    text: `<b>\uD83D\uDCAD Глубина мыслей</b>
+52607|
+52608|Насколько глубоко агент обдумывает ответ.
+52609|
+52610|${F.map(z => `<b>${z.id}</b>: ${z.desc}${z.id === Z ? " (по умолчанию)" : ""}`).join(`
+52611|`)}
+52612|
+52613|<b>Сейчас:</b> ${_(J)}${C ? " (по умолчанию)" : ""}${G}`,
+52614|    keyboard: U
+52615|  };
+52616|}
+52617|async function I2(A, Q, B, Y) {
+52618|  let J = await m();
+52619|  if (!J) {
+52620|    return;
+52621|  }
+52622|  if (OA() && JY(Y)) {
+52623|    await A.editMessageText(Q, B, jQ, {
+52624|      reply_markup: new jA().text(dA.claude, "settings:conn:set:cc")
+52625|    });
+52626|    return;
+52627|  }
+52628|  if (QQ(J) && (JY(Y) || Y === "settings:auth:help")) {
+52629|    if (Y.startsWith("settings:auth")) {
+52630|      await C0A(A, Q, B, J);
+52631|    } else {
+52632|      await uE(A, Q, B, J);
+52633|    }
+52634|    return;
+52635|  }
+52636|  if (uK(J, Y)) {
+52637|    await uE(A, Q, B, J, Y.startsWith("settings:auth") ? "settings:back" : "menu:agent");
+52638|    return;
+52639|  }
+52640|  if (Y === "settings:close") {
+52641|    try {
+52642|      await A.deleteMessage(Q, B);
+52643|    } catch {}
+52644|    return;
+52645|  }
+52646|  if (Y === "settings:permmode") {
+52647|    await YTA(A, Q, B, J);
+52648|    return;
+52649|  }
+52650|  if (Y.startsWith("settings:permmode:set:")) {
+52651|    let C = Y.split(":")[3];
+52652|    J.permissionMode = ["auto", "smart", "control", "plan"].includes(C) ? C : "auto";
+52653|    J.ccSessionId = undefined;
+52654|    await e(J);
+52655|    await V0(A, Q, B, J);
+52656|    return;
+52657|  }
+52658|  if (Y === "settings:conn" || Y === "settings:engine") {
+52659|    await uE(A, Q, B, J);
+52660|    return;
+52661|  }
+52662|  if (Y === "settings:conn:noop") {
+52663|    await uE(A, Q, B, J);
+52664|    return;
+52665|  }
+52666|  if (Y === "settings:conn:set:cc" || Y === "settings:engine:set:cc") {
+52667|    await kSA(A, Q, B, J);
+52668|    return;
+52669|  }
+52670|  if (Y === "settings:conn:set:openrouter") {
+52671|    if (!(await g9()).some(U => U.key === "OPENROUTER_API_KEY" && !!U.value)) {
+52672|      await I2(A, Q, B, "settings:auth:openrouter");
+52673|      return;
+52674|    }
+52675|    await Q0A(A, Q, B, J, R8("openrouter"));
+52676|    return;
+52677|  }
+52678|  if (Y === "settings:engine:set:oc") {
+52679|    await Q0A(A, Q, B, J, J.ocModel || pB);
+52680|    return;
+52681|  }
+52682|  if (Y === "settings:extras") {
+52683|    await mE(A, Q, B, J);
+52684|    return;
+52685|  }
+52686|  if (Y === "settings:bots") {
+52687|    await OK(A, Q, B);
+52688|    return;
+52689|  }
+52690|  if (Y === "settings:bots:refresh") {
+52691|    await OK(A, Q, B);
+52692|    return;
+52693|  }
+52694|  if (Y === "settings:bots:add") {
+52695|    iK(J.userId, {
+52696|      step: "waiting_token",
+52697|      settingsMessageId: B
+52698|    });
+52699|    let C = new jA().text("✖ Отмена", "settings:bots:cancel");
+52700|    await A.editMessageText(Q, B, `\uD83D\uDC7E <b>Новый бот</b>
+52701|
+52702|Пришли токен от @BotFather (<code>1234567890:ABC…</code>).
+52703|Я сам удалю это сообщение после.`, {
+52704|      parse_mode: "HTML",
+52705|      reply_markup: C
+52706|    });
+52707|    return;
+52708|  }
+52709|  if (Y === "settings:bots:cancel") {
+52710|    nK(J.userId);
+52711|    await OK(A, Q, B);
+52712|    return;
+52713|  }
+52714|  if (Y.startsWith("settings:bots:bot:")) {
+52715|    let C = Y.slice(18);
+52716|    await QTA(A, Q, B, C);
+52717|    return;
+52718|  }
+52719|  if (Y.startsWith("settings:bots:delete:")) {
+52720|    let C = Y.slice(21);
+52721|    await BTA(A, Q, B, C);
+52722|    return;
+52723|  }
+52724|  if (Y.startsWith("settings:bots:delete-confirm:")) {
+52725|    let C = Y.slice(29);
+52726|    let F = new jA();
+52727|    await A.editMessageText(Q, B, `\uD83D\uDDD1 Удаляю <b>${_(C)}</b>…`, {
+52728|      parse_mode: "HTML"
+52729|    });
+52730|    let {
+52731|      callConstructorApi: U
+52732|    } = await Promise.resolve().then(() => t1);
+52733|    let Z = await U("POST", "/api/iia/multibot/remove", {
+52734|      botId: C
+52735|    });
+52736|    if (Z.ok && Z.data?.ok) {
+52737|      await OK(A, Q, B);
+52738|    } else {
+52739|      let E = Z.data?.error || Z.error || "неизвестная ошибка";
+52740|      F.text("« Назад", "settings:bots");
+52741|      await A.editMessageText(Q, B, `Не удалось удалить <b>${_(C)}</b>.
+52742|
+52743|${_(E.slice(0, 200))}`, {
+52744|        parse_mode: "HTML",
+52745|        reply_markup: F
+52746|      });
+52747|    }
+52748|    return;
+52749|  }
+52750|  if (Y === "settings:timers") {
+52751|    let {
+52752|      loadSchedules: C,
+52753|      formatSchedule: F
+52754|    } = await Promise.resolve().then(() => {
+52755|      nQ();
+52756|      return eQ;
+52757|    });
+52758|    let U = await C();
+52759|    let Z = new jA();
+52760|    let E;
+52761|    if (U.length === 0) {
+52762|      E = `⏳ <b>Таймеры</b>
+52763|
+52764|Нет активных таймеров.
+52765|
+52766|Скажи агенту:
+52767|<i>«каждый день в 9 проверяй новости по AI»</i>
+52768|<i>«через 30 минут напомни проверить почту»</i>
+52769|⠀`;
+52770|    } else {
+52771|      let X = U.map(V => {
+52772|        return `${V.enabled ? "✔" : "⏸"} ${_(F(V))}`;
+52773|      });
+52774|      E = `⏳ <b>Таймеры</b> (${U.length})
+52775|
+52776|${X.join(`
+52777|`)}
+52778|
+52779|Управление: кнопки ниже, они работают всегда.
+52780|На серверах с включённой автономкой можно и словами: <i>«выключи таймер X»</i>
+52781|⠀`;
+52782|      for (let V of U) {
+52783|        let W = V.enabled ? "✔" : "⏸";
+52784|        Z.text(`${W} ${V.name}`.slice(0, 30), `settings:timer:${V.id}`).row();
+52785|      }
+52786|    }
+52787|    Z.text("« Назад", "settings:back");
+52788|    if (B) {
+52789|      await A.editMessageText(Q, B, E, {
+52790|        parse_mode: "HTML",
+52791|        reply_markup: Z
+52792|      }).catch(() => {});
+52793|    }
+52794|    return;
+52795|  }
+52796|  if (Y.startsWith("settings:timer:")) {
+52797|    let C = Y.slice(15);
+52798|    let {
+52799|      loadSchedules: F,
+52800|      saveSchedules: U,
+52801|      formatSchedule: Z
+52802|    } = await Promise.resolve().then(() => {
+52803|      nQ();
+52804|      return eQ;
+52805|    });
+52806|    let X = (await F()).find(G => G.id === C);
+52807|    if (!X) {
+52808|      await A.editMessageText(Q, B, "⚠️ Таймер не найден", {
+52809|        reply_markup: new jA().text("« Назад", "settings:timers")
+52810|      }).catch(() => {});
+52811|      return;
+52812|    }
+52813|    let V = `⏳ <b>${_(X.name)}</b>
+52814|
+52815|Тип: ${X.type === "daily" ? "ежедневно" : X.type === "weekly" ? "еженедельно" : "одноразовый"}
+52816|Статус: ${X.enabled ? "✔ активен" : "⏸ выключен"}
+52817|Задача: <i>${_(X.prompt.slice(0, 200))}</i>
+52818|⠀`;
+52819|    let W = new jA();
+52820|    if (X.enabled) {
+52821|      W.text("⏸ Выключить", `settings:timer-toggle:${X.id}`).row();
+52822|    } else {
+52823|      W.text("▶️ Включить", `settings:timer-toggle:${X.id}`).row();
+52824|    }
+52825|    W.text("🗑 Удалить", `settings:timer-delete:${X.id}`).row();
+52826|    W.text("« Назад", "settings:timers");
+52827|    await A.editMessageText(Q, B, V, {
+52828|      parse_mode: "HTML",
+52829|      reply_markup: W
+52830|    }).catch(() => {});
+52831|    return;
+52832|  }
+52833|  if (Y.startsWith("settings:timer-toggle:")) {
+52834|    let C = Y.slice(22);
+52835|    let {
+52836|      loadSchedules: F,
+52837|      setScheduleEnabled: U
+52838|    } = await Promise.resolve().then(() => {
+52839|      nQ();
+52840|      return eQ;
+52841|    });
+52842|    let E = (await F()).find(V => V.id === C);
+52843|    if (E) {
+52844|      await U(C, !E.enabled, E.enabled ? "owner" : undefined);
+52845|    }
+52846|    await I2(A, Q, B, "settings:timers");
+52847|    return;
+52848|  }
+52849|  if (Y.startsWith("settings:timer-delete:")) {
+52850|    let C = Y.slice(22);
+52851|    let {
+52852|      removeSchedule: F
+52853|    } = await Promise.resolve().then(() => {
+52854|      nQ();
+52855|      return eQ;
+52856|    });
+52857|    await F(C);
+52858|    await I2(A, Q, B, "settings:timers");
+52859|    return;
+52860|  }
+52861|  if (Y === "settings:tz") {
+52862|    let C = ["Europe/Kaliningrad", "Europe/Kyiv", "Europe/Minsk", "Europe/Moscow", "Europe/Samara", "Asia/Yekaterinburg", "Asia/Tashkent", "Asia/Almaty", "Asia/Bishkek", "Asia/Omsk", "Asia/Novosibirsk", "Asia/Krasnoyarsk", "Asia/Irkutsk", "Asia/Vladivostok", "Europe/Berlin", "Europe/London"];
+52863|    let F = E => new Date().toLocaleTimeString("ru-RU", {
+52864|      timeZone: E,
+52865|      hour: "2-digit",
+52866|      minute: "2-digit"
+52867|    });
+52868|    let U = new jA();
+52869|    for (let E = 0; E < C.length; E += 2) {
+52870|      for (let X of C.slice(E, E + 2)) {
+52871|        let V = `${B4(X)} ${F(X)}`;
+52872|        U.text(X === J.timezone ? `[${V}]` : V, `settings:tz:set:${X}`);
+52873|      }
+52874|      U.row();
+52875|    }
+52876|    U.text("✏️ Другой", "settings:tz:custom").row();
+52877|    U.text("« Назад", "settings:back");
+52878|    let Z;
+52879|    try {
+52880|      Z = `${B4(J.timezone)}, сейчас ${F(J.timezone)}`;
+52881|    } catch {
+52882|      Z = J.timezone;
+52883|    }
+52884|    await A.editMessageText(Q, B, `\uD83D\uDD50 <b>Часовой пояс</b>
+52885|
+52886|Текущий: <b>${_(Z)}</b>
+52887|
+52888|Выбери из списка или нажми «Другой» чтобы ввести вручную.`, {
+52889|      parse_mode: "HTML",
+52890|      reply_markup: U
+52891|    });
+52892|    return;
+52893|  }
+52894|  if (Y === "settings:tz:custom") {
+52895|    vK.set(J.userId, {
+52896|      settingsMessageId: B
+52897|    });
+52898|    let C = new jA();
+52899|    C.text("✖ Отмена", "settings:tz:custom:cancel");
+52900|    await A.editMessageText(Q, B, `Напиши часовой пояс в формате <b>Region/City</b>.
+52901|
+52902|Примеры: Europe/Berlin, Asia/Bangkok, America/Chicago`, {
+52903|      parse_mode: "HTML",
+52904|      reply_markup: C
+52905|    });
+52906|    return;
+52907|  }
+52908|  if (Y === "settings:tz:custom:cancel") {
+52909|    vK.delete(J.userId);
+52910|    await iF(A, Q, B);
+52911|    return;
+52912|  }
+52913|  if (Y.startsWith("settings:tz:set:")) {
+52914|    J.timezone = Y.replace("settings:tz:set:", "");
+52915|    await e(J);
+52916|    await iF(A, Q, B);
+52917|    return;
+52918|  }
+52919|  if (Y === "settings:limit") {
+52920|    let C = [0, 10, 25, 50, 100, 200];
+52921|    let F = new jA();
+52922|    for (let E of C) {
+52923|      let X = E === 0 ? "∞ без лимита" : `$${E}/день`;
+52924|      let V = E === J.dailySpendLimit;
+52925|      F.text(V ? `[${X}]` : X, `settings:limit:set:${E}`).row();
+52926|    }
+52927|    F.text("« Назад", "settings:back");
+52928|    let U = Y0(J.timezone);
+52929|    let Z = J.costHistory?.[U] ?? 0;
+52930|    await A.editMessageText(Q, B, `<b>\uD83D\uDCB0 Лимит расходов</b>
+52931|
+52932|Дневной лимит расходов при работе через <b>Anthropic API ключ</b>. При достижении лимита агент остановится и попросит разрешения продолжить.
+52933|
+52934|Подписки (<b>Claude</b>, <b>OpenAI</b>) и <b>OpenRouter</b> сюда не входят — их расходы считает провайдер.
+52935|
+52936|Сейчас: $${Z.toFixed(2)} из ${J.dailySpendLimit > 0 ? "$" + J.dailySpendLimit : "∞"}`, {
+52937|      parse_mode: "HTML",
+52938|      reply_markup: F
+52939|    });
+52940|    return;
+52941|  }
+52942|  if (Y.startsWith("settings:limit:set:")) {
+52943|    J.dailySpendLimit = parseInt(Y.split(":")[3], 10);
+52944|    J.costPaused = false;
+52945|    await e(J);
+52946|    await Fy(A, Q, B, J);
+52947|    return;
+52948|  }
+52949|  if (Y === "settings:cost:resume") {
+52950|    J.costPaused = false;
+52951|    await e(J);
+52952|    await Fy(A, Q, B, J);
+52953|    return;
+52954|  }
+52955|  if (Y === "settings:verbose") {
+52956|    let C = J.verboseLevel ?? 1;
+52957|    let F = new jA();
+52958|    let U = [{
+52959|      level: 1,
+52960|      icon: "🔉",
+52961|      label: "Стандартный",
+52962|      desc: "показывает что делает агент (Читаю файл 👁️)"
+52963|    }, {
+52964|      level: 2,
+52965|      icon: "🔊",
+52966|      label: "Подробный",
+52967|      desc: "плюс конкретный файл или команда"
+52968|    }];
+52969|    for (let Z of U) {
+52970|      let E = Z.level === C ? " ✓" : "";
+52971|      F.text(`${Z.icon} ${Z.label}${E}`, `settings:verbose:set:${Z.level}`).row();
+52972|    }
+52973|    F.text("« Назад", "settings:extras");
+52974|    await A.editMessageText(Q, B, `<b>✍️ Детализация ответов</b>
+52975|
+52976|Сколько деталей агент показывает пока работает.
+52977|
+52978|${U.map(Z => `${Z.icon} <b>${Z.label}</b> — ${Z.desc}`).join(`
+52979|`)}`, {
+52980|      parse_mode: "HTML",
+52981|      reply_markup: F
+52982|    });
+52983|    return;
+52984|  }
+52985|  if (Y.startsWith("settings:verbose:set:")) {
+52986|    let C = parseInt(Y.split(":")[3], 10);
+52987|    J.verboseLevel = Math.max(1, Math.min(2, C));
+52988|    await e(J);
+52989|    await mE(A, Q, B, J);
+52990|    return;
+52991|  }
+52992|  if (Y === "settings:stt") {
+52993|    let C = [{
+52994|      id: "deepgram",
+52995|      label: "Deepgram",
+52996|      desc: "облако, $200 в подарок, супер-точность"
+52997|    }];
+52998|    let F = new jA();
+52999|    for (let U of C) {
+53000|      let Z = process.env.DEEPGRAM_API_KEY ? " ✓" : "";
+53001|      F.text(`${U.label}${Z}`, `settings:stt:set:${U.id}`).row();
+53002|    }
+53003|    F.text("« Назад", "settings:extras");
+53004|    await A.editMessageText(Q, B, `<b>\uD83C\uDFA4 Голосовые</b>
+53005|
+53006|${C.map(U => `• <b>${U.label}</b> — ${U.desc}`).join(`
+53007|`)}
+53008|
+53009|Другие провайдеры — позже, по ключу.`, {
+53010|      parse_mode: "HTML",
+53011|      reply_markup: F
+53012|    });
+53013|    return;
+53014|  }
+53015|  if (Y.startsWith("settings:stt:set:")) {
+53016|    let C = Y.split(":")[3];
+53017|    if (C !== "deepgram" || !process.env.DEEPGRAM_API_KEY) {
+53018|      await A.editMessageText(Q, B, `❌ Deepgram не подключён.
+53019|
+53020|Добавь DEEPGRAM_API_KEY в /settings → \uD83D\uDD11 Переменные окружения.
+53021|Регистрация: deepgram.com ($200 бесплатного баланса).`, {
+53022|        parse_mode: "HTML",
+53023|        reply_markup: new jA().text("« Назад", "settings:stt")
+53024|      });
+53025|      return;
+53026|    }
+53027|    J.sttProvider = C;
+53028|    await e(J);
+53029|    await mE(A, Q, B, J);
+53030|    return;
+53031|  }
+53032|  if (Y === "settings:monitor-storage") {
+53033|    let C = process.env.MONITOR_STORAGE || "sqlite";
+53034|    let F = new jA();
+53035|    F.text(`SQLite (локально)${C !== "supabase" ? " ✓" : ""}`, "settings:monitor-storage:set:sqlite").row();
+53036|    F.text(`Supabase (облако)${C === "supabase" ? " ✓" : ""}`, "settings:monitor-storage:set:supabase").row();
+53037|    F.text("« Назад", "settings:extras");
+53038|    await A.editMessageText(Q, B, `<b>\uD83D\uDCBE Хранилище мониторинга</b>
+53039|
+53040|Текущее: <b>${C === "supabase" ? "Supabase" : "SQLite"}</b>
+53041|
+53042|• <b>SQLite</b> — на сервере, работает из коробки
+53043|• <b>Supabase</b> — в облаке, надёжнее, нужна настройка`, {
+53044|      parse_mode: "HTML",
+53045|      reply_markup: F
+53046|    });
+53047|    return;
+53048|  }
+53049|  if (Y === "settings:monitor-storage:set:sqlite") {
+53050|    await s1("MONITOR_STORAGE", "sqlite");
+53051|    let {
+53052|      resetStore: C
+53053|    } = await Promise.resolve().then(() => {
+53054|      D1();
+53055|      return F9;
+53056|    });
+53057|    C();
+53058|    await mE(A, Q, B, J);
+53059|    return;
+53060|  }
+53061|  if (Y === "settings:monitor-storage:set:supabase") {
+53062|    if (!process.env.SUPABASE_URL || !process.env.SUPABASE_SERVICE_KEY && !process.env.SUPABASE_ANON_KEY) {
+53063|      await A.editMessageText(Q, B, `❌ Supabase не подключён.
+53064|
+53065|Добавь ключи в /settings → Supabase:
+53066|• SUPABASE_URL
+53067|• SUPABASE_SERVICE_KEY`, {
+53068|        parse_mode: "HTML",
+53069|        reply_markup: new jA().text("« Назад", "settings:monitor-storage")
+53070|      });
+53071|      return;
+53072|    }
+53073|    await s1("MONITOR_STORAGE", "supabase");
+53074|    let {
+53075|      resetStore: C
+53076|    } = await Promise.resolve().then(() => {
+53077|      D1();
+53078|      return F9;
+53079|    });
+53080|    C();
+53081|    await mE(A, Q, B, J);
+53082|    return;
+53083|  }
+53084|  if (Y === "settings:model") {
+53085|    if (J.engine === "oc") {
+53086|      let F = lB(J.ocModel || pB);
+53087|      let U = M8(F) ?? M8(vY);
+53088|      let Z = J.ocModel || U.default;
+53089|      let E = {
+53090|        cheap: "дёшево",
+53091|        standard: "стандарт",
+53092|        frontier: "💰 премиум"
+53093|      };
+53094|      let X = new jA();
+53095|      for (let W of U.models) {
+53096|        let G = W.id === Z ? " ✓" : "";
+53097|        X.text(`${W.label}${G}`, `settings:model:set:${W.id}`).row();
+53098|      }
+53099|      X.text("✏️ Своя модель (OpenRouter)", "settings:model:custom").row();
+53100|      X.text("📋 Все модели (каталог)", "settings:model:catalog").row();
+53101|      X.text("« Назад", "menu:agent");
+53102|      let V = `<b>\uD83E\uDDE0 Модель</b> · ${_(mY(F))}
+53103|
+53104|${U.models.map(W => {
+53105|        let G = W.id === Z ? " ✓" : "";
+53106|        return `<b>${_(W.label)}</b> · ${E[W.tier]}${G}${W.desc ? `
+53107|   ${_(W.desc)}` : ""}`;
+53108|      }).join(`
+53109|
+53110|`)}
+53111|
+53112|<i>Смена модели начнёт новую беседу.</i>`;
+53113|      await A.editMessageText(Q, B, V, {
+53114|        parse_mode: "HTML",
+53115|        reply_markup: X
+53116|      });
+53117|      return;
+53118|    }
+53119|    let C = D0A(J.ccModel, SB());
+53120|    await A.editMessageText(Q, B, C.text, {
+53121|      parse_mode: "HTML",
+53122|      reply_markup: C.keyboard
+53123|    });
+53124|    return;
+53125|  }
+53126|  if (J.engine === "oc" && (Y === yK || Y.startsWith(cE) || Y.startsWith(dE))) {
+53127|    await V0(A, Q, B, J);
+53128|    return;
+53129|  }
+53130|  if (Y === yK) {
+53131|    let C = z0A(J.ccModel, SB());
+53132|    await A.editMessageText(Q, B, C.text, {
+53133|      parse_mode: "HTML",
+53134|      reply_markup: C.keyboard
+53135|    });
+53136|    return;
+53137|  }
+53138|  if (Y.startsWith(cE) || Y.startsWith(dE)) {
+53139|    let C = fK(Y);
+53140|    if (C && Ey(J, C, SB())) {
+53141|      await e(J);
+53142|    }
+53143|    await V0(A, Q, B, J);
+53144|    return;
+53145|  }
+53146|  if (Y === "settings:model:catalog") {
+53147|    if (J.engine !== "oc") {
+53148|      return;
+53149|    }
+53150|    await A.editMessageText(Q, B, "⏳ Собираю каталог моделей…", {
+53151|      parse_mode: "HTML"
+53152|    }).catch(() => {});
+53153|    let C = lB(J.ocModel || pB);
+53154|    let U = (M8(C) ?? M8(vY)).models.map(V => ({
+53155|      id: V.id,
+53156|      label: V.label,
+53157|      tier: V.tier,
+53158|      desc: V.desc
+53159|    }));
+53160|    let Z = await gF({
+53161|      all: true
+53162|    });
+53163|    let E = ow(U, Z, mY(C));
+53164|    let X = new jA().text("« Назад к моделям", "settings:model");
+53165|    await A.editMessageText(Q, B, E, {
+53166|      parse_mode: "HTML",
+53167|      reply_markup: X
+53168|    });
+53169|    return;
+53170|  }
+53171|  if (Y === "settings:model:custom") {
+53172|    if (J.engine !== "oc") {
+53173|      return;
+53174|    }
+53175|    MO(J.userId, {
+53176|      messageId: B
+53177|    });
+53178|    await A.editMessageText(Q, B, `✏️ <b>Своя модель OpenRouter</b>
+53179|
+53180|Пришли id модели одним сообщением — например <code>x-ai/grok-4.3</code> (или <code>openrouter/x-ai/grok-4.3</code>).
+53181|
+53182|На твой риск: бот не проверяет каждую модель заранее. Если она не резолвится на шлюзе — скажу честно, и модель не сменится.
+53183|
+53184|Отмена: « Назад.`, {
+53185|      parse_mode: "HTML",
+53186|      reply_markup: new jA().text("« Назад", "settings:model")
+53187|    });
+53188|    return;
+53189|  }
+53190|  if (Y.startsWith("settings:model:set:")) {
+53191|    let C = Y.replace("settings:model:set:", "");
+53192|    if (J.engine === "oc" && V0A(C)) {
+53193|      await V0(A, Q, B, J);
+53194|      return;
+53195|    }
+53196|    if (J.engine === "oc") {
+53197|      let U = K4(C)?.model.label ?? C;
+53198|      j4(J, C);
+53199|      await e(J);
+53200|      let Z = await lE(J.engine);

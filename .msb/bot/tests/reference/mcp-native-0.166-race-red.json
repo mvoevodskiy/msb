@@ -1,0 +1,17 @@
+{
+  "source": "74bcb1c02d0f4d934d7bf7404c48f0c981a169e6",
+  "version": "codex-cli 0.166.0",
+  "check": "mcp-native-0.166-transport.mjs /absolute/codex --race",
+  "network": "loopback-only",
+  "owned_profiles": true,
+  "synthetic_headers_only": true,
+  "failure": "native header was received by the managed endpoint",
+  "observed": {
+    "native_and_managed_distinct": false,
+    "managed_call_with_own_key": true,
+    "native_call_with_native_header": false,
+    "native_header_at_managed_endpoint": true,
+    "bot_key_at_native_endpoint": false,
+    "native_file_exact": true
+  }
+}

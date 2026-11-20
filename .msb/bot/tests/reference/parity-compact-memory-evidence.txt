@@ -1,0 +1,66 @@
+Codex /compact: synthetic context transport, not model-memory quality
+
+The old readable blob 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 lines
+114077-114125 and 20911-20931 shows manual compaction of the active Claude
+session and a success response only after the compact boundary. Read it with
+`git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba` and the line
+ranges. The native Codex provider is a new-core adaptation: the old blob is
+not evidence of its model's summarization quality.
+
+Reproducible fixture: codex-compact-memory-native.mjs requires absolute paths
+for an installed Codex binary, this source tree and a disposable scratch parent.
+Only run it under a separately verified OS sandbox that denies access to real
+profiles and external networks while allowing its own loopback. The fixture
+does not enforce OS isolation by itself. For a Linux native binary in a local
+vendor tree, an example with an already available Node 22 image is:
+
+  docker run --rm --network none --pull never --read-only \
+    --tmpfs /tmp:rw,exec,mode=1777 \
+    --mount type=bind,src=ABS_SOURCE,dst=/probe,readonly \
+    --mount type=bind,src=ABS_NATIVE_VENDOR,dst=/native,readonly \
+    msb-local-checks:node22-forms node \
+    /probe/.msb/bot/tests/reference/codex-compact-memory-native.mjs \
+    /native/bin/codex /probe /tmp
+
+Substitute absolute source/vendor paths and a compatible local binary; no image
+or dependency is downloaded by this command. Linux reproduction of this new
+fixture is still pending: the 16 November run below used macOS.
+
+The fixture creates one synthetic profile, two separate threads, fake OAuth and
+a fake Responses server bound to loopback. In each, the actual runCodexTurn
+adapter sends three separate turns with distinct fictitious facts and filler.
+The fixture checks the appropriate fact in each seed request and all three in
+the following compaction request.
+The actual compactCodex/runCodexCompaction provider resumes that same thread
+and waits for the native compaction confirmation. The fake model builds a
+marked summary from the facts it received; one scenario keeps all three and a
+negative control intentionally omits the third. A subsequent actual adapter
+turn resumes the same ID. The fake model inspects the marked summary contained
+in the request and reports how many facts reached it: expected 3/3 and 2/3.
+The fake auth/config are compared byte-for-byte after both scenarios. Scratch
+files are removed by the fixture. It calls neither Telegram nor the full core
+compactSession path, and its fake model never calls a tool or external service.
+
+Observed 16 November 2026 with source 96dac13 and installed macOS arm64 CLI
+0.169.0-alpha.11.1 (binary SHA-256
+3ea20787e106af94573d3d6c19480aed93a1334b0dd32b6b04e2f780ce82cf4b):
+both same-thread compact/resume scenarios passed; marked summary fact flags
+were [true,true,true] and [true,true,false]; 30 loopback requests in total;
+fake auth and config remained byte-identical. The two relevant adapter files
+match release source c56f30b, but that does not verify the live server.
+
+For this run a macOS sandbox denied user-home reads except the source tree,
+denied all writes except the disposable scratch tree, and denied network except
+localhost. Before running, synthetic checks confirmed outside read/write denial,
+scratch writes, loopback, and EPERM/EACCES for a non-local TEST-NET-1 connect.
+The first profile used an unsupported literal IP syntax and never launched a
+test; the corrected localhost profile was rechecked successfully. An initial
+fixture incorrectly rejected a native GET /models and failed before compact;
+it was corrected to return a local 404 and the reported two-scenario run passed.
+
+This proves transport of the fake marked summary through this local native CLI
+and can detect a missing artificial fact in the fixture. It does not show which
+facts a real model would keep, guarantee full conversation memory, test a real
+subscription or establish the CLI version/behavior installed on JAR1. The
+previous live check recalled one project and next step only. Any assessment of
+real summarization requires a separate authorized test using invented facts.

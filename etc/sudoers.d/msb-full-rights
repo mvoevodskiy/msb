@@ -1,0 +1,3 @@
+# OPT-IN: не ставится bootstrap/install.sh по умолчанию.
+# cp + visudo -cf, только если нужен Claude Code / агент с полным sudo (как старый jarvis-client).
+client ALL=(ALL) NOPASSWD:ALL

@@ -1,0 +1,35 @@
+{
+ "version": 1,
+ "asks": [
+  {
+   "id": "a2",
+   "project": "demo",
+   "bot": "alpha",
+   "text": "Где ставить боевой экземпляр",
+   "blocks": "прод",
+   "since": "2026-10-28T21:59:00.000Z",
+   "closedAt": null,
+   "closedNote": null
+  },
+  {
+   "id": "a1",
+   "project": "Демо",
+   "bot": "beta",
+   "text": "Доступ к базе",
+   "blocks": null,
+   "since": "2026-10-27T12:00:00.000Z",
+   "closedAt": null,
+   "closedNote": null
+  },
+  {
+   "id": "a0",
+   "project": null,
+   "bot": "someone",
+   "text": "Закрытый вопрос",
+   "blocks": null,
+   "since": "2026-10-20T12:00:00.000Z",
+   "closedAt": "2026-10-21T12:00:00.000Z",
+   "closedNote": "решено"
+  }
+ ]
+}

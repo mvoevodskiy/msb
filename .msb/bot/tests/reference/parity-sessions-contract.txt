@@ -1,0 +1,324 @@
+Сессии: журнал бота, прежний список/страницы и явный выбор native ID
+
+База01e867a1b7b2c6c4a8e195dd0443d2bd8ccac715, codex/open-core-reference-tests.
+Oldmaster00f081f2220d0e6d3a186e8e1bb447b57acd6ebf, исторический
+.msb/bot/vendor/deobfuscated.js, readableblob73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11.
+Читать git show BLOB | sed -n с узкими windows ниже, не весь bundle.
+Luna readonly выявила reader/writer/callback связи; основной агент проверил
+точные writer/UI/reset windows. Terra отдельно проверила new provider/token fences.
+Это контракт восстановления, не завершённая реализация или заявка на выпуск.
+
+Старый источник и writer
+wh111559–111585 читает state.sessionHistory, фильтрует engine cc/oc плюс legacy
+rows безengine, затем reverse. CC не перечисляет native Claude истории. Путь
+state был рядом с IIA_SESSION_DIR (55678–55690), в multibot per-bot; новое ядро
+сохраняет собственный действующий per-bot statePath, не меняет auth/native paths.
+OC дополнительно merged metadata openclaw sessions list --json (RP/LP31921–32013,
+MP33030–33064), приerror/2stimeout остаётся ledger. Это не чтение transcripts.
+
+Единственный writer tE55610–55644, limit100 у55683. Новая row:
+{id,startedAt,lastActivity,messageCount:1,firstPrompt:prompt.slice(0,200),
+ project:activeProject,engine:'cc'|'oc',name?,cwd?}.
+Существующийid: lastActivity=now,messageCount++,lastPrompt200; engine/name/cwd
+заполняются если отсутствуют; firstPrompt/project/startedAt не меняются.
+Ledger сохраняет insertion order, не пересортировывается поlastActivity;
+после обновления остаются последние100, native histories не удаляются.
+Worker110650–110700 вызывает writer после каждого resolved engine pass сtruthyID,
+до окончательной Telegram доставки. Поэтому tool-only/empty text/error result сID
+тоже могли учитываться; еслиengine throws — writer не вызывается. Voice input —
+normalized transcript, non-string —[multimodal]. Автономка через тотжеworker
+108818–108820/111460–111474; auto-continue каждый returnedpass тоже увеличиваетcount.
+OC restoreprev/reattach calls121893/121986 также обновляютledger. CC selectionсам
+ничего не считает: только присваиваетID. AbortedID могбытьзаписан:IJ20187–20204,
+s0A56450–56476; исходныйwriter не проверялoutcome. Это не разрешение нарушить
+уже принятые новые /stop/reset/provider/project fences или возвращать late ID.
+
+Старый renderer/команда
+Oh111994–112058, BC10. Entries newest-first = reverse(state rows); page по10.
+Text: «📋 <b>Сессии</b> (N)» + при>1page « — стр. n» + «:\n\n».
+Каждаястрока: номер, Yj(firstPrompt,200) либо«без описания», « ← текущая»;
+при отличающемсяlastPrompt: «\n   ↳ остановились на: «TEXT»» (ky120).
+Далее «\n   [PROJECT]» либо[workspace], « · TIME · COUNT сообщ.».
+Yj/ky55816–55833: collapse whitespace/trim, tailellipsis «…», lastPrompt не
+показывать если пустой/нормализованно равенfirst. HTMLescaping обязателен.
+RelativeTime111534–111558: future/<60s«только что», затем minutes/hours/days.
+Текст строк внутри выбраннойpage обращается ещёраз (Z.slice().reverse());
+НО номерные кнопки идут впрямомentries порядке, по5встроке.
+Кнопка «N» либо«N ✓»→session:ID. Paging«« 1-10»/«11-20 »»→sessions:page:0/1;
+пределы clamp, invalidNaNcallback no-op. ВсегдаBack→menu:back. НовойкнопкиDelete
+истории тут не было. OC-only«⟲ Вернуть предыдущую» зависитocPrevSessionIds.
+Empty/sessions112063–112089: «Нет сохранённых сессий. Напиши что-нибудь, чтобы
+начать первую.» безkeyboard. Empty menu121478–121526 —тотжетекст+Back приedit.
+Длинные IDs должны реально работать в Telegram64UTF8bytes; общийstatelesscodec
+уже восстановлен0ff10af, не создавать persistentregistry или новый путь выбора.
+
+Выбор/reset
+CC callback121912–121918/122006–122028: row поid, восстановитьprojectприaccess,
+либоbase,ccSessionId=id,save; success«✔ Переключился: FIRSTPROMPT [PROJECT]»
+(илибезprojectсуффикса), HTMLescaped. Оннеперечисляет/непроверяетnativehistoryAPI.
+Oldbug: неизвестныйrawID тоже записывался; missingproject могоставитьстарыйcwd,
+ноустановитьчужойID. Этиошибки не переносить: выбратьтолько реальнуюоднозначную
+сохранённуюrow подходящегодвижка/provider, targetdirectoryпроверитьдо записи.
+Приinvalid/missing/stale/foreign/providerchanged не менятьstate/settings/pendingform.
+Старый validID можетоказаться удалён CLI: не обещатьnativevalidity поrow; реальная
+ошибкаresume не должнасоздаватьfreshthread/терятьстарыйID (принятыйCodexконтракт).
+
+/newtask111976–111994: clearcurrentID, ledgerretain; reply«🆕 Новая сессия.
+Предыдущий контекст сброшен.». /clear111951–111975: «🧹 Контекст сброшен.
+Начинаем с чистого листа.». Menu121447–121477: edit «🆕 Новая сессия.
+Предыдущая сохранена — найдёшь в /sessions.\n\nПиши.». Ни один не удаляетledger
+или nativefiles. СтарыйOCpQ55416–55428 паркуетocPrevSessionIds и чиститOCcontext.
+Сохранённуюисторию можно выбрать явно послеreset; lateststore.sessions не служит
+автоматическимисточникомresume. Newtaskbutton/команда используютпринятые fences.
+
+Отказ продолжить сессию и переполнение Codex
+Old qTA 55986–55988 и LTA 56039–56051 распознавали потерянную сессию,
+очищали active ID и сразу повторяли запрос. При t4 из IJ 20225–20231
+LTA 56029–56038 очищал active ID, а worker 111273–111289 писал контекст
+аварийного восстановления и обещал новую сессию при следующем сообщении.
+Ручное сжатие имело отдельную команду и подтверждение (114077–114119).
+Точный эталон доступен через git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba.
+
+Для Codex принят режим явного выбора сессии. На 0.166.0 изолированный resume
+отсутствующего UUID завершился exit 1 и no rollout found на stderr. Stdout
+пуст, запросов к локальному API нет. На f192861 текст обещал новую сессию
+на следующем вводе, хотя тот же ID отправлялся снова. После исправления
+подсказка предлагает /sessions или /newtask. Старые ID, история и usage
+обрабатываются по прежним правилам. Смена ID происходит по команде владельца.
+[Проверка](../../../../overlay/bot/ext/tests/reference/provider-switch.test.mjs)
+сравнивает два обычных запроса и первый ход после /newtask.
+Нативная диагностика переполнения, ручной /compact и его подтверждение
+проверяются отдельными контролями.
+
+Адаптация provider/session ownership нового ядра
+Однаrow метаданных per-bot, не новый native transcript browser. Enginecc включает
+раздельныеClaude/Codex/Cursor/Qwen: writer запоминаетproviderId, reader/selector
+фильтруют текущийпровайдер того жеcore snapshot, legacyID узнаётся поext:prefix
+илиrawClaude. Не показывать/не подставлятьIDдругогопровайдера; не переключать
+модель/auth/engine/provider скрыто радиcallback. ForceClaudeenv учитывать.
+Sameproject selection: один updateState, ccSessionId=row.id, lastCcUsageclear,
+epoch++, cancelselectedfirsttoken/selectedparkedslot; другиеproviderslots сохранить.
+Differentproject: existingapplyProjectSelection clearsALLslots/tokens, then restore
+selectedrowID in thatsame transaction. Validate row/provider/project/epoch again
+после awaitdirectory. Старыйresult/cleanup не вернётстарыйID и не удалитnewtoken.
+
+ИСТОРИЯ И АВТОМАТИЧЕСКАЯ АКТИВАЦИЯ — РАЗНЫЕ РЕШЕНИЯ (fidelity correction)
+Old tE/worker записывает каждый достоверный возвращённый native ID, в том числе
+error/abort первого хода и позднее завершение после newtask/project/session switch.
+Это не обход reset: история всегда разрешала явный выбор после сброса, без
+автоматической активации. Прежнее требование этого контракта «только accepted
+placement/same fence» было лишним ограничением и отменено до любой выкладки.
+Writer использует captured provider/project; новые row не привязывать к случайному
+текущему проекту после await (old GB.activeProject race исправляется по actual cwd).
+
+Active ccSessionId/parked slots/usage/context по-прежнему защищены всеми epoch,
+provider,project и first-token fences. Их запрет на автоматическое сохранение
+не отменяет историческую запись реального завершившегося вызова. Late metadata
+не трогает новую reservation или выбранные ID/usage. First error/abort с реально
+наблюдавшимся своим native ID индексируется, но не активируется автоматически.
+Foreign/sentinel/выдуманный ID исключаются. Из runClaudeTurn нужны внутренние
+факты о запущенном процессе и ID из init/result. При остановке первого Codex
+хода используется также достоверный thread.started, переданный до завершения
+процесса. Этот предварительный ID предназначен только для истории отменённого хода.
+Ранее известный resume ID после запущенного вернувшегося вызова тоже учитывается.
+Отмена до запуска, исключение подготовки и ненаблюдённый ID истории не создают.
+Принадлежность ID проверяется по провайдеру, захваченному при начале хода.
+
+Count/lastPrompt/lastActivity меняются в порядке ЗАВЕРШЕНИЯ каждого engine pass,
+как tE, не «последний start побеждает». Atomic read/modify/write не теряет инкременты;
+existing firstPrompt/project/startedAt не переписывать. Completion-order не менять
+по собственной рекомендации; это было бы отдельным согласуемым отличием.
+Displayprompt bounded200 с общей journal redaction/Unicode clip. Не retro-import
+старые native histories/userfiles и не выдумывать firstPrompt/COUNT приboot/чтении.
+
+
+Текущее состояние/проверки
+01e867a: sessionsScreen — currentprovider/context+newtask, нетledgerwriter/
+list/page/select. Telegramhistory.mjs — отдельныйPult журналсообщений/trace,
+не indexnativeID. Его privacy/доставка/stop/flush не должныломаться этимэтапом.
+Нужны productionUIRED→GREEN; runner writer сClaude/Codexfake; first/existing,
+repeat100cap,returnederror/tool-only/abort/throw/autonomy,project/provider binding,
+reset-retention,selectionresumeactualargv/cwd,staleID/provider/project/page,
+missingtarget,codec64,owner/staleform,allfirsttoken/latecompletion races.
+ПолныйLinuxgate одногоcommit и отдельнаяприёмка требуютсядоJAR1install.
+OpenClawnative merge/reattach/restoreprev/runtime покаmissing-transfer (самrunner
+newOCнеподключён); невыдаватьэтотCCэтапзаfullOCparity илиподменятьегоfakeуспехом.
+Полная20family цель остаётсяпрежней; этотлогическийшаг закрываетCLIhistorypath.
+Ничего наJAR1дляcontract/REDне менять; ownernativeистории не читать, не импортировать.
+
+
+Архив промежуточных проверок ДО fidelity correction (не нормативное поведение)
+
+Часть прежних assertions ошибочно запрещала историческую запись late/firstabort.
+Они требуют замены проверкой истории отдельно от активных ID/usage. Приведённые
+ниже числа описывают реальные исторические прогоны, но не доказывают old parity.
+
+UI RED checkpoint
+node --test --test-reporter=tap .msb/bot/tests/sessions.test.mjs:
+28tests,5PASS/23ERR_ASSERTION,0cancelled/skip/todo. Это число проверок, не23
+независимыхдефекта. PASS controls: invalidpage/envinput, unknownraw/opaqueID,
+stale foreignprovider и ownerguard; missingfeature cases реально идут через
+createBot/router/commands/state, безновыхмодулей/fake replacementrenderer.
+Два missingpagerender dereference в первоначальномtestbody заменены явной
+assertпроверкойналичияview; literalnewlines уточнены для oldтекста. Финальный
+RED содержит только assertfailures, неtest infrastructure/TypeError/importerror.
+Runnerledger/selection→actualresume и overlapraces требуют отдельныхпроверок.
+JAR1 остаётся на принятом01e867a; этот RED checkpoint не готов к выкладке.
+
+
+Runner ledger RED checkpoint
+session-ledger.test.mjs:24tests,7PASS/17ERR_ASSERTION,0cancelled/skip/todo.
+Fixture вызывает productionrunAgentTurn/state/placement, fakeCLI передаёт настоящий
+совместимый JSONL; до metadata assertions проверяютсяok/nativeID/callcount либо
+parkedplacement. Case first/repeat/tool-only/autonomy, cap100/order, returned
+known-IDerror/abort, redaction/200bound и acceptedprovider-awayfirst воспроизводят
+отсутствующийwriter. Foreign/sentinel/firsterror/firstabort/reset/projectreset/
+throw controls былиPASS; прежнее ожидание отсутствия valid first/late истории
+отменено fidelity correction сверху. НетреальныхCLI/API/HOMEисторий.
+Команда: node --test --test-reporter=tap .msb/bot/tests/session-ledger.test.mjs.
+UI+ledger checkpoints вместе52cases,12PASS/40RED; этоещёнеготовыйrelease.
+
+
+Writer checkpoint (до UI/LINUX/deploy)
+Runner ledger26GREEN плюсfirst-session/turn-lifecycle/turn-context/turn-history/
+project-races:49PASS,0FAIL/cancelled/skip. Два additional existing foreign/sentinel
+ID контроля на b47runtime:0PASS/2assertFAIL, затемGREEN; прежний existing-IDsave
+не валидировалresult namespace/provider. applySessionResult защищает и ID, иledger.
+SharedhistoryPreview перенесён без сменыбайтовfunctionbody; прежнийexport остаётся.
+Accepted active/parked first result и unchanged existing fence пишутcaptured
+metadata. Known-ID returned abort/error сохраняют old attempt count смысл безID/
+usageзамены. UI28 всёещёRED; это intermediate implementation, неготовыйrelease.
+
+
+Writer review/final focused checkpoint
+Sol49PASS нашёл P2rawClaude serviceplaceholder IDs (sharedvalidatorраньшеразрешал
+любуюnonextстроку). Newfirst/existingrunner+purematrix3RED→3GREEN, независимый
+Sol3PASS/resolved. Отдельный commonvalidatorfixe8d179c сохраняетrawIDcompat,
+ноиспользуетсуществующийsentineldenylist. Existingresult gate/ledger использует
+его черезновуюresulttransaction; не добавленыUUIDwhitelist/nativeAPI/massreset.
+Expandedledger28+sharedstarts6+first/lifecycle/context/history/projectraces:
+57PASS,0FAIL/cancelled/skip. UI52суммарныйпредыдущийRED — историческийcheckpoint;
+текущийwriterGREEN не делает ещёнеподключённоеmenu/resume готовым квыкладке.
+
+
+UI integration checkpoint (до actual resume/races/Linux/deploy)
+34sessionUI +28ledger+41menu+3codexcontext+callbackrefresh/callbackscope/inbox:
+132PASS,0FAIL/cancelled/skip. IndependentSol session/ledger/menu/codexcontext:
+106PASS, findingsнет; native resume и selector overlap ещёнепроверены.
+OriginalUIRED28(5PASS23FAIL) теперьGREEN, ещё6контролей commandpreview/pending/
+ambiguous/forceconflict/provider+rowchangedduringdirectoryawait. Oldpending
+contract подтверждён120868–120897/121478–121526/121912–122028: list/page/select
+ничего неочищали. UnknownIDoldbug не переносится. New/clear/menu oldtexts
+восстановлены только CLIпути; OC прежнийunconnectedview не объявляетсяbackend.
+Одинcodex-context test ожидалновыйstubtitle«Codex» вemptyhistory; онуточнён:
+emptyoldtext и реальнаяфильтрацияprovider-ownedrows, status/enginesnativefallback
+assertions сохранены. Это не удаление живой metadata/footer capability.
+СправкаCC/sessions«список сессий» из old51855; OCсправка покапрежняя.
+
+
+UI error/size follow-up before release
+Ещё2контроля permissionEACCES и Telegramfailureпослеpersist: UI36,
+расширенныйнабор134PASS. Directoryerror не меняетбеседу/невыводитprivateerror,
+ошибкадоставки послеуспешнойзаписи не маскируется«state unchanged».
+Luna readonly измерила oldlayout overflow:10rows×first200/last120/project40
+→4226visibleUTF16; project255→6376, оба>4096. Установленныеофициальныетипы
+@grammyjs/types/methods.d.ts:91/1667 подтверждаютlimit4096послеentities.
+UIintegrationcheckpointнеготовквыпуску: исправитьэтотподтверждённыйкрайнийслучай
+отдельнымRED/fix, затемactualrunnerresume/overlap иfullsamecommitLinux/live.
+
+
+Size/Unicode RED checkpoint
+На4fa6b32 новаяsession-list-size suite8:1normal-controlPASS/7assertFAIL;
+вместеledger29 (новыйstoredUnicodecase) =37tests/29PASS/8ERR_ASSERTION,
+0cancelled/skip. ПроверяетсяvisibleUTF16послепарсингаb/entities,неrawHTMLbytes:
+project40→4226,project255→6376,escaped→6226,astral→5026,legacy5000→53826.
+Сохраняются10реальныхIDbuttons/5perrow/current/metadata/statebyteequality;
+normalgolden проверяетпобайтнопрежнийнепереполненныйвид. Ещёsingleemoji preview,
+selectedcaption иstored200boundary воспроизводятразрывsurrogatepair.
+Установленныеtypesmethods.d.ts91/1667прочитаныосновнымагентом; лимит4096после
+entities. НетTelegram/API/реальныхфайлов; этоinvalidpage/UnicodeRED,неinfraerror.
+
+
+Size/Unicode fix checkpoint
+ОбщийclipUtf16 сохраняетвалидныесимволыприstored200/preview; redaction остаётся
+прежней. Formatter text/keyboard разделены; UTF16 visiblebudget считаетсяперед
+HTMLescaping, binarysearch captions толькоесли>4096. Normalviewbyteexact,
+page10/5perrow/allIDbuttons/current/metadataпрежние, ledger не режется радиUI.
+size+ledger37GREEN; expandedsize/ledger/UI/turnhistory/callbackrefresh/scope:
+88PASS,0FAIL/cancelled/skip. Sol независимо37PASS/0findings. Никакихреальных
+Telegram/nativeCLI/API илиuserdata; actualresume/races/Linux/live ещёpending.
+
+
+Next-run/selector overlap checkpoint
+session-resume.test.mjs11PASS:2providers×resume/preparing/existing/same-id/same-first,
+плюсID-lessCodex→Claudehistory/project→newtask→newClaudefirst→lateCodex.
+Productionbot/callback/runner/state/providerplacement; selectedresumeargv/cwd,
+local+ownerprompt, metadata/usage/foreignslots/newreservation guards. Реальный
+harmlessNodechild проверяетOS cwd; nativeCLI/model подменён. SyntheticCodex
+counter50000дохода подтверждён отдельно, поэтомуcontextnullassertневакуумный.
+Exactmodelcallcount1/2добавленпозамечаниюreview, лишниезапускинепрячутся.
+На immutablegitarchive01e867a:0PASS/11ERR_ASSERTION,0cancel/skip/importerrors;
+натекущемкоде11GREEN. Solнезависимо11PASS/no blockingfindings, countgapзакрыт.
+Настоящийadapter/nativeCLIresume, samefinalcommitLinux иliveещёнепроверены.
+JAR1 остаётся01e867a, native/userhistoryнечиталинепереносили.
+
+
+Причина уточнения
+Независимый повторный source review Terra иSol признал прежнее исключение valid
+late/error/abort изledger слишком строгим: worker110650–110700/tE55610–55644
+непроверяют success/abort/epoch передисторией, а newtaskсохраняетявныйвыбор.
+Ранее ревью проверяло реализацию против уже суженного нами контракта; это не
+достаточная old-проверка. Новый контракт/зелёныйtest не заменяют исходный oldsource.
+51c51e5 не выкладывался (Docker3fixturecaptionFAIL); JAR1 остаётся01e867a.
+Нужны отдельные RED дляутраченнойreturned истории, корректная provenance граница,
+completionorder и explicit resume записанного late ID, затем всеactivefences GREEN.
+
+
+Fidelity RED после повторной old-сверки
+session-ledger37 +session-resume15 =52tests,30PASS/22ERR_ASSERTION,
+0cancelled/skip/import/infrafail. Valid observed firsterror/abort/late reset/project
+теперь обязанысохранитьсявledger, без activeID/usage/parked resurrection. Native
+selector tests больше не требуютзамораживатьвсюисторию: подтверждаетсядельта
+толькоисторическойстрокисвоегозавершившегосявызова и неизменностьактивныхполей.
+НовыеexplicitUIresume послеnewtask/projectReset проверяютдоступностьlateID,
+actualargv/cwd и новыйход. Same-IDcompletionorder и carriedknown-error —GREEN
+контроли; pre-spawnabortсреальнымlargepromptfilegap0children —RED(fake count).
+IJold19514–19540 действительноspawnпередвозвратомenginepass; newearlyabort
+возвращаетcarriedIDбезchild, поэтомулишьtruthyresultfieldнедостаточнодляindex.
+
+Fidelity GREEN checkpoint (after598cf6c RED)
+Runner exposes spawned/sessionIdObserved; early pre-spawn abort explicitly false.
+Result transaction indexes valid returned observed IDs (or launched carried known
+resume) using captured provider/project, independently of automatic placement.
+First error/abort and late reset/project/select history are retained; active IDs,
+parked slots, usage/context and newer reservations retain all previous fences.
+Existing first metadata is immutable; count/lastPrompt follow completion order.
+52ledger+resume PASS after30PASS/22ERR_ASSERTION;28first-session/session-starts/
+turn-context/lifecycle/project-races/claude-abort PASS. No cancelled/skipped cases.
+Independent Sol reread old source and ran58ledger+resume+session-starts PASS,
+no findings. These isolated checks use fake model protocol/own temporary HOME,
+not real adapter/native integration. Full same-commit Linux and native/live gates
+still pending; JAR1 remains01e867a and no push occurred.
+
+Нативный счётчик Codex и относительный профиль
+
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf, .iia/bot/index.js.
+См. git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba.
+Worker 110781–110790 и 110830–110840 передавал замер последнего прохода
+в футер 3362–3384. /info читал lastCcUsage (114177–114190).
+Список 111995–112011 был журналом бесед. /compact обновлял usage из
+CLI результата (114093–114119). В адаптации Codex берутся нативный
+last_token_usage.total_tokens и model_context_window, а /status читает
+rollout. После compacted нужен новый token_count.
+
+На 72ad72e CODEX_HOME в CLI относился к проекту, а чтение использовало cwd
+бота и переменные на момент завершения. d58845d показал 98% из workspace
+в /status вместо 18% проекта. При изменении окружения во время хода
+футер получал 99 000 токенов другого профиля вместо 18 000.
+
+Запуск и чтение используют один снимок HOME/CODEX_HOME и cwd хода.
+Для /status относительный профиль разрешается от текущего проекта
+или базового workspace через общий resolver. При недоступном проекте
+данные отсутствуют. /sessions сохраняет прежний журнал. Проверки в
+codex-context.test.mjs и turn-context.test.mjs покрывают также свежий
+замер после compacted и отдельный футер частичного ответа.

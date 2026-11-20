@@ -1,0 +1,2801 @@
+    }
+  } catch {}
+  let D = await m().then(z => z?.timezone).catch(() => {
+    return;
+  });
+  return {
+    armed: J,
+    tasksAlive: U,
+    tasksPaused: Z,
+    lastRun: X,
+    timers: E,
+    monitor: V,
+    stopped: W,
+    stoppedSince: G,
+    timezone: D
+  };
+}
+async function iGA() {
+  let {
+    renderAutonomyHome: A
+  } = await Promise.resolve().then(() => {
+    qU();
+    return $U;
+  });
+  let Q = await p2Q();
+  let B = new JA().text("📋 Задачи", "auto:tasks").text("📡 Мониторинг", "auto:monitor").row().text("🕓 История", "auto:history").text("⏳ Таймеры", "auto:timers").row().text("❔ Что это", "auto:what").row();
+  if (await nGA()) {
+    let {
+      AUTONOMY_RIGHTS_BUTTON: Y
+    } = await Promise.resolve().then(() => {
+      qU();
+      return $U;
+    });
+    B.text(Y, "auto:rights").row();
+  }
+  B.text("« Назад", "menu:back");
+  return {
+    text: A(Q),
+    kb: B
+  };
+}
+async function nGA() {
+  try {
+    let {
+      autonomyRightsButtonShown: A
+    } = await Promise.resolve().then(() => {
+      X7();
+      return RR;
+    });
+    let {
+      caps: Q
+    } = await Promise.resolve().then(() => {
+      G8();
+      return xq;
+    });
+    let B = await m().catch(() => null);
+    let Y = await Q().catch(() => {
+      return;
+    });
+    return A({
+      engine: B?.engine,
+      optedIn: B?.autonomyRights === true,
+      caps: Y
+    });
+  } catch {
+    return false;
+  }
+}
+async function l2Q() {
+  let A = await Promise.resolve().then(() => {
+    qU();
+    return $U;
+  });
+  let Q = await m().then(Y => Y?.autonomyRights === true).catch(() => false);
+  let B = new JA().text(Q ? A.AUTONOMY_RIGHTS_OFF_BUTTON : A.AUTONOMY_RIGHTS_ON_BUTTON, "auto:rights-toggle").row().text("« Назад", "auto:home");
+  return {
+    text: A.renderAutonomyRightsScreen(Q),
+    kb: B
+  };
+}
+async function Ph(A, Q, B) {
+  let Y = new JA().text("🆕 Новая сессия", "menu:newtask").text("📁 Проекты", "menu:projects").row().text("💬 Сессии", "menu:sessions").text("🧩 Навыки", "menu:skills").row().text("🧠 Агент", "menu:agent").text("🔌 MCP", "menu:mcp").row().text("⚙️ Настройки", "menu:settings").text("🥷 Автономка", "menu:autonomy");
+  let J = `Готов. Пиши задачу или выбери действие.
+⠀`;
+  if (B) {
+    try {
+      await A.editMessageText(Q, B, `Готов. Пиши задачу или выбери действие.
+⠀`, {
+        reply_markup: Y
+      });
+    } catch {}
+  } else {
+    await A.sendMessage(Q, `Готов. Пиши задачу или выбери действие.
+⠀`, {
+      reply_markup: Y
+    });
+  }
+}
+async function c2Q() {
+  let A = await a4();
+  return Object.keys(A.mcpServers || {}).length;
+}
+async function d2Q() {
+  return (await a4()).mcpServers || {};
+}
+async function yGA(A, Q, B) {
+  if ((await m())?.engine === "oc") {
+    let U = new JA();
+    U.text("➕ Добавить", "mcp:add").row();
+    U.text("« Назад", "menu:back");
+    let Z = JP(await s7());
+    if (B) {
+      await A.editMessageText(Q, B, Z, {
+        parse_mode: "HTML",
+        reply_markup: U
+      }).catch(async () => {
+        await A.sendMessage(Q, Z, {
+          parse_mode: "HTML",
+          reply_markup: U
+        });
+      });
+    } else {
+      await A.sendMessage(Q, Z, {
+        parse_mode: "HTML",
+        reply_markup: U
+      });
+    }
+    return;
+  }
+  let J = await c2Q();
+  let C = `\uD83D\uDD0C <b>MCP серверы</b>
+
+Внешние сервисы — транскрипты, скрейпинг, базы данных и другие инструменты.
+⠀`;
+  let F = new JA();
+  F.text(`\uD83D\uDCC2 workspace (${J})`, "mcp:folder:workspace").row();
+  F.text("« Назад", "menu:back");
+  if (B) {
+    await A.editMessageText(Q, B, C, {
+      parse_mode: "HTML",
+      reply_markup: F
+    }).catch(async () => {
+      await A.sendMessage(Q, C, {
+        parse_mode: "HTML",
+        reply_markup: F
+      });
+    });
+  } else {
+    await A.sendMessage(Q, C, {
+      parse_mode: "HTML",
+      reply_markup: F
+    });
+  }
+}
+async function SGA(A, Q, B) {
+  let Y = await d2Q();
+  let J = Object.keys(Y);
+  let C = new JA();
+  let F;
+  if (J.length === 0) {
+    F = `<b>\uD83D\uDCC2 workspace</b>
+
+Доступны агенту во всех проектах.
+
+<i>Нет серверов</i>
+⠀`;
+  } else {
+    let U = await l0A();
+    let Z = new Map(Object.values(U?.servers ?? {}).map(W => [W.name, W.status]));
+    let E = J.map(W => {
+      let G = Y[W];
+      let D = G?.type === "http" || G?.url;
+      return h0A(W, D ? "http" : "stdio", Z.get(W), _);
+    });
+    let X = U?.at ? new Date(U.at) : null;
+    let V = X && !Number.isNaN(X.getTime()) ? `
+
+<i>Состояние на ${String(X.getUTCHours()).padStart(2, "0")}:${String(X.getUTCMinutes()).padStart(2, "0")} UTC</i>` : "";
+    F = `<b>\uD83D\uDCC2 workspace</b>
+
+Доступны агенту во всех проектах.
+
+${E.join(`
+`)}${V}
+⠀`;
+    for (let W of J) {
+      C.text(W, `mcp:server:${W}`).row();
+    }
+  }
+  C.text("➕ Добавить", "mcp:add").row();
+  C.text("« Назад", "menu:mcp");
+  if (B) {
+    await A.editMessageText(Q, B, F, {
+      parse_mode: "HTML",
+      reply_markup: C
+    }).catch(async () => {
+      await A.sendMessage(Q, F, {
+        parse_mode: "HTML",
+        reply_markup: C
+      });
+    });
+  } else {
+    await A.sendMessage(Q, F, {
+      parse_mode: "HTML",
+      reply_markup: C
+    });
+  }
+}
+R.command("start", async A => {
+  let Q = A.chat?.id;
+  let B = A.from?.id;
+  if (!Q || !B) {
+    return;
+  }
+  if (await e1()) {
+    await ny(R.api, Q, B, "/start");
+    return;
+  }
+  if (await dy()) {
+    await A.reply("Меня только что подключили к твоему серверу. Давай настроюсь — как тебя зовут и чем занимаешься?");
+  } else {
+    await Ph(A.api, Q);
+  }
+});
+R.command("help", async A => {
+  let Q = await m();
+  await A.reply(A0A(Q?.engine), {
+    parse_mode: "HTML"
+  });
+});
+R.command("claude", async A => {
+  await A.reply(Jy("cc"), {
+    parse_mode: "HTML"
+  });
+});
+R.command("openclaw", async A => {
+  if (QQ(await m())) {
+    let Q = await ay("command");
+    await A.reply(Q.text, {
+      parse_mode: "HTML",
+      link_preview_options: {
+        is_disabled: true
+      },
+      reply_markup: Q.keyboard
+    });
+    return;
+  }
+  await A.reply(Jy("oc"), {
+    parse_mode: "HTML"
+  });
+});
+R.command("clear", async A => {
+  let Q = A.from?.id;
+  if (!Q) {
+    return;
+  }
+  let B = A.message?.message_thread_id;
+  v$.delete(xh(Q, B));
+  await I4A(Q, B);
+  let Y = await m();
+  if (Y) {
+    let J = false;
+    if (Y.ccSessionId) {
+      Y.ccSessionId = undefined;
+      J = true;
+    }
+    if (Y.engine === "oc") {
+      pQ(Y, "/clear");
+      J = true;
+    }
+    if (J) {
+      await e(Y);
+    }
+  }
+  await A.reply("🧹 Контекст сброшен. Начинаем с чистого листа.");
+});
+R.command("newtask", async A => {
+  let Q = await m();
+  if (Q) {
+    let B = false;
+    if (Q.ccSessionId) {
+      Q.ccSessionId = undefined;
+      B = true;
+    }
+    if (Q.engine === "oc") {
+      pQ(Q, "/newtask");
+      B = true;
+    }
+    if (B) {
+      await e(Q);
+    }
+  }
+  await A.reply("🆕 Новая сессия. Предыдущий контекст сброшен.");
+});
+var BC = 10;
+function Oh(A, Q, B, Y = {}) {
+  let J = Math.max(1, Math.ceil(A.length / BC));
+  let C = Math.max(0, Math.min(B, J - 1));
+  let F = C * BC;
+  let U = A.slice(F, F + BC);
+  let Z = U.map((W, G) => {
+    let D = F + G + 1;
+    let z = W.id === Q;
+    let H = _(Yj(W.firstPrompt, 200) || "без описания");
+    let j = ky(W, 120);
+    let I = j ? `
+   ↳ остановились на: «${_(j)}»` : "";
+    let q = m2Q(W.lastActivity);
+    let $ = W.project ? `[${_(W.project)}]` : "[workspace]";
+    let N = Y.journalIds?.has(W.id) ? " · ⟲ контекст восстановится из журнала" : "";
+    return `${D}. ${H}${z ? " ← текущая" : ""}${I}
+   ${$} · ${q} · ${W.messageCount} сообщ.${N}`;
+  });
+  let E = J > 1 ? ` — стр. ${C + 1}` : "";
+  let X = `\uD83D\uDCCB <b>Сессии</b> (${A.length})${E}:
+
+${Z.slice().reverse().join(`
+
+`)}`;
+  let V = [];
+  for (let W = 0; W < U.length; W += 5) {
+    V.push(U.slice(W, W + 5).map((G, D) => ({
+      text: `${F + W + D + 1}${G.id === Q ? " ✓" : ""}`,
+      callback_data: `session:${G.id}`
+    })));
+  }
+  if (J > 1) {
+    let W = [];
+    if (C > 0) {
+      let G = (C - 1) * BC + 1;
+      let D = C * BC;
+      W.push({
+        text: `« ${G}-${D}`,
+        callback_data: `sessions:page:${C - 1}`
+      });
+    }
+    if (C < J - 1) {
+      let G = (C + 1) * BC + 1;
+      let D = Math.min((C + 2) * BC, A.length);
+      W.push({
+        text: `${G}-${D} »`,
+        callback_data: `sessions:page:${C + 1}`
+      });
+    }
+    if (W.length > 0) {
+      V.push(W);
+    }
+  }
+  if (Y.showRestorePrev) {
+    V.push([{
+      text: "⟲ Вернуть предыдущую",
+      callback_data: "sessions:restoreprev"
+    }]);
+  }
+  V.push([{
+    text: "« Назад",
+    callback_data: "menu:back"
+  }]);
+  return {
+    text: X,
+    buttons: V
+  };
+}
+R.command("sessions", async A => {
+  let {
+    entries: Q,
+    currentId: B,
+    showRestorePrev: Y,
+    journalIds: J
+  } = await wh();
+  if (Q.length === 0) {
+    return A.reply("Нет сохранённых сессий. Напиши что-нибудь, чтобы начать первую.");
+  }
+  let {
+    text: C,
+    buttons: F
+  } = Oh(Q, B, 0, {
+    showRestorePrev: Y,
+    journalIds: J
+  });
+  await A.reply(C, {
+    parse_mode: "HTML",
+    link_preview_options: {
+      is_disabled: true
+    },
+    reply_markup: {
+      inline_keyboard: F
+    }
+  });
+});
+async function YC(A, Q) {
+  let B = await m();
+  if (B?.engine === "oc") {
+    let X = new JA().text("« Назад", "skills:back-menu");
+    try {
+      await A.api.sendChatAction(A.chat.id, "typing");
+    } catch {}
+    if (Q) {
+      try {
+        await A.api.editMessageText(A.chat.id, Q, "⏳ Загружаю навыки…", {
+          parse_mode: "HTML"
+        });
+      } catch {}
+    }
+    let V = aw(await rw());
+    if (Q) {
+      try {
+        await A.api.editMessageText(A.chat.id, Q, V, {
+          parse_mode: "HTML",
+          reply_markup: X
+        });
+      } catch {
+        await A.reply(V, {
+          parse_mode: "HTML",
+          reply_markup: X
+        });
+      }
+    } else {
+      await A.reply(V, {
+        parse_mode: "HTML",
+        reply_markup: X
+      });
+    }
+    return;
+  }
+  let J = (await Z4()).filter(X => X.name !== "system");
+  let C = B?.activeProject;
+  let F = new JA();
+  let U = `\uD83E\uDDE9 <b>Навыки</b>
+
+Инструкции и правила, которые расширяют возможности агента.
+⠀`;
+  let Z = J.filter(X => X.source === "workspace");
+  let E = J.filter(X => X.source === "project");
+  F.text(`\uD83D\uDCC2 workspace (${Z.length})`, "skills:folder:workspace").row();
+  if (E.length > 0) {
+    F.text(`\uD83D\uDCC2 ${C || "project"} (${E.length})`, "skills:folder:project").row();
+  }
+  F.text("« Назад", "skills:back-menu");
+  if (Q) {
+    try {
+      await A.api.editMessageText(A.chat.id, Q, U, {
+        parse_mode: "HTML",
+        reply_markup: F
+      });
+    } catch {
+      await A.reply(U, {
+        parse_mode: "HTML",
+        reply_markup: F
+      });
+    }
+  } else {
+    await A.reply(U, {
+      parse_mode: "HTML",
+      reply_markup: F
+    });
+  }
+}
+R.command("skills", async A => {
+  await YC(A);
+});
+R.command("modules", async A => {
+  await YC(A);
+});
+R.command("catalog", async A => {
+  let Q = await sWA();
+  let B = tWA(Q);
+  try {
+    await A.reply(B, {
+      parse_mode: "HTML"
+    });
+  } catch {
+    await A.reply(B);
+  }
+});
+R.command("settings", async A => {
+  await iF(R.api, A.chat.id, undefined, A.from?.id);
+});
+var qh = 9;
+function _h(A, Q, B, Y) {
+  let J = Math.ceil(A.length / qh);
+  let C = Math.max(0, Math.min(B, J - 1));
+  let F = A.slice(C * qh, (C + 1) * qh);
+  let U = A.map(G => {
+    if (G === Q) {
+      return `▸ ${G} — текущий`;
+    }
+    return `  ${G}`;
+  });
+  let E = [!Q ? "▸ ~/workspace — текущий" : "  ~/workspace", ...U].join(`
+`);
+  let X = `\uD83D\uDCC1 <b>Проекты</b> (${A.length}):
+
+<code>${E}</code>
+
+Переключить: /project <i>название</i>`;
+  let V = [];
+  let W = Q ? "📂 ~/workspace" : "📂 ~/workspace ✓";
+  V.push([{
+    text: W,
+    callback_data: "project:__default__"
+  }]);
+  for (let G = 0; G < F.length; G += 3) {
+    V.push(F.slice(G, G + 3).map(D => ({
+      text: `${D === Q ? "✓ " : ""}${D}`,
+      callback_data: `project:${D}`
+    })));
+  }
+  if (J > 1) {
+    let G = [];
+    if (C > 0) {
+      G.push({
+        text: "◀️",
+        callback_data: `projects:page:${C - 1}`
+      });
+    }
+    G.push({
+      text: `${C + 1}/${J}`,
+      callback_data: "noop"
+    });
+    if (C < J - 1) {
+      G.push({
+        text: "▶️",
+        callback_data: `projects:page:${C + 1}`
+      });
+    }
+    V.push(G);
+  }
+  V.push([{
+    text: "➕ Новый проект",
+    callback_data: "menu:newproject"
+  }]);
+  if (Y) {
+    V.push([{
+      text: "« Назад",
+      callback_data: "menu:back"
+    }]);
+  } else {
+    V.push([{
+      text: "✖ Закрыть",
+      callback_data: "menu:close"
+    }]);
+  }
+  return {
+    text: X,
+    keyboard: {
+      inline_keyboard: V
+    }
+  };
+}
+R.command("projects", async A => {
+  let Q = SA.join(SA.dirname(qA()), "projects");
+  let B;
+  try {
+    B = await (await import("node:fs/promises")).readdir(Q, {
+      withFileTypes: true
+    });
+  } catch {
+    let {
+      InlineKeyboard: U
+    } = await import("grammy");
+    await A.reply("📁 Проектов пока нет.", {
+      parse_mode: "HTML",
+      reply_markup: new U().text("➕ Новый проект", "menu:newproject")
+    });
+    return;
+  }
+  let Y = B.filter(U => U.isDirectory()).map(U => U.name).sort();
+  if (Y.length === 0) {
+    let {
+      InlineKeyboard: U
+    } = await import("grammy");
+    await A.reply("📁 Проектов пока нет.", {
+      parse_mode: "HTML",
+      reply_markup: new U().text("➕ Новый проект", "menu:newproject")
+    });
+    return;
+  }
+  let J = await m();
+  let {
+    text: C,
+    keyboard: F
+  } = _h(Y, J?.activeProject, 0, false);
+  await A.reply(C, {
+    parse_mode: "HTML",
+    reply_markup: F
+  });
+});
+R.command("project", async A => {
+  let Q = A.match?.trim();
+  if (!Q) {
+    let E = (await m())?.activeProject;
+    let X = _A();
+    await A.reply(E ? `\uD83D\uDCCD Активный проект: <code>${_(E)}</code>
+\uD83D\uDCC2 <code>${_(X)}</code>` : `\uD83D\uDCCD Работаю в <code>~/workspace</code> (по умолчанию)
+
+Переключить: /project <i>название</i>`, {
+      parse_mode: "HTML"
+    });
+    return;
+  }
+  let B = await import("node:fs/promises");
+  let Y = SA.dirname(qA());
+  let J = SA.join(Y, "projects");
+  if (Q.startsWith("new ")) {
+    let Z = Q.slice(4).trim().replace(/[^a-zA-Z0-9_-]/g, "");
+    if (!Z) {
+      await A.reply("❌ Название проекта — только латиница, цифры, - и _");
+      return;
+    }
+    let E = SA.join(J, Z);
+    try {
+      await B.mkdir(SA.join(E, "memory"), {
+        recursive: true
+      });
+      await B.mkdir(SA.join(E, "knowledge"), {
+        recursive: true
+      });
+      let {
+        exec: X
+      } = await import("node:child_process");
+      X(`git init "${E}"`, () => {});
+      N1(E);
+      let V = await m();
+      if (V) {
+        V.activeProject = Z;
+        V.ccSessionId = undefined;
+        if (V.engine === "oc") {
+          pQ(V, "project new");
+        }
+        await e(V);
+      }
+      await A.reply(nq(_(Z), {
+        dirHtml: _(E),
+        adapter: V?.engine === "oc"
+      }), {
+        parse_mode: "HTML"
+      });
+    } catch (X) {
+      await A.reply(`❌ Ошибка: ${_(X.message.slice(0, 200))}`);
+    }
+    return;
+  }
+  let C = Q.replace(/[^a-zA-Z0-9_-]/g, "");
+  if (C === "home" || C === "default") {
+    H4();
+    let Z = await m();
+    if (Z) {
+      Z.activeProject = undefined;
+      Z.ccSessionId = undefined;
+      if (Z.engine === "oc") {
+        pQ(Z, "/project home");
+      }
+      await e(Z);
+    }
+    await A.reply("📍 Переключился на <code>~/workspace</code>", {
+      parse_mode: "HTML"
+    });
+    return;
+  }
+  let F = SA.join(J, C);
+  try {
+    await B.access(F);
+  } catch {
+    await A.reply(`❌ Проект <code>${_(C)}</code> не найден.
+
+Создать: /project new ${_(C)}`, {
+      parse_mode: "HTML"
+    });
+    return;
+  }
+  N1(F);
+  let U = await m();
+  if (U) {
+    U.activeProject = C;
+    U.ccSessionId = undefined;
+    if (U.engine === "oc") {
+      pQ(U, "/project switch");
+    }
+    await e(U);
+  }
+  await A.reply(`\uD83D\uDCCD Переключился на проект <code>${_(C)}</code>
+\uD83D\uDCC2 <code>${_(F)}</code>`, {
+    parse_mode: "HTML"
+  });
+});
+var JC = new Map();
+function Lh(A) {
+  let Q = Date.now() - new Date(A).getTime();
+  let B = Math.floor(Q / 3600000);
+  let Y = Math.floor(Q % 3600000 / 60000);
+  let J = new Date(A);
+  let C = J.toLocaleDateString("ru-RU", {
+    day: "numeric",
+    month: "short",
+    timeZone: "UTC"
+  });
+  let F = J.toLocaleTimeString("ru-RU", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "UTC"
+  });
+  let U = B > 0 ? `~${B}ч ${Y}м назад` : `~${Y}м назад`;
+  return `${C}, ${F} UTC (${U})`;
+}
+async function b4(A, Q, B) {
+  try {
+    let Y = SA.join(IW.homedir(), ".msb");
+    await PQ.mkdir(Y, {
+      recursive: true
+    });
+    let J = {
+      ts: new Date().toISOString(),
+      kind: "tunnel_connect",
+      stage: A,
+      reason: B ?? null,
+      tunnelName: Q
+    };
+    await PQ.appendFile(SA.join(Y, "errors.jsonl"), `${JSON.stringify(J)}
+`);
+  } catch {}
+  try {
+    let Y = process.env.SYNC_URL || process.env.MSB_SYNC_URL;
+    let J = process.env.SYNC_KEY || process.env.MSB_SYNC_KEY;
+    if (!Y || !J) {
+      return;
+    }
+    await fetch(`${Y}/api/report/tunnel`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${J}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        stage: A,
+        reason: B ?? null,
+        tunnel_name: Q,
+        bot_id: process.env.MSB_BOT_ID || undefined
+      }),
+      signal: AbortSignal.timeout(5000)
+    });
+  } catch {}
+}
+async function h$(A, Q) {
+  let B = await m().catch(() => null);
+  await JB(A, Q, {
+    engine: B?.engine,
+    model: B?.engine === "oc" ? B?.ocModel : B?.ccModel
+  }).catch(() => {});
+}
+async function JB(A, Q, B) {
+  let Y = Q ? UY(Q).slice(0, 512) : null;
+  try {
+    let J = SA.join(IW.homedir(), ".msb");
+    await PQ.mkdir(J, {
+      recursive: true
+    });
+    let C = {
+      ts: new Date().toISOString(),
+      kind: "agent_error",
+      error_kind: A,
+      detail: Y,
+      engine: B?.engine ?? null,
+      model: B?.model ?? null,
+      session_id: B?.sessionId ?? null
+    };
+    await PQ.appendFile(SA.join(J, "errors.jsonl"), `${JSON.stringify(C)}
+`);
+  } catch {}
+  try {
+    let J = process.env.SYNC_URL || process.env.MSB_SYNC_URL;
+    let C = process.env.SYNC_KEY || process.env.MSB_SYNC_KEY;
+    if (!J || !C) {
+      return;
+    }
+    await fetch(`${J}/api/report/agent-error`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${C}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        kind: A,
+        detail: KC(Y),
+        engine: B?.engine ?? undefined,
+        model: B?.model ?? undefined,
+        session_id: B?.sessionId ?? undefined,
+        bot_id: process.env.MSB_BOT_ID || undefined
+      }),
+      signal: AbortSignal.timeout(5000)
+    });
+  } catch {}
+}
+V1A(A => {
+  JB("oc_session_reset", A).catch(() => {});
+});
+sw(A => {
+  JB("oc_mcp_timeout", A, {
+    engine: "oc"
+  });
+});
+tw(A => {
+  JB("oc_gateway_wedged", A, {
+    engine: "oc"
+  });
+});
+jP((A, Q) => {
+  JB(A, Q, {
+    engine: "oc"
+  });
+});
+G4A(A => {
+  JB("telegram_flood_ban", A);
+});
+var TGA = Promise.resolve();
+D4A(A => {
+  TGA = TGA.then(async () => {
+    let Q;
+    try {
+      Q = Mi(A, await m());
+    } catch {}
+    await EF(Q ? {
+      ...A,
+      sessionId: Q
+    } : A);
+  }).catch(() => {});
+});
+Di((A, Q) => {
+  JB(A, Q);
+});
+async function i2Q(A) {
+  try {
+    let Q = SA.join(IW.homedir(), ".msb");
+    await PQ.mkdir(Q, {
+      recursive: true
+    });
+    let B = {
+      ts: new Date().toISOString(),
+      kind: "turn_started",
+      engine: A?.engine ?? null,
+      session_id: A?.sessionId ?? null
+    };
+    await PQ.appendFile(SA.join(Q, "errors.jsonl"), `${JSON.stringify(B)}
+`);
+  } catch {}
+  try {
+    let Q = process.env.SYNC_URL || process.env.MSB_SYNC_URL;
+    let B = process.env.SYNC_KEY || process.env.MSB_SYNC_KEY;
+    if (!Q || !B) {
+      return;
+    }
+    await fetch(`${Q}/api/report/turn-started`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${B}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        engine: A?.engine ?? undefined,
+        session_id: A?.sessionId ?? undefined,
+        bot_id: process.env.MSB_BOT_ID || undefined
+      }),
+      signal: AbortSignal.timeout(5000)
+    });
+  } catch {}
+}
+function xGA(A, Q) {
+  let B = $m(A) ?? bW(Q) ?? undefined;
+  if (!B || B === "unknown") {
+    return null;
+  }
+  let Y = vW(B);
+  return `${Y.title}
+${Y.next}`;
+}
+function n2Q(A, Q) {
+  let B = A.toLowerCase();
+  if (A.startsWith("MESSAGE_TOO_LARGE:")) {
+    return "message_too_large";
+  }
+  if (B.includes("контекст переполнен") || B.includes("context window") || B.includes("conversation too long") || B.includes("prompt is too long")) {
+    return "context_overflow";
+  }
+  if (B.includes("лимит подписки") || B.includes("лимит провайдера") || B.includes("rate") && B.includes("limit")) {
+    return "rate_limit";
+  }
+  if (B.includes("не авторизован") || B.includes("unauthorized") || B.includes("invalid_api_key") || B.includes("подключи ключ") || B.includes("ошибка авторизации подписки") || B.includes("authentication_failed") || B.includes("authentication error") || B.includes("oauth_org_not_allowed") || B.includes("organization has disabled") || B.includes("organization has been disabled") || B.includes("invalid x-api-key") || B.includes("oauth token has expired") || B.includes("\"type\":\"error\"") && B.includes("401") || /\b401\b/.test(B) && (B.includes("api") || B.includes("auth") || B.includes("anthropic"))) {
+    return "provider_auth";
+  }
+  if (B.includes("read-only file system") || B.includes("erofs") || B.includes("nonewprivileges")) {
+    return "sandbox_readonly_fs";
+  }
+  if (t0A(A)) {
+    return "oc_device_approval_pending";
+  }
+  return "turn_failed";
+}
+R.command("connect", async A => {
+  let Q = await m();
+  let B = A.chat.id;
+  let Y;
+  let J = process.env.CLIENT_ID || process.env.VPS_CLIENT_ID || "";
+  if (J && J.length > 8) {
+    Y = J.replace(/-/g, "").slice(0, 8);
+  }
+  if (!Y) {
+    try {
+      let {
+        execSync: U
+      } = S("node:child_process");
+      let E = U("cat /etc/systemd/system/code-tunnel.service 2>/dev/null", {
+        encoding: "utf-8"
+      }).match(/--name\s+jarvis-(\S+)/);
+      if (E) {
+        Y = E[1];
+      }
+    } catch {}
+  }
+  let C = `jarvis-${Y || "client"}`;
+  if (Q?.tunnelReady) {
+    if (await new Promise(Z => {
+      let {
+        exec: E
+      } = S("node:child_process");
+      E("systemctl is-active code-tunnel", (X, V) => {
+        Z(V.trim() === "active");
+      });
+    })) {
+      let {
+        existsSync: Z
+      } = await import("node:fs");
+      if (!Z("/home/client/.vscode-tunnel/token.json")) {
+        await e({
+          ...Q,
+          tunnelReady: false,
+          tunnelConnectedAt: undefined
+        });
+        await A.reply("🔄 Туннель работает, но авторизация слетела. Переподключаю...");
+      } else {
+        let X = Q.tunnelConnectedAt ? `
+Подключён: ${Lh(Q.tunnelConnectedAt)}` : "";
+        let V = `https://vscode.dev/tunnel/${C}`;
+        let W = new JA().text("⏹ Отключить", "connect:disconnect");
+        await A.reply(`✔ <b>VS Code подключён</b>
+
+Имя туннеля: <code>${C}</code>${X}
+
+\uD83D\uDD17 <a href="${V}">Открыть в браузере</a>
+
+Или в VS Code: Cmd+Shift+P → Remote-Tunnels: Connect to Tunnel → <code>${C}</code>`, {
+          parse_mode: "HTML",
+          reply_markup: W
+        });
+        return;
+      }
+    }
+    try {
+      let {
+        existsSync: Z
+      } = await import("node:fs");
+      if (Z("/home/client/.vscode-tunnel/token.json")) {
+        await A.reply("🔄 Туннель остановился — пробую перезапустить (авторизация ещё активна)...");
+        let {
+          writeFileSync: X
+        } = await import("node:fs");
+        X("/home/client/.msb/.tunnel-start", "");
+        await new Promise(W => setTimeout(W, 6000));
+        if (await new Promise(W => {
+          let {
+            exec: G
+          } = S("node:child_process");
+          G("systemctl is-active code-tunnel", (D, z) => {
+            W(z.trim() === "active");
+          });
+        })) {
+          await b4("tunnel_active", C, "restart_reused_token");
+          let W = new Date().toISOString();
+          await e({
+            ...Q,
+            tunnelReady: true,
+            tunnelConnectedAt: W
+          });
+          let G = `https://vscode.dev/tunnel/${C}`;
+          let D = new JA().text("⏹ Отключить", "connect:disconnect");
+          await A.reply(`✔ <b>VS Code подключён</b>
+
+Имя туннеля: <code>${C}</code>
+Подключён: ${Lh(W)}
+
+\uD83D\uDD17 <a href="${G}">Открыть в браузере</a>
+
+Или в VS Code: Cmd+Shift+P → Remote-Tunnels: Connect to Tunnel → <code>${C}</code>`, {
+            parse_mode: "HTML",
+            reply_markup: D
+          });
+          return;
+        }
+        await b4("tunnel_inactive", C, "restart_with_token_failed");
+      }
+    } catch {}
+    await e({
+      ...Q,
+      tunnelReady: false,
+      tunnelConnectedAt: undefined
+    });
+    await A.reply(`\uD83D\uDD04 Туннель отключился — нужна повторная авторизация GitHub.
+Это нормально — токен действует ~24 часа.
+
+Переподключаю...`);
+  }
+  let F = JC.get(B);
+  if (F) {
+    F.cancelled = true;
+    F.proc.kill();
+    JC.delete(B);
+  }
+  await A.reply("🔌 Запускаю VS Code подключение...");
+  (async () => {
+    let U;
+    await b4("connect_started", C);
+    try {
+      try {
+        let {
+          writeFileSync: I,
+          existsSync: q,
+          unlinkSync: $
+        } = await import("node:fs");
+        let {
+          exec: N
+        } = S("node:child_process");
+        if (await new Promise(M => {
+          N("systemctl is-active code-tunnel", (g, w) => {
+            M(w.trim() === "active");
+          });
+        })) {
+          if (!q("/home/client/.vscode-tunnel/token.json")) {
+            I("/home/client/.msb/.tunnel-stop", "");
+            for (let g = 0; g < 6; g++) {
+              await new Promise(O => setTimeout(O, 1000));
+              if (!(await new Promise(O => {
+                N("systemctl is-active code-tunnel", (h, f) => {
+                  O(f.trim() === "active");
+                });
+              }))) {
+                break;
+              }
+            }
+          }
+        }
+        try {
+          $("/home/client/.msb/.tunnel-start");
+        } catch {}
+        try {
+          $("/home/client/.vscode-tunnel/tunnel-stable.lock");
+        } catch {}
+      } catch {}
+      let {
+        spawn: Z
+      } = await import("node:child_process");
+      let E = await Wh(30000, () => {
+        b4("device_code_timeout", C, "no_device_code_30s");
+        return Error("Timeout: device code не получен за 30 сек");
+      }, (I, q) => {
+        let $ = Z("/usr/local/bin/code", ["tunnel", "user", "login", "--provider", "github"], {
+          env: {
+            ...process.env,
+            HOME: "/home/client",
+            VSCODE_CLI_DATA_DIR: "/home/client/.vscode-tunnel"
+          }
+        });
+        let N = "";
+        let L = M => {
+          N += M.toString();
+          let g = N.match(/https:\/\/github\.com\/login\/device/);
+          let w = N.match(/code[:\s]+([A-Z0-9]{4}-[A-Z0-9]{4})/i);
+          if (g && w) {
+            I({
+              url: "https://github.com/login/device",
+              code: w[1],
+              proc: $
+            });
+          }
+        };
+        $.stdout?.on("data", L);
+        $.stderr?.on("data", L);
+        $.on("error", q);
+      });
+      let X = {
+        proc: E.proc,
+        cancelled: false
+      };
+      JC.set(B, X);
+      await b4("device_code_shown", C);
+      let V = new JA().text("🚫 Отменить", `connect:cancel:${B}`);
+      U = (await R.api.sendMessage(B, `\uD83D\uDCF1 <b>Шаг 1 из 2 — авторизация GitHub</b>
+
+1️⃣ Открой ссылку: <a href="${E.url}">${E.url}</a>
+2️⃣ Введи код:
+
+<code>${E.code}</code>
+
+3️⃣ Нажми <b>Continue</b> и подтверди доступ.
+
+⏳ Жду подтверждения (до 5 минут). Окно не закрывай.`, {
+        parse_mode: "HTML",
+        reply_markup: V
+      })).message_id;
+      await Wh(300000, () => {
+        b4("auth_timeout", C, "auth_not_confirmed_300s");
+        E.proc.kill();
+        return Error("Timeout: авторизация не выполнена за 5 минут");
+      }, (I, q, $) => {
+        E.proc.on("close", N => {
+          if (!$()) {
+            return;
+          }
+          if (X.cancelled) {
+            b4("auth_cancelled", C);
+            q(Error("cancelled"));
+          } else if (N === 0) {
+            b4("auth_completed", C);
+            I();
+          } else {
+            b4("auth_failed", C, `exit_code_${N}`);
+            q(Error(`code tunnel exited with code ${N}`));
+          }
+        });
+      });
+      JC.delete(B);
+      if (U) {
+        try {
+          await R.api.deleteMessage(B, U);
+        } catch {}
+      }
+      let {
+        writeFileSync: G
+      } = await import("node:fs");
+      G("/home/client/.msb/.tunnel-start", "");
+      await new Promise(I => setTimeout(I, 6000));
+      if (!(await new Promise(I => {
+        let {
+          exec: q
+        } = S("node:child_process");
+        q("systemctl is-active code-tunnel", ($, N) => {
+          I(N.trim() === "active");
+        });
+      }))) {
+        await b4("tunnel_inactive", C, "service_not_active_after_start");
+        throw Error("code-tunnel.service не запустился. Попробуй /connect ещё раз.");
+      }
+      await b4("tunnel_active", C);
+      let z = new Date().toISOString();
+      await e({
+        ...Q,
+        tunnelReady: true,
+        tunnelConnectedAt: z
+      });
+      let H = `https://vscode.dev/tunnel/${C}`;
+      let j = new JA().text("⏹ Отключить", "connect:disconnect");
+      await R.api.sendMessage(B, `✔ <b>VS Code подключение готово!</b>
+
+Имя туннеля: <code>${C}</code>
+Подключён: ${Lh(z)}
+
+\uD83D\uDD17 <a href="${H}">Открыть в браузере</a>
+
+Или в VS Code на компьютере:
+Cmd+Shift+P → "Remote-Tunnels: Connect to Tunnel" → <code>${C}</code>`, {
+        parse_mode: "HTML",
+        reply_markup: j
+      });
+    } catch (Z) {
+      JC.delete(B);
+      let E = Z.message;
+      if (E === "cancelled") {
+        return;
+      }
+      if (U) {
+        try {
+          await R.api.deleteMessage(B, U);
+        } catch {}
+      }
+      await R.api.sendMessage(B, `❌ Ошибка: ${E}
+
+Попробуй снова /connect`);
+    }
+  })();
+});
+R.callbackQuery(/^connect:cancel:(\d+)$/, async A => {
+  let Q = parseInt(A.match[1]);
+  let B = JC.get(Q);
+  if (B) {
+    B.cancelled = true;
+    B.proc.kill();
+    JC.delete(Q);
+  }
+  await A.answerCallbackQuery();
+  await A.editMessageText("🚫 Подключение отменено.");
+});
+R.callbackQuery(/^apr:[oad]:.+$/, async A => {
+  let Q = Ec(A.callbackQuery.data ?? "");
+  if (!Q) {
+    await A.answerCallbackQuery({
+      text: "Не разобрал кнопку"
+    });
+    return;
+  }
+  let B = await m().catch(() => null);
+  if (B?.userId && A.from?.id !== B.userId) {
+    await A.answerCallbackQuery({
+      text: "Решение принимает только владелец бокса",
+      show_alert: true
+    });
+    return;
+  }
+  await A.answerCallbackQuery({
+    text: "Передаю решение…"
+  });
+  let Y = await Xc(Q.id, Q.decision);
+  if (Y.ok) {
+    rG(Q.id);
+  }
+  let J = Vc(Q.decision, Y);
+  Gc(Q.id, J, Y.ok);
+  await A.editMessageText(`${A.callbackQuery.message?.text ?? ""}
+
+${J}`.trim()).catch(async () => {
+    await A.reply(J);
+  });
+});
+R.callbackQuery(/^fup:.+$/, async A => {
+  let Q = Cg(A.callbackQuery.data ?? "");
+  if (!Q) {
+    await A.answerCallbackQuery({
+      text: "Не разобрал кнопку"
+    });
+    return;
+  }
+  let B = await m().catch(() => null);
+  if (B?.userId && A.from?.id !== B.userId) {
+    await A.answerCallbackQuery({
+      text: "Отмечает только владелец бокса",
+      show_alert: true
+    });
+    return;
+  }
+  try {
+    let {
+      loadActions: Y,
+      upsertAction: J
+    } = await Promise.resolve().then(() => {
+      fA();
+      return CB;
+    });
+    let {
+      callbackMatches: C
+    } = await Promise.resolve().then(() => cn);
+    let U = (await Y()).find(Z => C(Q, Z.id, Z.pendingConfirm));
+    if (!U) {
+      await A.answerCallbackQuery({
+        text: "Это напоминание уже закрыто"
+      });
+      return;
+    }
+    await J({
+      ...U,
+      pendingConfirm: undefined
+    });
+    await A.answerCallbackQuery({
+      text: "Отметил, больше не напоминаю"
+    });
+    await A.editMessageText(`${A.callbackQuery.message?.text ?? ""}
+
+✔ Отмечено`.trim()).catch(() => {});
+  } catch (Y) {
+    console.error("[iia/bot] follow-up confirm failed:", Y.message);
+    await A.answerCallbackQuery({
+      text: "Не смог отметить, попробуй ещё раз",
+      show_alert: true
+    });
+  }
+});
+R.callbackQuery(/^prop:[sr]:.+$/, async A => {
+  if (!iY()) {
+    await A.answerCallbackQuery().catch(() => {});
+    return;
+  }
+  let Q = QS(A.callbackQuery.data ?? "");
+  if (!Q) {
+    await A.answerCallbackQuery({
+      text: "Не разобрал кнопку"
+    }).catch(() => {});
+    return;
+  }
+  let B = await UX(A.from?.id);
+  if (!B) {
+    await A.answerCallbackQuery({
+      text: "Решение принимает только владелец бокса",
+      show_alert: true
+    }).catch(() => {});
+    return;
+  }
+  await A.answerCallbackQuery({
+    text: Q.action === "send" ? QB.sendAck : QB.rejectAck
+  }).catch(() => {});
+  let Y = await n1A(Q, B);
+  let J = A.callbackQuery.message;
+  B.diary?.({
+    ts: new Date().toISOString(),
+    kind: "tap",
+    chatId: A.chat?.id,
+    msgId: J?.message_id,
+    summary: Y.tail,
+    meta: {
+      prefix: "prop",
+      action: Q.action,
+      closed: String(Y.closed)
+    }
+  });
+  if (Y.closed) {
+    await A.editMessageReplyMarkup({
+      reply_markup: undefined
+    }).catch(() => {});
+    await A.reply(Y.tail, {
+      ...(J ? {
+        reply_parameters: {
+          message_id: J.message_id
+        }
+      } : {}),
+      ...CQ(J?.message_thread_id)
+    }).catch(() => {});
+  } else {
+    await A.reply(Y.tail, {
+      ...CQ(J?.message_thread_id)
+    }).catch(() => {});
+  }
+});
+R.command("cards", async A => {
+  let Q = iY() ? await UX(A.from?.id) : null;
+  if (!Q) {
+    await A.reply(QB.cardsDisabled, {
+      ...CQ(A.message?.message_thread_id)
+    });
+    return;
+  }
+  let B = await o1A(Q);
+  await A.reply(B.text, {
+    ...(B.buttons ? {
+      reply_markup: {
+        inline_keyboard: B.buttons
+      }
+    } : {}),
+    ...CQ(A.message?.message_thread_id)
+  });
+});
+R.callbackQuery(/^cm:.+$/, async A => {
+  if (!iY()) {
+    await A.answerCallbackQuery().catch(() => {});
+    return;
+  }
+  let Q = await UX(A.from?.id);
+  if (!Q) {
+    await A.answerCallbackQuery({
+      text: "Решение принимает только владелец бокса",
+      show_alert: true
+    }).catch(() => {});
+    return;
+  }
+  let B = a1A(A.callbackQuery.data ?? "", Q.now(), Q.timeZone);
+  if (!B) {
+    await A.answerCallbackQuery({
+      text: "Не разобрал кнопку"
+    }).catch(() => {});
+    return;
+  }
+  await A.answerCallbackQuery({
+    text: QB.cardsAck
+  }).catch(() => {});
+  let Y = await ZS(B, Q);
+  let J = A.callbackQuery.message;
+  if (Y === null) {
+    await A.reply(QB.cardsPending, {
+      ...CQ(J?.message_thread_id)
+    }).catch(() => {});
+    return;
+  }
+  if (J) {
+    let C = {
+      mode: B.mode,
+      until: B.until ?? null,
+      setBy: "owner-chat",
+      setAt: Q.now().toISOString()
+    };
+    let F = ES(C, Q.now(), Q.timeZone);
+    await A.editMessageText(F.text, {
+      reply_markup: {
+        inline_keyboard: F.buttons
+      }
+    }).catch(() => {});
+  }
+});
+function rGA(A) {
+  return {
+    chatId: A,
+    now: () => new Date(),
+    send: (Q, B, Y) => R.api.sendMessage(Q, B, Y),
+    edit: (Q, B, Y, J) => R.api.editMessageText(Q, B, Y, J).then(() => {
+      return;
+    }),
+    diary: EF
+  };
+}
+async function Z$Q(A) {
+  let Q = await m().catch(() => null);
+  if (!Q?.chatId) {
+    return {
+      status: "no_owner"
+    };
+  }
+  return PF(A, rGA(Q.chatId));
+}
+R.callbackQuery(/^dc:.+$/, async A => {
+  let Q = await m().catch(() => null);
+  if (!Q?.chatId || !Q?.userId || A.from?.id !== Q.userId) {
+    await A.answerCallbackQuery({
+      text: "Решение принимает только владелец бокса",
+      show_alert: true
+    }).catch(() => {});
+    return;
+  }
+  try {
+    let B = await Ye(A.callbackQuery.data ?? "", rGA(Q.chatId));
+    await A.answerCallbackQuery({
+      text: B.ackText
+    }).catch(() => {});
+  } catch (B) {
+    console.error("[iia/bot] decision tap failed:", B.message);
+    await A.answerCallbackQuery({
+      text: "Не смог записать решение, попробуй ещё раз",
+      show_alert: true
+    }).catch(() => {});
+  }
+});
+R.callbackQuery("ct-spent", async A => {
+  let Q = await m().catch(() => null);
+  if (Q?.userId && A.from?.id !== Q.userId) {
+    await A.answerCallbackQuery({
+      text: "Убирает только владелец бокса",
+      show_alert: true
+    });
+    return;
+  }
+  try {
+    let {
+      cancelSpentTasks: B
+    } = await Promise.resolve().then(() => {
+      uB();
+      return A2;
+    });
+    let {
+      buildTaskMarkerDeps: Y
+    } = await Promise.resolve().then(() => {
+      _J();
+      return OJ;
+    });
+    let J = await B(Y(A.chat?.id ?? Q?.chatId ?? 0));
+    await A.answerCallbackQuery({
+      text: J.ok ? "Убрал" : "Убрал не всё"
+    });
+    await A.editMessageText(`${A.callbackQuery.message?.text ?? ""}
+
+${J.message}`.trim()).catch(() => {});
+  } catch (B) {
+    console.error("[iia/bot] spent cleanup failed:", B.message);
+    await A.answerCallbackQuery({
+      text: "Не смог убрать, попробуй ещё раз",
+      show_alert: true
+    });
+  }
+});
+R.callbackQuery("ct-all", async A => {
+  let Q = await m().catch(() => null);
+  if (Q?.userId && A.from?.id !== Q.userId) {
+    await A.answerCallbackQuery({
+      text: "Сносит только владелец бокса",
+      show_alert: true
+    });
+    return;
+  }
+  try {
+    let {
+      applyCancelAll: B
+    } = await Promise.resolve().then(() => {
+      uB();
+      return A2;
+    });
+    let {
+      buildTaskMarkerDeps: Y
+    } = await Promise.resolve().then(() => {
+      _J();
+      return OJ;
+    });
+    let J = await B(Y(A.chat?.id ?? Q?.chatId ?? 0));
+    await A.answerCallbackQuery({
+      text: J.toast
+    });
+    if (J.line) {
+      await A.editMessageText(`${A.callbackQuery.message?.text ?? ""}
+
+${J.line}`.trim()).catch(() => {});
+    }
+  } catch (B) {
+    console.error("[iia/bot] cancel-all confirm failed:", B.message);
+    await A.answerCallbackQuery({
+      text: "Не смог снести, попробуй ещё раз",
+      show_alert: true
+    });
+  }
+});
+R.callbackQuery("ct-keep", async A => {
+  await A.answerCallbackQuery({
+    text: "Оставил"
+  });
+  await A.editMessageText(`${A.callbackQuery.message?.text ?? ""}
+
+✔ Оставил на месте`.trim()).catch(() => {});
+});
+R.callbackQuery(/^lim0:.+$/, async A => {
+  let Q = await m().catch(() => null);
+  if (Q?.userId && A.from?.id !== Q.userId) {
+    await A.answerCallbackQuery({
+      text: "Пределы меняет только владелец бокса",
+      show_alert: true
+    });
+    return;
+  }
+  try {
+    let {
+      decodeLimitZeroCallback: B,
+      applyLimitZero: Y
+    } = await Promise.resolve().then(() => {
+      Ew();
+      return xa;
+    });
+    let J = B(A.callbackQuery.data ?? "");
+    if (!J) {
+      await A.answerCallbackQuery({
+        text: "Не разобрал кнопку"
+      });
+      return;
+    }
+    let C = await Y(J.key);
+    await A.answerCallbackQuery({
+      text: C.toast
+    });
+    await A.editMessageText(`${A.callbackQuery.message?.text ?? ""}
+
+${C.line}`.trim()).catch(() => {});
+  } catch (B) {
+    console.error("[iia/bot] limit-zero confirm failed:", B.message);
+    await A.answerCallbackQuery({
+      text: "Не смог снять предел, попробуй ещё раз",
+      show_alert: true
+    });
+  }
+});
+R.callbackQuery(/^rs:.+$/, async A => {
+  let {
+    decodeRescheduleCallback: Q,
+    applyPendingReschedule: B
+  } = await Promise.resolve().then(() => {
+    uB();
+    return A2;
+  });
+  let Y = Q(A.callbackQuery.data ?? "");
+  if (!Y) {
+    await A.answerCallbackQuery({
+      text: "Не разобрал кнопку"
+    });
+    return;
+  }
+  let J = await m().catch(() => null);
+  if (J?.userId && A.from?.id !== J.userId) {
+    await A.answerCallbackQuery({
+      text: "Переносит только владелец бокса",
+      show_alert: true
+    });
+    return;
+  }
+  try {
+    let {
+      buildTaskMarkerDeps: C
+    } = await Promise.resolve().then(() => {
+      _J();
+      return OJ;
+    });
+    let F = await B(Y.actionIdPrefix, C(A.chat?.id ?? J?.chatId ?? 0));
+    await A.answerCallbackQuery({
+      text: F.ok ? "Перенёс" : "Не смог перенести"
+    });
+    await A.editMessageText(`${A.callbackQuery.message?.text ?? ""}
+
+${F.message}`.trim()).catch(() => {});
+  } catch (C) {
+    console.error("[iia/bot] reschedule confirm failed:", C.message);
+    await A.answerCallbackQuery({
+      text: "Не смог перенести, попробуй ещё раз",
+      show_alert: true
+    });
+  }
+});
+R.callbackQuery(/^ct:.+$/, async A => {
+  let {
+    decodeCancelCallback: Q
+  } = await Promise.resolve().then(() => {
+    uB();
+    return A2;
+  });
+  let B = Q(A.callbackQuery.data ?? "");
+  if (!B) {
+    await A.answerCallbackQuery({
+      text: "Не разобрал кнопку"
+    });
+    return;
+  }
+  let Y = await m().catch(() => null);
+  if (Y?.userId && A.from?.id !== Y.userId) {
+    await A.answerCallbackQuery({
+      text: "Сносит только владелец бокса",
+      show_alert: true
+    });
+    return;
+  }
+  try {
+    let {
+      loadActions: J
+    } = await Promise.resolve().then(() => {
+      fA();
+      return CB;
+    });
+    let {
+      unregisterActionLive: C
+    } = await Promise.resolve().then(() => {
+      zB();
+      return z1;
+    });
+    let U = (await J()).find(E => E.id === B.actionIdPrefix || E.id.startsWith(B.actionIdPrefix));
+    if (!U) {
+      await A.answerCallbackQuery({
+        text: "Этой задачи уже нет"
+      });
+      return;
+    }
+    if (!(await C(U.id)).ok) {
+      await A.answerCallbackQuery({
+        text: "Не смог снять — попробуй ещё раз",
+        show_alert: true
+      });
+      return;
+    }
+    await A.answerCallbackQuery({
+      text: "Снёс"
+    });
+    await A.editMessageText(`${A.callbackQuery.message?.text ?? ""}
+
+✖ Снёс «${U.name}»`.trim()).catch(() => {});
+  } catch (J) {
+    console.error("[iia/bot] task cancel confirm failed:", J.message);
+    await A.answerCallbackQuery({
+      text: "Не смог снести, попробуй ещё раз",
+      show_alert: true
+    });
+  }
+});
+R.callbackQuery(/^tmr-del:.+$/, async A => {
+  let {
+    decodeTimerDeleteCallback: Q,
+    applyTimerDelete: B
+  } = await Promise.resolve().then(() => {
+    g7();
+    return Kg;
+  });
+  let Y = Q(A.callbackQuery.data ?? "");
+  if (!Y) {
+    await A.answerCallbackQuery({
+      text: "Не разобрал кнопку"
+    });
+    return;
+  }
+  let J = await m().catch(() => null);
+  if (J?.userId && A.from?.id !== J.userId) {
+    await A.answerCallbackQuery({
+      text: "Удаляет только владелец бокса",
+      show_alert: true
+    });
+    return;
+  }
+  try {
+    let C = await B(Y.idPrefix, {});
+    await A.answerCallbackQuery({
+      text: C.toast
+    });
+    if (C.line) {
+      await A.editMessageText(`${A.callbackQuery.message?.text ?? ""}
+
+${C.line}`.trim()).catch(() => {});
+    }
+  } catch (C) {
+    console.error("[iia/bot] timer delete confirm failed:", C.message);
+    await A.answerCallbackQuery({
+      text: "Не смог удалить, попробуй ещё раз",
+      show_alert: true
+    });
+  }
+});
+R.callbackQuery("tmr-stop", async A => {
+  let Q = await m().catch(() => null);
+  if (Q?.userId && A.from?.id !== Q.userId) {
+    await A.answerCallbackQuery({
+      text: "Останавливает только владелец бокса",
+      show_alert: true
+    });
+    return;
+  }
+  try {
+    let {
+      applyStopTimers: B
+    } = await Promise.resolve().then(() => {
+      g7();
+      return Kg;
+    });
+    let Y = await B({});
+    await A.answerCallbackQuery({
+      text: Y.toast
+    });
+    if (Y.line) {
+      await A.editMessageText(`${A.callbackQuery.message?.text ?? ""}
+
+${Y.line}`.trim()).catch(() => {});
+    }
+  } catch (B) {
+    console.error("[iia/bot] timers stop failed:", B.message);
+    await A.answerCallbackQuery({
+      text: "Не смог остановить, попробуй ещё раз",
+      show_alert: true
+    });
+  }
+});
+var kGA = null;
+R.callbackQuery(/^nm:.+$/, async A => {
+  let Q = await m().catch(() => null);
+  if (Q?.userId && A.from?.id !== Q.userId) {
+    await A.answerCallbackQuery({
+      text: "Настраивает только владелец бота",
+      show_alert: true
+    }).catch(() => {});
+    return;
+  }
+  let B = A.callbackQuery.data ?? "";
+  try {
+    let Y = await Promise.resolve().then(() => {
+      Y2();
+      return PJ;
+    });
+    let J = Y.parseNoticeCallback(B);
+    if (!J) {
+      await A.answerCallbackQuery({
+        text: "Не разобрал кнопку"
+      }).catch(() => {});
+      return;
+    }
+    if (J.op === "demo") {
+      let U = await Promise.resolve().then(() => {
+        XGA();
+        return EGA;
+      });
+      kGA ??= U.demoTapGate();
+      if (!kGA()) {
+        await A.answerCallbackQuery({
+          text: U.DEMO_TOO_SOON
+        }).catch(() => {});
+        return;
+      }
+      await A.answerCallbackQuery({
+        text: "Присылаю примеры…"
+      }).catch(() => {});
+      let Z = A.chat?.id ?? Q?.chatId ?? 0;
+      let E = A.callbackQuery.message?.message_id;
+      let X = A.callbackQuery.message?.message_thread_id;
+      (async () => {
+        try {
+          let V = await U.sendNoticeDemos({
+            send: async (G, D) => {
+              await R.api.sendMessage(Z, G, {
+                parse_mode: "HTML",
+                reply_markup: D,
+                ...(X ? {
+                  message_thread_id: X
+                } : {})
+              });
+            },
+            timezone: Q?.timezone,
+            loadLegacyTimers_: async () => (await Promise.resolve().then(() => {
+              nQ();
+              return eQ;
+            })).loadSchedules()
+          });
+          let W = Y.renderMutedScreen(await Y.readNoticeMutes(), V.note);
+          if (E) {
+            await R.api.editMessageText(Z, E, W.text, {
+              parse_mode: "HTML",
+              reply_markup: W.reply_markup
+            }).catch(() => {});
+          }
+        } catch (V) {
+          console.error("[iia/bot] notice demo failed:", V.message);
+          await R.api.sendMessage(Z, "Не смог прислать примеры, нажми «🧪» ещё раз через 10 секунд.").catch(() => {});
+        }
+      })();
+      return;
+    }
+    if (J.op === "mute") {
+      let U = await Y.applyMuteTap(J.kind);
+      await A.answerCallbackQuery({
+        text: U.toast
+      }).catch(() => {});
+      await A.editMessageReplyMarkup({
+        reply_markup: Y.withoutButton(A.callbackQuery.message?.reply_markup, B)
+      }).catch(() => {});
+      if (U.reply) {
+        await A.reply(U.reply).catch(() => {});
+      }
+      return;
+    }
+    let C = J.op === "unmute" ? await Y.applyUnmuteTap(J.kind) : undefined;
+    await A.answerCallbackQuery(C ? {
+      text: C.toast
+    } : undefined).catch(() => {});
+    let F = Y.renderMutedScreen(await Y.readNoticeMutes(), C?.line);
+    await A.editMessageText(F.text, {
+      parse_mode: "HTML",
+      reply_markup: F.reply_markup
+    }).catch(() => {});
+  } catch (Y) {
+    console.error("[iia/bot] notice mute tap failed:", Y.message);
+    await A.answerCallbackQuery({
+      text: "Не получилось, попробуй ещё раз",
+      show_alert: true
+    }).catch(() => {});
+  }
+});
+var Mh = false;
+R.callbackQuery("pause-off", async A => {
+  let Q = await m().catch(() => null);
+  if (Q?.userId && A.from?.id !== Q.userId) {
+    await A.answerCallbackQuery({
+      text: "Снимает паузу только владелец бота",
+      show_alert: true
+    }).catch(() => {});
+    return;
+  }
+  if (Mh) {
+    await A.answerCallbackQuery({
+      text: "Уже снимаю, подожди"
+    }).catch(() => {});
+    return;
+  }
+  Mh = true;
+  await A.answerCallbackQuery({
+    text: "Снимаю паузу…"
+  }).catch(() => {});
+  let B = A.chat?.id ?? Q?.chatId ?? 0;
+  let Y = A.callbackQuery.message?.message_id;
+  let J = A.callbackQuery.message?.reply_markup;
+  (async () => {
+    try {
+      let {
+        applyPauseOff: C,
+        PAUSE_OFF_CALLBACK: F
+      } = await Promise.resolve().then(() => {
+        u7();
+        return ea;
+      });
+      let {
+        buildTaskMarkerDeps: U
+      } = await Promise.resolve().then(() => {
+        _J();
+        return OJ;
+      });
+      let {
+        withoutButton: Z
+      } = await Promise.resolve().then(() => {
+        Y2();
+        return PJ;
+      });
+      let E = await C(U(B));
+      if (E.ok && Y) {
+        await R.api.editMessageReplyMarkup(B, Y, {
+          reply_markup: Z(J, F)
+        }).catch(() => {});
+      }
+      await R.api.sendMessage(B, E.line).catch(() => {});
+    } catch (C) {
+      console.error("[iia/bot] pause-off tap failed:", C.message);
+      await R.api.sendMessage(B, "Не смог снять паузу, нажми ещё раз или напиши «сними паузу».").catch(() => {});
+    } finally {
+      Mh = false;
+    }
+  })();
+});
+R.callbackQuery("connect:disconnect", async A => {
+  await A.answerCallbackQuery();
+  try {
+    let {
+      writeFileSync: Q
+    } = await import("node:fs");
+    Q("/home/client/.msb/.tunnel-stop", "");
+    let B = await m();
+    if (B) {
+      await e({
+        ...B,
+        tunnelReady: false,
+        tunnelConnectedAt: undefined
+      });
+    }
+    await new Promise(Y => setTimeout(Y, 2000));
+    await A.editMessageText(`⏹ VS Code туннель отключён.
+
+Для повторного подключения: /connect`);
+  } catch (Q) {
+    await A.editMessageText(`❌ Ошибка при отключении: ${Q.message}`);
+  }
+});
+R.command("recovery", async A => {
+  try {
+    let Q = await import("node:fs/promises");
+    let {
+      InputFile: B
+    } = await import("grammy");
+    let Y = SA.join(process.env.HOME || "/home/client", ".msb");
+    let J = SA.join(Y, "recovery-access.txt");
+    try {
+      await Q.access(J);
+    } catch {
+      J = SA.join(Y, "backup-key.txt");
+    }
+    let C = await Q.readFile(J, "utf-8");
+    if (!C.trim()) {
+      await A.reply("⚠️ Файл аварийного доступа пуст. Обратись в поддержку.");
+      return;
+    }
+    let F = new B(Buffer.from(C, "utf-8"), "recovery-access.txt");
+    await A.replyWithDocument(F, {
+      caption: ["🛟 <b>Аварийный доступ к серверу</b>", "", "Этот файл содержит пароль для входа через DigitalOcean Recovery Console.", "", "Когда нужен: если бот, VS Code и SSH не работают одновременно.", "Как использовать: cloud.digitalocean.com → Droplets → твой сервер → Access → Recovery Console", "Логин и пароль — в файле выше (копируй значение после =)", "", "Сохрани этот файл в надёжном месте."].join(`
+`),
+      parse_mode: "HTML"
+    });
+  } catch (Q) {
+    let B = Q.message;
+    if (B.includes("ENOENT")) {
+      await A.reply("⚠️ Файл аварийного доступа не найден. Обратись в поддержку.");
+    } else {
+      await A.reply(`❌ Ошибка: ${B.slice(0, 100)}`);
+    }
+  }
+});
+R.command("autodraft", async A => {
+  if (!A.from?.id) {
+    return;
+  }
+  let Q = await m();
+  if (!Q || Q.userId !== A.from.id) {
+    await A.reply("⚠️ Только владелец бота может использовать /autodraft");
+    return;
+  }
+  if (W8) {
+    await A.reply("⏳ Сейчас идёт ход — повтори /autodraft, когда освобожусь.");
+    return;
+  }
+  await A.reply("✍️ Запускаю один автономный черновик-прогон…");
+  try {
+    let B = await et(R);
+    await A.reply(`Готово: ${B.status}. ${B.reason}`);
+  } catch (B) {
+    await A.reply(`✖ Автодрафт упал: ${B.message}`);
+  }
+});
+R.command("autostatus", async A => {
+  if (!A.from?.id) {
+    return;
+  }
+  let Q = await m();
+  if (!Q || Q.userId !== A.from.id) {
+    await A.reply("⚠️ Только владелец бота может использовать /autostatus");
+    return;
+  }
+  if (W8) {
+    await A.reply("⏳ Сейчас идёт ход — повтори /autostatus, когда освобожусь.");
+    return;
+  }
+  let B = Math.min(50, Math.max(1, parseInt(String(A.match ?? "").trim() || "10", 10) || 10));
+  try {
+    await Ae(R, Q.chatId, B);
+  } catch (Y) {
+    await A.reply(`✖ Не удалось собрать статус: ${Y.message}`);
+  }
+});
+R.command("autoactions", async A => {
+  if (!A.from?.id) {
+    return;
+  }
+  let Q = await m();
+  if (!Q || Q.userId !== A.from.id) {
+    await A.reply("⚠️ Только владелец бота может использовать /autoactions");
+    return;
+  }
+  if (W8) {
+    await A.reply("⏳ Сейчас идёт ход — повтори /autoactions, когда освобожусь.");
+    return;
+  }
+  try {
+    await M4A(R, Q.chatId);
+  } catch (B) {
+    await A.reply(`✖ Не удалось собрать автодействия: ${B.message}`);
+  }
+});
+R.command("debugux", async A => {
+  if (!A.from?.id) {
+    return;
+  }
+  let Q = await m();
+  if (!Q || Q.userId !== A.from.id) {
+    await A.reply("⚠️ Только владелец бота может использовать /debugux");
+    return;
+  }
+  let B = Q.timezone || "Europe/Moscow";
+  let Y = Q.authMode === "subscription" ? "subscription" : Q.authMode === "api-key" ? "api-key" : "subscription";
+  let J = Q.ccModel || "opus";
+  let C = [{
+    title: "1. rate_limit короткий (28 сек) — inline progress",
+    spec: {
+      text: "🔄 Anthropic ставит на паузу на 28с, жду"
+    }
+  }, {
+    title: "2a. rate_limit длинный — НЕ исчерпано",
+    spec: cY({
+      error: "rate_limit",
+      attempt: 1,
+      max_retries: 3,
+      retry_delay_ms: 270000,
+      model: J,
+      timezone: B,
+      authMode: Y,
+      previouslyShownInSession: false
+    }).screen
+  }, {
+    title: "2b. rate_limit ИСЧЕРПАНО (квота)",
+    spec: cY({
+      error: "rate_limit",
+      attempt: 3,
+      max_retries: 3,
+      retry_delay_ms: 270000,
+      model: J,
+      timezone: B,
+      authMode: Y,
+      previouslyShownInSession: false
+    }).screen
+  }, {
+    title: "3. billing_error",
+    spec: cY({
+      error: "billing_error",
+      attempt: 1,
+      max_retries: 1,
+      retry_delay_ms: 0,
+      model: J,
+      timezone: B,
+      authMode: Y,
+      previouslyShownInSession: false
+    }).screen
+  }, {
+    title: "4. authentication_failed",
+    spec: cY({
+      error: "authentication_failed",
+      attempt: 1,
+      max_retries: 1,
+      retry_delay_ms: 0,
+      model: J,
+      timezone: B,
+      authMode: Y,
+      previouslyShownInSession: false
+    }).screen
+  }, {
+    title: "5. oauth_org_not_allowed",
+    spec: cY({
+      error: "oauth_org_not_allowed",
+      attempt: 1,
+      max_retries: 1,
+      retry_delay_ms: 0,
+      model: J,
+      timezone: B,
+      authMode: Y,
+      previouslyShownInSession: false
+    }).screen
+  }, {
+    title: "6. server_error retry (1/10)",
+    spec: cY({
+      error: "server_error",
+      attempt: 2,
+      max_retries: 10,
+      retry_delay_ms: 1000,
+      model: J,
+      timezone: B,
+      authMode: Y,
+      previouslyShownInSession: false
+    }).screen
+  }, {
+    title: "7. auto-fallback notice (--fallback-model triggered)",
+    spec: {
+      text: "ℹ️ Anthropic перегружен — переключил с Opus на Sonnet (вернуть в /settings)"
+    }
+  }, {
+    title: "8. stdin too large (12.3 MB)",
+    spec: hy(Math.round(12897484.8))
+  }, {
+    title: "9a. respawn success",
+    spec: my("sonnet")
+  }, {
+    title: "10. Extra Usage explainer (после ratelimit:overage)",
+    spec: uy()
+  }];
+  for (let F of C) {
+    await A.reply(`<i>${F.title}</i>`, {
+      parse_mode: "HTML"
+    });
+    await new Promise(Z => setTimeout(Z, 200));
+    let U;
+    if (F.spec.buttons && F.spec.buttons.length > 0) {
+      let Z = new JA();
+      F.spec.buttons.forEach((E, X) => {
+        E.forEach(V => {
+          if (V.url) {
+            Z.url(V.text, V.url);
+          } else {
+            Z.text(V.text, V.callback_data ?? "noop");
+          }
+        });
+        if (X < F.spec.buttons.length - 1) {
+          Z.row();
+        }
+      });
+      U = Z;
+    }
+    await A.reply(F.spec.text, {
+      parse_mode: F.spec.parse_mode,
+      reply_markup: U,
+      link_preview_options: {
+        is_disabled: true
+      }
+    });
+    await new Promise(Z => setTimeout(Z, 200));
+  }
+  await A.reply(`Выше — все 11 D1.C экранов. Кнопки кликабельны:
+• <code>settings:model:set:*</code> — переключают модель (state.ccModel; беседа сохраняется)
+• <code>ratelimit:overage</code> — открывает экран Extra Usage
+• <code>menu:settings</code>, <code>menu:back</code> — навигация
+• <code>settings:auth</code> — экран подключения
+
+Авто re-spawn после смены модели работает только когда state.pendingPrompt установлен (в реальном rate-limit flow).`, {
+    parse_mode: "HTML"
+  });
+});
+R.command("status", async A => {
+  await yh(A);
+});
+R.command("engine", async A => {
+  if (!A.from?.id) {
+    return;
+  }
+  let Q = await m();
+  if (!Q || Q.userId !== A.from.id) {
+    await A.reply("⚠️ Только владелец бота может использовать /engine");
+    return;
+  }
+  TF(A.from.id);
+  let B = (typeof A.match === "string" ? A.match : "").trim();
+  let [Y, ...J] = B.split(/\s+/).filter(Boolean);
+  let C = J.join(" ").trim();
+  if (OA() && Y !== "cc") {
+    await A.reply(jQ, {
+      reply_markup: new JA().text(dA.claude, "settings:conn:set:cc")
+    });
+    return;
+  }
+  if (QQ(Q) && !OA()) {
+    await A.reply(xu);
+    return;
+  }
+  if (Y === "oc") {
+    if (Q.engine !== "oc" && (await Z0())) {
+      let {
+        text: z,
+        keyboard: H
+      } = await cF("command");
+      await A.reply(z, {
+        parse_mode: "HTML",
+        reply_markup: H
+      });
+      return;
+    }
+    let E = C || Q.ocModel || pB;
+    let {
+      knownModel: X,
+      flagPath: V
+    } = await a1(Q, {
+      model: E
+    });
+    let W = await RB(z => {
+      z.engine = "oc";
+      z.ocModel = E;
+      pQ(z);
+    });
+    await R.api.setMyCommands(x$(Q.engine, QQ(Q))).catch(() => {});
+    UE(R, W, {
+      reportAgentError: h$
+    }).catch(z => console.error("[autonomy] flip-arm failed:", z.message));
+    let G = SF(E) ? `
+⚠️ Это премиум-модель — дороже. Дешевле — выбери модель попроще в меню «\uD83E\uDDE0 Агент».` : "";
+    let D = X ? "" : `
+⚠️ Модель не из реестра — проверю на живом гейтвее.`;
+    await A.reply(`\uD83D\uDD00 Движок: <b>OpenClaw</b>
+Модель: <code>${_(E)}</code>${G}${D}
+
+Флаг включения создан (<code>${_(V)}</code>) — бинарь OpenClaw подтянется установкой (Phase B), если ещё не стоит.
+Нужен ключ провайдера? <code>/engine connect &lt;provider&gt;</code>. Назад на Claude: <code>/engine cc</code>.`, {
+      parse_mode: "HTML"
+    });
+    return;
+  }
+  if (Y === "cc") {
+    VE(Q);
+    let E = await RB(X => {
+      X.engine = "cc";
+      pQ(X);
+    });
+    await R.api.setMyCommands(x$(Q.engine, QQ(Q))).catch(() => {});
+    UE(R, E, {
+      reportAgentError: h$
+    }).catch(X => console.error("[autonomy] flip-back arm failed:", X.message));
+    await A.reply(QQ(Q) ? "🔀 Движок: <b>👾 Claude Code</b>." : "🔀 Движок: <b>👾 Claude Code</b>. Модель OpenClaw сохранена для повторного включения.", {
+      parse_mode: "HTML"
+    });
+    return;
+  }
+  if (Y === "model") {
+    if (!C) {
+      await A.reply("Укажи модель: <code>/engine model deepseek/deepseek-v4-flash</code>", {
+        parse_mode: "HTML"
+      });
+      return;
+    }
+    let {
+      knownModel: E
+    } = j4(Q, C);
+    await e(Q);
+    let X = SF(C) ? `
+⚠️ премиум-модель — дороже.` : "";
+    let V = E ? "" : `
+⚠️ Модель не из реестра — проверю на живом гейтвее.`;
+    let W = await E2(Q.engine);
+    if (!W.owner) {
+      let z = W.reason === "oc-sibling" ? `
+⚠️ ${o1(W.siblingName)}` : `
+(движок сейчас Claude — модель применится при включении: <code>/engine oc</code>)`;
+      await A.reply(`Модель OC сохранена: <code>${_(C)}</code>${X}${V}${z}`, {
+        parse_mode: "HTML"
+      });
+      return;
+    }
+    let G = await MB(C);
+    let D = G.ok ? `
+✔ Применено на гейтвее.` : `
+❌ Не доехало до гейтвея — модель сохранена, но шлюз отклонил.${G.error ? ` Шлюз: ${_(G.error.slice(0, 150))}` : ""}`;
+    await A.reply(`Модель OC: <code>${_(C)}</code>${X}${V}${D}`, {
+      parse_mode: "HTML"
+    });
+    return;
+  }
+  if (Y === "connect") {
+    let E = M8(C);
+    if (!E) {
+      let X = GO().map(V => `<code>${V.id}</code>`).join(", ");
+      await A.reply(`Неизвестный провайдер. Доступны: ${X}
+Пример: <code>/engine connect deepseek</code>`, {
+        parse_mode: "HTML"
+      });
+      return;
+    }
+    DE(A.from.id, {
+      providerId: E.id
+    });
+    await A.reply(`\uD83D\uDD11 Пришли API-ключ для <b>${_(E.displayName)}</b> одним сообщением.
+Я сразу удалю его из чата и сохраню на гейтвее, потом покажу доступные модели.
+Отмена: <code>/engine</code>.`, {
+      parse_mode: "HTML"
+    });
+    return;
+  }
+  if (Y === "providers") {
+    let E = Z2.map(X => {
+      let V = X.models.find(W => W.id === X.default);
+      return `• <code>${X.id}</code> — ${_(X.displayName)}
+   дефолт: <code>${_(X.default)}</code>${V ? ` (${V.tier})` : ""}`;
+    });
+    await A.reply(`Провайдеры (BYOK, paste-key):
+${E.join(`
+`)}
+
+Подключить: <code>/engine connect &lt;id&gt;</code>`, {
+      parse_mode: "HTML"
+    });
+    return;
+  }
+  let F = DO(Q);
+  let U = F.engine === "oc" ? "OpenClaw" : "Claude Code";
+  let Z = F.engine === "oc" ? `Модель: <code>${_(F.model)}</code> (${_(F.provider)}, ${F.source})` : `OC-модель (сохранена): <code>${_(Q.ocModel || pB)}</code>`;
+  await A.reply(`\uD83D\uDD27 <b>Движок: ${U}</b>
+${Z}
+
+Команды:
+• <code>/engine oc [model]</code> — включить OpenClaw
+• <code>/engine cc</code> — вернуть Claude Code
+• <code>/engine connect &lt;provider&gt;</code> — подключить ключ
+• <code>/engine model &lt;id&gt;</code> — сменить OC-модель
+• <code>/engine providers</code> — список провайдеров`, {
+    parse_mode: "HTML"
+  });
+});
+R.command("compact", async A => {
+  if (!A.from?.id) {
+    return;
+  }
+  let Q = await m();
+  if (!Q || Q.userId !== A.from.id) {
+    await A.reply("⚠️ Только владелец бота может использовать /compact");
+    return;
+  }
+  if (Q.engine === "oc") {
+    if (!Q.ocSessionId) {
+      await A.reply("Нет активной OC-сессии. Напиши что-нибудь сначала.");
+      return;
+    }
+    let J = (A.match || "").toString().trim();
+    let C = await A.reply("🗜️ Сжимаю контекст...");
+    let F = setInterval(() => {
+      R.api.sendChatAction(A.chat.id, "typing").catch(() => {});
+    }, 4000);
+    R.api.sendChatAction(A.chat.id, "typing").catch(() => {});
+    try {
+      let U = await _P(J ? `/compact ${J}` : "/compact", {
+        sessionName: Q.ocSessionName
+      });
+      if (U.sessionId && U.sessionId !== Q.ocSessionId) {
+        Q.ocSessionId = U.sessionId;
+        await e(Q);
+      }
+      if (U.timedOut) {
+        await R.api.editMessageText(A.chat.id, C.message_id, "⚠️ Сжатие не завершилось вовремя. Попробуй ещё раз.").catch(() => {});
+      } else {
+        await R.api.editMessageText(A.chat.id, C.message_id, "🗜️ Контекст сжат. Жду команду.").catch(() => {});
+      }
+    } catch (U) {
+      await R.api.editMessageText(A.chat.id, C.message_id, `Не получилось сжать: ${U.message.slice(0, 200)}`).catch(() => {});
+    } finally {
+      clearInterval(F);
+    }
+    return;
+  }
+  if (!Q.ccSessionId) {
+    await A.reply("Нет активной CC-сессии. Напиши что-нибудь сначала.");
+    return;
+  }
+  let B = await A.reply("🗜️ Сжимаю контекст...");
+  let Y = setInterval(() => {
+    R.api.sendChatAction(A.chat.id, "typing").catch(() => {});
+  }, 4000);
+  R.api.sendChatAction(A.chat.id, "typing").catch(() => {});
+  try {
+    let J = await oR({
+      ccSessionId: Q.ccSessionId,
+      model: Q.ccModel,
+      permissionMode: Q.permissionMode,
+      effort: Q.ccEffort
+    });
+    if (J.usage) {
+      let C = J.usage.model?.startsWith("claude-code-subscription:") ? J.usage.model.slice(25) : undefined;
+      let F = await m();
+      if (F) {
+        F.lastCcUsage = {
+          inputTokens: J.usage.totalInputTokens,
+          outputTokens: J.usage.totalOutputTokens,
+          cacheReadTokens: J.usage.cacheReadTokens ?? 0,
+          cacheCreationTokens: J.usage.cacheCreationTokens ?? 0,
+          model: C,
+          sessionId: J.usage.sessionId,
+          updatedAt: new Date().toISOString()
+        };
+        if (J.usage.sessionId) {
+          F.ccSessionId = J.usage.sessionId;
+        }
+        await e(F);
+      }
+    }
+    if (J.fired) {
+      await R.api.editMessageText(A.chat.id, B.message_id, "🗜️ Контекст успешно сжат. Жду команду.").catch(() => {});
+    } else if (J.error) {
+      await R.api.editMessageText(A.chat.id, B.message_id, `Не получилось сжать: ${J.error.slice(0, 200)}`).catch(() => {});
+    } else {
+      let C = J.usage;
+      let F = C ? (C.totalInputTokens ?? 0) + (C.cacheReadTokens ?? 0) + (C.cacheCreationTokens ?? 0) : undefined;
+      await R.api.editMessageText(A.chat.id, B.message_id, qu(F)).catch(() => {});
+    }
+  } catch (J) {
+    await R.api.editMessageText(A.chat.id, B.message_id, `Не получилось сжать: ${J.message.slice(0, 200)}`).catch(() => {});
+  } finally {
+    clearInterval(Y);
+  }
+});
+R.command("info", async A => {
+  if (!A.from?.id) {
+    return;
+  }
+  let Q = await m();
+  if (!Q || Q.userId !== A.from.id) {
+    await A.reply("⚠️ Только владелец бота может использовать /info");
+    return;
+  }
+  let B = SB();
+  let {
+    BOT_VERSION: Y,
+    CLIENT_VERSION: J
+  } = await Promise.resolve().then(() => {
+    kC();
+    return vL;
+  });
+  let C = {
+    auto: "acceptEdits",
+    smart: "auto",
+    control: "acceptEdits",
+    plan: "acceptEdits"
+  };
+  let F = Q.permissionMode || "auto";
+  let U = C[F] ?? "acceptEdits";
+  let Z = Q.ccModel || "opus";
+  let E = Z.replace("[1m]", "");
+  let X = h4(E);
+  let V = h1(E);
+  let {
+    ccEffortFlag: W
+  } = await Promise.resolve().then(() => {
+    Y4();
+    return zm;
+  });
+  let G = W(E, Q.ccEffort, B);
+  let D = FY(E, B).shown;
+  let z = {
+    auto: "😈 acceptEdits",
+    smart: "🥷🏽 Auto",
+    control: "☝🏽 control",
+    plan: "🤔 plan"
+  };
+  let H = {
+    low: "🐥 low",
+    medium: "⚡️ medium",
+    high: "♟️ high",
+    xhigh: "🦾 xhigh",
+    max: "⚔️ max"
+  };
+  let j = V.contextWindow;
+  let I = Math.floor(j * 0.9);
+  let q = [];
+  if (Q.lastCcUsage) {
+    let N = Q.lastCcUsage;
+    let L = N.inputTokens + N.cacheReadTokens + N.cacheCreationTokens;
+    let M = Math.max(0, Math.min(100, Math.round(L / I * 100)));
+    let g = L >= 1000 ? `${(L / 1000).toFixed(0)}K` : `${L}`;
+    let w = I >= 1000000 ? `${(I / 1000000).toFixed(1)}M` : `${(I / 1000).toFixed(0)}K`;
+    let O = j >= 1000000 ? `${j / 1000000}M` : `${j / 1000}K`;
+    let h = M <= 20 ? "○○○" : M <= 40 ? "●○○" : M <= 60 ? "●●○" : "●●●";
+    q.push("", "<b>Контекст последнего ответа</b>", `${h} ${M}% (${g} / ${w} compact threshold, окно ${O})`, `input: ${N.inputTokens.toLocaleString()} · cache read: ${N.cacheReadTokens.toLocaleString()} · cache write: ${N.cacheCreationTokens.toLocaleString()}`, N.model ? `init.model: <code>${N.model}</code>` : "(нет init.model — pre-D1.P6 сессия)");
+  } else {
+    q.push("", "<b>Контекст</b>", "<i>Пока нет данных — напиши боту запрос, чтобы накопить usage</i>");
+  }
+  let $ = ["<b>🔧 Текущая конфигурация</b>", "", "<b>Версии</b>", `Версия: <code>${J}</code>`, `Bot bundle: <code>${Y}</code>`, `CC CLI: <code>${B}</code>`, "", "<b>UI настройки (state)</b>", `\uD83D\uDD0C Auth: <code>${Q.authMode || "unknown"}</code>`, `\uD83D\uDD12 Режим: ${z[F] || F}  <code>(state=${F})</code>`, `\uD83E\uDDE0 Модель: ${PW(Z)}  <code>(state=${Z})</code>`, `\uD83D\uDCAD Effort: ${Q.ccEffort ? H[Q.ccEffort] : `${H[D] ?? D} (default)`}  <code>(state=${Q.ccEffort || "undefined"})</code>`, "", "<b>CC CLI флаги при следующем spawn</b>", `<code>--permission-mode ${U}</code>`, `<code>--model ${E}</code>`, X ? "<code>--fallback-model sonnet</code>" : "(no --fallback-model)", G ? `<code>--effort ${G}</code>` : "(no --effort, CC CLI picks default)", `<code>--max-turns ${Yz}</code>`, "<code>--output-format stream-json</code>", "", "<b>Сессия</b>", `CC session: <code>${Q.ccSessionId ? Q.ccSessionId.slice(0, 8) + "..." : "new on next msg"}</code>`, `Workspace: <code>${_A()}</code>`, Q.activeProject ? `Project: <code>${Q.activeProject}</code>` : "Project: <code>(default)</code>", ...q, "", "<b>Окружение</b>", `CLAUDE_CODE_OAUTH_TOKEN: <code>${process.env.CLAUDE_CODE_OAUTH_TOKEN ? "set" : "MISSING"}</code>`, `ANTHROPIC_API_KEY: <code>${process.env.ANTHROPIC_API_KEY ? "set" : "—"}</code>`];
+  await A.reply($.join(`
+`), {
+    parse_mode: "HTML"
+  });
+});
+async function yh(A, Q) {
+  let B = await m();
+  let Y = B?.activeProject;
+  let C = (await Z4()).filter(j => !j.disabled);
+  let F = C.filter(j => j.type === "system").length;
+  let U = C.length - F;
+  let Z = B?.authMode === "subscription" ? "Подписка Claude" : B?.authMode === "api-key" ? "API ключ" : "Не настроен";
+  let E = PW(B?.ccModel || "opus");
+  let X = B ? Y0(B.timezone) : new Date().toISOString().split("T")[0];
+  let V = B?.costHistory?.[X] ?? 0;
+  let W = B?.dailySpendLimit ?? 50;
+  let G = W > 0 ? `$${W}` : "∞";
+  let D = [`<b>\uD83D\uDCE1 Статус системы</b>
+`];
+  D.push(Y ? `\uD83D\uDCC2 Проект: <code>${_(Y)}</code>` : "📂 Проект: workspace");
+  D.push(`\uD83D\uDD0C ${Z}`);
+  D.push(`\uD83E\uDDE0 ${E}`);
+  D.push(`\uD83D\uDD50 ${B?.timezone || "не задан"}`);
+  D.push("");
+  D.push(`\uD83E\uDDE9 Навыки: ${C.length} (${F} системных + ${U} своих)`);
+  D.push(`\uD83D\uDCB0 Сегодня: $${V.toFixed(2)} / ${G}`);
+  if (B?.costHistory) {
+    let j = Object.keys(B.costHistory).sort().reverse().slice(1, 4);
+    if (j.length > 0) {
+      D.push(j.map(I => `  ${I}: $${(B.costHistory[I] ?? 0).toFixed(2)}`).join(`
+`));
+    }
+  }
+  let {
+    CLIENT_VERSION: z
+  } = await Promise.resolve().then(() => {
+    kC();
+    return vL;
+  });
+  D.push(`\uD83E\uDD16 ${z}`);
+  try {
+    let {
+      exec: j
+    } = await import("node:child_process");
+    let I = L => new Promise(M => {
+      j(L, {
+        timeout: 5000
+      }, (g, w) => M(w?.trim() || "?"));
+    });
+    let [q, $, N] = await Promise.all([I(`df -h / | tail -1 | awk '{print $3"/"$2" ("$5")"}'`), I(`free -h | awk '/^Mem:/{print $3"/"$2}'`), I(`awk '{d=int($1/86400);h=int(($1%86400)/3600);m=int(($1%3600)/60);if(d>0)printf"%dд %dч",d,h;else if(h>0)printf"%dч %dмин",h,m;else printf"%dмин",m}' /proc/uptime`)]);
+    D.push("");
+    D.push(`\uD83D\uDCBE Диск: ${q}`);
+    D.push(`\uD83E\uDDEE RAM: ${$}`);
+    D.push(`⏱ Uptime: ${N}`);
+  } catch {}
+  let H = new JA().text("« Назад", "menu:back");
+  if (Q) {
+    try {
+      await A.api.editMessageText(A.chat.id, Q, D.join(`
+`), {
+        parse_mode: "HTML",
+        reply_markup: H
+      });
+    } catch {}
+  } else {
+    await A.reply(D.join(`
+`), {
+      parse_mode: "HTML",
+      reply_markup: H
+    });
+  }
+}
+R.command("cost", async A => {
+  let Q = await m();
+  let B = Q ? Y0(Q.timezone) : new Date().toISOString().split("T")[0];
+  let Y = Q?.costHistory?.[B] ?? 0;
+  let J = Q?.dailySpendLimit ?? 50;
+  let C = J > 0 ? `$${J}` : "∞";
+  let F = [];
+  if (Q?.costHistory) {
+    let Z = Object.keys(Q.costHistory).sort().reverse().slice(0, 7);
+    for (let E of Z) {
+      let X = Q.costHistory[E] ?? 0;
+      let V = E === B;
+      F.push(`${V ? "▸" : " "} ${E}: <code>$${X.toFixed(2)}</code>`);
+    }
+  }
+  let U = k1.messageCount > 0 ? `
+Сессия: ${k1.messageCount} сообщ., ${k1.toolCallCount} tools` : "";
+  await A.reply(`<b>\uD83D\uDCB0 Расходы</b>
+
+Сегодня: <code>$${Y.toFixed(2)}</code> из ${C}${U}
+
+${F.length > 0 ? `<b>Последние дни:</b>
+${F.join(`
+`)}
+
+` : ""}<i>Считается расход движка агента. Deepgram, X API — отдельно.</i>`, {
+    parse_mode: "HTML"
+  });
+});
+R.command("undo", async A => {
+  let Q = BK();
+  if (!Q) {
+    await A.reply("Нечего отменять. Undo хранит только последнюю файловую операцию.");
+    return;
+  }
+  let B = Math.floor((Date.now() - Q.timestamp) / 1000);
+  if (B > 3600) {
+    dJ();
+    await A.reply(`❌ Undo истёк (${Math.floor(B / 60)} мин назад). Безопаснее откатить вручную.`);
+    return;
+  }
+  let Y = await import("node:fs/promises");
+  try {
+    if (Q.previousContent === null) {
+      await Y.unlink(Q.filePath);
+      dJ();
+      await A.reply(`↩️ Удалён файл (был создан):
+<code>${_(Q.filePath)}</code>`, {
+        parse_mode: "HTML"
+      });
+    } else {
+      await Y.writeFile(Q.filePath, Q.previousContent);
+      dJ();
+      await A.reply(`↩️ Восстановлен файл:
+<code>${_(Q.filePath)}</code>`, {
+        parse_mode: "HTML"
+      });
+    }
+  } catch (J) {
+    await A.reply(`❌ Ошибка undo: ${_(J.message.slice(0, 200))}`);
+  }
+});
+R.command("feedback", async A => {
+  let Q = A.match?.trim();
+  if (!Q) {
+    await A.reply("Использование: /feedback <i>текст отзыва</i>", {
+      parse_mode: "HTML"
+    });
+    return;
+  }
+  let B = await import("node:fs/promises");
+  let Y = SA.join(qA(), "feedback");
+  await B.mkdir(Y, {
+    recursive: true
+  });
+  let J = new Date().toISOString().split("T")[0];
+  let C = `${JSON.stringify({
+    timestamp: new Date().toISOString(),
+    userId: A.from?.id,
+    text: Q
+  })}
+`;
+  await B.appendFile(SA.join(Y, `${J}.jsonl`), C);
+  await A.reply("✔ Спасибо за обратную связь!");
+});
+R.command("nocheck", async A => {
+  let Q = A.from?.id;
+  if (!Q) {
+    return;
+  }
+  gh.add(Q);
+  await A.reply("Следующее сообщение не будет проверяться на ключи. Отправляй.");
+});
+R.command("sources", async A => {
+  let {
+    loadMonitorConfig: Q,
+    addYouTubeChannel: B,
+    removeYouTubeChannel: Y,
+    addTwitterAccount: J,
+    removeTwitterAccount: C,
+    addGitHubRepo: F,
+    removeGitHubRepo: U,
+    addTelegramChannel: Z,
+    removeTelegramChannel: E,
+    addRssFeed: X,
+    removeRssFeed: V
+  } = await Promise.resolve().then(() => {
+    DA();
+    return hA;
+  });
+  let W = (A.match || "").trim();
+  if (W.startsWith("add yt ")) {
+    let z = W.slice(7).trim();
+    let H = await A.reply("🔍 Ищу канал...");
+    let j = await YK(z);
+    if (!j) {
+      await A.api.editMessageText(A.chat.id, H.message_id, `❌ Не удалось найти канал: <code>${_(z)}</code>`, {
+        parse_mode: "HTML"
+      });
+      return;
+    }
+    if ((await B(j.channelId, j.name)).added) {
+      try {
+        let {
+          pollYouTube: q
+        } = await Promise.resolve().then(() => {
+          dH();
+          return pO;
+        });
+        let N = (await q()).newItems;
+        if (N > 0) {
+          Promise.resolve().then(() => {
+            lJ();
+            return pJ;
+          }).then(M => M.syncAndProcess({
+            source: "youtube"
+          })).catch(() => {});
+        }
+        let L = (await Promise.resolve().then(() => {
+          DA();
+          return hA;
+        })).loadMonitorConfig().then(M => M.digest.hour);
+        await A.api.editMessageText(A.chat.id, H.message_id, `✔ <b>${_(j.name)}</b> добавлен. ${N > 0 ? `${N} видео в ленте.` : "Видео пока нет."} Дайджест в ${await L}:00.`, {
+          parse_mode: "HTML"
+        });
+      } catch {
+        await A.api.editMessageText(A.chat.id, H.message_id, `✔ YouTube канал <code>${_(j.name)}</code> добавлен.`, {
+          parse_mode: "HTML"
+        });
+      }
+    } else {
+      await A.api.editMessageText(A.chat.id, H.message_id, "Канал уже в списке.");
+    }
+    return;
+  }
+  if (W.startsWith("add tw ")) {
+    let z = W.slice(7).trim();
+    if (!z) {
+      await A.reply("Формат: /sources add tw @handle");
+      return;
+    }
+    if (!process.env.X_BEARER_TOKEN) {
+      await A.reply(`❌ Для Twitter нужен <code>X_BEARER_TOKEN</code>.
+Добавь через /settings → Переменные окружения.`, {
+        parse_mode: "HTML"
+      });
+      return;
+    }
+    if ((await J(z)).added) {
+      let j = await A.reply("🔍 Добавляю...");
+      try {
+        let {
+          pollTwitter: I
+        } = await Promise.resolve().then(() => {
+          nH();
+          return dO;
+        });
+        let $ = (await I()).newItems;
+        if ($ > 0) {
+          Promise.resolve().then(() => {
+            lJ();
+            return pJ;
+          }).then(N => N.syncAndProcess({
+            source: "twitter"
+          })).catch(() => {});
+        }
+        await A.api.editMessageText(A.chat.id, j.message_id, `✔ Twitter <b>@${_(z.replace(/^@/, ""))}</b> добавлен. ${$ > 0 ? `Загружено ${$} твитов.` : "Твитов пока нет."}`, {
+          parse_mode: "HTML"
+        });
+      } catch {
+        await A.api.editMessageText(A.chat.id, j.message_id, `✔ Twitter @${_(z.replace(/^@/, ""))} добавлен.`, {
+          parse_mode: "HTML"
+        });
+      }
+    } else {
+      await A.reply("Аккаунт уже в списке.");
+    }
+    return;
+  }
+  if (W.startsWith("remove yt ")) {
+    let z = W.slice(10).trim();
+    let H = await Y(z);
+    await A.reply(H ? "✔ Канал удалён." : "Канал не найден.");
+    return;
+  }
+  if (W.startsWith("remove tw ")) {
+    let z = W.slice(10).trim();
+    let H = await C(z);
+    await A.reply(H ? "✔ Аккаунт удалён." : "Аккаунт не найден.");
+    return;
+  }
+  if (W.startsWith("add gh ")) {
+    let H = W.slice(7).trim().match(/(?:github\.com\/)?([^/\s]+)\/([^/\s]+)/);
+    if (!H) {
+      await A.reply("Формат: <code>/sources add gh owner/repo</code>", {
+        parse_mode: "HTML"
+      });
+      return;
+    }
+    let j = H[1];
+    let I = H[2].replace(/\.git$/, "");
+    if ((await F(j, I)).added) {
+      let $ = await A.reply("🔍 Добавляю...");
+      try {
+        let {
+          pollGitHub: N
+        } = await Promise.resolve().then(() => {
+          aH();
+          return nO;
+        });
+        let {
+          loadState: L
+        } = await Promise.resolve().then(() => {
+          GA();
+          return F0;
+        });

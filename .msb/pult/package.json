@@ -1,0 +1,22 @@
+{
+  "name": "pult",
+  "private": true,
+  "type": "module",
+  "description": "Пульт: панель состояния ботов, фоновых задач, проектов и сервера. Сборщик на сервере ботов + веб-сервис со входом, тревогами и сводкой в 08:00.",
+  "engines": { "node": ">=22.18" },
+  "scripts": {
+    "test": "node --disable-warning=ExperimentalWarning --test --test-timeout=60000 --test-concurrency=4 \"tests/**/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json",
+    "check": "npm run typecheck && npm test",
+    "collect": "node --disable-warning=ExperimentalWarning src/collector/main.ts",
+    "serve": "node --disable-warning=ExperimentalWarning src/server/main.ts",
+    "pult": "node --disable-warning=ExperimentalWarning src/cli/pult.ts"
+  },
+  "dependencies": {
+    "qrcode-generator": "^2.0.4"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.0",
+    "typescript": "^5.9.0"
+  }
+}

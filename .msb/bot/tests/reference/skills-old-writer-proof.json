@@ -1,0 +1,21 @@
+{
+  "blob": "73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11",
+  "functions": "M8A57179-57205; formatter stub fixed synthetic bytes; OA=true disables mirror",
+  "isolated": true,
+  "skill-link": {
+    "externalChanged": true,
+    "skillNowReplacement": true
+  },
+  "backup-link": {
+    "externalChanged": true,
+    "skillNowReplacement": true
+  },
+  "directory-link": {
+    "externalChanged": true,
+    "skillNowReplacement": true
+  },
+  "backup-failure": {
+    "externalChanged": false,
+    "skillNowReplacement": true
+  }
+}

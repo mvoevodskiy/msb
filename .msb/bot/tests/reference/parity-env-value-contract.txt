@@ -1,0 +1,70 @@
+Проверка значения env: прежний lK до формы описания и перед записью
+
+Основа — 5ec610ca4def1e47250ced403436167240a9a014.
+Эталон: master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.msb/bot/vendor/deobfuscated.js, readable blob
+73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11. Читать:
+ git show BLOB | sed -n '54506,54566p;55110,55120p;55346,55372p'
+Форма вызывает lK в119178–119190, затем JDA118613–118621 → s1.
+
+Прежний порядок
+1. Вычислить value.trim(); пустое отклонить сообщением «Значение пустое.».
+2. CR/LF проверять в исходном вводе, C0 кроме tab и DEL — в trimmed value.
+   Для похожего на целый JSON ввода дать прежнюю специальную подсказку;
+   это эвристика oSA, а не полноценный JSON parser. Горизонтальный tab разрешён.
+3. Длина trimmed JS string (UTF-16 code units) <=4000; ошибка сообщает длину,
+   не содержание. 4000 допустимы, 4001 нет. Не считать UTF-8 bytes/code points.
+4. Для /TELEGRAM|^BOT_TOKEN$/i — форма /^\d+:[A-Za-z0-9_-]{30,}$/.
+   Это лишь проверка формы, не успешная авторизация. Не расширять на PULT_TG_TOKEN.
+5. Только для имён /ANTHROPIC|OPENROUTER|OPENAI/i отвергать явно распознанный
+   другой префикс: sk-ant- (Anthropic), sk-or- (OpenRouter), AIza (Google),
+   xai- (xAI). AIza case-sensitive, остальные insensitive. Имена выбираются
+   в указанном порядке. Неизвестные префиксы и остальные ключи разрешены.
+6. s1 сначала запрещает protected name, затем вызывает тот же lK; internal:true
+   обходит только запрет имени, не значение. После успеха сохраняется trim().
+
+Новое расхождение
+validateEnvValue проверяет только string/CR/LF/NUL, а форма заранее trim().
+Пустота, лишние control, oversized value и явный другой vendor проходят;
+граничный CR/LF теряется. Direct writer сохраняет сырые пробелы. Нужен
+production RED перед изменением, не считать source review полным доказательством.
+
+Распределение ответственности
+Один pure value module: raw value + key → normalized string либо error без
+секрета. Общие store/form должны использовать его, без второго copy validator.
+Форма проверяет raw до transient description draft; invalid остаётся на value,
+с исходным TTL, без записи/описания/CLI. Retry/cancel действуют как прежде.
+Store повторяет guard до IO/очереди, protected priority сохраняется; auth/Pult
+используют те же существующие paths. Новых issuer/real-auth/network checks нет.
+
+Совместимость
+- Уже записанные пустые строки/explicit-empty STT overrides читаются как раньше;
+  validator не мигрирует данные и не превращает empty в fallback.
+- Delete отдельный; Pult '-' или blank по-прежнему удаляет optional alert token
+  и вызывает свой прежний reload. Не вводить token shape по имени PULT_TG_TOKEN.
+- Stock Claude сохраняет whitespace normalization, OAT/API/opaque routing,
+  internal write, state/restart и selected provider/session/model/effort.
+- Не трогать overlay provider-secret writer/native Codex auth, preview/buttons,
+  обычные env-value сообщения и description/skip. Форма не удаляет ввод владельца.
+- Unknown token shape остаётся допустимой, как в old. Успешный guard не означает
+  working provider API; не менять правдивый текст об этом в success.
+
+Проверки: synthetic HOME/transport/API; пустота/control/raw edges/JSON/4000/
+4001/UTF-16/tab, Telegram shape/vendor matrix, retries/deadline/no IO/no CLI,
+protected priority/internal guard, trim storage, existing empty STT, Pult
+optional deletion/reload, auth OAT/API/opaque и oversize retry. Только fake data.
+Никаких реальных ключей/личного аудио/логина ради RED. Логические этапы отдельно.
+Откат возвращает пропуск плохих значений; code-only не меняет существующие env.
+
+Checkpoint восстановления
+Contract 268823a; RED fcbc1b8: первоначально34test,12PASS/22FAIL. Один из FAIL
+был неверным тестовым маршрутом пустого Telegram text (такой text невозможно
+получить от Telegram): он заменён прямой проверкой production form. Остальные
+17invalid rows идут через настоящий ingress; store повторяет все18guards.
+NUL/internalCRLF были запрещены и раньше — часть RED доказывает текст причины,
+а не новый класс пропущенного ввода. Не выдавать число FAIL за число дефектов.
+После fix34value tests GREEN; девять связанных наборов140PASS, независимые
+value/protected/auth/Pult/STT78PASS. Все externalAPI/CLI/helper здесь fake;
+реальные credentials, Pult reload, voice и Claude turn не проверялись этим этапом.
+Synthetic BOT_TOKEN fixtures приведены к старому format-only rule; validator
+ради них не ослабляется. Полный Docker/targetLinux и liveприёмка — отдельно.

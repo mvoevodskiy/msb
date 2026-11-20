@@ -1,0 +1,11 @@
+[Unit]
+Description=msb-engine: watch request files from MSB bots
+StartLimitBurst=0
+
+[Path]
+PathExists=/home/client/.msb/engine/request
+PathExists=/home/openclaw/.msb-engine/request
+Unit=msb-engine.service
+
+[Install]
+WantedBy=paths.target

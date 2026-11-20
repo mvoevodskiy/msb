@@ -1,0 +1,28 @@
+Принятое отличие old/new: ключи сервисов раздельно для каждого бота
+
+Решение владельца08.11.2026: «Раздельные ключи для каждого бота».
+База432e5e6, веткаcodex/open-core-reference-tests. Это фиксация действующего
+per-bot поведения, runtimeкод/данные/интерфейс не меняются.
+
+Эталон master00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.msb/bot/vendor/deobfuscated.js, readableblob73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11:
+git show BLOB | sed -n '54377,54447p;54479,54506p;54559,54614p;54668,54687p'.
+Old g9 объединял global/currentbot, ordinary s1 default-global и удалял
+совпадающие дубли других ботов; tSA удалял global и currentbot запись.
+New env/store.mjs явно per-bot. Источник/последствия были сверены и показаны
+владельцу до выбора; synthetic list/set/delete подтвердили current-path,
+настоящие secrets этим сравнением не читались и не менялись.
+
+Теперь per-bot list/set/delete — accepted-difference. Не восстанавливать old
+shared write/delete/dedupe как «bugfix». Существующие read-only fallbacks STT
+и provider consumers сохраняются, без genericstartup loader или secretmigration.
+Пример: удаление bot override может открыть уже существующий shared fallback;
+оно не означает удаление shared key. Текст UI должен отражать свою per-bot
+операцию, а не обещать глобальное отключение API. Native auth не переносится
+между ботами и не меняет область хранения этим решением.
+
+Не требуется пустой commit с «тестами» неизменённого кода: scope change не
+реализуется. Existing env/STT/profile tests и623Docker/623targetLinux accepted
+release остаются историческим evidence. При будущих изменениях тестировать
+изоляцию двух bot.env, сохранность shared fallback и чужих bot settings.
+Откат данного docscommit меняет только инструкции, не секреты/настройки/сервер.

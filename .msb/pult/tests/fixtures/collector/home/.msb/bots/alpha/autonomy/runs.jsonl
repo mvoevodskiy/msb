@@ -1,0 +1,6 @@
+{"ts": "2026-10-29T04:00:30.000Z", "actionId": "conv-prompt-dev", "kind": "prompt", "name": "Задача: Разработка демо…", "status": "ok", "detail": "доставлено", "tokensIn": 1000, "tokensOut": 100, "durationMs": 60000, "meteredUsd": 0.01}
+{"ts": "2026-10-29T05:00:30.000Z", "actionId": "conv-prompt-dev", "kind": "prompt", "name": "Задача: Разработка демо…", "status": "skipped", "detail": "нечего сообщить — задача промолчала штатно", "tokensIn": 2000000, "tokensOut": 10000, "durationMs": 300000, "meteredUsd": 1.5, "delegated": 2}
+{"ts": "2026-10-29T07:15:00.000Z", "actionId": "conv-prompt-alarm", "kind": "prompt", "name": "Демо: тревога фона", "status": "ok", "detail": "доставлено", "tokensIn": 5000, "tokensOut": 500, "durationMs": 30000, "meteredUsd": 0.05}
+{"ts": "2026-10-29T09:00:30.000Z", "actionId": "conv-prompt-dev", "kind": "prompt", "name": "Задача: Разработка демо…", "status": "skipped", "detail": "нечего сообщить — задача промолчала штатно", "tokensIn": 3000000, "tokensOut": 20000, "durationMs": 120000, "meteredUsd": 2.25}
+{"ts": "2026-10-29T10:00:30.000Z", "actionId": "conv-prompt-dev", "kind": "prompt", "name": "Задача: Разработка демо…", "status": "failed", "detail": "упал на шаге 2: нет файла ~/.iia/bots/alpha/actions.json", "tokensIn": 1000, "tokensOut": 0, "durationMs": 10000, "meteredUsd": 0.001}
+not json

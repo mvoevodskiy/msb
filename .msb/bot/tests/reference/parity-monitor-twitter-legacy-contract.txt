@@ -1,0 +1,29 @@
+Monitor: X legacy handle compatibility — reference and boundaries
+
+Old core blob: 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11.
+Read with: git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba
+GHA 5727–5754 stores handle and re-enables a disabled match without changing
+the group setting; zL 5909–5927 uses handle for sourceId; GL 6070–6074 stores
+the config at ~/.iia/monitor/config.json. Current jar1 profile resolves the
+same root; config reads that array without schema migration and code-only deploy
+preserves it. This is a supported upgrade path, not evidence of JAR1 contents.
+
+Before this change, old entries lacked username: adding X could throw, source
+buttons encoded undefined, and polling fetched the wrong account. The same
+short callback could delete an actual username 'undefined' instead of the old
+row. No source is converted automatically. Valid old handle and new username
+are read consistently by the add, list, delete and polling paths. Conflicting
+fields and duplicate matches are not selected for add/delete. Malformed rows
+are labelled using their visible aliases and retain a deletion button bound to
+the unchanged row; indistinguishable rows are left untouched. Stale short
+'twitter:undefined' is refused; a fresh token handles that actual username.
+
+Poll updates are applied only to a unique unchanged snapshot. This does not
+distinguish a removed row from an identically recreated row (ABA); existing
+duplicate accounts may still be polled twice. Automatic merging or disabling
+would require a separate policy. The retained callback formats also cannot
+distinguish every deleted/recreated same-name source.
+
+Checks: monitor-twitter-legacy.test.mjs and related monitoring suites use only
+temporary profile, fake Telegram, and fake fetch. No actual credentials, X
+API, JAR1, or OpenClaw behavior was tested.

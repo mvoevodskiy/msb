@@ -1,0 +1,181 @@
+ 10320|      kind: "failed",
+ 10321|      msg: Wl(C)
+ 10322|    }));
+ 10323|  } catch (C) {
+ 10324|    return {
+ 10325|      kind: "failed",
+ 10326|      msg: Wl(C)
+ 10327|    };
+ 10328|  }
+ 10329|  let J = await Promise.race([Y, zl(Q).then(() => null)]);
+ 10330|  if (J !== null) {
+ 10331|    return J;
+ 10332|  }
+ 10333|  B();
+ 10334|  return Y;
+ 10335|}
+ 10336|async function Hl(A) {
+ 10337|  let Q = A.maxFastRetries ?? 5;
+ 10338|  let B = A.retryIntervalMs ?? 300000;
+ 10339|  let Y = A.confirmRunningMs ?? 60000;
+ 10340|  let J = A.sleep ?? zl;
+ 10341|  let C = A.now ?? Date.now;
+ 10342|  let F = A.log ?? (V => console.error(V));
+ 10343|  let U = (V, W) => {
+ 10344|    try {
+ 10345|      Promise.resolve(A.emitEvent?.(V, W)).catch(() => {});
+ 10346|    } catch {}
+ 10347|  };
+ 10348|  let Z = 0;
+ 10349|  let E = 0;
+ 10350|  let X = () => {
+ 10351|    Z = 0;
+ 10352|    if (KY === null) {
+ 10353|      return;
+ 10354|    }
+ 10355|    let V = Math.max(0, Math.round((C() - KY) / 1000));
+ 10356|    let W = E;
+ 10357|    KY = null;
+ 10358|    E = 0;
+ 10359|    F(`[iia/bot] polling recovered from 409 after ${V}s (${W} slow retries)`);
+ 10360|    U("polling_recovered", `waited_s=${V} slow_retries=${W}`);
+ 10361|    if (C() - Vl >= 21600000) {
+ 10362|      Vl = C();
+ 10363|      try {
+ 10364|        Promise.resolve(A.notifyOwnerRecovered?.()).catch(() => {});
+ 10365|      } catch {}
+ 10366|    }
+ 10367|  };
+ 10368|  while (true) {
+ 10369|    let V = await TKA(A.start, Y, X);
+ 10370|    if (V.kind === "stopped") {
+ 10371|      KY = null;
+ 10372|      return;
+ 10373|    }
+ 10374|    let W = V.msg;
+ 10375|    if (W.includes("401") || W.includes("Unauthorized") || W.includes("Not Found")) {
+ 10376|      F(`[iia/bot] Token invalid (${W.slice(0, 100)}). Bot will not poll Telegram. Fix via /settings or restart.`);
+ 10377|      KY = null;
+ 10378|      return;
+ 10379|    }
+ 10380|    A.stop();
+ 10381|    if (KY !== null) {
+ 10382|      E++;
+ 10383|      F(`[iia/bot] polling still down (409 mode, retry #${E} in ${B / 1000}s): ${W.slice(0, 160)}`);
+ 10384|      await J(B);
+ 10385|      continue;
+ 10386|    }
+ 10387|    Z++;
+ 10388|    if (Z < Q) {
+ 10389|      let G = Math.min(30000, Z * 5000);
+ 10390|      F(`[iia/bot] bot.start() failed (${Z}/${Q}), retry in ${G / 1000}s: ${W.slice(0, 200)}`);
+ 10391|      await J(G);
+ 10392|      continue;
+ 10393|    }
+ 10394|    F(`[iia/bot] bot.start() failed after ${Q} retries: ${W.slice(0, 200)}`);
+ 10395|    if (!SKA(W)) {
+ 10396|      F("[iia/bot] Bot not polling. Heartbeat still running.");
+ 10397|      return;
+ 10398|    }
+ 10399|    KY = C();
+ 10400|    E = 0;
+ 10401|    F(`[iia/bot] 409 Conflict persists (second getUpdates consumer on this token). Retrying every ${B / 1000}s until the path is free.`);
+ 10402|    U("polling_dead_409", `fast_retries=${Q} last_error=${W.slice(0, 160)}`);
+ 10403|    await J(B);
+ 10404|  }
+ 10405|}
+ 10406|var Gl = "Бот снова на связи. Была вторая программа, читавшая обновления этого токена. Сейчас путь свободен, сообщения снова доходят.";
+ 10407|var KY = null;
+ 10408|var Vl = 0;
+ 10409|import { writeFileSync as Kl, unlinkSync as xKA, mkdirSync as kKA } from "node:fs";
+ 10410|import { join as pL, dirname as vKA } from "node:path";
+ 10411|import * as Il from "node:os";
+ 10412|function Nl() {
+ 10413|  let A = process.env.MSB_SESSION_DIR ? pL(process.env.MSB_SESSION_DIR, "..") : pL(Il.homedir(), ".msb");
+ 10414|  return pL(A, bKA);
+ 10415|}
+ 10416|function $l(A) {
+ 10417|  let Q = new Date().toISOString();
+ 10418|  try {
+ 10419|    Kl(A, Q);
+ 10420|    return;
+ 10421|  } catch {}
+ 10422|  try {
+ 10423|    kKA(vKA(A), {
+ 10424|      recursive: true
+ 10425|    });
+ 10426|    Kl(A, Q);
+ 10427|  } catch {}
+ 10428|}
+ 10429|function lL(A) {
+ 10430|  try {
+ 10431|    xKA(A);
+ 10432|  } catch {}
+ 10433|}
+ 10434|function hKA(A) {
+ 10435|  if (TG.has(A)) {
+ 10436|    return;
+ 10437|  }
+ 10438|  let Q = setInterval(() => $l(A), fKA);
+ 10439|  Q.unref?.();
+ 10440|  TG.set(A, Q);
+ 10441|}
+ 10442|function cL(A) {
+ 10443|  let Q = TG.get(A);
+ 10444|  if (Q === undefined) {
+ 10445|    return;
+ 10446|  }
+ 10447|  clearInterval(Q);
+ 10448|  TG.delete(A);
+ 10449|}
+ 10450|function mKA() {
+ 10451|  if (jl) {
+ 10452|    return;
+ 10453|  }
+ 10454|  jl = true;
+ 10455|  try {
+ 10456|    process.once("exit", () => {
+ 10457|      for (let A of [...E9.keys()]) {
+ 10458|        cL(A);
+ 10459|        lL(A);
+ 10460|      }
+ 10461|      E9.clear();
+ 10462|      AJ = null;
+ 10463|    });
+ 10464|  } catch {}
+ 10465|}
+ 10466|function KZ(A = Nl()) {
+ 10467|  E9.set(A, (E9.get(A) ?? 0) + 1);
+ 10468|  $l(A);
+ 10469|  hKA(A);
+ 10470|  mKA();
+ 10471|  let Q = false;
+ 10472|  return () => {
+ 10473|    if (Q) {
+ 10474|      return;
+ 10475|    }
+ 10476|    Q = true;
+ 10477|    let B = (E9.get(A) ?? 1) - 1;
+ 10478|    if (B > 0) {
+ 10479|      E9.set(A, B);
+ 10480|      return;
+ 10481|    }
+ 10482|    E9.delete(A);
+ 10483|    cL(A);
+ 10484|    lL(A);
+ 10485|  };
+ 10486|}
+ 10487|function dL(A, Q = Nl()) {
+ 10488|  if (A) {
+ 10489|    if (AJ !== null) {
+ 10490|      AJ();
+ 10491|    }
+ 10492|    AJ = KZ(Q);
+ 10493|    return;
+ 10494|  }
+ 10495|  if (AJ !== null) {
+ 10496|    AJ();
+ 10497|    AJ = null;
+ 10498|  }
+ 10499|  if ((E9.get(Q) ?? 0) === 0) {
+ 10500|    cL(Q);

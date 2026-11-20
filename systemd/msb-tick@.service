@@ -1,0 +1,27 @@
+[Unit]
+Description=Constructor periodic concern: %i
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=client
+WorkingDirectory=/home/client
+EnvironmentFile=/etc/msb-tick/%i.conf
+EnvironmentFile=-/home/client/.msb/.env
+Environment=HOME=/home/client
+ExecStart=/bin/bash -c 'exec ${MSB_TICK_EXEC}'
+
+TimeoutStartSec=600
+MemoryMax=512M
+MemoryHigh=384M
+CPUQuota=50%
+Nice=10
+
+# Security posture — same as msb-backup/msb-collector/msb-sync: NoNewPrivileges
+# intentionally NOT set. Ticks run trusted internal scripts with narrow sudo
+# grants. Different trust model from msb-bot@.service which untrusts input.
+ProtectSystem=full
+ProtectHome=false
+ReadWritePaths=/home/client/.msb /usr/lib/node_modules
+PrivateTmp=true

@@ -1,0 +1,16 @@
+[Unit]
+Description=msb-engine: base-layer tick
+
+[Service]
+Type=oneshot
+ExecStartPre=-/bin/sh -c '[ -s /usr/local/sbin/msb-engine ] && [ ! -L /usr/local/sbin/msb-engine ] || { [ -s /usr/local/lib/msb-engine/msb-engine.good ] && cp -- /usr/local/lib/msb-engine/msb-engine.good /usr/local/sbin/msb-engine.restore && chmod 0755 /usr/local/sbin/msb-engine.restore && mv -f -- /usr/local/sbin/msb-engine.restore /usr/local/sbin/msb-engine && echo MSB_ENGINE_HELPER_RESTORED; }'
+ExecStart=/usr/bin/python3 -IS /usr/local/lib/msb-engine/cli.py tick
+WorkingDirectory=/
+UMask=0077
+PrivateTmp=yes
+ProtectProc=invisible
+NoNewPrivileges=yes
+LockPersonality=yes
+MemoryMax=256M
+TimeoutStartSec=10min
+TimeoutStopSec=30s

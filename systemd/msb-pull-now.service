@@ -1,0 +1,8 @@
+[Unit]
+Description=One-shot puller tick on delivery nudge trigger
+
+[Service]
+Type=oneshot
+ExecStartPre=-/bin/systemctl reset-failed msb-tick@puller.service
+ExecStartPre=/bin/rm -f /home/client/.msb/.pull-now
+ExecStart=/bin/systemctl start --no-block msb-tick@puller.service

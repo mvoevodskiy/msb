@@ -1,0 +1,3 @@
+#!/bin/sh
+# msb-engine — открытый root-helper (замена jarvis-engine).
+exec /usr/bin/python3 -IS /usr/local/lib/msb-engine/cli.py "$@"

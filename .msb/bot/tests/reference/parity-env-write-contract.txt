@@ -1,0 +1,45 @@
+Env read-modify-write: прежняя очередь, не новый scope или installer
+
+Baseline нового ядра5f439ba98cc43960e272519390ae765897299973.
+Сценарий: сохранение двух разных сервисных ключей либо set/delete пересекаются
+во время файлового await. Оба успешно принятых изменения должны сохраниться;
+последняя операция читает уже зафиксированный результат предыдущей.
+
+Old master00f081f2220d0e6d3a186e8e1bb447b57acd6ebf,
+.msb/bot/vendor/deobfuscated.js, readable blob73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11.
+Читать git show BLOB | sed -n '54559,54624p;54668,54708p'.
+`s1` и `tSA` делили process queue `xK` (initial55346): validation/target перед
+очередью, read/modify/Gy/write/rename/process-env внутри, release в finally.
+`s1` сохраняет значение, `tSA` удаляет; Gy пишет0600 и атомарно переименовывает.
+Это сериализация внутри процесса, не advisory/cross-process lock.
+
+Новый путь до исправления: core env/store и overlay/ext/env отдельно делают
+read/modify/write/rename одного per-bot файла, используя одинаковый tmp.PID,
+без общей очереди. Пока это code hypothesis; production RED должен доказать
+потерю обновления и только после этого этап считается подтверждённым дефектом.
+
+Граница исправления: одна общая process queue для существующих set/delete/
+provider-secret writers. Не менять parser/format/keys/auth/privacy/путь записи,
+не перенаправлять default per-bot в global, не копировать старое удаление дублей
+из чужих bot scopes, не вводить OS/helper/CLI-authority changes.
+Защищённые ключи и validation должны отказать до IO как5f439ba.
+Ошибка одного writer возвращается только его caller и освобождает очередь;
+следующая операция снова работает. Env объект обновляется после успешного rename.
+Один target вычисляется при поступлении, а не из другого профиля после await.
+
+Проверка: temporary HOME, synthetic env и real fs с barrier только первого
+readFile. Удержать read A, вызвать B: baseline B успевает сохранить старый snapshot,
+после release A теряет B. После fix B ждёт A, оба результата видны.
+Cases:set/set,set/delete,delete/set,core/provider,provider/core,provider/provider;
+failure→next writer и независимые env objects/profiles. Сеть/настоящие credentials
+не используются. RED/fix сохраняются отдельно; full Linux/live идут позже.
+
+Границы: внешние процессы/ручные редакторы не координируются этим process mutex.
+Описание/comment stage, global visibility/scope и восстановление данных — другие
+этапы. Revert fix вновь допускает потерю записи; code-only rollback не возвращает
+.env/ключи, сохранённые или удалённые пользователем.
+
+Проверенный checkpoint:da1cac9 контракт,2ce18ab RED:2PASS/6RED,безskip/todo.
+После общей process queue:8order PASS;40связанных core+provider tests PASS,
+независимый Sol повторил те же40PASS без findings. Это локальный результат,
+не target Linux/live приёмка. JAR1 на принятом5f439ba до следующего export.

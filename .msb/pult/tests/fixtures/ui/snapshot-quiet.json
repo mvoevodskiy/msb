@@ -1,0 +1,551 @@
+{
+ "schema": 1,
+ "host": "Сервер ботов",
+ "collectedAt": "2026-10-29T10:44:58.000Z",
+ "collectMs": 840,
+ "server": {
+  "cores": 8,
+  "cpuPct": 27,
+  "iowaitPct": 10,
+  "load1": 2.2,
+  "memTotalMb": 9933,
+  "memUsedMb": 3174,
+  "memCacheMb": 5632,
+  "memAvailMb": 6759,
+  "swapTotalMb": 4096,
+  "swapUsedMb": 307,
+  "diskTotalGb": 77,
+  "diskUsedGb": 44,
+  "bootAt": "2026-10-28T20:20:00.000Z"
+ },
+ "bots": [
+  {
+   "id": "default",
+   "name": "Основной",
+   "projects": [
+    "Zapcita",
+    "socpublisher"
+   ],
+   "service": {
+    "state": "active",
+    "since": "2026-10-28T20:25:00.000Z",
+    "restarts": 0,
+    "memMb": 236,
+    "cpuCores": 0.01
+   },
+   "now": {
+    "busy": false,
+    "since": null,
+    "kind": null,
+    "text": null,
+    "helpers": 0
+   },
+   "lastResult": {
+    "at": "2026-10-28T22:01:00.000Z",
+    "text": "ответ про переезд сервера",
+    "durationMin": 89,
+    "actions": 234
+   },
+   "chat24h": {
+    "requests": 5,
+    "minutes": 93
+   },
+   "bg24h": {
+    "tasks": 0,
+    "runs": 0,
+    "tokens": 0,
+    "minutes": 0
+   },
+   "timeline": [
+    {
+     "start": "2026-10-28T13:37:30.000Z",
+     "end": "2026-10-28T13:39:28.800Z",
+     "kind": "chat",
+     "label": "Чем сейчас занят сервер? Я сказал остановить все по завершен"
+    },
+    {
+     "start": "2026-10-28T13:55:37.200Z",
+     "end": "2026-10-28T13:55:48.000Z",
+     "kind": "chat",
+     "label": "Удалять не нужно"
+    },
+    {
+     "start": "2026-10-28T15:37:08.400Z",
+     "end": "2026-10-28T15:37:40.800Z",
+     "kind": "chat",
+     "label": "голосовое сообщение"
+    },
+    {
+     "start": "2026-10-28T15:38:02.400Z",
+     "end": "2026-10-28T15:39:28.800Z",
+     "kind": "chat",
+     "label": "голосовое сообщение"
+    },
+    {
+     "start": "2026-10-28T20:32:16.800Z",
+     "end": "2026-10-28T22:01:01.200Z",
+     "kind": "chat",
+     "label": "Поздравляю. Ты переехал на сервер с намного большим запасом"
+    }
+   ]
+  },
+  {
+   "id": "SMM",
+   "name": "SMM",
+   "projects": [
+    "infosecurity",
+    "Zapcita — соцсети",
+    "кемперы"
+   ],
+   "service": {
+    "state": "active",
+    "since": "2026-10-28T20:25:00.000Z",
+    "restarts": 0,
+    "memMb": 1034,
+    "cpuCores": 0.02
+   },
+   "now": {
+    "busy": false,
+    "since": null,
+    "kind": null,
+    "text": null,
+    "helpers": 0
+   },
+   "lastResult": {
+    "at": "2026-10-29T05:38:00.000Z",
+    "text": "пост в тест-канале InfoSecurity",
+    "durationMin": 52,
+    "actions": 780
+   },
+   "chat24h": {
+    "requests": 1,
+    "minutes": 52
+   },
+   "bg24h": {
+    "tasks": 0,
+    "runs": 0,
+    "tokens": 0,
+    "minutes": 0
+   },
+   "timeline": [
+    {
+     "start": "2026-10-29T04:46:26.400Z",
+     "end": "2026-10-29T05:38:42.000Z",
+     "kind": "chat",
+     "label": "пост для тест-канала InfoSecurity"
+    }
+   ]
+  },
+  {
+   "id": "personal",
+   "name": "Личный",
+   "projects": [
+    "Задачи с созвонов",
+    "Пульт",
+    "личное"
+   ],
+   "service": {
+    "state": "active",
+    "since": "2026-10-28T20:25:00.000Z",
+    "restarts": 0,
+    "memMb": 256,
+    "cpuCores": 0.01
+   },
+   "now": {
+    "busy": false,
+    "since": null,
+    "kind": null,
+    "text": null,
+    "helpers": 0
+   },
+   "lastResult": {
+    "at": "2026-10-29T10:26:00.000Z",
+    "text": "роли ботов записаны",
+    "durationMin": 2,
+    "actions": 9
+   },
+   "chat24h": {
+    "requests": 11,
+    "minutes": 59
+   },
+   "bg24h": {
+    "tasks": 0,
+    "runs": 0,
+    "tokens": 0,
+    "minutes": 0
+   },
+   "timeline": [
+    {
+     "start": "2026-10-28T20:41:16.800Z",
+     "end": "2026-10-28T21:01:55.200Z",
+     "kind": "chat",
+     "label": "личный запрос"
+    },
+    {
+     "start": "2026-10-29T04:49:15.600Z",
+     "end": "2026-10-29T04:54:39.600Z",
+     "kind": "chat",
+     "label": "личный запрос"
+    },
+    {
+     "start": "2026-10-29T05:01:01.200Z",
+     "end": "2026-10-29T05:04:37.200Z",
+     "kind": "chat",
+     "label": "личный запрос"
+    },
+    {
+     "start": "2026-10-29T05:16:15.600Z",
+     "end": "2026-10-29T05:19:08.400Z",
+     "kind": "chat",
+     "label": "личный запрос"
+    },
+    {
+     "start": "2026-10-29T05:38:24.000Z",
+     "end": "2026-10-29T05:41:38.400Z",
+     "kind": "chat",
+     "label": "личный запрос"
+    },
+    {
+     "start": "2026-10-29T05:43:12.000Z",
+     "end": "2026-10-29T05:46:08.400Z",
+     "kind": "chat",
+     "label": "личный запрос"
+    },
+    {
+     "start": "2026-10-29T06:03:21.600Z",
+     "end": "2026-10-29T06:05:45.600Z",
+     "kind": "chat",
+     "label": "личный запрос"
+    },
+    {
+     "start": "2026-10-29T10:00:54.000Z",
+     "end": "2026-10-29T10:02:52.800Z",
+     "kind": "chat",
+     "label": "личный запрос"
+    },
+    {
+     "start": "2026-10-29T10:06:32.400Z",
+     "end": "2026-10-29T10:20:27.600Z",
+     "kind": "chat",
+     "label": "личный запрос"
+    },
+    {
+     "start": "2026-10-29T10:20:27.600Z",
+     "end": "2026-10-29T10:21:32.400Z",
+     "kind": "chat",
+     "label": "личный запрос"
+    },
+    {
+     "start": "2026-10-29T10:25:37.200Z",
+     "end": "2026-10-29T10:26:56.400Z",
+     "kind": "chat",
+     "label": "личный запрос"
+    }
+   ]
+  }
+ ],
+ "tasks": [],
+ "tasksHidden": 0,
+ "services": [
+  {
+   "id": "socpub-ci",
+   "name": "Проверки socpublisher",
+   "project": "socpublisher",
+   "state": "active",
+   "since": "2026-10-28T21:02:00.000Z",
+   "restarts": 0,
+   "memMb": 120,
+   "cpuCores": 0.89,
+   "heavy": false
+  },
+  {
+   "id": "socpub-test",
+   "name": "socpublisher, тест",
+   "project": "socpublisher",
+   "state": "active",
+   "since": "2026-10-28T21:59:00.000Z",
+   "restarts": 0,
+   "memMb": 48,
+   "cpuCores": 0.003,
+   "heavy": false
+  },
+  {
+   "id": "zapcita-outreach",
+   "name": "WhatsApp-рассылка",
+   "project": "Zapcita",
+   "state": "active",
+   "since": "2026-10-28T20:25:00.000Z",
+   "restarts": 0,
+   "memMb": 57,
+   "cpuCores": 0.004,
+   "heavy": false
+  },
+  {
+   "id": "zapcita-mail",
+   "name": "Почта",
+   "project": "Zapcita",
+   "state": "active",
+   "since": "2026-10-28T20:25:00.000Z",
+   "restarts": 0,
+   "memMb": 31,
+   "cpuCores": 0.002,
+   "heavy": false
+  },
+  {
+   "id": "zapcita-bot",
+   "name": "Бот",
+   "project": "Zapcita",
+   "state": "active",
+   "since": "2026-10-28T20:25:00.000Z",
+   "restarts": 0,
+   "memMb": 29,
+   "cpuCores": 0.002,
+   "heavy": false
+  },
+  {
+   "id": "postgresql",
+   "name": "PostgreSQL",
+   "project": null,
+   "state": "active",
+   "since": "2026-10-28T20:25:00.000Z",
+   "restarts": 0,
+   "memMb": 15,
+   "cpuCores": 0.001,
+   "heavy": false
+  },
+  {
+   "id": "zapcita-site",
+   "name": "Сайт",
+   "project": "Zapcita",
+   "state": "active",
+   "since": "2026-10-28T20:25:00.000Z",
+   "restarts": 0,
+   "memMb": 12,
+   "cpuCores": 0.001,
+   "heavy": false
+  },
+  {
+   "id": "nginx",
+   "name": "nginx",
+   "project": "все сайты",
+   "state": "active",
+   "since": "2026-10-28T20:25:00.000Z",
+   "restarts": 0,
+   "memMb": 2,
+   "cpuCores": 0.001,
+   "heavy": false
+  },
+  {
+   "id": "pult-collector",
+   "name": "Пульт: сборщик",
+   "project": "Пульт",
+   "state": "active",
+   "since": "2026-10-29T08:10:00.000Z",
+   "restarts": 0,
+   "memMb": 38,
+   "cpuCores": 0.006,
+   "heavy": false
+  }
+ ],
+ "platform": {
+  "total": 5,
+  "ok": 5,
+  "failed": 0
+ },
+ "projects": [
+  {
+   "id": "zapcita",
+   "name": "Zapcita",
+   "owner": "основной бот · соцсети — SMM",
+   "status": "ok",
+   "statusText": "работает",
+   "stage": "первые продажи, Богота",
+   "next": "01.11 — конец оферты",
+   "services": [
+    {
+     "name": "Бот",
+     "state": "active"
+    },
+    {
+     "name": "Почта",
+     "state": "active"
+    },
+    {
+     "name": "WhatsApp-рассылка",
+     "state": "active"
+    },
+    {
+     "name": "Сайт",
+     "state": "active"
+    }
+   ],
+   "commitsToday": null,
+   "lastCommit": null,
+   "facts": [
+    {
+     "label": "Деньги",
+     "value": "ProxyAPI 334,75 ₽"
+    }
+   ],
+   "asks": [],
+   "updatedAt": "2026-10-29T07:12:00.000Z"
+  },
+  {
+   "id": "socpublisher",
+   "name": "socpublisher",
+   "owner": "основной бот",
+   "status": "warn",
+   "statusText": "тест",
+   "stage": "MVP в тестовых каналах",
+   "next": "альфа в прод 30–31.10",
+   "services": [
+    {
+     "name": "socpublisher, тест",
+     "state": "active"
+    },
+    {
+     "name": "Проверки socpublisher",
+     "state": "active"
+    }
+   ],
+   "commitsToday": 3,
+   "lastCommit": {
+    "at": "2026-10-29T10:23:00.000Z",
+    "subject": "Тесты: 6 037 зелёных"
+   },
+   "facts": [
+    {
+     "label": "Тесты",
+     "value": "6 037 зелёных · требований 294 из 555"
+    }
+   ],
+   "asks": [],
+   "updatedAt": "2026-10-29T10:24:00.000Z"
+  },
+  {
+   "id": "infosecurity",
+   "name": "infosecurity",
+   "owner": "SMM-бот",
+   "status": "warn",
+   "statusText": "к проду",
+   "stage": "1 пост в тест-канале",
+   "next": "запуск сегодня",
+   "services": [],
+   "commitsToday": 4,
+   "lastCommit": {
+    "at": "2026-10-29T09:58:00.000Z",
+    "subject": "Сайт: лента выпусков"
+   },
+   "facts": [
+    {
+     "label": "Сбор",
+     "value": "сбор X в норме · сайт строится"
+    }
+   ],
+   "asks": [],
+   "updatedAt": "2026-10-29T09:30:00.000Z"
+  },
+  {
+   "id": "meeting-tasks",
+   "name": "Задачи с созвонов",
+   "owner": "личный бот · твой сервер",
+   "status": "unknown",
+   "statusText": "нет связи",
+   "stage": "выложен 27.10, ждёт первую встречу",
+   "next": "PostgreSQL",
+   "services": [],
+   "commitsToday": null,
+   "lastCommit": null,
+   "facts": [
+    {
+     "label": "Связь",
+     "value": "статус на панель — вторым этапом"
+    },
+    {
+     "label": "Хранилище",
+     "value": "файлы, копии раз в сутки"
+    }
+   ],
+   "asks": [],
+   "updatedAt": "2026-10-27T15:00:00.000Z"
+  },
+  {
+   "id": "campers",
+   "name": "Кемперы",
+   "owner": "SMM-бот",
+   "status": "pause",
+   "statusText": "пауза до весны",
+   "stage": "аренда до марта–апреля",
+   "next": "аудитория к сезону",
+   "services": [],
+   "commitsToday": null,
+   "lastCommit": null,
+   "facts": [
+    {
+     "label": "Соцсети",
+     "value": "ТГ, ВК, Инста, MAX — пусто"
+    }
+   ],
+   "asks": [],
+   "updatedAt": "2026-10-22T12:00:00.000Z"
+  },
+  {
+   "id": "land",
+   "name": "Земля",
+   "owner": "без бота",
+   "status": "pause",
+   "statusText": "пауза",
+   "stage": "на паузе",
+   "next": null,
+   "services": [],
+   "commitsToday": null,
+   "lastCommit": null,
+   "facts": [],
+   "asks": [],
+   "updatedAt": null
+  }
+ ],
+ "asks": [],
+ "attention": [],
+ "subscription": null,
+ "balances": [
+  {
+   "id": "proxyapi",
+   "name": "ProxyAPI",
+   "value": "41,20 ₽",
+   "ok": false,
+   "checkedAt": "2026-10-29T07:00:32.000Z",
+   "stale": false,
+   "note": null
+  },
+  {
+   "id": "apify",
+   "name": "Apify",
+   "value": "$0,005 из $5",
+   "ok": true,
+   "checkedAt": "2026-10-29T10:20:05.000Z",
+   "stale": false,
+   "note": null
+  },
+  {
+   "id": "deepgram",
+   "name": "Deepgram",
+   "value": "$199,92",
+   "ok": true,
+   "checkedAt": "2026-10-25T09:00:00.000Z",
+   "stale": true,
+   "note": null
+  }
+ ],
+ "upcoming": [],
+ "sourceErrors": [
+  {
+   "source": "deepgram",
+   "message": "команда не ответила за 20 с"
+  },
+  {
+   "source": "pulse:socpublisher",
+   "message": "файл пульса не найден"
+  }
+ ]
+}

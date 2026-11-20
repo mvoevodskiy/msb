@@ -1,0 +1,22 @@
+{
+  "systemd_environment_file": {
+    "1A": false,
+    "_A": true,
+    "AA": true
+  },
+  "after_runtime_assignment_direct_child": {
+    "1A": true,
+    "_A": true,
+    "AA": true
+  },
+  "after_runtime_assignment_shell_child": {
+    "1A": true,
+    "_A": true,
+    "AA": true
+  },
+  "transient_unit_removed": true,
+  "systemd_version": "systemd 257 (257.13-1~deb13u1)",
+  "synthetic_values_only": true,
+  "private_home_or_network_access": false,
+  "bot_or_helper_units_changed": false
+}

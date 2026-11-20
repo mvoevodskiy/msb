@@ -1,0 +1,42 @@
+{
+  "base_commit": "0bc2c9493063043bca866ca8ead6ee2aec6f3457",
+  "reference_master": "00f081f2220d0e6d3a186e8e1bb447b57acd6ebf",
+  "node": "v26.5.1",
+  "platform": "macOS",
+  "production_modified": false,
+  "remote_services_used": false,
+  "baseline": {
+    "core": {
+      "pass": 18,
+      "fail": 0
+    },
+    "overlay": {
+      "pass": 55,
+      "fail": 0
+    }
+  },
+  "reference_suite": {
+    "tests": 7,
+    "pass": 1,
+    "fail": 6,
+    "skip": 0,
+    "todo": 0,
+    "exit_code": 1
+  },
+  "passing": [
+    "Provider selection round trip preserves synthetic credentials and Claude passthrough strips foreign resume only."
+  ],
+  "regressions": [
+    "Sequential polling delivers stop only after the CLI closes.",
+    "Voice does not download/transcribe or invoke the agent.",
+    "Typing, original rotating status and final-message/footer delivery are absent; lone checkmark remains.",
+    "Stale native auth file is accepted without checking login and switches provider.",
+    "Non-owner overlay callback switches provider before core guard.",
+    "Codex error drops session; stream cut replays the operation in another thread."
+  ],
+  "limits": [
+    "No real Telegram/Deepgram/Claude/Codex authentication, server or Linux process-tree test.",
+    "This initial suite is not the complete acceptance matrix: long responses, all timeout cases, reset/switch races and actual successful Codex model execution remain future coverage."
+  ],
+  "command": "node --test .msb/bot/tests/reference/*.test.mjs overlay/bot/ext/tests/reference/*.test.mjs"
+}

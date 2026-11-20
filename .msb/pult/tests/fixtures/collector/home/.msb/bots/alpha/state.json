@@ -1,0 +1,11 @@
+{
+ "rateLimitInfo": {
+  "resetsAt": 1793289600,
+  "rateLimitType": "five_hour",
+  "isUsingOverage": false,
+  "status": "allowed",
+  "lastUpdatedAt": 1793270000
+ },
+ "sessionSecret": "iia-session-XYZ",
+ "ownerToken": "do-not-leak"
+}

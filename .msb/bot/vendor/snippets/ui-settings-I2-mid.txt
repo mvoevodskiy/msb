@@ -1,0 +1,651 @@
+53200|      let Z = await lE(J.engine);
+53201|      if (!Z.owner) {
+53202|        await V0(A, Q, B, J, `⚠️ ${o1(Z.siblingName)}`);
+53203|        return;
+53204|      }
+53205|      await A.editMessageText(Q, B, `⏳ Меняю модель на «${_(U)}»…`, {
+53206|        parse_mode: "HTML"
+53207|      }).catch(() => {});
+53208|      let E = await MB(C);
+53209|      console.error(`[iia/agent-menu] OC model set: ${C} applyOk=${E.ok}${E.ok ? "" : " err=" + E.error}`);
+53210|      let X = !E.ok ? "⚠️ Модель сохранена, но не применилась. Проверь подключение." : SF(C) ? "⚠️ Премиум-модель, дороже. 💡 Дешевле: выбери модель попроще в этом меню." : "✔ Модель изменена.";
+53211|      await V0(A, Q, B, J, X);
+53212|      return;
+53213|    }
+53214|    if (!Ey(J, C, SB())) {
+53215|      await V0(A, Q, B, J);
+53216|      return;
+53217|    }
+53218|    await e(J);
+53219|    await V0(A, Q, B, J);
+53220|    return;
+53221|  }
+53222|  if (Y === "settings:effort") {
+53223|    if (J.engine === "oc") {
+53224|      let F = J.ocModel || pB;
+53225|      let U = K4(F)?.model;
+53226|      let Z = yF(F);
+53227|      if (!Z.length) {
+53228|        await V0(A, Q, B, J, "Эта модель не поддерживает настройку глубины.");
+53229|        return;
+53230|      }
+53231|      let E = {
+53232|        minimal: "🐣 minimal",
+53233|        low: "🐥 low",
+53234|        medium: "⚡️ medium",
+53235|        high: "♟️ high",
+53236|        xhigh: "🦾 xhigh",
+53237|        max: "⚔️ max",
+53238|        adaptive: "🎚️ adaptive"
+53239|      };
+53240|      let X = J.ocEffort;
+53241|      let V = new jA();
+53242|      V.text(`Выкл${!X ? " ✓" : ""}`, "settings:effort:set:off").row();
+53243|      for (let G of Z) {
+53244|        V.text(`${E[G] ?? G}${X === G ? " ✓" : ""}`, `settings:effort:set:${G}`).row();
+53245|      }
+53246|      V.text("« Назад", "menu:agent");
+53247|      let W = `<b>Глубина мыслей</b> · ${_(U?.label ?? F)}
+53248|
+53249|Агент сам подберёт родной режим рассуждений модели под выбранный уровень.
+53250|
+53251|<b>Сейчас:</b> ${X ? E[X] ?? X : "Выкл"}`;
+53252|      await A.editMessageText(Q, B, W, {
+53253|        parse_mode: "HTML",
+53254|        reply_markup: V
+53255|      });
+53256|      return;
+53257|    }
+53258|    let C = K0A(J.ccModel, J.ccEffort, SB());
+53259|    await A.editMessageText(Q, B, C.text, {
+53260|      parse_mode: "HTML",
+53261|      reply_markup: C.keyboard
+53262|    });
+53263|    return;
+53264|  }
+53265|  if (Y.startsWith("settings:effort:set:")) {
+53266|    if (J.engine === "oc") {
+53267|      let F = Y.replace("settings:effort:set:", "");
+53268|      J.ocEffort = F === "off" ? undefined : F;
+53269|      pQ(J, "effort change");
+53270|      await e(J);
+53271|      let U = await lE(J.engine);
+53272|      if (!U.owner) {
+53273|        await V0(A, Q, B, J, `⚠️ ${o1(U.siblingName)}`);
+53274|        return;
+53275|      }
+53276|      let Z = await qO(F);
+53277|      console.error(`[iia/agent-menu] OC thinking set: ${F} applyOk=${Z.ok}${Z.ok ? "" : " err=" + Z.error}`);
+53278|      await V0(A, Q, B, J, Z.ok ? undefined : "⚠️ Глубина сохранена, но не применилась. Проверь подключение.");
+53279|      return;
+53280|    }
+53281|    let C = Y.replace("settings:effort:set:", "");
+53282|    if (!["low", "medium", "high", "xhigh", "max"].includes(C)) {
+53283|      return;
+53284|    }
+53285|    J.ccEffort = C;
+53286|    await e(J);
+53287|    await V0(A, Q, B, J);
+53288|    return;
+53289|  }
+53290|  if (Y === "settings:ssh") {
+53291|    tJ(J.userId);
+53292|    await F0A(A, Q, B);
+53293|    return;
+53294|  }
+53295|  if (Y === "settings:ssh:add-key") {
+53296|    bK.set(J.userId, {
+53297|      step: "waiting_key",
+53298|      settingsMessageId: B
+53299|    });
+53300|    await A.editMessageText(Q, B, [`<b>\uD83D\uDD11 Добавить SSH ключ</b>
+53301|`, `Отправь публичный SSH ключ (начинается с <code>ssh-ed25519</code> или <code>ssh-rsa</code>).
+53302|`, "Если нет ключа — создай на компьютере:", "<code>ssh-keygen -t ed25519</code>", "Потом скопируй: <code>cat ~/.ssh/id_ed25519.pub</code>"].join(`
+53303|`), {
+53304|      parse_mode: "HTML",
+53305|      reply_markup: new jA().text("✖️ Отмена", "settings:ssh:cancel")
+53306|    });
+53307|    return;
+53308|  }
+53309|  if (Y === "settings:ssh:add-ip") {
+53310|    bK.set(J.userId, {
+53311|      step: "waiting_ip",
+53312|      settingsMessageId: B
+53313|    });
+53314|    await A.editMessageText(Q, B, [`<b>\uD83C\uDF10 Открыть IP для SSH</b>
+53315|`, `Введи IPv4 адрес с которого будешь подключаться.
+53316|`, "Узнай свой IP: открой <b>ipv4.icanhazip.com</b> в браузере."].join(`
+53317|`), {
+53318|      parse_mode: "HTML",
+53319|      reply_markup: new jA().text("✖️ Отмена", "settings:ssh:cancel")
+53320|    });
+53321|    return;
+53322|  }
+53323|  if (Y === "settings:ssh:cancel") {
+53324|    tJ(J.userId);
+53325|    await F0A(A, Q, B);
+53326|    return;
+53327|  }
+53328|  if (Y === "settings:ssh:list-keys") {
+53329|    let {
+53330|      callConstructorApi: C
+53331|    } = await Promise.resolve().then(() => t1);
+53332|    let F = await C("GET", "/api/ssh/keys");
+53333|    if (!F.ok || !F.data) {
+53334|      await A.editMessageText(Q, B, `⚠️ ${F.error || "Ошибка"}`, {
+53335|        reply_markup: new jA().text("« Назад", "settings:ssh")
+53336|      });
+53337|      return;
+53338|    }
+53339|    let U = F.data.keys;
+53340|    let Z = `<b>\uD83D\uDD11 SSH ключи (${U.length})</b>
+53341|
+53342|`;
+53343|    if (U.length === 0) {
+53344|      Z += "Нет ключей.";
+53345|    } else {
+53346|      for (let X of U) {
+53347|        Z += `${X.index}. <code>${_(X.type)}</code> ${_(X.comment) || "(без комментария)"}
+53348|`;
+53349|      }
+53350|    }
+53351|    let E = new jA();
+53352|    if (U.length > 1) {
+53353|      for (let X of U) {
+53354|        E.text(`\uD83D\uDDD1 ${X.index}. ${X.comment || X.type}`.slice(0, 30), `settings:ssh:del-key:${X.index}`).row();
+53355|      }
+53356|    }
+53357|    E.text("« Назад", "settings:ssh");
+53358|    await A.editMessageText(Q, B, Z, {
+53359|      parse_mode: "HTML",
+53360|      reply_markup: E
+53361|    });
+53362|    return;
+53363|  }
+53364|  if (Y.startsWith("settings:ssh:del-key:")) {
+53365|    let C = parseInt(Y.split(":")[3]);
+53366|    let {
+53367|      callConstructorApi: F
+53368|    } = await Promise.resolve().then(() => t1);
+53369|    let U = await F("DELETE", "/api/ssh/keys", {
+53370|      index: C
+53371|    });
+53372|    if (U.ok && U.data?.ok) {
+53373|      await A.editMessageText(Q, B, `✔ Ключ #${C} удалён. Осталось: ${U.data.remaining_keys}`, {
+53374|        reply_markup: new jA().text("« Назад", "settings:ssh")
+53375|      });
+53376|    } else {
+53377|      await A.editMessageText(Q, B, `❌ ${U.error || "Ошибка"}`, {
+53378|        reply_markup: new jA().text("« Назад", "settings:ssh")
+53379|      });
+53380|    }
+53381|    return;
+53382|  }
+53383|  if (Y === "settings:ssh:list-ips") {
+53384|    let {
+53385|      callConstructorApi: C
+53386|    } = await Promise.resolve().then(() => t1);
+53387|    let F = await C("GET", "/api/ssh/firewall");
+53388|    if (!F.ok || !F.data) {
+53389|      await A.editMessageText(Q, B, `⚠️ ${F.error || "Ошибка"}`, {
+53390|        reply_markup: new jA().text("« Назад", "settings:ssh")
+53391|      });
+53392|      return;
+53393|    }
+53394|    let U = F.data.rules;
+53395|    let Z = `<b>\uD83C\uDF10 Разрешённые IP (${U.length})</b>
+53396|
+53397|`;
+53398|    if (U.length === 0) {
+53399|      Z += "Нет открытых IP.";
+53400|    } else {
+53401|      for (let X of U) {
+53402|        Z += `• <code>${_(X.ip)}</code>
+53403|`;
+53404|      }
+53405|    }
+53406|    let E = new jA();
+53407|    for (let X of U) {
+53408|      E.text(`\uD83D\uDDD1 ${X.ip}`, `settings:ssh:del-ip:${X.ip}`).row();
+53409|    }
+53410|    E.text("« Назад", "settings:ssh");
+53411|    await A.editMessageText(Q, B, Z, {
+53412|      parse_mode: "HTML",
+53413|      reply_markup: E
+53414|    });
+53415|    return;
+53416|  }
+53417|  if (Y.startsWith("settings:ssh:del-ip:")) {
+53418|    let C = Y.slice(20);
+53419|    let {
+53420|      callConstructorApi: F
+53421|    } = await Promise.resolve().then(() => t1);
+53422|    let U = await F("DELETE", "/api/ssh/firewall", {
+53423|      ip: C
+53424|    });
+53425|    if (U.ok && U.data?.ok) {
+53426|      await A.editMessageText(Q, B, `✔ IP ${C} удалён из файрвола`, {
+53427|        reply_markup: new jA().text("« Назад", "settings:ssh")
+53428|      });
+53429|    } else {
+53430|      await A.editMessageText(Q, B, `❌ ${U.error || U.data?.output || "Ошибка"}`, {
+53431|        reply_markup: new jA().text("« Назад", "settings:ssh")
+53432|      });
+53433|    }
+53434|    return;
+53435|  }
+53436|  if (Y === "settings:ssh:help") {
+53437|    await A.editMessageText(Q, B, [`<b>\uD83D\uDD10 Как подключиться по SSH</b>
+53438|`, "1. Создай ключ на компьютере: <code>ssh-keygen -t ed25519</code>", "2. Добавь ключ: кнопка «🔑 Добавить SSH ключ» выше", "3. Узнай свой IP: открой <b>ipv4.icanhazip.com</b> в браузере", "4. Открой IP: кнопка «🌐 Открыть IP» выше", `5. Подключись: <code>ssh client@IP_СЕРВЕРА</code>
+53439|`, "Если SSH перестал работать — скорее всего сменился IP. Добавь новый.", `
+53440|Подробнее: спроси агента «покажи SERVER-ACCESS.md»`].join(`
+53441|`), {
+53442|      parse_mode: "HTML",
+53443|      reply_markup: new jA().text("« Назад", "settings:ssh")
+53444|    });
+53445|    return;
+53446|  }
+53447|  if (Y === "settings:back") {
+53448|    await Fy(A, Q, B, J);
+53449|    return;
+53450|  }
+53451|  if (Y === "settings:restart") {
+53452|    let C = new jA();
+53453|    C.text("✔ Перезапустить", "settings:restart:do").row();
+53454|    C.text("« Назад", "settings:extras");
+53455|    try {
+53456|      await A.editMessageText(Q, B, `<b>♻️ Перезапуск бота</b>
+53457|
+53458|Бот завершит текущую задачу и перезапустится.
+53459|Systemd поднимет его обратно через ~5 секунд.
+53460|
+53461|Нужен после изменений в коде бота.`, {
+53462|        parse_mode: "HTML",
+53463|        reply_markup: C
+53464|      });
+53465|    } catch {
+53466|      try {
+53467|        await A.editMessageText(Q, B, "Перезапустить бота?", {
+53468|          reply_markup: C
+53469|        });
+53470|      } catch {}
+53471|    }
+53472|    return;
+53473|  }
+53474|  if (Y === "settings:auth") {
+53475|    uY(J.userId);
+53476|    TF(J.userId);
+53477|    await C0A(A, Q, B, J);
+53478|    return;
+53479|  }
+53480|  if (Y === "settings:auth:openrouter") {
+53481|    DE(J.userId, {
+53482|      providerId: "openrouter"
+53483|    });
+53484|    await A.editMessageText(Q, B, `\uD83D\uDD00 <b>OpenRouter · ключ</b>
+53485|
+53486|Пришли API-ключ (<code>sk-or-...</code>) одним сообщением. Я сразу удалю его из чата и сохраню на шлюзе.
+53487|
+53488|\uD83D\uDCA1 Поставь лимит расходов: openrouter.ai → Settings → Credits. Это защита от неожиданного счёта.
+53489|
+53490|Отмена: « Назад.`, {
+53491|      parse_mode: "HTML",
+53492|      reply_markup: new jA().text("« Назад", "settings:auth")
+53493|    });
+53494|    return;
+53495|  }
+53496|  if (Y === "settings:auth:help") {
+53497|    let C = new jA();
+53498|    C.text("« Назад", "settings:auth");
+53499|    await A.editMessageText(Q, B, `<b>Что выбрать \uD83E\uDDE0 \uD83D\uDCB8</b>
+53500|
+53501|<b>[1] Подписка Claude Max</b>
+53502|Топовые модели от Anthropic. Фиксированная цена в месяц, при активной работе в разы выгоднее оплаты по API. Для первой настройки нужен компьютер и немного возни в терминале.
+53503|
+53504|<b>[2] Подписка ChatGPT</b>
+53505|Модели от OpenAI: GPT 5 и 6. Подключается с телефона за минуту. Работает по стандартному тарифу ChatGPT.
+53506|
+53507|<b>[3] Ключ OpenRouter</b>
+53508|Десятки моделей разных компаний по одному ключу, оплата только за использование. Подходит, если нужна гибкость без привязки подписки.
+53509|
+53510|Подключить можно все сразу ⚔️ и менять в процессе работы.
+53511|
+53512|${NC(H8.engines, "Подробнее →")}`, {
+53513|      parse_mode: "HTML",
+53514|      reply_markup: C
+53515|    });
+53516|    return;
+53517|  }
+53518|  if (Y === "settings:auth:switch-sub") {
+53519|    Iy.set(J.userId, {
+53520|      step: "waiting_token",
+53521|      settingsMessageId: B,
+53522|      startedAt: Date.now()
+53523|    });
+53524|    if (QQ(J)) {
+53525|      let C = Tu("settings:auth");
+53526|      await A.editMessageText(Q, B, C.text, {
+53527|        parse_mode: "HTML",
+53528|        reply_markup: C.keyboard
+53529|      }).catch(() => {
+53530|        return;
+53531|      });
+53532|      return;
+53533|    }
+53534|    await A.editMessageText(Q, B, `Вставь токен подписки Claude.
+53535|
+53536|<b>Как получить:</b>
+53537|1. Открой терминал на компьютере
+53538|2. Запусти: <code>claude setup-token</code>
+53539|3. Авторизуйся в браузере
+53540|4. Скопируй токен <code>sk-ant-oat...</code> из терминала и вставь сюда
+53541|
+53542|❌ Не вставляй код из браузера (страница «Authentication code») — это другое.
+53543|
+53544|${NC(H8.claudeToken)}`, {
+53545|      parse_mode: "HTML",
+53546|      reply_markup: new jA().text("« Назад", "settings:auth")
+53547|    });
+53548|    return;
+53549|  }
+53550|  if (Y.startsWith("settings:env:page:")) {
+53551|    let C = Y.split(":")[3];
+53552|    if (C !== "noop") {
+53553|      let F = parseInt(C, 10);
+53554|      if (!isNaN(F)) {
+53555|        await Uy(A, Q, B, F);
+53556|      }
+53557|    }
+53558|    return;
+53559|  }
+53560|  if (Y === "settings:env") {
+53561|    iE.delete(J.userId);
+53562|    await Uy(A, Q, B);
+53563|    return;
+53564|  }
+53565|  if (Y.startsWith("settings:env:delete:")) {
+53566|    let C = Y.replace("settings:env:delete:", "");
+53567|    let F = Dy(C);
+53568|    if (bY.has(F)) {
+53569|      await A.editMessageText(Q, B, `❌ ${F} — защищённый ключ, удаление запрещено.`, {
+53570|        reply_markup: new jA().text("« Назад", "settings:env")
+53571|      });
+53572|      return;
+53573|    }
+53574|    let U = new jA();
+53575|    U.text("🗑 Да, удалить", `settings:env:confirm-delete:${C}`);
+53576|    U.text("« Нет", "settings:env");
+53577|    let Z = Z9.get(F);
+53578|    let E = Z ? `
+53579|\uD83D\uDCDD <i>${_(Z)}</i>
+53580|` : "";
+53581|    await A.editMessageText(Q, B, `Удалить <code>${_(F)}</code>?${E}`, {
+53582|      parse_mode: "HTML",
+53583|      reply_markup: U
+53584|    });
+53585|    return;
+53586|  }
+53587|  if (Y.startsWith("settings:env:confirm-delete:")) {
+53588|    let C = Y.replace("settings:env:confirm-delete:", "");
+53589|    let F = Dy(C);
+53590|    await tSA(F);
+53591|    await Uy(A, Q, B);
+53592|    return;
+53593|  }
+53594|  if (Y === "settings:env:supabase") {
+53595|    let C = await g9();
+53596|    let F = new Map();
+53597|    for (let X of C) {
+53598|      F.set(X.key, X.value);
+53599|    }
+53600|    let U = [{
+53601|      key: "SUPABASE_URL",
+53602|      label: "URL проекта",
+53603|      desc: "Адрес базы данных (обязательно)"
+53604|    }, {
+53605|      key: "SUPABASE_ANON_KEY",
+53606|      label: "Publishable Key",
+53607|      desc: "Публичный ключ для чтения данных (с RLS)"
+53608|    }, {
+53609|      key: "SUPABASE_SERVICE_KEY",
+53610|      label: "Secret Key",
+53611|      desc: "Полный доступ к БД, обходит RLS"
+53612|    }, {
+53613|      key: "SUPABASE_ACCESS_TOKEN",
+53614|      label: "Dashboard Token",
+53615|      desc: "Для CLI: миграции, edge functions, типы"
+53616|    }];
+53617|    let Z = `<b>Supabase — база данных</b>
+53618|
+53619|`;
+53620|    Z += `Supabase = PostgreSQL + REST API + Auth + Storage.
+53621|
+53622|`;
+53623|    Z += `Минимум для работы: URL + Publishable Key.
+53624|`;
+53625|    Z += `Для полного доступа: + Secret Key.
+53626|`;
+53627|    Z += `Для CLI (миграции): + Dashboard Token.
+53628|
+53629|`;
+53630|    let E = new jA();
+53631|    for (let X of U) {
+53632|      let V = F.get(X.key);
+53633|      if (V) {
+53634|        let W = V.length > 4 ? "..." + V.slice(-4) : "****";
+53635|        Z += `☑️ <b>${X.label}</b> — ${_(W)}
+53636|`;
+53637|        Z += `<i>${X.desc}</i>
+53638|
+53639|`;
+53640|        E.text(`${X.label} ☑️`, `settings:env:delete:${X.key}`).row();
+53641|      } else {
+53642|        Z += `➕ <b>${X.label}</b>
+53643|`;
+53644|        Z += `<i>${X.desc}</i>
+53645|
+53646|`;
+53647|        E.text(`➕ ${X.label}`, `settings:env:quick:${X.key}`).row();
+53648|      }
+53649|    }
+53650|    E.text("« Назад", "settings:env");
+53651|    await A.editMessageText(Q, B, Z, {
+53652|      parse_mode: "HTML",
+53653|      reply_markup: E
+53654|    });
+53655|    return;
+53656|  }
+53657|  if (Y === "settings:env:github") {
+53658|    let C = await g9();
+53659|    let F = new Map();
+53660|    for (let X of C) {
+53661|      F.set(X.key, X.value);
+53662|    }
+53663|    let U = F.get("GITHUB_TOKEN");
+53664|    let Z = `<b>GitHub — код в облаке</b>
+53665|
+53666|`;
+53667|    Z += `Агент сможет клонировать репо, коммитить, пушить, создавать PR.
+53668|`;
+53669|    Z += `Git настраивается автоматически при сохранении токена.
+53670|
+53671|`;
+53672|    if (U) {
+53673|      let X = U.length > 4 ? "..." + U.slice(-4) : "****";
+53674|      Z += `☑️ Токен установлен: ${_(X)}
+53675|
+53676|`;
+53677|    }
+53678|    Z += `<b>Fine-grained</b> (рекомендуем) — выбираешь конкретные репо и права. Агент видит ТОЛЬКО их.
+53679|
+53680|`;
+53681|    Z += `<b>Classic</b> — доступ ко всем репо с выбранными правами. Проще, но менее безопасно.
+53682|`;
+53683|    let E = new jA();
+53684|    if (U) {
+53685|      E.text("Заменить токен", "settings:env:quick:GITHUB_TOKEN").row();
+53686|      E.text("Удалить токен", "settings:env:delete:GITHUB_TOKEN").row();
+53687|    } else {
+53688|      E.text("➕ Fine-grained (рекомендуем)", "settings:env:quick:GITHUB_TOKEN_FINE").row();
+53689|      E.text("➕ Classic", "settings:env:quick:GITHUB_TOKEN_CLASSIC").row();
+53690|    }
+53691|    E.text("« Назад", "settings:env");
+53692|    await A.editMessageText(Q, B, Z, {
+53693|      parse_mode: "HTML",
+53694|      reply_markup: E
+53695|    });
+53696|    return;
+53697|  }
+53698|  if (Y === "settings:env:railway") {
+53699|    let C = await g9();
+53700|    let F = new Map();
+53701|    for (let X of C) {
+53702|      F.set(X.key, X.value);
+53703|    }
+53704|    let U = [{
+53705|      key: "RAILWAY_TOKEN",
+53706|      label: "Токен Railway",
+53707|      desc: "Токен проекта (UUID) или аккаунта — оба сохраняются сюда"
+53708|    }, {
+53709|      key: "RAILWAY_PROJECT_ID",
+53710|      label: "Project ID",
+53711|      desc: "ID проекта — для Railway API"
+53712|    }];
+53713|    let Z = `<b>Railway — деплой бэкенда</b>
+53714|
+53715|`;
+53716|    Z += `Railway деплоит ботов, бэкенды, API, cron-задачи.
+53717|
+53718|`;
+53719|    Z += `<b>Токен</b> — проекта (UUID) или аккаунта. Railway CLI и API используют <code>RAILWAY_TOKEN</code>.
+53720|`;
+53721|    Z += `<b>Project ID</b> — нужен для привязки к конкретному проекту.
+53722|
+53723|`;
+53724|    let E = new jA();
+53725|    for (let X of U) {
+53726|      let V = F.get(X.key);
+53727|      if (V) {
+53728|        let W = V.length > 4 ? "..." + V.slice(-4) : "****";
+53729|        Z += `☑️ <b>${X.label}</b> — ${_(W)}
+53730|`;
+53731|        Z += `<i>${X.desc}</i>
+53732|
+53733|`;
+53734|        E.text(`${X.label} ☑️`, `settings:env:delete:${X.key}`).row();
+53735|      } else {
+53736|        Z += `➕ <b>${X.label}</b>
+53737|`;
+53738|        Z += `<i>${X.desc}</i>
+53739|
+53740|`;
+53741|        E.text(`➕ ${X.label}`, `settings:env:quick:${X.key}`).row();
+53742|      }
+53743|    }
+53744|    E.text("« Назад", "settings:env");
+53745|    await A.editMessageText(Q, B, Z, {
+53746|      parse_mode: "HTML",
+53747|      reply_markup: E
+53748|    });
+53749|    return;
+53750|  }
+53751|  if (Y === "settings:env:vercel") {
+53752|    let C = await g9();
+53753|    let F = new Map();
+53754|    for (let X of C) {
+53755|      F.set(X.key, X.value);
+53756|    }
+53757|    let U = [{
+53758|      key: "VERCEL_TOKEN",
+53759|      label: "Токен Vercel",
+53760|      desc: "Доступ ко всем проектам аккаунта"
+53761|    }, {
+53762|      key: "VERCEL_PROJECT_ID",
+53763|      label: "Project ID",
+53764|      desc: "Ограничивает агента одним проектом"
+53765|    }];
+53766|    let Z = `<b>Vercel — деплой фронтенда</b>
+53767|
+53768|`;
+53769|    Z += `Деплой сайтов, Next.js, serverless-функций.
+53770|
+53771|`;
+53772|    Z += `<b>Токен</b> — даёт доступ к Vercel API и CLI.
+53773|`;
+53774|    Z += `<b>Project ID</b> — если указан, агент деплоит ТОЛЬКО в этот проект.
+53775|
+53776|`;
+53777|    let E = new jA();
+53778|    for (let X of U) {
+53779|      let V = F.get(X.key);
+53780|      if (V) {
+53781|        let W = V.length > 4 ? "..." + V.slice(-4) : "****";
+53782|        Z += `☑️ <b>${X.label}</b> — ${_(W)}
+53783|`;
+53784|        Z += `<i>${X.desc}</i>
+53785|
+53786|`;
+53787|        E.text(`${X.label} ☑️`, `settings:env:delete:${X.key}`).row();
+53788|      } else {
+53789|        Z += `➕ <b>${X.label}</b>
+53790|`;
+53791|        Z += `<i>${X.desc}</i>
+53792|
+53793|`;
+53794|        E.text(`➕ ${X.label}`, `settings:env:quick:${X.key}`).row();
+53795|      }
+53796|    }
+53797|    E.text("« Назад", "settings:env");
+53798|    await A.editMessageText(Q, B, Z, {
+53799|      parse_mode: "HTML",
+53800|      reply_markup: E
+53801|    });
+53802|    return;
+53803|  }
+53804|  if (Y.startsWith("settings:env:quick:")) {
+53805|    let C = Y.replace("settings:env:quick:", "");
+53806|    let F = C === "GITHUB_TOKEN_FINE" || C === "GITHUB_TOKEN_CLASSIC";
+53807|    let U = C;
+53808|    if (F) {
+53809|      C = "GITHUB_TOKEN";
+53810|    }
+53811|    iE.set(J.userId, {
+53812|      step: "value",
+53813|      varName: C,
+53814|      settingsMessageId: B,
+53815|      startedAt: Date.now()
+53816|    });
+53817|    let Z = hSA[U];
+53818|    let E = Z ? `${Z}
+53819|
+53820|Вставь значение:` : `Вставь значение для <code>${_(C)}</code>:`;
+53821|    let X = new Set(["SUPABASE_URL", "SUPABASE_ANON_KEY", "SUPABASE_SERVICE_KEY", "SUPABASE_ACCESS_TOKEN"]);
+53822|    let V = "settings:env";
+53823|    if (X.has(C)) {
+53824|      V = "settings:env:supabase";
+53825|    }
+53826|    let W = new Set(["RAILWAY_TOKEN", "RAILWAY_PROJECT_ID"]);
+53827|    let G = new Set(["VERCEL_TOKEN", "VERCEL_PROJECT_ID"]);
+53828|    if (W.has(C)) {
+53829|      V = "settings:env:railway";
+53830|    } else if (G.has(C)) {
+53831|      V = "settings:env:vercel";
+53832|    } else if (F || C === "GITHUB_TOKEN") {
+53833|      V = "settings:env:github";
+53834|    }
+53835|    await A.editMessageText(Q, B, E, {
+53836|      parse_mode: "HTML",
+53837|      link_preview_options: {
+53838|        is_disabled: true
+53839|      },
+53840|      reply_markup: new jA().text("« Назад", V)
+53841|    });
+53842|    return;
+53843|  }
+53844|}
+53845|async function Fy(A, Q, B, Y) {
+53846|  let J = await Hy(Y);
+53847|  let C = Ky(Y, await _K(Y), await bE(lF(), Y));
+53848|  try {
+53849|    await A.editMessageText(Q, B, J, {
+53850|      parse_mode: "HTML",

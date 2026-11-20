@@ -1,0 +1,157 @@
+{
+  "schema": 1,
+  "host": "Сервер ботов",
+  "collectedAt": "2026-10-30T05:00:00.000Z",
+  "collectMs": 840,
+  "server": {
+    "cores": 8,
+    "cpuPct": 12.4,
+    "iowaitPct": 0.6,
+    "load1": 0.92,
+    "memTotalMb": 16000,
+    "memUsedMb": 7200,
+    "memCacheMb": 5100,
+    "memAvailMb": 8800,
+    "swapTotalMb": 4096,
+    "swapUsedMb": 512,
+    "diskTotalGb": 400,
+    "diskUsedGb": 244,
+    "bootAt": "2026-10-20T10:00:00.000Z"
+  },
+  "bots": [
+    {
+      "id": "default",
+      "name": "Основной",
+      "projects": ["Zapcita", "socpublisher"],
+      "service": { "state": "active", "since": "2026-10-28T09:00:00.000Z", "restarts": 0, "memMb": 640, "cpuCores": 0.12 },
+      "now": { "busy": false, "since": null, "kind": null, "text": null, "helpers": 0 },
+      "lastResult": { "at": "2026-10-30T04:40:00.000Z", "text": "Сводка socpublisher отправлена", "durationMin": 3, "actions": 4 },
+      "chat24h": { "requests": 12, "minutes": 95 },
+      "bg24h": { "tasks": 6, "runs": 31, "tokens": 2100000, "minutes": 140 },
+      "timeline": []
+    },
+    {
+      "id": "SMM",
+      "name": "SMM",
+      "projects": ["infosecurity", "Zapcita — соцсети", "кемперы"],
+      "service": { "state": "active", "since": "2026-10-28T09:00:00.000Z", "restarts": 1, "memMb": 410, "cpuCores": 0.05 },
+      "now": { "busy": true, "since": "2026-10-30T04:58:00.000Z", "kind": "task", "text": "Сбор постов X", "helpers": 1 },
+      "lastResult": null,
+      "chat24h": { "requests": 1, "minutes": 7 },
+      "bg24h": { "tasks": 3, "runs": 22, "tokens": 900000, "minutes": 60 },
+      "timeline": []
+    },
+    {
+      "id": "personal",
+      "name": "Личный",
+      "projects": ["Задачи с созвонов", "Пульт", "личное"],
+      "service": { "state": "failed", "since": "2026-10-30T03:10:00.000Z", "restarts": 4, "memMb": null, "cpuCores": null },
+      "now": { "busy": false, "since": null, "kind": null, "text": null, "helpers": 0 },
+      "lastResult": null,
+      "chat24h": { "requests": 0, "minutes": 0 },
+      "bg24h": { "tasks": 1, "runs": 2, "tokens": 0, "minutes": 1 },
+      "timeline": []
+    }
+  ],
+  "tasks": [
+    {
+      "id": "t-proxyapi",
+      "name": "Баланс ProxyAPI",
+      "bot": "default",
+      "botName": "Основной",
+      "project": "Zapcita",
+      "kind": "prompt",
+      "schedule": { "type": "cron", "text": "каждый час", "cron": "0 * * * *", "timezone": "Europe/Moscow" },
+      "expect": "пишет, только если баланс ниже порога",
+      "noAi": false,
+      "lastRun": { "at": "2026-10-30T04:00:00.000Z", "status": "error", "durationSec": 40, "tokens": 12000, "helpers": 0, "usd": null, "detail": "таймаут" },
+      "nextRunAt": "2026-10-30T05:00:00.000Z",
+      "stats24h": { "expected": 24, "runs": 22, "ok": 20, "silent": 0, "error": 2, "missed": 2, "tokens": 260000, "minutes": 14, "usd": 0 },
+      "slots24h": ["ok", "ok", "error"],
+      "runs": [],
+      "gaps": [],
+      "attention": "serious",
+      "attentionText": "2 ошибки за сутки",
+      "pulse": null,
+      "commits": []
+    },
+    {
+      "id": "infosec-x",
+      "name": "Сбор постов X",
+      "bot": "SMM",
+      "botName": "SMM",
+      "project": "infosecurity",
+      "kind": "timer",
+      "schedule": { "type": "interval", "text": "каждые 3 ч", "everySec": 10800 },
+      "expect": "пополняет ленту сборщика; предохранитель $2 в месяц",
+      "noAi": true,
+      "lastRun": { "at": "2026-10-30T03:00:00.000Z", "status": "ok", "durationSec": 20, "tokens": 0, "helpers": 0, "usd": 0.01, "detail": null },
+      "nextRunAt": "2026-10-30T06:00:00.000Z",
+      "stats24h": { "expected": 8, "runs": 8, "ok": 8, "silent": 0, "error": 0, "missed": 0, "tokens": 0, "minutes": 3, "usd": 0.08 },
+      "slots24h": ["ok", "ok", "ok", "ok", "ok", "ok", "ok", "ok"],
+      "runs": [],
+      "gaps": [],
+      "attention": null,
+      "attentionText": null,
+      "pulse": null,
+      "commits": []
+    }
+  ],
+  "tasksHidden": 4,
+  "services": [
+    { "id": "zapcita-bot", "name": "Бот", "project": "Zapcita", "heavy": false, "state": "active", "since": "2026-10-25T09:00:00.000Z", "restarts": 0, "memMb": 120, "cpuCores": 0.01 }
+  ],
+  "platform": { "total": 4, "ok": 4, "failed": 0 },
+  "projects": [
+    {
+      "id": "zapcita",
+      "name": "Zapcita",
+      "owner": "основной бот · соцсети — SMM",
+      "status": "ok",
+      "statusText": "ищем первую продажу",
+      "stage": "продажи",
+      "next": "письма клиникам Боготы",
+      "services": [{ "name": "Бот", "state": "active" }],
+      "commitsToday": 3,
+      "lastCommit": { "at": "2026-10-30T02:00:00.000Z", "subject": "бот: дожим замолчавших" },
+      "facts": [{ "label": "Тесты", "value": "412 зелёных" }],
+      "asks": ["Утвердить текст письма клиникам"],
+      "updatedAt": "2026-10-29T18:00:00.000Z"
+    }
+  ],
+  "asks": [
+    {
+      "id": "a1",
+      "project": "Zapcita",
+      "bot": "default",
+      "botName": "Основной",
+      "text": "Утвердить текст письма клиникам <Богота> & Сантьяго",
+      "blocks": "рассылка писем",
+      "since": "2026-10-29T15:00:00.000Z"
+    },
+    {
+      "id": "a2",
+      "project": null,
+      "bot": "SMM",
+      "botName": "SMM",
+      "text": "Какой канал кемперов вести первым",
+      "blocks": null,
+      "since": "2026-10-28T09:00:00.000Z"
+    }
+  ],
+  "attention": [
+    { "key": "bot:personal:down", "level": "crit", "text": "Бот «Личный» не работает", "link": { "tab": "bots", "id": "personal" }, "since": "2026-10-30T03:10:00.000Z" },
+    { "key": "task:t-proxyapi:errors", "level": "serious", "text": "Баланс ProxyAPI: 2 ошибки за сутки", "link": { "tab": "tasks", "id": "t-proxyapi" }, "since": null },
+    { "key": "balance:apify:low", "level": "warn", "text": "Apify: осталось меньше $1", "link": { "tab": "overview" }, "since": null }
+  ],
+  "subscription": { "status": "allowed", "resetsAt": "2026-10-30T08:00:00.000Z", "windowType": "five_hour", "overage": false, "updatedAt": "2026-10-30T04:59:00.000Z" },
+  "balances": [
+    { "id": "proxyapi", "name": "ProxyAPI", "value": "334,75 ₽", "ok": true, "checkedAt": "2026-10-30T04:00:00.000Z", "stale": false, "note": null },
+    { "id": "apify", "name": "Apify", "value": "$0,80 из $5", "ok": false, "checkedAt": "2026-10-30T03:00:00.000Z", "stale": false, "note": null },
+    { "id": "deepgram", "name": "Deepgram", "value": "$187,20", "ok": true, "checkedAt": "2026-10-29T20:00:00.000Z", "stale": true, "note": null }
+  ],
+  "upcoming": [
+    { "at": "2026-10-30T05:00:00.000Z", "name": "Баланс ProxyAPI", "taskId": "t-proxyapi" }
+  ],
+  "sourceErrors": []
+}

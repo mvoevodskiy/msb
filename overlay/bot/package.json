@@ -1,0 +1,15 @@
+{
+  "type": "module",
+  "scripts": {
+    "start": "node run.mjs",
+    "start:stock": "node index.js",
+    "test:ext": "node --test ext/tests/*.test.mjs"
+  },
+  "dependencies": {
+    "grammy": "^1.41.1",
+    "@grammyjs/auto-retry": "^2.0.2",
+    "@anthropic-ai/sdk": "^0.78.0",
+    "better-sqlite3": "^11.0.0",
+    "playwright": "^1.58.2"
+  }
+}

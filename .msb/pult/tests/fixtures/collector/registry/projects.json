@@ -1,0 +1,38 @@
+{
+ "version": 1,
+ "projects": [
+  {
+   "id": "demo",
+   "name": "Демо",
+   "owner": "бот Альфа",
+   "status": "ok",
+   "statusText": "работает",
+   "stage": "первые продажи",
+   "next": "01.11 — конец оферты",
+   "repo": "/srv/demo",
+   "facts": [
+    {
+     "label": "Тесты",
+     "value": "6 037 зелёных"
+    }
+   ],
+   "order": 2,
+   "updatedAt": "2026-10-29T09:00:00.000Z",
+   "updatedBy": "alpha"
+  },
+  {
+   "id": "tools",
+   "name": "Инструменты",
+   "owner": "бот Бета",
+   "status": "pause",
+   "statusText": "пауза",
+   "stage": null,
+   "next": null,
+   "repo": null,
+   "facts": [],
+   "order": 1,
+   "updatedAt": null,
+   "updatedBy": null
+  }
+ ]
+}

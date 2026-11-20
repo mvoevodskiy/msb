@@ -1,0 +1,58 @@
+Scheduled monitor source intervals and immediate manual collection
+
+Old readable blob 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11:
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | nl -ba | \
+    sed -n '5882,6002p;108287,108342p;108401,108414p;115605,115811p;115813,115879p;41259,41271p'
+The old config mapped pollIntervalMinutes to each source of a type. _4Q grouped
+enabled sources by type, skipped a not-ready source type, and waited until its
+bot-state lastPollAt exceeded the configured interval (default 30 minutes).
+It recorded the type time after the group attempt even on per-source errors.
+The old manual collection path invoked the collectors directly; no scheduled
+state update was found in its inspected path. X checkReady required a bearer.
+
+At e727f82 the new scheduler ticked every five minutes and always called
+pollAllSources, which did not read pollIntervalMinutes. Its existing lastPollAt
+represented successful individual sources, not scheduled type attempts. RED
+with the scheduler and fake RSS fetch: an hourly source was called twice five
+minutes apart both on success and on HTTP 503; direct manual collection passed.
+
+The scheduler now asks pollAllSources for scheduled collection. The existing
+manual call uses the default immediate path and does not change schedule
+markers. Scheduled attempts are checked per bot and source type, use the
+configured interval with the old 30-minute default, and record the group
+completion even if a fetch failed. No enabled entries means no attempt marker;
+X without a usable account and bearer preserves its existing error status but
+does not postpone its first real attempt once credentials become available.
+The new internal meta.json field lastScheduledPollAtByBot does not replace the
+existing lastPollAt, lastDigestAt or other fields. Older metadata needs no
+migration: the first scheduled tick with no marker is due immediately. A tick
+only runs every five minutes, so an interval is observed at the next tick.
+The scheduler reads metadata in the existing strict update mode before fetching:
+if the file cannot be read or parsed, or its root is not an object, the tick
+stops without fetching. A synthetic RED showed two repeated fetches on two
+ticks with a broken file before this admission check. The explicit manual path
+retains its existing behavior and may fetch before its later metadata update.
+
+Marker updates share the existing metadata lock and retain the later valid
+timestamp if overlapping fetches finish out of order. An additional synthetic
+RED demonstrated an earlier RSS timestamp overwriting a newer one while a
+different source was still running; the final merge kept the newer timestamp.
+The subsequent [scheduler claim](parity-monitor-scheduler-claim-contract.txt)
+prevents overlapping scheduled ticks of the same bot through the scheduler;
+direct callers can still overlap, and a crash before the marker is written can
+cause a later retry. This does not claim exactly-once fetching. No shared
+metadata lock is held over the network. Different bot IDs retain independent
+schedule markers while preserving the existing shared source data.
+
+The 15 focused fixture tests cover 60/15-minute types, failed attempts,
+manual collection, metadata preservation, restart, disabled/added sources,
+X without credentials, two simultaneous bot IDs, overlapping stale completion,
+invalid meta.json, future/invalid timestamps, the 30-minute fallback, and
+delivery of a due digest while no source is due. All 110
+monitor tests passed on local macOS Node 26
+and isolated network-none Linux Node 22.23.2 with fake fetch and profiles.
+After strengthening the broken-state admission guard, the entire set was run
+again on both platforms. Linux used the node:sqlite lock
+fallback, not proof of JAR1's native ABI. No real service, Telegram, JAR1 or
+unrelated engine was exercised. Revert the behavior commit to remove the
+cadence check; the extra metadata field is retained as user state.

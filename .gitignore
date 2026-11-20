@@ -1,0 +1,11 @@
+node_modules/
+*.env
+!**/.env.example
+.DS_Store
+*.log
+workspace/memory/
+workspace/.media/
+bots-runtime/
+
+__pycache__/
+*.py[cod]

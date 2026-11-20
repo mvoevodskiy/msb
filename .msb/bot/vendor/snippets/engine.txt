@@ -1,0 +1,301 @@
+ 55900|  }
+ 55901|  return Y.join(`
+ 55902|`);
+ 55903|}
+ 55904|function vy(A, Q, B) {
+ 55905|  if (!A) {
+ 55906|    return false;
+ 55907|  }
+ 55908|  if (QQ(A, Q)) {
+ 55909|    return false;
+ 55910|  }
+ 55911|  if (A.engine) {
+ 55912|    return false;
+ 55913|  }
+ 55914|  if (A.authMode === "subscription" || A.authMode === "api-key") {
+ 55915|    return false;
+ 55916|  }
+ 55917|  if (A.hasSubscriptionAuth || A.hasApiKey) {
+ 55918|    return false;
+ 55919|  }
+ 55920|  if (A.clientApiKey || A.clientApiKeyMasked) {
+ 55921|    return false;
+ 55922|  }
+ 55923|  if (A.ccModel || A.ccSessionId) {
+ 55924|    return false;
+ 55925|  }
+ 55926|  if (Q.ANTHROPIC_API_KEY || Q.MSB_ANTHROPIC_API_KEY || Q.CLAUDE_CODE_OAUTH_TOKEN) {
+ 55927|    return false;
+ 55928|  }
+ 55929|  if (B) {
+ 55930|    return false;
+ 55931|  }
+ 55932|  let Y = (Q.OPENROUTER_API_KEY || "").trim();
+ 55933|  if (!/^sk-or-/i.test(Y)) {
+ 55934|    return false;
+ 55935|  }
+ 55936|  return true;
+ 55937|}
+ 55938|async function X1A(A, Q, B, Y, J, C) {
+ 55939|  let F = await m();
+ 55940|  if (F?.engine === "oc") {
+ 55941|    s2(F);
+ 55942|  }
+ 55943|  if (F && !F.engine && vy(F, process.env, false)) {
+ 55944|    if (await Z0()) {
+ 55945|      console.error("[iia/engine] Self-heal SKIPPED: another OC bot on this box → would collide on the shared gateway");
+ 55946|    } else {
+ 55947|      await a1(F);
+ 55948|      await e(F);
+ 55949|      console.error("[iia/engine] Self-heal: OpenRouter box had no engine set → flipped to OpenClaw");
+ 55950|    }
+ 55951|  }
+ 55952|  if (F?.engine === "oc") {
+ 55953|    return xTA(A, Q, F, B, Y, J);
+ 55954|  }
+ 55955|  let U = F?.authMode;
+ 55956|  if (!U && process.env.CLAUDE_CODE_OAUTH_TOKEN) {
+ 55957|    U = "subscription";
+ 55958|    if (F) {
+ 55959|      F.authMode = "subscription";
+ 55960|      F.hasSubscriptionAuth = true;
+ 55961|      await e(F);
+ 55962|      console.error("[iia/engine] Auto-detected subscription token, updated authMode");
+ 55963|    }
+ 55964|  }
+ 55965|  if ((!U || U === "api-key") && !process.env.CLAUDE_CODE_OAUTH_TOKEN) {
+ 55966|    let Z = process.env.ANTHROPIC_API_KEY || process.env.MSB_ANTHROPIC_API_KEY;
+ 55967|    if (Z && /^sk-ant-(?:oat|ort)\d{2}-/.test(Z)) {
+ 55968|      console.error("[iia/engine] Subscription token found in ANTHROPIC_API_KEY — auto-correcting");
+ 55969|      process.env.CLAUDE_CODE_OAUTH_TOKEN = Z;
+ 55970|      delete process.env.ANTHROPIC_API_KEY;
+ 55971|      if (F) {
+ 55972|        F.authMode = "subscription";
+ 55973|        F.hasSubscriptionAuth = true;
+ 55974|        delete F.clientApiKey;
+ 55975|        F.hasApiKey = false;
+ 55976|        await e(F);
+ 55977|      }
+ 55978|      U = "subscription";
+ 55979|    }
+ 55980|  }
+ 55981|  if (U === "subscription") {
+ 55982|    return LTA(A, Q, F, B, Y, J, C);
+ 55983|  }
+ 55984|  throw new B1(rF, "AUTH");
+ 55985|}
+ 55986|function qTA(A) {
+ 55987|  let Q = A.toLowerCase();
+ 55988|  return Q.includes("no conversation found") || Q.includes("cannot resume") || Q.includes("session") && (Q.includes("not found") || Q.includes("incompatible"));
+ 55989|}
+ 55990|async function LTA(A, Q, B, Y, J, C, F) {
+ 55991|  let U = B.ccModel || "opus";
+ 55992|  let Z = Cq(U, F?.isAutoTurn);
+ 55993|  if (Z.downgraded) {
+ 55994|    console.error(`[iia/engine] cc_auto_turn_model_downgrade: ${U} -> ${Z.model} (auto turn on Opus; CC_AUTO_TURN_SONNET=0 disables)`);
+ 55995|  }
+ 55996|  let E = Z.model;
+ 55997|  let X = {
+ 55998|    ...J,
+ 55999|    onRateLimitEvent: V => {
+ 56000|      B.rateLimitInfo = {
+ 56001|        resetsAt: V.resetsAt,
+ 56002|        rateLimitType: V.rateLimitType,
+ 56003|        utilization: V.utilization,
+ 56004|        isUsingOverage: V.isUsingOverage,
+ 56005|        status: V.status,
+ 56006|        overageResetsAt: V.overageResetsAt,
+ 56007|        lastUpdatedAt: Math.floor(Date.now() / 1000)
+ 56008|      };
+ 56009|      e(B).catch(W => console.error(`[iia/engine] saveState for rate_limit_info failed: ${W.message}`));
+ 56010|      J?.onRateLimitEvent?.(V);
+ 56011|    }
+ 56012|  };
+ 56013|  try {
+ 56014|    let V = await IJ(A, Q, B.ccSessionId || null, X, C, Y, E, B.permissionMode, B.ccEffort);
+ 56015|    if (V.sessionId && V.sessionId !== B.ccSessionId) {
+ 56016|      B.ccSessionId = V.sessionId;
+ 56017|      await e(B);
+ 56018|    }
+ 56019|    return s0A(V);
+ 56020|  } catch (V) {
+ 56021|    if (V instanceof jJ) {
+ 56022|      let G = new B1(`Лимит подписки Claude закончился. Обновится сам.
+ 56023|Можно перейти на 🦞 OpenClaw: /settings → 🔌 Подключения.`, "RATE_LIMIT");
+ 56024|      let D = rU(V);
+ 56025|      G.evidence = D.evidence === "unknown" ? "text" : D.evidence;
+ 56026|      G.httpStatus = D.httpStatus;
+ 56027|      throw G;
+ 56028|    }
+ 56029|    if (V instanceof t4) {
+ 56030|      console.error("[iia/engine] Context overflow — resetting session");
+ 56031|      if (B.ccSessionId) {
+ 56032|        B.ccSessionId = undefined;
+ 56033|        await e(B);
+ 56034|      }
+ 56035|      throw new t4("Сессия сломалась — контекст повреждён.", {
+ 56036|        compaction: V.compaction
+ 56037|      });
+ 56038|    }
+ 56039|    let W = V.message || "";
+ 56040|    if (qTA(W)) {
+ 56041|      console.error("[iia/engine] Session expired — retrying without session ID");
+ 56042|      if (B.ccSessionId) {
+ 56043|        B.ccSessionId = undefined;
+ 56044|        await e(B);
+ 56045|      }
+ 56046|      let G = await IJ(A, Q, null, X, C, Y, E, B.permissionMode, B.ccEffort);
+ 56047|      if (G.sessionId) {
+ 56048|        B.ccSessionId = G.sessionId;
+ 56049|        await e(B);
+ 56050|      }
+ 56051|      return s0A(G);
+ 56052|    }
+ 56053|    throw MTA(V) ?? V;
+ 56054|  }
+ 56055|}
+ 56056|function MTA(A) {
+ 56057|  if (A instanceof B1) {
+ 56058|    return null;
+ 56059|  }
+ 56060|  let Q = A?.message || "";
+ 56061|  let B;
+ 56062|  if (/Ошибка авторизации подписки/.test(Q)) {
+ 56063|    B = "AUTH";
+ 56064|  } else if (/\boverloaded\b/i.test(Q)) {
+ 56065|    B = "RUNTIME";
+ 56066|  }
+ 56067|  if (!B) {
+ 56068|    return null;
+ 56069|  }
+ 56070|  let Y = new B1(Q, B);
+ 56071|  if (A?.stack) {
+ 56072|    Y.stack = A.stack;
+ 56073|  }
+ 56074|  let J = rU(A);
+ 56075|  Y.evidence = J.evidence === "unknown" ? "text" : J.evidence;
+ 56076|  Y.httpStatus = J.httpStatus;
+ 56077|  return Y;
+ 56078|}
+ 56079|async function RTA(A, Q = {}) {
+ 56080|  let Y = (Q.env ?? process.env).OPENROUTER_API_KEY;
+ 56081|  if (!Y) {
+ 56082|    return;
+ 56083|  }
+ 56084|  let J = EE(Y);
+ 56085|  if (A.ocSeededKeyFp === J) {
+ 56086|    return;
+ 56087|  }
+ 56088|  if (!(await (Q.gatewayActive ?? w8)())) {
+ 56089|    return;
+ 56090|  }
+ 56091|  if (await (Q.sibling ?? Z0)()) {
+ 56092|    if (!d0A) {
+ 56093|      console.error("[iia/engine] OC gateway seed: skipped — another OC bot owns the shared gateway (owner door)");
+ 56094|      d0A = true;
+ 56095|    }
+ 56096|    return;
+ 56097|  }
+ 56098|  if (A.ocBootSeeded && !A.ocSeededKeyFp) {
+ 56099|    try {
+ 56100|      let C = await (Q.readGatewayKey ?? nw)();
+ 56101|      if (C) {
+ 56102|        if (EE(C) === J) {
+ 56103|          A.ocSeededKeyFp = J;
+ 56104|          await (Q.save ?? e)(A);
+ 56105|          console.error(`[iia/engine] OC gateway seed (migration): gateway key == env key — fp recorded without paste (fp=${J})`);
+ 56106|          return;
+ 56107|        }
+ 56108|        let U = await (Q.preflight ?? (Z => hJ(Z, {
+ 56109|          treat404AsInvalid: true
+ 56110|        })))(C);
+ 56111|        if (U === "valid") {
+ 56112|          A.ocSeededKeyFp = J;
+ 56113|          await (Q.save ?? e)(A);
+ 56114|          console.error(`[iia/engine] OC gateway seed (migration): gateway key differs but is VALID — kept; env fp latched without paste (fp=${J})`);
+ 56115|          return;
+ 56116|        }
+ 56117|        if (U === "unknown") {
+ 56118|          console.error("[iia/engine] OC gateway seed (migration): preflight indeterminate — deferred to a later turn");
+ 56119|          return;
+ 56120|        }
+ 56121|      }
+ 56122|    } catch (C) {
+ 56123|      console.error(`[iia/engine] OC gateway seed (migration) error (will retry): ${C.message}`);
+ 56124|      return;
+ 56125|    }
+ 56126|  }
+ 56127|  try {
+ 56128|    let C = await (Q.connect ?? mJ)("openrouter", Y);
+ 56129|    if (!C.ok) {
+ 56130|      console.error(`[iia/engine] OC gateway seed: connectProviderKey failed (will retry): ${C.error}`);
+ 56131|      return;
+ 56132|    }
+ 56133|    let F = A.ocModel || R8("openrouter");
+ 56134|    let U = await (Q.applyModel ?? MB)(F);
+ 56135|    if (!U.ok) {
+ 56136|      console.error(`[iia/engine] OC gateway seed: applyOcModel(${F}) failed (non-fatal): ${U.error}`);
+ 56137|    }
+ 56138|    A.ocBootSeeded = true;
+ 56139|    A.ocSeededKeyFp = J;
+ 56140|    if (C.models?.length) {
+ 56141|      A.ocLiveModels = C.models;
+ 56142|    }
+ 56143|    await (Q.save ?? e)(A);
+ 56144|    console.error(`[iia/engine] OC gateway seed: provider key seeded zero-touch (model=${F}, fp=${J})`);
+ 56145|  } catch (C) {
+ 56146|    console.error(`[iia/engine] OC gateway seed error (will retry): ${C.message}`);
+ 56147|  }
+ 56148|}
+ 56149|async function gTA(A, Q = {}) {
+ 56150|  if (n0A) {
+ 56151|    return;
+ 56152|  }
+ 56153|  let B = A.ocModel;
+ 56154|  if (!B) {
+ 56155|    return;
+ 56156|  }
+ 56157|  if (!(await (Q.gatewayActive ?? w8)())) {
+ 56158|    return;
+ 56159|  }
+ 56160|  if (await (Q.sibling ?? Z0)()) {
+ 56161|    if (!i0A) {
+ 56162|      console.error("[iia/engine] OC model self-heal: skipped — another OC bot owns the shared gateway (owner door)");
+ 56163|      i0A = true;
+ 56164|    }
+ 56165|    return;
+ 56166|  }
+ 56167|  let Y = false;
+ 56168|  try {
+ 56169|    let C = await NO();
+ 56170|    if (C === B) {
+ 56171|      Y = true;
+ 56172|    } else {
+ 56173|      let F = await MB(B);
+ 56174|      if (F.ok) {
+ 56175|        Y = true;
+ 56176|        console.error(`[iia/engine] OC model self-heal: re-asserted ${B} (gateway was ${C ?? "unknown"})`);
+ 56177|      } else {
+ 56178|        console.error(`[iia/engine] OC model self-heal: applyOcModel(${B}) failed (will retry): ${F.error}`);
+ 56179|      }
+ 56180|    }
+ 56181|  } catch (C) {
+ 56182|    console.error(`[iia/engine] OC model self-heal error (will retry): ${C.message}`);
+ 56183|  }
+ 56184|  let J = false;
+ 56185|  try {
+ 56186|    let C = await $O(B);
+ 56187|    if (C.error) {
+ 56188|      console.error(`[iia/engine] OC self-heal: removing phantom models entry failed (will retry): ${C.error}`);
+ 56189|    } else {
+ 56190|      J = true;
+ 56191|      if (C.removed.length) {
+ 56192|        console.error(`[iia/engine] OC self-heal: removed phantom models entry ${C.removed.join(", ")}`);
+ 56193|      }
+ 56194|    }
+ 56195|  } catch (C) {
+ 56196|    console.error(`[iia/engine] OC self-heal: phantom models error (will retry): ${C.message}`);
+ 56197|  }
+ 56198|  if (Y && J) {
+ 56199|    n0A = true;
+ 56200|  }

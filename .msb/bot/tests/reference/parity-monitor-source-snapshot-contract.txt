@@ -1,0 +1,43 @@
+Monitor source results after a concurrent edit (RED → GREEN)
+
+A poll must not apply the result of an old source snapshot to a changed or
+replaced row. X already compares the snapshot under the config lock; before
+this stage RSS, YouTube, GitHub and Telegram merge only on key plus addedAt.
+That is unsafe when an old row has no addedAt or a replacement uses the same
+value. A delayed YouTube resolver can also assign its old channel ID to the
+changed row. RED checkpoint 8a93097 records five failing assertions on Node 26
+and isolated Linux Node 22.23.2. The current stage records a snapshot before each
+fetch, keeps the existing unique-key rule, then applies lastError and resolved
+YouTube ID only if the current row still matches. X keeps its existing route.
+
+Old readable blob 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11:5882-5910 and
+7290-7350 constructs sources and updates cursors by identity; read via
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | sed -n '5882,5910p;7290,7350p'
+This is a new-core concurrency safety defect, not a claim that old core had an
+atomic snapshot guard. Tests use temporary profiles and fake fetch; no real
+source, Telegram, JAR1 or OpenClaw is involved.
+
+GREEN: tests/monitor-source-snapshot.test.mjs covers changed rows for all four
+sources, delayed YouTube resolution, unchanged normal resolution/error, unrelated
+settings and sources, duplicate keys, a newer status, parallel polls and the
+continued storage of already collected items. The full selected monitor suite
+passed 89 tests on local Node 26 and 89 on isolated Linux arm64 Node 22.23.2.
+After adding a separate-process YouTube replacement case, the expanded focused
+suite passed all 12 tests on both runtimes. The Linux checks used the existing
+Node SQLite fallback. Both used synthetic profiles and fake network responses;
+Linux had no network.
+
+Limits: after a concurrent change, the late status/resolved ID is deferred until
+a later poll; concurrent polls whose first merge changes the row are effectively
+first-merge-wins for that row. An identical delete/re-add cannot be distinguished
+without a generation. Collected items, pollTimes and the returned errors remain
+the existing results of the already completed fetch even when its row merge is
+skipped. No live JAR1, real source or OpenClaw scenario was tested.
+
+Native-lock follow-up: the expanded full monitoring suite passed 90 tests in an
+isolated Linux arm64 Node 22.23.2 container with better-sqlite3 11.10.0 built
+offline from local source. A query verified the native module before the suite;
+the original source mount was read-only, the test copy and profiles ephemeral,
+and the container had no network. SQLite was used for the existing file locks;
+monitor content storage remained JSONL. This is not a JAR1 ABI or live-source
+check and does not implement the monitor SQLite backend.

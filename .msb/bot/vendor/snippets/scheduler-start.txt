@@ -1,0 +1,261 @@
+108140|var K0 = "idle";
+108141|var Eh = false;
+108142|var xWA = 0;
+108143|var kWA = 0;
+108144|function fWA(A) {
+108145|  if (SWA) {
+108146|    return;
+108147|  }
+108148|  console.error("[iia/scheduler] Starting (delay 30s)...");
+108149|  Promise.resolve().then(() => {
+108150|    nQ();
+108151|    return eQ;
+108152|  }).then(Q => Q.adoptLegacyGlobalSchedules()).catch(Q => console.error("[iia/scheduler] Legacy schedules adoption error:", Q.message));
+108153|  setTimeout(() => {
+108154|    console.error("[iia/scheduler] Active. Checking every 60s.");
+108155|    vWA(A).catch(Q => console.error("[iia/scheduler] tick error:", Q.message));
+108156|    SWA = setInterval(() => {
+108157|      vWA(A).catch(Q => console.error("[iia/scheduler] tick error:", Q.message));
+108158|    }, M4Q);
+108159|  }, R4Q);
+108160|}
+108161|async function vWA(A, Q = _4Q, B = w4Q) {
+108162|  if (Zh) {
+108163|    let Y = Date.now() - TWA;
+108164|    if (Y >= g4Q) {
+108165|      console.error(`[iia/scheduler] Previous tick still running (stuck ${Math.round(Y / 60000)}min, last stage: ${K0}), skipping`);
+108166|      if (!Eh) {
+108167|        Eh = true;
+108168|        await B(Y, K0).catch(() => {});
+108169|      }
+108170|    } else {
+108171|      console.error("[iia/scheduler] Previous tick still running, skipping");
+108172|    }
+108173|    return;
+108174|  }
+108175|  Zh = true;
+108176|  TWA = Date.now();
+108177|  K0 = "start";
+108178|  Eh = false;
+108179|  try {
+108180|    await Q(A);
+108181|  } finally {
+108182|    Zh = false;
+108183|    K0 = "idle";
+108184|  }
+108185|}
+108186|async function w4Q(A, Q) {
+108187|  let B = UY(Q).slice(0, 128);
+108188|  let Y = UY(`age_ms=${A} stage=${B}`).slice(0, 512);
+108189|  try {
+108190|    let J = await import("node:fs/promises");
+108191|    let C = q$.join(bWA.homedir(), ".msb");
+108192|    await J.mkdir(C, {
+108193|      recursive: true
+108194|    });
+108195|    let F = {
+108196|      ts: new Date().toISOString(),
+108197|      kind: "agent_error",
+108198|      error_kind: "scheduler_stuck",
+108199|      detail: Y,
+108200|      engine: null,
+108201|      model: null,
+108202|      session_id: null,
+108203|      bot_id: process.env.MSB_BOT_ID || null
+108204|    };
+108205|    await J.appendFile(q$.join(C, "errors.jsonl"), `${JSON.stringify(F)}
+108206|`);
+108207|  } catch {}
+108208|  try {
+108209|    let J = process.env.SYNC_URL || process.env.MSB_SYNC_URL;
+108210|    let C = process.env.SYNC_KEY || process.env.MSB_SYNC_KEY;
+108211|    if (!J || !C) {
+108212|      return;
+108213|    }
+108214|    await fetch(`${J}/api/report/agent-error`, {
+108215|      method: "POST",
+108216|      headers: {
+108217|        Authorization: `Bearer ${C}`,
+108218|        "Content-Type": "application/json"
+108219|      },
+108220|      body: JSON.stringify({
+108221|        kind: "scheduler_stuck",
+108222|        detail: KC(Y),
+108223|        bot_id: process.env.MSB_BOT_ID || undefined
+108224|      }),
+108225|      signal: AbortSignal.timeout(5000)
+108226|    });
+108227|  } catch {}
+108228|}
+108229|var P4Q = 3600000;
+108230|var $$ = null;
+108231|async function O4Q() {
+108232|  let A = Date.now();
+108233|  if ($$ && A - $$.at < P4Q) {
+108234|    return $$.active;
+108235|  }
+108236|  let Q = false;
+108237|  try {
+108238|    let {
+108239|      execFile: B
+108240|    } = await import("node:child_process");
+108241|    Q = await new Promise(Y => {
+108242|      B("systemctl", ["is-active", "msb-collector.timer"], {
+108243|        timeout: 3000
+108244|      }, (C, F) => {
+108245|        Y(String(F ?? "").trim() === "active");
+108246|      }).on("error", () => Y(false));
+108247|    });
+108248|  } catch {
+108249|    Q = false;
+108250|  }
+108251|  $$ = {
+108252|    active: Q,
+108253|    at: A
+108254|  };
+108255|  return Q;
+108256|}
+108257|async function _4Q(A) {
+108258|  K0 = "load_state";
+108259|  let Q = await m();
+108260|  if (!Q || !Q.chatId) {
+108261|    return;
+108262|  }
+108263|  let B = Py(Q.timezone);
+108264|  let Y = Y0(Q.timezone);
+108265|  let J = Oy(Q.timezone);
+108266|  if (!Q.autoMessagesOptIn) {
+108267|    Q.briefingEnabled = false;
+108268|    Q.weeklyEnabled = false;
+108269|    Q.pulseEnabled = false;
+108270|    Q.autoMessagesOptIn = true;
+108271|    await e(Q);
+108272|    console.error("[iia/scheduler] Migration: all auto-messages disabled");
+108273|  }
+108274|  K0 = "morning_briefing";
+108275|  if (Q.briefingEnabled && B === Q.briefingHour && Q.lastBriefingSent !== Y) {
+108276|    await y4Q(A, Q, Y);
+108277|  }
+108278|  K0 = "weekly_insight";
+108279|  if (Q.weeklyEnabled && J === 1 && B === Q.briefingHour + 1 && Q.lastWeeklySent !== rK(Q.timezone)) {
+108280|    await S4Q(A, Q);
+108281|  }
+108282|  K0 = "monitor_config";
+108283|  let C = await BQ();
+108284|  let F = Date.now();
+108285|  if (!(await O4Q())) {
+108286|    Fh();
+108287|    let G = zL(C);
+108288|    let D = [];
+108289|    let z = false;
+108290|    let H = new Map();
+108291|    for (let j of G) {
+108292|      if (!j.enabled) {
+108293|        continue;
+108294|      }
+108295|      let I = H.get(j.sourceType) || [];
+108296|      I.push(j);
+108297|      H.set(j.sourceType, I);
+108298|    }
+108299|    for (let [j, I] of H) {
+108300|      let q = fS(j);
+108301|      if (!q) {
+108302|        continue;
+108303|      }
+108304|      if (!q.checkReady().ready) {
+108305|        continue;
+108306|      }
+108307|      let $ = (I[0].pollIntervalMinutes ?? 30) * 60000;
+108308|      let N = gy(Q, j);
+108309|      if (F - new Date(N).getTime() < $) {
+108310|        continue;
+108311|      }
+108312|      let L = 0;
+108313|      let M = 0;
+108314|      let g;
+108315|      let w = [];
+108316|      K0 = `monitor_poll:${j}:poll`;
+108317|      for (let f of I) {
+108318|        try {
+108319|          let v = await q.poll(f, f.cursor || {});
+108320|          if (v.items.length > 0) {
+108321|            w.push(...v.items);
+108322|            L += v.items.length;
+108323|          }
+108324|          if (v.errors && v.errors.length > 0) {
+108325|            M++;
+108326|            g = v.errors[v.errors.length - 1];
+108327|          }
+108328|          if (Object.keys(v.cursor).length > 0) {
+108329|            D.push({
+108330|              type: f.sourceType,
+108331|              id: f.sourceId,
+108332|              cursor: v.cursor
+108333|            });
+108334|          }
+108335|        } catch (v) {
+108336|          M++;
+108337|          g = v.message;
+108338|          console.error(`[iia/scheduler] ${j}/${f.displayName} error:`, v.message);
+108339|        }
+108340|      }
+108341|      wy(Q, j, new Date().toISOString());
+108342|      z = true;
+108343|      let O = 0;
+108344|      let h = false;
+108345|      if (L > 0) {
+108346|        console.error(`[iia/scheduler] ${j}: ${L} new items`);
+108347|        if (q.process) {
+108348|          K0 = `monitor_poll:${j}:process`;
+108349|          try {
+108350|            await q.process(w, I[0]);
+108351|          } catch (f) {
+108352|            console.error(`[iia/scheduler] ${j} process error:`, f.message);
+108353|          }
+108354|        }
+108355|        try {
+108356|          let v = await Q0().upsertItems(w);
+108357|          O = v;
+108358|          if (v < w.length) {
+108359|            console.error(`[iia/scheduler] ${j}: собрано ${w.length}, сохранено ${v}`);
+108360|          }
+108361|        } catch (f) {
+108362|          h = true;
+108363|          console.error(`[iia/scheduler] ${j} persist error:`, f.message);
+108364|        }
+108365|        try {
+108366|          let {
+108367|            syncAndProcess: f
+108368|          } = await Promise.resolve().then(() => {
+108369|            lJ();
+108370|            return pJ;
+108371|          });
+108372|          await f({
+108373|            source: j
+108374|          });
+108375|        } catch {}
+108376|      }
+108377|      try {
+108378|        let {
+108379|          recordTypeOutcome: f,
+108380|          classifyPollOutcome: v
+108381|        } = await Promise.resolve().then(() => {
+108382|          L0();
+108383|          return s0;
+108384|        });
+108385|        let c = v({
+108386|          failedEntries: M,
+108387|          entryCount: I.length,
+108388|          itemCount: L,
+108389|          persistedCount: O,
+108390|          persistFailed: h,
+108391|          errorMessage: g
+108392|        });
+108393|        await f(j, c.outcome, {
+108394|          itemCount: L,
+108395|          persistedCount: O,
+108396|          message: c.message
+108397|        });
+108398|      } catch (f) {
+108399|        console.error("[iia/scheduler] health record error:", f.message);
+108400|      }

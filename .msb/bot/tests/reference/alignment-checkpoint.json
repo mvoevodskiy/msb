@@ -1,0 +1,25 @@
+{
+  "stage": "Canonical behavior aligned with JAR1, optional OS routes separated",
+  "base": "f28b988",
+  "checks": {
+    "tests": 171,
+    "pass": 171,
+    "fail": 0,
+    "skipped": 0
+  },
+  "ported": [
+    "native last-request context and cache accounting",
+    "MAX and top-level TOML",
+    "no replay after stream-cut",
+    "preserve failed resume and validate returned session",
+    "provider-aware screens, pending cancellation, auth form and env validation",
+    "timezone and shared autonomy-session description",
+    "shared remaining state writers and preserved Codex session on permission setting"
+  ],
+  "pending": [
+    "JAR1 runtime profile and single-commit packaging",
+    "navigation and focused module extraction",
+    "Linux and live acceptance"
+  ],
+  "jar1_changed": false
+}

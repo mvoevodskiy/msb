@@ -1,0 +1,63 @@
+Защищённые env: прежняя граница формы и отдельный auth-маршрут
+
+Baseline нового ядра: f9ebaa95530592559b7622b6f3b3d2934e077c36.
+Сценарий: «Переменные окружения» → «Свой ключ» → BOT_TOKEN либо системный ключ.
+Обычная форма не должна перезаписывать настройки юнита/владельца/авторизации.
+Это восстановление существовавшей проверки, не новая система прав.
+
+Точный эталон
+Old master 00f081f2220d0e6d3a186e8e1bb447b57acd6ebf;
+.msb/bot/vendor/deobfuscated.js, readable blob
+73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11. Читать узкими окнами:
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | sed -n '119135,119169p'
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | sed -n '54555,54594p'
+  git show 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11 | sed -n '119424,119434p'
+`t5` (44249) + `bY` (55151) запрещали JARVIS_CC_ONLY, BOT_TOKEN,
+ANTHROPIC_API_KEY, IIA_ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN, SYNC_KEY,
+SYNC_URL, IIA_WORKSPACE_DIR, IIA_SESSION_DIR, NODE_ENV, VPS_CLIENT_ID, ADMIN_ID.
+`nF` (119135–119169): после распознавания protected имени вызывает w9(user),
+закрывает форму и отвечает отказом. BOT_TOKEN предлагает старую кнопку
+«➕ Добавить TELEGRAM_BOT_2»; Claude-ключи направляют в /settings → 🔌 Подключение.
+Прочие системные ключи обозначены как управляемые автоматически.
+`s1` (54559–54566) повторно проверяет bY непосредственно перед записью.
+Old quick callback (53804–53835) допускает произвольный suffix, но save через
+JDA (118613+) → s1 всё равно запрещает protected key; обход callback не даёт записи.
+Auth save (119424–119434, также55474–55477) явно использует {internal:true}.
+
+Граница нового исправления
+- env/store: объединить прежний protected-набор с уже имеющимися bootstrap
+  keys нового ядра; одинаковая защита MSB_/IIA_ aliases. Обычная запись и удаление
+  защищённых ключей запрещены до файловых операций и изменения profile env.
+- forms/env + routes/settings: имя protected key закрывает pending до отказа;
+  quick callback не обходит отказ. Ответы и BOT_TOKEN fallback — прежние.
+- forms/auth: только существующий специализированный маршрут сохранения Claude
+  использует явную привилегированную запись. Он сохраняет прежний выбор типа
+  токена, состояние/перезапуск; это не доказательство реальной авторизации.
+- Сохранить обычные сервисные ключи (включая Deepgram), существующие кнопки,
+  previews, отмену/TTL и env профиля. Произвольные допустимые custom keys остаются.
+  Не блокировать штатные Pult-настройки и отдельные provider-secret routes overlay.
+- Не переносить описания/comment stage и не вводить автоматическое удаление
+  обычных env-сообщений в этом этапе. Это отдельные контракты/ранее принятые границы.
+- Не менять session/model/effort/Codex auth/config и не мигрировать живые .env.
+
+Проверка
+Production Telegram ingress с synthetic HOME/credentials: custom и quick protected
+имена, следующий текст после отказа, overlay on/off, отмена/кнопка TELEGRAM_BOT_2.
+Store напрямую: полный protected-набор и aliases, ни байта/метаданных/env mutation;
+invalid values остаются запрещены даже при explicit internal. Контроли: Deepgram,
+custom и штатное Claude OAuth/API сохранение при активном Codex, Pult regression.
+RED checkpoint должен явно отличаться от пригодного к выпуску исправления.
+
+Изолированная проверка не равна live Claude login или полному env parity.
+Откат этапа — revert fix, затем RED tests/contract при необходимости;
+code-only rollback не возвращает данные/секреты и снова открывает прежний дефект.
+
+Проверенный локальный checkpoint
+48d6785 — контракт; 55ac0f3 — production RED: 14 tests, 2 PASS / 12 RED.
+После узкого fix: 70 связанных tests PASS (env, auth, menu, monitor, profile).
+Независимый reviewer: env-protected + auth-input + pult-input, 32 PASS,
+без findings. Полный Linux gate и реальная приёмка относятся к финальному
+экспорту; эти цифры не являются утверждением о выпуске на JAR1.
+Единственная поправка immutable open-core menu snapshot в assertion:
+NODE_ENV больше не получает delete button, поскольку old bY уже защищал его.
+Сами fixture bytes и остальные ожидаемые callback routes не переписаны.

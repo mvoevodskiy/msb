@@ -1,0 +1,401 @@
+110800|          let kA = n.ocLastContextUsed ?? 0;
+110801|          if (kA > 0 && EA < kA * v2Q) {
+110802|            a = true;
+110803|          }
+110804|          n.ocLastContextUsed = EA;
+110805|          n.ocContextTokens = EA;
+110806|        } else {
+110807|          let oQ = vq(typeof B === "string" ? B : "") + vq(d?.text ?? "");
+110808|          n.ocContextTokens = (n.ocContextTokens ?? bq) + oQ;
+110809|          EA = n.ocContextTokens;
+110810|        }
+110811|        try {
+110812|          await e(n);
+110813|        } catch {}
+110814|      }
+110815|      if (a) {
+110816|        Z?.pushText(`
+110817|
+110818|\uD83D\uDDDC️ _Сжал старый контекст — продолжаю с резюме_
+110819|
+110820|`);
+110821|        console.error(`[iia/bot] OC compaction detected (used dropped to ${EA})`);
+110822|      }
+110823|      for (let t of v) {
+110824|        Z?.pushText(`
+110825|
+110826|${t}
+110827|
+110828|`);
+110829|      }
+110830|      let CA = EA > 0 && o > 0;
+110831|      let OQ = {
+110832|        elapsedMs: N,
+110833|        costUsd: L,
+110834|        cacheReadTokens: g,
+110835|        toolCalls: M,
+110836|        contextUsedTokens: CA ? EA : undefined,
+110837|        contextLimitTokens: CA ? o : undefined
+110838|      };
+110839|      let lA = r ? undefined : d?.text;
+110840|      await Z.finish(OQ, lA);
+110841|      console.error(`[iia/turn] engine=${n?.engine || "cc"} model=${d?.model || "?"} ocEffort=${n?.ocEffort || "-"} perm=${n?.permissionMode || "auto"} tools=${M} ms=${N}`);
+110842|      let tA = J_();
+110843|      if (tA && tA.buttons.length > 0) {
+110844|        let t = new JA();
+110845|        tA.buttons.forEach((kA, oQ) => {
+110846|          t.text(kA.label.slice(0, 60), `agent_btn:${oQ}`);
+110847|          if (oQ === 0) {
+110848|            t.primary?.();
+110849|          } else if (/отмен|✖|cancel/i.test(kA.label)) {
+110850|            t.danger?.();
+110851|          }
+110852|          t.row();
+110853|        });
+110854|        try {
+110855|          await R.api.sendMessage(A.chatId, tA.message || "⚡", {
+110856|            reply_markup: t,
+110857|            ...CQ(A.threadId)
+110858|          });
+110859|        } catch {}
+110860|      }
+110861|      let JQ = B_();
+110862|      for (let t of JQ) {
+110863|        try {
+110864|          await F9Q(R, A.chatId, t, A.threadId);
+110865|        } catch (kA) {
+110866|          console.error(`[iia/bot] send_media failed (${t.type}):`, kA.message);
+110867|        }
+110868|      }
+110869|      try {
+110870|        let t = await m();
+110871|        if (t?.providerFailSince) {
+110872|          t.providerFailSince = undefined;
+110873|          await e(t);
+110874|        }
+110875|        if (t?.openclawKeptForAuth) {
+110876|          fBA(A4(), A.chatId);
+110877|        }
+110878|      } catch {}
+110879|      try {
+110880|        await (await Promise.resolve().then(() => {
+110881|          Y2();
+110882|          return PJ;
+110883|        })).clearNoticeEdge("provider_credits");
+110884|      } catch {}
+110885|      await $h(A.userId, A.threadId);
+110886|      return;
+110887|    }
+110888|    Y.stop();
+110889|    await h2Q(A.chatId, G.text, Y.messageId);
+110890|    await $h(A.userId, A.threadId);
+110891|    if (D) {
+110892|      let z = await m();
+110893|      if (z && !z.servicesSetupShown) {
+110894|        await fh(R.api, A.chatId);
+110895|        z.servicesSetupShown = true;
+110896|        await e(z);
+110897|      }
+110898|    }
+110899|  } catch (X) {
+110900|    let V = X.message || String(X);
+110901|    let W = await m();
+110902|    let G = W?.engine === "oc";
+110903|    let D = Z?.currentText?.trim() || "";
+110904|    let z = !!Z && V !== "cancelled" && !G && (!!D || Z.hasSubagents);
+110905|    let H = false;
+110906|    if (z) {
+110907|      try {
+110908|        await Z.finish();
+110909|        H = !!D;
+110910|        console.error(`[iia/bot] I2 finalize-or-error: finalized CC turn (partial=${D.length}ch, subagents=${Z.hasSubagents}) before error note`);
+110911|      } catch (d) {
+110912|        console.error(`[iia/bot] I2 finalize-or-error: finish() failed: ${d.message}`);
+110913|      }
+110914|    }
+110915|    Z?.cancel();
+110916|    Y.stop();
+110917|    let j = H || !!Z?.isAnchorConsumed;
+110918|    let I = Z?.messageId ?? Y.messageId;
+110919|    let q = async (d, r) => {
+110920|      if (j) {
+110921|        return R.api.sendMessage(A.chatId, d, {
+110922|          ...CQ(A.threadId),
+110923|          ...(r || {})
+110924|        });
+110925|      }
+110926|      return R.api.editMessageText(A.chatId, I, d, r);
+110927|    };
+110928|    let $ = V !== "cancelled" ? n2Q(V, W?.engine) : "turn_failed";
+110929|    if (X instanceof t4 && X.compaction && V !== "cancelled") {
+110930|      $ = "compaction_failed";
+110931|    }
+110932|    let N = X instanceof B1 ? X.errorKind : undefined;
+110933|    let L = X instanceof B1 ? {
+110934|      evidence: X.evidence ?? "unknown",
+110935|      httpStatus: X.httpStatus
+110936|    } : rU(X);
+110937|    if (N && V !== "cancelled") {
+110938|      if (N === "RATE_LIMIT") {
+110939|        $ = "rate_limit";
+110940|      } else if (N === "AUTH") {
+110941|        $ = "provider_auth";
+110942|      } else if (N === "BILLING") {
+110943|        $ = "provider_billing";
+110944|      }
+110945|    }
+110946|    let M;
+110947|    if (V !== "cancelled" && $ === "oc_device_approval_pending" && W?.engine === "oc" && (A.retryCount || 0) < 1) {
+110948|      M = await QP({
+110949|        hintRequestId: AP(V)
+110950|      });
+110951|      console.error(`[iia/bot] OC device approval: approved=${M.approved.length} tried=${M.tried.length} pending_left=${M.pendingLeft} retry_worthy=${M.retryWorthy ? 1 : 0} rounds=${M.rounds} scopes=[${M.scopes.join(",")}]${M.error ? ` error=${M.error}` : ""}`);
+110952|    }
+110953|    let g = V === "cancelled" ? undefined : $ === "oc_device_approval_pending" ? Y1A(M?.retryWorthy ?? false, A.retryCount || 0) : N === "OC_TIMEOUT_EMPTY" ? A1A(A.retryCount || 0, XW) : N === "OC_INTERNAL_EMPTY" ? Q1A(A.retryCount || 0) : undefined;
+110954|    let w = X instanceof B1 ? !!X.ocHadActiveChild : false;
+110955|    let O = V !== "cancelled" ? B1A({
+110956|      hadActiveChild: w,
+110957|      isTransient: e0A(V),
+110958|      ocTimeoutPlan: g
+110959|    }) : {
+110960|      retry: false,
+110961|      resetSession: false,
+110962|      heldForActiveChild: false
+110963|    };
+110964|    let h = X instanceof B1 ? X.ocHeldChildren : undefined;
+110965|    if (h) {
+110966|      PGA(A.chatId, h);
+110967|    }
+110968|    let f = V === "cancelled" ? null : $ === "provider_auth" || W?.engine === "oc" && FH(V) ? "auth" : $ === "provider_billing" ? "no_credits" : null;
+110969|    let v = "not_actionable";
+110970|    if (f && W) {
+110971|      let d = Date.now();
+110972|      let r = typeof L.httpStatus === "number" ? L.httpStatus : undefined;
+110973|      let o = W.engine === "oc" ? "oc" : "cc";
+110974|      let EA = V === rF;
+110975|      W.providerFailSince = p_(W.providerFailSince, f, o, r, d, EA);
+110976|      try {
+110977|        await RB(CA => {
+110978|          CA.providerFailSince = p_(CA.providerFailSince, f, o, r, d, EA);
+110979|        });
+110980|      } catch {}
+110981|      let a = Date.parse(W.providerFailSince.at);
+110982|      v = Mm({
+110983|        cls: f,
+110984|        retryCount: A.retryCount || 0,
+110985|        failSinceMs: Number.isFinite(a) ? a : d,
+110986|        nowMs: d
+110987|      });
+110988|    }
+110989|    if (V !== "cancelled") {
+110990|      let d = Hq({
+110991|        elapsedMs: Date.now() - E,
+110992|        thrownKind: N,
+110993|        message: V
+110994|      });
+110995|      console.error(`[iia/engine] thrown outcome: ${hW(d)}`);
+110996|      Iq({
+110997|        engine: W?.engine,
+110998|        outcome: d
+110999|      }, undefined, false, V).catch(() => {});
+111000|      let r = N ? `[${N}] ${V}` : V;
+111001|      let o = "";
+111002|      if (N === "OC_TIMEOUT_EMPTY") {
+111003|        let a = X instanceof B1 ? X.ocDiag : undefined;
+111004|        let CA = O.resetSession ? "second_retry" : "none";
+111005|        o += ` | diag thought=${a?.hadThoughtFrames ? 1 : 0} tools=${a?.hadToolFrames ? 1 : 0} stderr_auth=${a?.hadStderrAuthMarker ? 1 : 0} terminal=${a?.sawTerminalFrame ? 1 : 0} session_reset=${CA}`;
+111006|      }
+111007|      let EA = X instanceof B1 ? X.ocFrameDetail : undefined;
+111008|      if (EA) {
+111009|        o += ` | ${EA}`;
+111010|      }
+111011|      o += ` | evidence=${L.evidence}${typeof L.httpStatus === "number" ? ` http=${L.httpStatus}` : ""} recheck=${A.retryCount || 0} blame=${v}`;
+111012|      if (M) {
+111013|        o += ` | auto_approve approved=${M.approved.length} tried=${M.tried.length} pending_left=${M.pendingLeft} retry=${g?.retry ? 1 : 0}${M.error ? ` err=${M.error}` : ""}`;
+111014|      }
+111015|      if (o) {
+111016|        r = r.slice(0, 512 - o.length) + o;
+111017|      }
+111018|      JB($, r, {
+111019|        engine: W?.engine,
+111020|        model: W?.engine === "oc" ? W?.ocModel : W?.ccModel,
+111021|        sessionId: W?.engine === "oc" ? W?.ocSessionId : W?.ccSessionId
+111022|      }).catch(() => {});
+111023|    }
+111024|    let c = W?.engine === "oc" && FH(V);
+111025|    let n = QQ(W);
+111026|    if (V === "cancelled") {
+111027|      try {
+111028|        await R.api.editMessageText(A.chatId, Z?.messageId ?? Y.messageId, "Моя остановочка ✋🏽⛔️");
+111029|      } catch {}
+111030|    } else if (V.startsWith("MESSAGE_TOO_LARGE:")) {
+111031|      let d = V.slice(18);
+111032|      let r = hy(parseFloat(d) * 1024 * 1024);
+111033|      try {
+111034|        await q(r.text, {
+111035|          parse_mode: r.parse_mode
+111036|        });
+111037|      } catch {}
+111038|    } else if (V === rF) {
+111039|      let d = new JA().text("🔌 Подключение", "settings:auth").row();
+111040|      try {
+111041|        await q(Qj(n), {
+111042|          reply_markup: d
+111043|        });
+111044|      } catch {}
+111045|    } else if (xy(V)) {
+111046|      console.error("[iia/bot] Rate limit hit:", V.slice(0, 100));
+111047|      try {
+111048|        let d = Cm(n, iU(OW(W?.rateLimitInfo), W?.timezone));
+111049|        await q(d.text, d.keyboard ? {
+111050|          reply_markup: d.keyboard
+111051|        } : undefined);
+111052|      } catch {}
+111053|    } else if (N === "BILLING") {
+111054|      console.error("[iia/bot] Provider billing error:", V.slice(0, 120));
+111055|      let d = new JA().text("🔌 Подключение", "settings:auth").row();
+111056|      let r = lB(W?.ocModel || "") === "openai";
+111057|      let o = `${V.includes("Лимит ключа") ? `\uD83D\uDCB3 Лимит ключа провайдера исчерпан.
+111058|Подними лимит ключа на openrouter.ai/keys или пополни баланс — заработает сразу.
+111059|Или переключись на другой движок: /settings → 🔌 Подключение` : r ? `\uD83D\uDCB3 Кредиты провайдера закончились.
+111060|Проверь план и биллинг подписки OpenAI.
+111061|Или переключись на другой движок: /settings → 🔌 Подключение` : `\uD83D\uDCB3 Кредиты провайдера закончились.
+111062|Пополни баланс на openrouter.ai — заработает сразу.
+111063|Или переключись на другой движок: /settings → 🔌 Подключение`}
+111064|${lY}`;
+111065|      let EA = !!A.isAutoTurn && Q.every(OQ => !!OQ.isAutoTurn);
+111066|      let a = await Promise.resolve().then(() => {
+111067|        Y2();
+111068|        return PJ;
+111069|      }).catch(() => null);
+111070|      let CA = a ? a.billingContext({
+111071|        engine: W?.engine,
+111072|        ocModel: W?.ocModel,
+111073|        key: process.env.OPENROUTER_API_KEY
+111074|      }) : "";
+111075|      if (EA && a) {
+111076|        try {
+111077|          if (!(await a.sendOncePerOutage("provider_credits", o, {
+111078|            send: (lA, tA) => q(lA, {
+111079|              reply_markup: tA
+111080|            }),
+111081|            edgeKey: a.CREDITS_EDGE_CHAT,
+111082|            ctx: CA
+111083|          }, [[{
+111084|            text: "🔌 Подключение",
+111085|            callback_data: "settings:auth"
+111086|          }]])).sent && !j) {
+111087|            await R.api.deleteMessage(A.chatId, I).catch(() => {});
+111088|          }
+111089|        } catch {}
+111090|      } else {
+111091|        try {
+111092|          await q(o, {
+111093|            reply_markup: d
+111094|          });
+111095|          if (a) {
+111096|            await a.raiseNoticeEdge(a.CREDITS_EDGE_CHAT, new Date(), undefined, CA).catch(() => {});
+111097|          }
+111098|        } catch {}
+111099|      }
+111100|    } else if (v === "recheck" && (c || uU($, W?.engine, V, n))) {
+111101|      console.error(`[iia/bot] provider ${$}${c ? "/oc-reauth" : ""}: recheck in ${Math.round(Wq / 1000)}s before blaming (evidence=${L.evidence}${typeof L.httpStatus === "number" ? ` http=${L.httpStatus}` : ""})`);
+111102|      let d = Z?.messageId ?? Y.messageId;
+111103|      try {
+111104|        let r = await q(Lm);
+111105|        if (j && r && typeof r.message_id === "number") {
+111106|          d = r.message_id;
+111107|        }
+111108|      } catch {}
+111109|      CC = setTimeout(() => {
+111110|        CC = null;
+111111|        let r = new wQ(R, A.chatId, d);
+111112|        NB({
+111113|          userId: A.userId,
+111114|          chatId: A.chatId,
+111115|          threadId: A.threadId,
+111116|          retryCount: (A.retryCount || 0) + 1,
+111117|          resumeAttempt: A.resumeAttempt,
+111118|          resumeOriginalContent: A.resumeOriginalContent,
+111119|          isAutoTurn: A.isAutoTurn,
+111120|          kind: A.kind,
+111121|          contentDescription: A.contentDescription,
+111122|          content: B,
+111123|          status: r
+111124|        });
+111125|      }, Wq);
+111126|    } else if (v === "hedge" && (c || uU($, W?.engine, V, n))) {
+111127|      console.error(`[iia/bot] provider auth persists ${Math.round((Date.now() - Date.parse(W?.providerFailSince?.at ?? "")) / 60000) || 0} min < 30: hedge, not blame`);
+111128|      let d = $ === "provider_auth" && !c && W?.engine !== "oc";
+111129|      let r = d && (await t_(A4()));
+111130|      let o = d && !r ? await e_(A4()) : null;
+111131|      try {
+111132|        if (r) {
+111133|          await q(`${fW}
+111134|
+111135|${Qy}`, {
+111136|            parse_mode: "HTML",
+111137|            reply_markup: new JA().text(T.sw, b.swOc)
+111138|          });
+111139|        } else if (o !== null) {
+111140|          await q(`${fW}
+111141|
+111142|${Ay(o)}`, {
+111143|            parse_mode: "HTML"
+111144|          });
+111145|        } else {
+111146|          await q(fW);
+111147|        }
+111148|      } catch {}
+111149|    } else if (c) {
+111150|      console.error("[iia/bot] OC re-auth needed:", V.slice(0, 120));
+111151|      let d = new JA();
+111152|      let r;
+111153|      if (lB(W?.ocModel || "") === "openai") {
+111154|        r = "Переподключи OpenAI-подписку:";
+111155|        d.text("📱 Переподключить OpenAI", "setup:openai-sub").row();
+111156|      } else {
+111157|        r = "Переподключи провайдера — пришли ключ заново:";
+111158|        d.text("🔀 Переподключить OpenRouter", "settings:auth:openrouter").row();
+111159|      }
+111160|      d.text("🔌 Все способы подключения", "settings:auth").row();
+111161|      try {
+111162|        let o = ZE(W?.ocModel);
+111163|        let EA = o ? `❌ Истекла авторизация ${o} — токен или ключ больше не действует.` : "❌ Истекла авторизация провайдера модели — токен или ключ больше не действует.";
+111164|        await R.api.editMessageText(A.chatId, Z?.messageId ?? Y.messageId, `${EA}
+111165|${r}
+111166|${lY}`, {
+111167|          parse_mode: "HTML",
+111168|          reply_markup: d
+111169|        });
+111170|      } catch {}
+111171|    } else if (uU($, W?.engine, V, n)) {
+111172|      let d = uU($, W?.engine, V, n);
+111173|      console.error("[iia/bot] Provider access error:", V.slice(0, 120));
+111174|      let r = $ === "provider_auth" && W?.engine !== "oc";
+111175|      let o = r && (await t_(A4()));
+111176|      let EA = r && !o ? await e_(A4()) : null;
+111177|      let a = o ? (d.keyboard ?? new JA()).row().text(T.sw, b.swOc) : d.keyboard;
+111178|      try {
+111179|        await q(o ? `${d.text}
+111180|
+111181|${Qy}` : EA !== null ? `${d.text}
+111182|
+111183|${Ay(EA)}` : d.text, {
+111184|          parse_mode: "HTML",
+111185|          reply_markup: a
+111186|        });
+111187|      } catch {}
+111188|    } else if (W?.engine === "oc" && ew(V) && XH() >= EH) {
+111189|      console.error(`[iia/bot] OC gateway wedged (streak ${XH()}) — honest note, no retry: ${V.slice(0, 100)}`);
+111190|      try {
+111191|        await q(C1A);
+111192|      } catch {}
+111193|    } else if (O.heldForActiveChild) {
+111194|      console.error(`[iia/bot] OC turn had active children — holding, no retry: ${V.slice(0, 100)}`);
+111195|      try {
+111196|        await q(J1A);
+111197|      } catch {}
+111198|    } else if (O.retry && (A.retryCount || 0) < XW) {
+111199|      let d = (A.retryCount || 0) + 1;
+111200|      let r = Math.round(_GA / 1000);

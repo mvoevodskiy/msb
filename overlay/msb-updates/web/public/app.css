@@ -1,0 +1,56 @@
+:root {
+  --bg: #f3efe6;
+  --ink: #1c1914;
+  --accent: #0f5c4c;
+  --card: #fffdf8;
+  --err: #8b1e1e;
+  font-family: "IBM Plex Sans", "Segoe UI", sans-serif;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  min-height: 100vh;
+  background:
+    radial-gradient(ellipse at 10% 0%, #d9e8e2 0%, transparent 45%),
+    radial-gradient(ellipse at 90% 20%, #e7dcc8 0%, transparent 40%),
+    var(--bg);
+  color: var(--ink);
+}
+main {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: 2.5rem 1.25rem 4rem;
+}
+h1 { font-size: 1.8rem; margin: 0 0 0.4rem; letter-spacing: -0.02em; }
+.lead { opacity: 0.8; margin-bottom: 1.5rem; }
+.box {
+  background: var(--card);
+  border: 1px solid #d8d0c2;
+  padding: 1rem 1.1rem;
+  white-space: pre-wrap;
+  line-height: 1.45;
+  overflow-x: auto;
+}
+.hidden { display: none; }
+label { display: block; margin: 0.8rem 0; font-size: 0.95rem; }
+input {
+  display: block;
+  width: 100%;
+  margin-top: 0.35rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid #cbbfaa;
+  background: #fff;
+  font: inherit;
+}
+.row { display: flex; gap: 0.6rem; flex-wrap: wrap; margin-top: 1rem; }
+button {
+  border: 0;
+  background: var(--accent);
+  color: #f7fffc;
+  padding: 0.65rem 1rem;
+  font: inherit;
+  cursor: pointer;
+}
+button.secondary { background: #3d3a34; }
+.err { color: var(--err); min-height: 1.2em; }
+#status { margin-top: 1.2rem; }
