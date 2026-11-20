@@ -2,7 +2,8 @@
  * Final owner reply → [named action update](../autonomy/reminder-store.mjs) → old acknowledgement.
  * [Selector and state rules](../autonomy/saved-action-control.mjs).
  * [Global STOP](./pause-markers.mjs) and legacy timers keep their own routes.
- * [Ingress and scheduler checks](../../tests/saved-task-control.test.mjs).
+ * [Ingress and scheduler checks](../../tests/saved-task-control.test.mjs),
+ * [quoted examples](../../tests/task-control-quoted-examples.test.mjs).
  */
 import { loadState, NO_STATE_WRITE, updateState } from '../state.mjs';
 import { readAutonomyPause } from '../autonomy/owner-pause.mjs';
@@ -14,7 +15,8 @@ import { readReminderFrequencyDecisions } from '../autonomy/frequency-decisions.
 import { reminderFrequencyAllows } from '../autonomy/reminder-frequency.mjs';
 import { savedPromptPlan } from '../autonomy/prompt-policy.mjs';
 import { promptRegistrationReady } from '../autonomy/prompt-registration.mjs';
-import { limitMarker, outsideExamples, replaceAutonomyMarkers, scheduleMarker, taskCancelMarker, taskControlMarker, taskInspectionMarker } from './autonomy-marker-text.mjs';
+import { limitMarker, literalAutonomyRanges, outsideRanges, replaceAutonomyMarkers,
+  scheduleMarker, taskCancelMarker, taskControlMarker, taskInspectionMarker } from './autonomy-marker-text.mjs';
 
 // A direct assertion may contain a quoted task name. A quoted or explained
 // assertion does not start with the action verb and remains ordinary text.
@@ -104,8 +106,9 @@ async function changeControl(query, enabled, context) {
 
 export async function processTaskControlMarkers(text, context) {
   if (typeof text !== 'string' || !(text.includes('[PAUSE_TASK:') || text.includes('[RESUME_TASK:'))) return text;
-  const protectedRanges = [...text.matchAll(scheduleMarker), ...text.matchAll(limitMarker), ...text.matchAll(taskCancelMarker), ...text.matchAll(taskInspectionMarker)];
-  const blocks = outsideExamples(text, taskControlMarker, protectedRanges);
+  const protectedRanges = [...literalAutonomyRanges(text), ...text.matchAll(scheduleMarker),
+    ...text.matchAll(limitMarker), ...text.matchAll(taskCancelMarker), ...text.matchAll(taskInspectionMarker)];
+  const blocks = outsideRanges(text, taskControlMarker, protectedRanges);
   const pauses = blocks.filter(block => block[1] === 'PAUSE_TASK');
   const resumes = blocks.filter(block => block[1] === 'RESUME_TASK');
   const results = new Map();
