@@ -49,20 +49,18 @@ test('clean install allows the selected Codex while the strict Claude-only flag 
   }
 });
 
-test('engine screen preserves baseline controls and renders the same optional Codex row with helper snapshots', async t => {
+test('engine screen preserves baseline controls and renders the optional Codex row', async t => {
   const { home, env } = await fixture(t);
   const state = { engine: 'cc' };
   const provider = await buildEngineProviderView(state, env, home);
-  for (const snap of [null, { helper: 'fixture', msb: { state: 'running' }, openclaw: { installed: false } }, { error: 'NO_STATE' }]) {
-    const base = await enginesScreen(state, env);
-    const extended = await enginesScreen(state, env, provider);
-    const buttons = extended.keyboard.inline_keyboard.flat();
-    assert.deepEqual(buttons.filter(b => b.callback_data !== 'ext:conn:set:codex'), base.keyboard.inline_keyboard.flat());
-    assert.equal(buttons.filter(b => b.callback_data === 'ext:conn:set:codex').length, 1);
-    assert.match(extended.text, /Сейчас отвечает: <b>Codex<\/b>/);
-    assert.ok(buttons.some(b => b.callback_data === 'settings:engine:set:cc'));
-    assert.ok(buttons.some(b => b.callback_data === 'menu:settings'));
-  }
+  const base = await enginesScreen(state, env);
+  const extended = await enginesScreen(state, env, provider);
+  const buttons = extended.keyboard.inline_keyboard.flat();
+  assert.deepEqual(buttons.filter(b => b.callback_data !== 'ext:conn:set:codex'), base.keyboard.inline_keyboard.flat());
+  assert.equal(buttons.filter(b => b.callback_data === 'ext:conn:set:codex').length, 1);
+  assert.match(extended.text, /Сейчас отвечает: <b>Codex<\/b>/);
+  assert.ok(buttons.some(b => b.callback_data === 'settings:engine:set:cc'));
+  assert.ok(buttons.some(b => b.callback_data === 'menu:settings'));
 });
 
 test('core without the extension has no unsupported Codex callback; bridge belongs to the installed Bot class', async t => {
