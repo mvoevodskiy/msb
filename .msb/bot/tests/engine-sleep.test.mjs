@@ -1,4 +1,5 @@
 // Old blob 73aa9e7e:3778-3863, 109809-109879 and 110222-110249.
+// Accepted Codex direct wake/notice: ab705acaace5f6968213ac71dd323ecc5e954bb1.
 // Real ingress/inbox with synthetic HOME and fake Telegram/model only.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -8,11 +9,12 @@ import { randomUUID } from 'node:crypto';
 import { spawn } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { fixture } from './helpers/menu-fixture.mjs';
-import { loadState } from '../src/state.mjs';
+import { loadState, saveState } from '../src/state.mjs';
 import { readEnvMap } from '../src/env/store.mjs';
 import { createIntroPendingJournal } from '../src/agent/intro-pending.mjs';
 
 const wait = ms => new Promise(resolve => setTimeout(resolve, ms));
+const codexPauseNotice = /Codex на паузе\./;
 async function until(predicate, label) {
   for (let i = 0; i < 200; i++) { if (await predicate()) return; await wait(5); }
   throw Error(`Timed out: ${label}`);
@@ -23,6 +25,15 @@ async function sleepMarker() {
   const marker = path.join(dir, 'sleep.default');
   await fs.writeFile(marker, 'fixture');
   return marker;
+}
+async function systemWakeFixture(t, runTurn) {
+  const f = await fixture(t, runTurn);
+  const { state } = await loadState();
+  // Codex wakes locally. Exercise the unchanged shared fallback with Cursor selected.
+  await saveState({ ...state, extAuthBypass: 'cursor', ccSessionId: 'ext:cursor:0199a213-81c0-7800-8aa1-bbab2a035a53' });
+  const providers = JSON.parse(await fs.readFile(f.storeFile, 'utf8'));
+  await fs.writeFile(f.storeFile, JSON.stringify({ ...providers, active: 'cursor' }));
+  return f;
 }
 async function stageIntro(f, overrides = {}) {
   const state = (await loadState()).state;
@@ -44,9 +55,9 @@ test('sleep blocks model and media, while /settings and open settings forms work
   f.bot.api.getFile = async () => { downloads++; throw Error('unexpected download'); };
   await sleepMarker();
   await f.message('обычный запрос');
-  assert.match(f.messages.at(-1), /Сейчас работает OpenClaw/);
-  assert.match(f.messages.at(-1), /Вернуть Codex/);
-  assert.ok(f.messageOptions.at(-1).reply_markup.inline_keyboard.flat().some(b => b.callback_data === 'eng:wake'));
+  assert.match(f.messages.at(-1), codexPauseNotice);
+  const wake = f.messageOptions.at(-1).reply_markup.inline_keyboard.flat().find(b => b.callback_data === 'eng:wake');
+  assert.equal(wake?.text, '🔀 Переключить');
   clock += 31_000;
   await f.message('/start');
   for (const media of [{ voice: { file_id: 'fixture', duration: 1 } },
@@ -95,7 +106,7 @@ test('an already queued request is not run when sleep starts before admission', 
   assert.ok(f.messages.includes('⏳ в очереди'));
   await sleepMarker();
   release();
-  await until(() => f.messages.some(text => /Сейчас работает OpenClaw/.test(text)), 'sleep notice for queued input');
+  await until(() => f.messages.some(text => codexPauseNotice.test(text)), 'sleep notice for queued input');
   assert.equal(turns, 1);
   assert.ok(f.deleted.length > 0, 'the queued status is removed');
   await f.callback('eng:wake');
@@ -109,14 +120,14 @@ test('sleep notices are throttled but a message resembling a key is deleted and 
   await sleepMarker();
   await f.message('первое');
   await f.message('второе');
-  assert.equal(f.messages.filter(text => /Сейчас работает OpenClaw/.test(text)).length, 1);
+  assert.equal(f.messages.filter(text => codexPauseNotice.test(text)).length, 1);
   await f.message('sk-ant-synthetic-only');
   assert.ok(f.deleted.includes(99));
   assert.match(f.messages.at(-1), /Сообщение с ключом удалил/);
   assert.ok(!f.messages.some(text => text.includes('sk-ant-synthetic-only')));
   clock += 31_000;
   await f.message('следующее');
-  assert.equal(f.messages.filter(text => /Сейчас работает OpenClaw/.test(text)).length, 3);
+  assert.equal(f.messages.filter(text => codexPauseNotice.test(text)).length, 3);
 });
 
 test('key deletion failure is reported and a blocked callback is acknowledged', async t => {
@@ -149,7 +160,7 @@ test('a scheduled turn admitted during sleep is skipped silently', async t => {
   commit(true);
   await wait(40);
   assert.equal(turns, 0);
-  assert.ok(!f.messages.some(text => /Сейчас работает OpenClaw/.test(text)));
+  assert.ok(!f.messages.some(text => codexPauseNotice.test(text)));
 });
 
 test('wake failure keeps the marker and the selected provider', async t => {
@@ -166,9 +177,9 @@ test('wake failure keeps the marker and the selected provider', async t => {
   assert.equal(after.ccSessionId, before.ccSessionId);
 });
 
-test('Telegram wake falls back to the real request publisher and resumes Codex after an OK result', async t => {
+test('Telegram wake falls back to the real request publisher and resumes the selected Cursor session after an OK result', async t => {
   let turns = 0, request, result;
-  const f = await fixture(t, async () => { turns++; return { ok: true, text: 'fixture-answer' }; });
+  const f = await systemWakeFixture(t, async () => { turns++; return { ok: true, text: 'fixture-answer' }; });
   const before = (await loadState()).state;
   const marker = await sleepMarker();
   const original = { readFile: fs.readFile, unlink: fs.unlink, link: fs.link };
@@ -198,11 +209,11 @@ test('Telegram wake falls back to the real request publisher and resumes Codex a
   assert.equal(after.extAuthBypass, before.extAuthBypass);
   assert.equal(after.ccSessionId, before.ccSessionId);
   await f.message('после системного пробуждения');
-  await until(() => turns === 1, 'the resumed Codex turn');
+  await until(() => turns === 1, 'the resumed turn');
 });
 
 test('a later sleep before the system consumes wake wins over the older request', async t => {
-  const f = await fixture(t);
+  const f = await systemWakeFixture(t);
   const marker = await sleepMarker();
   const original = { readFile: fs.readFile, unlink: fs.unlink, link: fs.link };
   let failLocal = true, request, result;
@@ -254,7 +265,7 @@ test('Node marker revisions are compared by the real Python system worker', asyn
 });
 
 test('a new sleep marker after the helper wake is not erased by the older callback', async t => {
-  const f = await fixture(t);
+  const f = await systemWakeFixture(t);
   const marker = await sleepMarker();
   const original = { readFile: fs.readFile, unlink: fs.unlink, link: fs.link };
   let failLocal = true, request, result;
