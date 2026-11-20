@@ -91,6 +91,59 @@ test('Telegram-HTML fences unwrap to markup; ordinary code fences stay escaped',
   );
 });
 
+test('code examples containing HTML code/pre tags reach Telegram without placeholder loss', async () => {
+  // Old source: readable blob 73aa9e7e850bad7ac1ea8a8091d086ecbfd47a11,
+  // _zA lines 3103-3144 restores code blocks, inline code and HTML separately.
+  // A single new-core replacement used to strand nested NUL placeholders.
+  const examples = [
+    ['```text\n<code>VISIBLE &amp; @raw main.py</code>\n```', '<code>VISIBLE &amp; @raw main.py</code>'],
+    ['```js\nconst html = "<pre>VISIBLE</pre>";\n```', 'const html = "<pre>VISIBLE</pre>";'],
+    ['`<code>VISIBLE</code>`', '<code>VISIBLE</code>'],
+  ];
+  for (const [input, expected] of examples) {
+    const { ctx, calls } = fixture();
+    await deliverTurnResponse(ctx, 101, input);
+    const sent = calls.filter(call => call.method === 'send');
+    assert.equal(sent.length, 1);
+    assert.doesNotMatch(sent[0].text, /\0/, 'Internal placeholders must never reach Telegram.');
+    assert.equal(plain(sent[0].text), expected, 'Source markup inside code is literal text.');
+    assertBalanced(sent[0].text);
+  }
+});
+
+test('HTML code regions and unwrapped HTML fences retain their own literal boundaries', () => {
+  assert.equal(
+    renderResponseHtml('<pre>```text\n<code>VISIBLE</code>\n```</pre>'),
+    '<pre>```text\n&lt;code&gt;VISIBLE&lt;/code&gt;\n```</pre>',
+  );
+  assert.equal(
+    renderResponseHtml('```html\n<b>Пример</b> <code>**literal** @raw main.py</code>\n```'),
+    '<b>Пример</b> <code>**literal** @raw main.py</code>',
+  );
+  assert.equal(
+    renderResponseHtml('<code>before</code> и `"<pre>inside</pre>"` и <code>after</code>'),
+    '<code>before</code> и <code>"&lt;pre&gt;inside&lt;/pre&gt;"</code> и <code>after</code>',
+  );
+});
+
+test('literal backticks inside Telegram HTML code do not close the outer fence', async () => {
+  for (const opening of ['```html', '```']) {
+    const input = [
+      opening, '<b>Пример</b>', '<code>inline ``` code</code>', '<pre><code>literal ``` here</code></pre>', '```',
+      '```js', 'const html = "<code>text</code>";', '```',
+    ].join('\n');
+    const { ctx, calls } = fixture();
+    await deliverTurnResponse(ctx, 101, input);
+    const sent = calls.filter(call => call.method === 'send');
+    assert.equal(sent.length, 1);
+    assert.equal(sent[0].text, [
+      '<b>Пример</b>', '<code>inline ``` code</code>', '<pre><code>literal ``` here</code></pre>',
+      '<pre><code>const html = "&lt;code&gt;text&lt;/code&gt;";</code></pre>',
+    ].join('\n'));
+    assertBalanced(sent[0].text);
+  }
+});
+
 test('old list, mention and filename presentation matches the vendor golden forms', () => {
   assert.equal(
     renderResponseHtml('- @alice проверь report.md\n— **Обзор** и config.yaml\n• `@raw main.py`'),
