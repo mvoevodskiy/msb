@@ -6,6 +6,7 @@
  * and [breaker](./reminder-breaker.mjs) use the old spacing estimate.
  * [Cost-pause pending](./cost-pause-pending.mjs) can be due outside its cron minute.
  * [Scheduler checks](../../tests/recurring-reminder.test.mjs), [pause checks](../../tests/saved-spend-pause.test.mjs).
+ * [Annual slots](../../tests/recurring-reminder-annual.test.mjs) include the local year.
  */
 import { hasCostPausePending } from './cost-pause-pending.mjs';
 
@@ -92,7 +93,7 @@ function localMinute(instant, clock) {
   const parts = Object.fromEntries(clock.formatToParts(instant).map(part => [part.type, Number(part.value)]));
   const { minute, hour, day, month, year } = parts;
   const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay();
-  return [minute, hour, day, month, weekday];
+  return [minute, hour, day, month, weekday, year];
 }
 
 function cronClock(timezone) {
@@ -123,8 +124,9 @@ export function reminderIsDue(action, now, timezone) {
   const values = localMinute(now, clock);
   if (!matchesFields(fields, values)) return false;
   if (!action.lastRunAt) return true;
-  const previous = localMinute(last, clock);
-  return values.slice(0, 4).some((value, index) => value !== previous[index]);
+  const [minute, hour, day, month, , year] = values;
+  const [lastMinute, lastHour, lastDay, lastMonth, , lastYear] = localMinute(last, clock);
+  return year !== lastYear || month !== lastMonth || day !== lastDay || hour !== lastHour || minute !== lastMinute;
 }
 
 // Old D9 starts at the following minute and searches at most 45 days.
