@@ -262,7 +262,7 @@ for (const provider of ['claude', 'codex']) {
     await saveState({ ...(await loadState()).state, chatId: 42, userId: 42 });
     await native.respond(marker());
     await f.message('Напомни через тридцать минут');
-    await until(() => f.edits.some(text => text.includes('Ок, поставил:')), 'the controlled turn must confirm the reminder', 10_000);
+    await until(() => f.messages.some(text => text.includes('Ок, поставил:')), 'the controlled turn must confirm the reminder', 10_000);
     const call = (await native.trace()).at(-1);
     const prompt = provider === 'claude' ? call.argv[call.argv.indexOf('--append-system-prompt') + 1] : call.prompt;
     assert.match(prompt, /\[SCHEDULE_TASK\].*"kind":"reminder"/);

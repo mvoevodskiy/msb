@@ -145,21 +145,41 @@ test('disabled autonomy and a changed engine refuse direct cleanup with no false
   assert.match(disabled, /Автономные задачи сейчас выключены/);
   assert.doesNotMatch(disabled, /^Убрал\.|Снёс 1/);
   process.env.AUTONOMY_ENABLED = '1';
-  const edits = f.edits.length;
+  const messages = f.messages.length;
   await f.request(request);
-  await until(() => f.edits.slice(edits).some(text => text.includes('⏱')), 'changed engine did not finish');
-  assert.match(f.edits.at(-1), /Уборка задач на этом движке пока не подключена/);
+  await until(() => f.messages.slice(messages).some(text => text.includes('⏱')), 'changed engine did not finish');
+  assert.match(f.messages.at(-1), /Уборка задач на этом движке пока не подключена/);
   assert.deepEqual(await fs.readFile(f.actionFile), before);
 });
 
-test('a per-bot scheduler sleep marker does not disable explicit historical cleanup', async t => {
-  const f = await profile(t);
+async function installSleepMarker() {
   const sleep = path.join(msbRoot(), 'engine', 'sleep.default');
   await fs.mkdir(path.dirname(sleep), { recursive: true });
   await fs.writeFile(sleep, 'fixture sleep');
+  return sleep;
+}
+
+test('a per-bot scheduler sleep marker does not disable explicit historical cleanup in an admitted turn', async t => {
+  let sleep;
+  const f = await profile(t, { output: async () => {
+    sleep = await installSleepMarker();
+    return { ok: true, text: cancel };
+  } });
   await f.request(request);
   assert.match(await f.final(), /Снёс 1/);
+  assert.equal(f.modelCalls.length, 1);
   assert.deepEqual(await f.records(), []);
+  assert.equal(await fs.readFile(sleep, 'utf8'), 'fixture sleep');
+});
+
+test('a sleep marker already present at ingress blocks the Codex turn and preserves historical tasks', async t => {
+  const f = await profile(t);
+  const before = await fs.readFile(f.actionFile);
+  const sleep = await installSleepMarker();
+  await f.request(request);
+  assert.ok(f.messages.some(text => text.includes('Codex на паузе.')));
+  assert.equal(f.modelCalls.length, 0);
+  assert.deepEqual(await fs.readFile(f.actionFile), before);
   assert.equal(await fs.readFile(sleep, 'utf8'), 'fixture sleep');
 });
 
@@ -172,11 +192,14 @@ for (const provider of ['claude', 'codex']) {
     await fs.writeFile(actions, JSON.stringify([first, future]));
     await native.respond(cancel);
     await f.message(request);
-    await until(() => f.edits.some(text => text.includes('⏱')), 'controlled provider did not finish', 10_000);
-    const call = (await native.trace()).at(-1);
+    await until(() => f.messages.some(text => text.includes('⏱')), 'controlled provider did not finish', 10_000);
+    const calls = (await native.trace()).filter(row => ['claude', 'codex-app-turn', 'codex-exec'].includes(row.kind));
+    assert.equal(calls.length, 1);
+    const [call] = calls;
+    assert.equal(call.kind, provider === 'codex' ? 'codex-app-turn' : 'claude');
     const prompt = provider === 'claude' ? call.argv[call.argv.indexOf('--append-system-prompt') + 1] : call.prompt;
     assert.match(prompt, /\[CANCEL_SPENT\] отдельной строкой/);
-    assert.match(f.edits.at(-1), /Снёс 1/);
+    assert.match(f.messages.at(-1), /Снёс 1/);
     assert.deepEqual(JSON.parse(await fs.readFile(actions, 'utf8')), [future]);
     assert.equal(f.markupEdits.length, 0);
   });
@@ -205,7 +228,7 @@ test('the foreground stop prevents a pending direct action write from publishing
   }
   await until(() => f.edits.some(text => text.includes('Моя остановочка')), 'cleanup did not acknowledge stop');
   assert.deepEqual(await fs.readFile(f.actionFile), before);
-  assert.ok(!f.edits.some(text => text.includes('Снёс 1')));
+  assert.ok(!f.messages.some(text => text.includes('Снёс 1')));
   await f.untouched();
 });
 
