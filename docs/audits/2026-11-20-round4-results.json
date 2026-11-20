@@ -1,0 +1,218 @@
+{
+  "status": "verified-isolated",
+  "date": "2026-11-20",
+  "repository": "SergeyKoleda/Jarvis",
+  "branch": "codex/open-core-reference-tests",
+  "base_remote_commit": "322ab3525058bac82ec18303b2f7632e4bb82faf",
+  "base_local_commit": "4f6b43fcd0aa0071e138828a7d59a83b70bc8931",
+  "tested_remote_commit": "6ad74041c44b638b342f317584ca18c05f68a114",
+  "tested_local_commit": "71842cd59d8617921a0e2fd83f212c094c326226",
+  "tested_tree": "ca47493a2137ddfc10b4fcba3de5c2a77f819509",
+  "node": "24.22.3",
+  "network": "isolated network namespace, interfaces down",
+  "home": "temporary synthetic profile",
+  "environment": "minimal PATH, LANG=C.UTF-8, TZ=UTC",
+  "live": false,
+  "deployed": false,
+  "runtime_changes": false,
+  "files": 64,
+  "tests": 603,
+  "pass": 603,
+  "fail": 0,
+  "cancelled": 0,
+  "skipped": 0,
+  "todo": 0,
+  "tap_sha256": "3ef712de497da9aae41cbe96f2a779f00a8d972dcf5229ab8b9df4995c5702b0",
+  "command_flags": [
+    "--test",
+    "--test-reporter=tap",
+    "--test-concurrency=2",
+    "--test-timeout=30000"
+  ],
+  "manifest": "2026-11-20-round4-tests.txt",
+  "exclude_patterns": "2026-11-20-round4-excluded.json",
+  "deferred_manifest": "2026-11-20-round4-unrun.txt",
+  "excluded_case_names": [
+    "Codex skills mapping: foreign provider, OC, relative cwd, Claude-only and abort cannot start the native read",
+    "OpenClaw MCP Add uses its own registry and the old engine-list Back",
+    "OpenClaw MCP distinguishes its empty catalog and accepts the old array envelope",
+    "OpenClaw MCP retries one native failure with the old cold and warm timeouts",
+    "OpenClaw MCP stops before retrying if navigation cancels the read",
+    "OpenClaw MCP uses its own sorted old list with no card buttons and no URL credentials",
+    "a running gateway does not imply its setup is complete",
+    "a seeded workspace does not introduce Claude or OpenClaw as Codex",
+    "an off request with a still active gateway is not shown as completed",
+    "an off request with an unknown gateway is not shown as completed",
+    "autostatus and history menu show recorded results for each engine without starting a turn",
+    "closed-core routes still reach their original handlers and mode is fixed at startup",
+    "engine view reads canonical CLI selection without modifying settings or assuming auth is valid",
+    "engines: rejected Codex login leaves the legacy oc profile byte for byte",
+    "engines: successful Codex selection leaves legacy oc mode only after confirmed login",
+    "failed stopping remains visible even if the setup was incomplete",
+    "help distinguishes unavailable actions from the connected autonomy history",
+    "native engines: an OpenClaw selection stays visible until Codex is selected",
+    "setup-bypass: noop on OpenClaw engine",
+    "skill files: aliasing native roots do not back up the newly written content over the actual previous version",
+    "skill files: an unreadable optional OpenClaw home skips only the mirror as old exists did",
+    "skill install: Claude mirrors to an existing OpenClaw home with the old two-engine result",
+    "skill install: OC partial-error output cannot execute the old success-only marker workflow",
+    "skill install: mirror failure reports failure after a successful primary write without claiming a joint transaction",
+    "skill install: pinned Claude-only mode does not create an OpenClaw mirror",
+    "skill install: successful OC final text retains the old Claude primary and existing OpenClaw mirror",
+    "stale Codex auth cannot switch provider, and old Claude engine callback exits OpenClaw",
+    "stale native OpenClaw callbacks do not claim the Codex profile is Claude-only",
+    "strict Claude-only flag applies regardless of the MSB flag",
+    "unauthorized overlay and stale unsupported buttons cannot change provider, session or settings",
+    "unknown OpenClaw installation is not shown as absent"
+  ],
+  "whole_files_deferred": 6,
+  "baseline": {
+    "file_entries": 65,
+    "real_tests": 602,
+    "pass": 585,
+    "fail": 17,
+    "all_filtered_file_placeholders_not_counted": 1,
+    "failures": [
+      {
+        "group": "ui",
+        "name": "real Telegram message handler attaches the measured compact footer",
+        "classification": "stale-test",
+        "runtime_bug_confirmed": false
+      },
+      {
+        "group": "tools",
+        "name": "newtask leaves the introduction resume available, and clear fences a late reply",
+        "classification": "stale-test",
+        "runtime_bug_confirmed": false
+      },
+      {
+        "group": "tools",
+        "name": "Telegram delivers the introduction, offers services once, and then opens the ready hub",
+        "classification": "stale-test",
+        "runtime_bug_confirmed": false
+      },
+      {
+        "group": "tools",
+        "name": "ninth Telegram text runs once through the ordinary native turn, footer and one service card",
+        "classification": "stale-test",
+        "runtime_bug_confirmed": false
+      },
+      {
+        "group": "tools",
+        "name": "ninth Telegram document is downloaded once and its prepared content reaches the ordinary native turn",
+        "classification": "stale-test",
+        "runtime_bug_confirmed": false
+      },
+      {
+        "group": "tools",
+        "name": "ninth Telegram voice is downloaded and transcribed once before the ordinary native turn",
+        "classification": "stale-test",
+        "runtime_bug_confirmed": false
+      },
+      {
+        "group": "tools",
+        "name": "/stop interrupts the ninth ordinary native turn after summary without replay or service card",
+        "classification": "stale-test",
+        "runtime_bug_confirmed": false
+      },
+      {
+        "group": "tools",
+        "name": "restart recovers prepared ninth input without repeating document download or fabricating an update",
+        "classification": "stale-test",
+        "runtime_bug_confirmed": false
+      },
+      {
+        "group": "tools",
+        "name": "service shutdown preserves an unstarted handoff and restart processes it once",
+        "classification": "stale-test",
+        "runtime_bug_confirmed": false
+      },
+      {
+        "group": "tools",
+        "name": "concurrent recovery requests enqueue and deliver the pending input only once",
+        "classification": "stale-test",
+        "runtime_bug_confirmed": false
+      },
+      {
+        "group": "tools",
+        "name": "an in-flight first-session reservation is not overwritten by the recovered handoff",
+        "classification": "stale-test",
+        "runtime_bug_confirmed": false
+      },
+      {
+        "group": "tools",
+        "name": "summary failure retains the input, explains no repeat is needed, and a repeated text runs only once",
+        "classification": "stale-test",
+        "runtime_bug_confirmed": false
+      },
+      {
+        "group": "tools",
+        "name": "an identical retry while the recovered ordinary model runs is not queued a second time",
+        "classification": "stale-test",
+        "runtime_bug_confirmed": false
+      },
+      {
+        "group": "tools",
+        "name": "a known pre-launch failure restores prepared state and tells the owner not to resend",
+        "classification": "stale-test",
+        "runtime_bug_confirmed": false
+      },
+      {
+        "group": "tools",
+        "name": "a missing actual launcher leaves the request prepared instead of claiming it ran",
+        "classification": "stale-test",
+        "runtime_bug_confirmed": false
+      },
+      {
+        "group": "tools",
+        "name": "a new repeat after reset is not swallowed when the old pending input is stale",
+        "classification": "stale-test",
+        "runtime_bug_confirmed": false
+      },
+      {
+        "group": "tools",
+        "name": "/clear during a running recovery does not swallow the next identical message",
+        "classification": "stale-test",
+        "runtime_bug_confirmed": false
+      }
+    ]
+  },
+  "selection_change": "Removed the wholly deferred skills-install-policy file and restored one pure Codex no-mirroring case; final test count is 603.",
+  "groups": {
+    "ui": {
+      "files": 21,
+      "tests": 193,
+      "pass": 193
+    },
+    "tools": {
+      "files": 18,
+      "tests": 245,
+      "pass": 245
+    },
+    "runtime_and_setup": {
+      "files": 25,
+      "tests": 165,
+      "pass": 165
+    }
+  },
+  "cumulative_file_inventory": {
+    "tracked_test_files": 213,
+    "selected_in_recorded_rounds": 207,
+    "not_selected_whole_files": 6,
+    "all_cases_or_live_coverage_claimed": false
+  },
+  "commits": [
+    {
+      "purpose": "footer observation and unused menu loop",
+      "remote": "cdc7e3bd064c61eb9aacf29a6dc077ef0c724915",
+      "local": "0a50b6a922a06802f419cb5030f87dc26071c5da",
+      "tree": "ab73352cc4b7b25c036b087b7352a68c62198ba5"
+    },
+    {
+      "purpose": "bootstrap protocol and final response observation",
+      "remote": "6ad74041c44b638b342f317584ca18c05f68a114",
+      "local": "71842cd59d8617921a0e2fd83f212c094c326226",
+      "tree": "ca47493a2137ddfc10b4fcba3de5c2a77f819509"
+    }
+  ]
+}

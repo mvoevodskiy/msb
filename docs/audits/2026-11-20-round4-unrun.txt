@@ -1,0 +1,6 @@
+.msb/bot/tests/openclaw-mcp-setup.test.mjs
+.msb/bot/tests/openclaw-once-reminder.test.mjs
+.msb/bot/tests/openclaw-skills-reader.test.mjs
+.msb/bot/tests/openclaw-turn.test.mjs
+.msb/bot/tests/skills-install-policy.test.mjs
+.msb/bot/tests/skills-openclaw.test.mjs
