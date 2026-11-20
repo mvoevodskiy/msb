@@ -55,11 +55,11 @@ async function profile(t, { enabled = '1', engine = 'cc' } = {}) {
   const actionFile = path.join(root, 'actions.json');
   const timerFile = path.join(root, 'schedules.json');
   async function ask(response, input = 'Команда владельца') {
-    const index = f.edits.length;
+    const index = f.messages.length;
     answer = response;
     await f.message(input);
     let final;
-    await until(() => final = f.edits.slice(index).find(row => row.includes('⏱')), 'final Telegram answer is missing');
+    await until(() => final = f.messages.slice(index).find(row => row.includes('⏱')), 'final Telegram answer is missing');
     return final;
   }
   function scheduler(runTurn = async () => ({ ok: true, text: 'Итог интервала' })) {

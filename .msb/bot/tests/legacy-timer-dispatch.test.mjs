@@ -667,6 +667,117 @@ test('timer text merges with already queued owner text and uses ordinary model p
   assert.equal((await f.records())[0].lastRunAt, stamp);
 });
 
+for (const mixed of [false, true]) {
+  test('a failed queued timer status leaves the ' + (mixed ? 'owner text' : 'next timer') + ' in the FIFO', async t => {
+    const tail = { ...timer, id: 'tail', name: 'Следующий таймер', prompt: 'Отдельная работа' };
+    const ownerText = 'Отдельный текст владельца';
+    const busy = gate();
+    t.after(busy.resolve);
+    const f = await dispatchFixture(t, { timers: mixed ? [timer] : [timer, tail], chatId: 42,
+      run: async ({ prompt }) => {
+        if (prompt === 'Занять очередь') await busy.promise;
+        return normalResult;
+      },
+    });
+    await f.message('Занять очередь');
+    await until(() => f.calls.length === 1, 'manual turn did not start');
+    const send = f.bot.api.sendMessage;
+    let queueStatuses = 0;
+    f.bot.api.sendMessage = async (chat, text, options, signal) => {
+      if ((text === '⏳ в очереди' && ++queueStatuses === 1) || (text === 'Думаю ⏳' && signal)) {
+        throw Error('synthetic status failure for the first timer');
+      }
+      return send(chat, text, options, signal);
+    };
+    await f.scheduler.tickNow();
+    if (mixed) await f.message(ownerText);
+    await until(() => queueStatuses === 2, 'both queue statuses must be attempted');
+    busy.resolve();
+    await until(() => !f.bot[Symbol.for('msb.scheduledTurns')].pending, 'queued timer did not settle');
+    await f.scheduler.tickNow();
+
+    assert.ok((await f.records()).every(row => !row.enabled && row.lastRunAt === stamp && !row.legacyPendingRun));
+    await until(() => f.calls.length >= 2, 'the healthy tail did not reach the runner');
+    assert.deepEqual(f.calls.map(call => call.prompt), [
+      'Занять очередь', mixed ? ownerText : '⏰ Таймер "Следующий таймер":\nОтдельная работа',
+    ]);
+  });
+}
+
+test('an uneditable queue status does not discard both admitted timers', async t => {
+  const tail = { ...timer, id: 'tail', name: 'Следующий таймер', prompt: 'Отдельная работа' };
+  const busy = gate();
+  t.after(busy.resolve);
+  const f = await dispatchFixture(t, { timers: [timer, tail], chatId: 42, run: async ({ prompt }) => {
+    if (prompt === 'Занять очередь') await busy.promise;
+    return normalResult;
+  } });
+  await f.message('Занять очередь');
+  await until(() => f.calls.length === 1, 'manual turn did not start');
+  const send = f.bot.api.sendMessage, edit = f.bot.api.editMessageText;
+  let headStatus, failedEdits = 0;
+  f.bot.api.sendMessage = async (chat, text, ...options) => {
+    const message = await send(chat, text, ...options);
+    if (text === '⏳ в очереди') headStatus ??= message.message_id;
+    return message;
+  };
+  f.bot.api.editMessageText = async (chat, id, text, ...options) => {
+    if (id === headStatus && text === 'Думаю ⏳') {
+      failedEdits++;
+      throw Error('synthetic queue promotion failure');
+    }
+    return edit(chat, id, text, ...options);
+  };
+  await f.scheduler.tickNow();
+  await until(() => headStatus, 'head must have an existing queue status');
+  busy.resolve();
+  await until(() => !f.bot[Symbol.for('msb.scheduledTurns')].pending, 'queued timers did not settle');
+  await f.scheduler.tickNow();
+
+  assert.equal(failedEdits, 1);
+  assert.ok((await f.records()).every(row => !row.enabled && row.lastRunAt === stamp && !row.legacyPendingRun));
+  assert.equal(f.calls.length, 2);
+  assert.match(f.calls[1].prompt, /Проверить почту[\s\S]*Отдельная работа/);
+});
+
+test('an unpresented timer at the FIFO head cannot consume later owner text', async t => {
+  const f = await dispatchFixture(t, { chatId: 42 });
+  const publishing = gate(), release = gate();
+  const rename = fs.rename, send = f.bot.api.sendMessage;
+  const ownerText = 'Текст после занятого таймером места';
+  let failedSends = 0;
+  fs.rename = async (from, to) => {
+    if (to === f.file) {
+      publishing.resolve();
+      await release.promise;
+    }
+    return rename(from, to);
+  };
+  f.bot.api.sendMessage = async (chat, text, options, signal) => {
+    if (text === 'Думаю ⏳' && signal) {
+      failedSends++;
+      throw Error('synthetic failure before the timer has a status');
+    }
+    return send(chat, text, options, signal);
+  };
+  const tickRun = f.scheduler.tickNow();
+  try {
+    await Promise.race([publishing.promise, tickRun.then(() => assert.fail('timer did not reserve its place'))]);
+    await f.message(ownerText);
+    await until(() => f.messages.includes('⏳ в очереди'), 'owner text did not queue behind the timer');
+  } finally {
+    fs.rename = rename;
+    release.resolve();
+    await tickRun;
+  }
+
+  await until(() => !f.bot[Symbol.for('msb.scheduledTurns')].pending, 'timer did not settle');
+  assert.equal(failedSends, 1);
+  assert.deepEqual(await f.records(), [{ ...timer, enabled: false, lastRunAt: stamp }]);
+  await until(() => f.calls.length > 0, 'the owner text did not reach the runner');
+  assert.deepEqual(f.calls.map(call => call.prompt), [ownerText]);
+});
+
 test('a changed reservation is dropped without losing the user text or other timers', async t => {
   const second = { ...timer, id: 'two', name: 'Другой таймер' };
   const first = gate();

@@ -3,6 +3,7 @@
  * The active Codex handle belongs to [turn](../agent/turn.mjs); no new model
  * turn is started here. Voice preparation → [steer voice](./steer-voice.mjs).
  * Confirmed corrections → [turn history](./history.mjs); checks: [races](../../tests/steer-action.test.mjs), [journal](../../tests/steer-history.test.mjs).
+ * A failed Telegram file acquisition ends only that entry before STT. [FIFO regression](../../tests/steer-telegram.test.mjs).
  */
 import { isAdmin } from './auth.mjs';
 import { textPrompt } from './inbox.mjs';
@@ -61,7 +62,10 @@ export function createSteerAction({ inbox, getActive, adminId, prepareVoice, pre
     } catch (error) {
       ticket?.settle('unknown');
       if (reservation.isCurrent()) {
-        if (sending || (preparingVoice && error?.code !== 'STT_NOT_CONFIGURED' && !entry.preparedVoice)) {
+        if (preparingVoice && error?.code === 'TELEGRAM_VOICE_FILE_UNAVAILABLE') {
+          reservation.consume();
+          await present(entry, `❌ Не удалось обработать голосовое: ${error.message}\n\nПопробуй ещё раз или напиши текстом.`).catch(() => {});
+        } else if (sending || (preparingVoice && error?.code !== 'STT_NOT_CONFIGURED' && !entry.preparedVoice)) {
           reservation.unknown();
           entry.steerUnknown = true;
           await present(entry, sending

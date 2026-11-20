@@ -5,6 +5,8 @@ import '../../shared/preload.mjs';
  * Навигация: [Исполнение CLI](../README.md#исполнение-cli) → [Codex](../adapters/codex.mjs).
  * Необязательный Codex control fd → [steer control](./steer-control.mjs),
  * [проверки](../tests/steer-control.test.mjs); Claude остаётся на штатном пути.
+ * Foreground Codex stop waits for [app-server cleanup](../adapters/codex-app-server.mjs).
+ * [Stop regression](../../../../.msb/bot/tests/codex-steer-stop.test.mjs).
  */
 import { spawn } from 'node:child_process';
 import { resolveNativeClaude } from '../../shared/claude-binary.mjs';
@@ -86,17 +88,37 @@ async function runAlternate(providerId, argv) {
     if (providerId === 'cursor') result = await runCursorTurn(ctx);
     else if (providerId === 'codex') {
       const control = openShimSteerControl(ctx.env);
+      const controller = control && new AbortController();
+      const stop = () => controller.abort();
+      // Keep the shim alive while the native server closes its separate pipes.
+      // Core still signals the whole group if the native shutdown stalls.
+      if (controller) {
+        process.on('SIGINT', stop);
+        process.on('SIGTERM', stop);
+      }
       try {
         result = await runCodexTurn({
           ...ctx,
-          ...(control ? { onSteerReady: control.ready } : {}),
+          ...(control ? { onSteerReady: control.ready, signal: controller.signal } : {}),
           onThreadStarted(id) {
             // Core uses this provisional ID only for the history of a stopped first turn.
             emit({ type: 'system', subtype: 'codex_thread_started',
               provider_id: providerId, session_id: encodeExtSession(providerId, id) });
           },
         });
-      } finally { control?.close(); }
+      } catch (error) {
+        if (!controller?.signal.aborted) throw error;
+      } finally {
+        if (controller) {
+          process.off('SIGINT', stop);
+          process.off('SIGTERM', stop);
+        }
+        control?.close();
+      }
+      if (controller?.signal.aborted) {
+        process.exitCode = 130;
+        return;
+      }
     } else if (providerId === 'qwen') result = await runQwenTurn(ctx);
     else if (providerId === 'openai') result = await runOpenaiTurn(ctx);
     else {

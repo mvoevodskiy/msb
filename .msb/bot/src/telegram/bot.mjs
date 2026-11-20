@@ -22,7 +22,7 @@ import { randomUUID } from 'node:crypto';
  * журнал Пульта → [history](./history.mjs), STT → [voice](./voice.mjs).
  * /cost → [saved spend view](./screens/spend.mjs); saved owner pause gates the model turn.
  * Paused timers retain [pending](../autonomy/legacy-timers.mjs) while the usual status runs;
- * [checks](../../tests/legacy-timer-dispatch.test.mjs) cover the queue and late status.
+ * [checks](../../tests/legacy-timer-dispatch.test.mjs) cover the queue, failed promotion and late status.
  * Final [reminder](./reminder-markers.mjs) and [owner pause](./pause-markers.mjs), then installation markers.
  * Model skill markers → [processor](../skills/response-markers.mjs) before plan/delivery/history, never UI metadata.
  * Prepared skills views/chunks → [view delivery](./view-delivery.mjs), context reply retained.
@@ -746,9 +746,15 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
         : entry.attachment
           ? attachmentStatusText(entry.attachment === 'video' && ctx.message?.video_note ? 'video_note' : entry.attachment)
           : 'Думаю ⏳';
-      if (status) await ctx.api.editMessageText(chatId, status.message_id, initialText,
-        { reply_markup: { inline_keyboard: [] } }, presentationSignal(AbortSignal.any([signal, AbortSignal.timeout(15_000)])));
-      else {
+      if (status) {
+        try {
+          await ctx.api.editMessageText(chatId, status.message_id, initialText,
+            { reply_markup: { inline_keyboard: [] } }, presentationSignal(AbortSignal.any([signal, AbortSignal.timeout(15_000)])));
+        } catch (error) {
+          // The existing queue receipt can still anchor a merged turn if its thinking edit failed.
+          if (!entry.mergedText) throw error;
+        }
+      } else {
         const request = entry.scheduled ? presentationSignal(AbortSignal.any([signal, AbortSignal.timeout(15_000)])) : undefined;
         try {
           status = await ctx.reply(initialText, thread && thread !== 1 ? { message_thread_id: thread } : {}, request);

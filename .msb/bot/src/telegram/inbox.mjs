@@ -6,6 +6,9 @@
  * IDs of merged text are retained for [Telegram handoff](./bot.mjs).
  * Publish them after the timer file is committed. Retain original timer parts so
  * [worker admission](./bot.mjs) can exclude stale rows without losing user text.
+ * Text merges only with a confirmed head receipt. If it is still pending,
+ * the head registers as a single turn so [reply stop](../../tests/inbox-lifecycle.test.mjs)
+ * can reach it. Other entries stay in [FIFO](../../tests/legacy-timer-dispatch.test.mjs).
  * Queued correction reservations and cancellation: [steering contract](../../tests/reference/codex-steer-contract.txt)
  * and [reservation checks](../../tests/steer-inbox.test.mjs).
  */
@@ -17,6 +20,7 @@ export const FORWARD_MAX_MS = 25_000;
 export const BATCH_MAX_ITEMS = 300;
 export const isForwarded = message => Boolean(message?.forward_origin || message?.forward_date || message?.forward_from || message?.forward_from_chat);
 const keyOf = item => `${item.ctx.chat.id}:${(item.ctx.message || item.ctx.callbackQuery?.message)?.message_thread_id || 1}`;
+const isReadyText = item => item?.ready && !item.recovered && !item.items && !item.voice && !item.attachment;
 
 // Each queued message owns its quote. Keep raw text separately for the journal.
 export function textPrompt(item) {
@@ -58,6 +62,7 @@ function occurrenceKey(legacyRun) {
 export function createInbox({ run, status, cancel, canRun = () => true, onError = console.error,
   now = Date.now, setTimer = setTimeout, clearTimer = clearTimeout }) {
   const queue = [], collectors = new Map(), effects = new Set(), scheduledOccurrences = new Set();
+  const confirmedQueueReceipts = new WeakSet();
   let active, closed = false, steerReservation;
   const steerTokens = new WeakMap();
   function eligible(item) {
@@ -121,7 +126,12 @@ export function createInbox({ run, status, cancel, canRun = () => true, onError 
     const p = Promise.resolve().then(fn).catch(() => onError('[msb/inbox] delivery failed'));
     effects.add(p); p.finally(() => effects.delete(p)); return p;
   }
-  function show(entry, text) { effect(() => status(entry, text)); }
+  function show(entry, text) {
+    effect(async () => {
+      await status(entry, text);
+      if (text === '⏳ в очереди') confirmedQueueReceipts.add(entry);
+    });
+  }
   function finishBatch(entry, capHit = false) {
     if (entry.ready || entry.cancelled) return;
     clearTimer(entry.timer); collectors.delete(entry.key);
@@ -132,28 +142,34 @@ export function createInbox({ run, status, cancel, canRun = () => true, onError 
   function kick() {
     if (closed || active || steerReservation || !canRun() || !queue[0]?.ready) return;
     const entry = queue.shift();
-    const occurrences = [];
-    // The old worker merges adjacent, already waiting text, never voices/batches/attachments.
-    if (!entry.recovered && !entry.items && !entry.voice && !entry.attachment) {
-      const parts = [textPart(entry)]; let chars = parts[0].prompt.length;
-      while (parts.length < 20) {
-        const next = queue[0];
-        if (!next?.ready || next.recovered || next.items || next.voice || next.attachment || keyOf(next) !== keyOf(entry)) break;
-        const part = textPart(next);
-        if (chars + part.prompt.length > 1_000_000) break;
-        queue.shift(); chars += part.prompt.length; parts.push(part);
-        // Mark the consumed queue status, keeping one thinking/final status.
-        next.cancelled = true;
-        effect(() => cancel(next, true));
-      }
-      for (const part of parts) if (part.legacyRun) occurrences.push(occurrenceKey(part.legacyRun));
-      if (occurrences.length) entry.legacyParts = parts;
-      applyTextParts(entry, parts);
-    }
+    const occurrences = entry.legacyRun ? [occurrenceKey(entry.legacyRun)] : [];
+    const possibleTail = isReadyText(entry) && isReadyText(queue[0]) && keyOf(queue[0]) === keyOf(entry)
+      ? queue.slice(0, 19) : [];
     active = entry;
     effect(async () => {
-      try { if (!closed && !entry.cancelled) { entry.started = true; await run(entry); } }
-      finally {
+      try {
+        if (closed || entry.cancelled) return;
+        if (isReadyText(entry)) {
+          const merge = confirmedQueueReceipts.has(entry);
+          const parts = [textPart(entry)];
+          let chars = parts[0].prompt.length;
+          // Consume neighbors only after the first entry has a usable queue status.
+          for (const next of merge ? possibleTail : []) {
+            if (queue[0] !== next || !isReadyText(next) || keyOf(next) !== keyOf(entry)) break;
+            const part = textPart(next);
+            if (chars + part.prompt.length > 1_000_000) break;
+            queue.shift(); chars += part.prompt.length; parts.push(part);
+            if (next.legacyRun) occurrences.push(occurrenceKey(next.legacyRun));
+            next.cancelled = true;
+            effect(() => cancel(next, true));
+          }
+          if (parts.length > 1) entry.mergedText = true;
+          if (occurrences.length) entry.legacyParts = parts;
+          applyTextParts(entry, parts);
+        }
+        entry.started = true;
+        await run(entry);
+      } finally {
         for (const occurrence of occurrences) scheduledOccurrences.delete(occurrence);
         active = undefined;
         kick();
@@ -228,7 +244,7 @@ export function createInbox({ run, status, cancel, canRun = () => true, onError 
     get steerBusy() { return Boolean(steerReservation); },
     get hasScheduled() { return Boolean(active?.scheduled || queue.some(item => item.scheduled)); },
     get hasLegacyScheduled() {
-      return Boolean(active?.legacyParts || queue.some(item => item.legacyRun?.timer.legacyPendingRun));
+      return Boolean(active?.legacyRun || active?.legacyParts || queue.some(item => item.legacyRun?.timer.legacyPendingRun));
     },
     async shutdown() { closed = true; clear(); while (effects.size) await Promise.allSettled([...effects]); },
   };
