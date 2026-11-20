@@ -15,7 +15,8 @@
  * [Telegram stop checks](../../tests/turn-lifecycle.test.mjs).
  * Native API error frames stay separate from the assistant and its usage.
  * [Partial error checks](../../tests/claude-partial-error.test.mjs).
- * Optional Codex-only control pipe → [steer channel](./steer-channel.mjs);
+ * Optional steer: overlay FD → [steer channel](./steer-channel.mjs);
+ * Claude stdin stream-json → [steer support](./steer-support.mjs).
  * [envelope checks](../../tests/steer-envelope.test.mjs).
  * [Native-shim regression](../../../../overlay/bot/ext/tests/reference/provider-switch.test.mjs).
  */
@@ -30,10 +31,18 @@ import { resolveClaudeCreds } from '../../shared/provider-env-inherit.mjs';
 import { isProviderSession } from '../../shared/session-starts.mjs';
 import { claudeCompactSettings, claudeTurnContext, updateClaudeInputSample } from './claude-context.mjs';
 import { createSteerChannel } from './steer-channel.mjs';
+import { usesSteerControlFd } from './steer-support.mjs';
 
 const DEFAULT_MAX_TURNS = 200;
 const DEFAULT_ALLOWED_TOOLS = 'Bash,WebSearch,WebFetch,Agent,Task,Workflow,Monitor,Skill,Read,Edit,Write,Glob,Grep';
 const PROMPT_FILE_THRESHOLD = 40 * 1024;
+
+function userStreamMessage(text) {
+  return `${JSON.stringify({
+    type: 'user',
+    message: { role: 'user', content: [{ type: 'text', text: String(text || '') }] },
+  })}\n`;
+}
 
 function isolatedEnvironment() {
   const env = { ...process.env };
@@ -63,7 +72,7 @@ function isolatedEnvironment() {
  * @property {AbortSignal} [signal]
  * @property {string} [cwd]
  * @property {(ev: object) => void} [onEvent]
- * @property {(handle: object | null) => void} [onSteerReady] Codex control for this exact child.
+ * @property {(handle: object | null) => void} [onSteerReady] Mid-turn steer for this exact child.
  * @property {() => void} [onSpawn] Called after the CLI child actually starts.
  * @property {boolean} [autonomy]
  * @property {number} [maxTurns]
@@ -91,9 +100,15 @@ export async function runClaudeTurn(opts) {
       ? opts.allowedTools.join(',')
       : [DEFAULT_ALLOWED_TOOLS, ...(opts.mcp?.claudeAllowedTools ?? [])].join(',');
 
+  const turnProviderId = opts.providerId || 'claude';
+  const wantSteer = typeof opts.onSteerReady === 'function' && !opts.isolated;
+  const steerViaFd = wantSteer && usesSteerControlFd(turnProviderId);
+  const steerViaStdin = wantSteer && turnProviderId === 'claude';
+
   /** @type {string[]} */
   const args = [
     '-p',
+    ...(steerViaStdin ? ['--input-format', 'stream-json'] : []),
     '--output-format',
     'stream-json',
     '--verbose',
@@ -182,8 +197,14 @@ export async function runClaudeTurn(opts) {
     let abortStarted = false;
     let termTimer = null;
     let killTimer = null;
+    let stdinOpen = false;
+    let stdinSteerHandle = null;
+    const closeStdin = () => {
+      if (!stdinOpen) return;
+      stdinOpen = false;
+      try { child?.stdin?.end(); } catch { /* already closed */ }
+    };
     try {
-      const steerEnabled = opts.providerId === 'codex' && typeof opts.onSteerReady === 'function';
       child = spawn('claude', args, {
         cwd,
         env: {
@@ -194,7 +215,7 @@ export async function runClaudeTurn(opts) {
           MSB_TURN_MCP_REMOVE: opts.mcp?.codexNativeRemoval?JSON.stringify(opts.mcp.codexNativeRemoval):undefined,
           MSB_TURN_MCP_CUSTOM: opts.mcp?.codexCustom?JSON.stringify(opts.mcp.codexCustom):undefined,
           MSB_TURN_PROVIDER: opts.providerId || undefined,
-          MSB_CODEX_STEER_FD: steerEnabled ? '3' : undefined,
+          MSB_CODEX_STEER_FD: steerViaFd ? '3' : undefined,
           MSB_CODEX_BOOTSTRAP: opts.codexBootstrap ? '1' : undefined,
           MSB_CODEX_INTRO_SUMMARY: opts.codexIntroSummary ? '1' : undefined,
           MSB_CODEX_INTRO_SCHEMA: opts.codexIntroSummary
@@ -207,10 +228,10 @@ export async function runClaudeTurn(opts) {
           CLAUDE_CODE_AUTO_COMPACT_WINDOW: compact?.window ?? (process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW || '200000'),
           CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: compact?.percent ?? (process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE || '90'),
         },
-        stdio: steerEnabled ? ['pipe', 'pipe', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe'],
+        stdio: steerViaFd ? ['pipe', 'pipe', 'pipe', 'pipe'] : ['pipe', 'pipe', 'pipe'],
         detached: true,
       });
-      if (steerEnabled && child.stdio?.[3]) {
+      if (steerViaFd && child.stdio?.[3]) {
         steerChannel = createSteerChannel(child.stdio[3], { onReady: opts.onSteerReady });
       }
     } catch (err) {
@@ -225,7 +246,37 @@ export async function runClaudeTurn(opts) {
       try { opts.onSpawn?.(); } catch { console.error('[msb/agent-cc] spawn observer failed'); }
     });
     child.stdin?.on('error', () => {});
-    child.stdin?.end(opts.prompt || '');
+    if (steerViaStdin) {
+      stdinOpen = true;
+      try {
+        child.stdin.write(userStreamMessage(opts.prompt || ''));
+      } catch {
+        closeStdin();
+      }
+      const turnId = `claude-${Date.now().toString(36)}`;
+      stdinSteerHandle = {
+        threadId: opts.sessionId || 'claude-live',
+        turnId,
+        get active() {
+          return !closed && stdinOpen && stdinSteerHandle && child.stdin?.writable;
+        },
+        async steer(text) {
+          if (!stdinSteerHandle?.active) return { status: 'rejected' };
+          if (typeof text !== 'string' || !text.trim() || text.length > 1_000_000) {
+            return { status: 'rejected' };
+          }
+          try {
+            child.stdin.write(userStreamMessage(text));
+            return { status: 'accepted' };
+          } catch {
+            return { status: 'unknown' };
+          }
+        },
+      };
+      try { opts.onSteerReady?.(stdinSteerHandle); } catch { /* observer cannot affect the turn */ }
+    } else {
+      child.stdin?.end(opts.prompt || '');
+    }
 
     function signalGroup(signal) {
       if (closed) return false;
@@ -251,6 +302,11 @@ export async function runClaudeTurn(opts) {
       if (closed || abortStarted) return;
       abortStarted = true;
       steerChannel?.close();
+      if (stdinSteerHandle) {
+        stdinSteerHandle = null;
+        try { opts.onSteerReady?.(null); } catch { /* */ }
+      }
+      closeStdin();
       stoppedReply = captureClaudeReply(currentClaudeContext());
       if (!signalGroup('SIGINT') || closed) return;
       termTimer = setTimeout(() => {
@@ -390,6 +446,11 @@ export async function runClaudeTurn(opts) {
               cacheReadTokens = ev.usage.cache_read_input_tokens || 0;
               cacheCreationTokens = ev.usage.cache_creation_input_tokens || 0;
             }
+            if (stdinSteerHandle) {
+              stdinSteerHandle = null;
+              try { opts.onSteerReady?.(null); } catch { /* */ }
+            }
+            closeStdin();
             break;
           default:
             break;
@@ -464,6 +525,11 @@ export async function runClaudeTurn(opts) {
     function cleanup() {
       closed = true;
       steerChannel?.close();
+      if (stdinSteerHandle) {
+        stdinSteerHandle = null;
+        try { opts.onSteerReady?.(null); } catch { /* */ }
+      }
+      closeStdin();
       if (termTimer !== null) clearTimeout(termTimer);
       if (killTimer !== null) clearTimeout(killTimer);
       termTimer = killTimer = null;

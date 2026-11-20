@@ -255,7 +255,7 @@ test('/stop during voice recognition removes the button and fences a late transc
   assert.equal(f.prompts.length, 1);
 });
 
-test('Claude-style turn retains the normal queue without a steering button', async t => {
+test('a turn without steer readiness retains the normal queue without a steering button', async t => {
   const f = await fixture(t, { withSteer: false }); await f.input('first'); await until(() => f.prompts.length === 1, 'first turn');
   await f.input('next'); await until(() => f.calls.some(row => row.text === '⏳ в очереди'), 'queued status');
   assert.equal(f.buttonRow(), undefined);

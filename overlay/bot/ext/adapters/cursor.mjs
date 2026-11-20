@@ -4,6 +4,7 @@ import { decodeExtSession, getSelectedModel } from '../store.mjs';
 import { enrichPath, ensureProviderCli } from '../ensure-cli.mjs';
 import { isClaudeModelAlias } from '../codex-native.mjs';
 import { hasNativeCursorAuth } from '../cursor-auth.mjs';
+import { runCursorAcpTurn } from './cursor-acp.mjs';
 
 /** Env для CLI: native login без CURSOR_API_KEY (ключ иначе перекрывает сессию). */
 export function applyCursorAuthEnv(childEnv, { key, native } = {}) {
@@ -52,7 +53,7 @@ async function createCursorChat(bin, env, cwd) {
   }
 }
 
-export async function runCursorTurn({ prompt, parsed, cwd, env }) {
+export async function runCursorTurn({ prompt, parsed, cwd, env, onSteerReady, signal }) {
   const envPath = { ...env, PATH: enrichPath(env) };
   let bin = findBin('agent', envPath) || findBin('cursor-agent', envPath);
   if (!bin) {
@@ -75,23 +76,49 @@ export async function runCursorTurn({ prompt, parsed, cwd, env }) {
   const fromParsed =
     parsed?.model && !isClaudeModelAlias(parsed.model) ? String(parsed.model).trim() : '';
   const model = preferred || fromParsed || null;
-
-  // json — чтобы забрать session_id; text не отдаёт id → shim писал ext:cursor:failed → --resume failed.
-  const args = ['-p', '--force', '--trust', '--sandbox', 'disabled', '--output-format', 'json'];
-  if (model) args.push('--model', model);
   const decoded = parsed.resume ? decodeExtSession(parsed.resume) : null;
   const resumeId =
     decoded?.providerId === 'cursor' && isCursorSessionId(decoded.nativeId)
       ? decoded.nativeId.trim()
       : null;
-  if (resumeId) args.push('--resume', resumeId);
-  args.push(prompt);
-
-  // CLI предпочитает CURSOR_API_KEY над native login — неверный ключ в .env ломает рабочий вход.
-  const childEnv = applyCursorAuthEnv({ ...envPath }, { key, native });
   if (parsed?.resume && decoded?.providerId === 'cursor' && !resumeId) {
     console.error(`[msb/ext/cursor] drop bad resume id → new chat`);
   }
+
+  // CLI предпочитает CURSOR_API_KEY над native login — неверный ключ в .env ломает рабочий вход.
+  const childEnv = applyCursorAuthEnv({ ...envPath }, { key, native });
+
+  // Foreground steer uses ACP (second prompt = Cursor send-now). Headless `-p` otherwise.
+  if (typeof onSteerReady === 'function') {
+    const raw = await runCursorAcpTurn({
+      bin, cwd, childEnv, model, resumeId, prompt, onSteerReady, signal,
+    });
+    const text = String(raw.parsedOut?.text || '').trim();
+    const sessionId = isCursorSessionId(raw.parsedOut?.sessionId) ? raw.parsedOut.sessionId : null;
+    if (raw.parsedOut?.turnCompleted) {
+      return {
+        ok: true,
+        text: text || '(пустой ответ Cursor)',
+        nativeSessionId: sessionId,
+        model: model || undefined,
+      };
+    }
+    return {
+      ok: false,
+      text: text
+        ? `${raw.parsedOut.turnFailed || 'Cursor ACP'}\n\nЧерновик:\n${text}`
+        : (raw.parsedOut?.turnFailed || 'Cursor ACP turn failed'),
+      nativeSessionId: sessionId,
+      model: model || undefined,
+    };
+  }
+
+  // json — чтобы забрать session_id; text не отдаёт id → shim писал ext:cursor:failed → --resume failed.
+  const args = ['-p', '--force', '--trust', '--sandbox', 'disabled', '--output-format', 'json'];
+  if (model) args.push('--model', model);
+  if (resumeId) args.push('--resume', resumeId);
+  args.push(prompt);
+
   const res = await runCli(bin, args, { cwd, env: childEnv, forwardStderr: false });
   const parsedOut = parseCursorJsonOutput(res.stdout);
   let text = '';

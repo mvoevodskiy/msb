@@ -30,6 +30,7 @@ import {prepareMcpLaunch} from '../mcp/launch.mjs';
 import {captureMcpInstallTarget} from '../mcp/managed.mjs';
 import {mcpInstallPrompt} from '../mcp/install-protocol.mjs';
 import {nativeMcpScope} from '../../shared/mcp-native-scope.mjs';
+import { supportsSteer } from './steer-support.mjs';
 
 export function supportsCodexAttachments(state, env = process.env) {
   // The existing provider switch and shim allow an explicitly selected Codex
@@ -60,8 +61,8 @@ export function supportsCodexAttachments(state, env = process.env) {
  * владелец записи сессии → [result transaction](./session-result.mjs) / [state](../state.mjs),
  * [first-start token](../../shared/session-starts.mjs), [description ledger](../sessions/ledger.mjs).
  * Native Claude rejected resume uses the same launch and one new reservation.
- * Optional foreground Codex steering → [control pipe](./steer-channel.mjs),
- * fenced by this captured provider/session/project and the caller's active turn.
+ * Optional foreground steering (Codex/Claude/Cursor/Grok) → [steer support](./steer-support.mjs),
+ * [control pipe](./steer-channel.mjs) or Claude stdin; fenced by captured provider/session/project.
  * Partial failure telemetry is for delivery. Terminal notices carry no model actions.
  * Проверки: [polling/session fences](../../tests/turn-lifecycle.test.mjs),
  * [provider isolation](../../../../overlay/bot/ext/tests/reference/provider-switch.test.mjs),
@@ -205,7 +206,7 @@ export async function runAgentTurn({
   let lastTool = '';
   let streamProvider = providerId, quotaWrite;
   const turnStartedAt = Date.now();
-  const steering = isCodex && !autonomy && !isAutoTurn && typeof onSteerReady === 'function'
+  const steering = supportsSteer(providerId) && !autonomy && !isAutoTurn && typeof onSteerReady === 'function'
     ? handle => {
       if (!handle) return onSteerReady(null);
       onSteerReady({

@@ -3,8 +3,8 @@ import '../../shared/preload.mjs';
 /**
  * Вход PATH-shim claude: штатный Claude либо adapter, возвращающий CLI stream-json ядру.
  * Навигация: [Исполнение CLI](../README.md#исполнение-cli) → [Codex](../adapters/codex.mjs).
- * Необязательный Codex control fd → [steer control](./steer-control.mjs),
- * [проверки](../tests/steer-control.test.mjs); Claude остаётся на штатном пути.
+ * Необязательный steer control fd (Codex/Cursor/Grok) → [steer control](./steer-control.mjs),
+ * [проверки](../tests/steer-control.test.mjs); Claude — stdin в ядре.
  * Foreground Codex stop waits for [app-server cleanup](../adapters/codex-app-server.mjs).
  * [Stop regression](../../../../.msb/bot/tests/codex-steer-stop.test.mjs).
  */
@@ -87,28 +87,33 @@ async function runAlternate(providerId, argv) {
 
   let result;
   try {
-    if (providerId === 'cursor') result = await runCursorTurn(ctx);
-    else if (providerId === 'grok') result = await runGrokTurn(ctx);
-    else if (providerId === 'codex') {
+    if (providerId === 'cursor' || providerId === 'grok' || providerId === 'codex') {
       const control = openShimSteerControl(ctx.env);
       const controller = control && new AbortController();
       const stop = () => controller.abort();
-      // Keep the shim alive while the native server closes its separate pipes.
+      // Keep the shim alive while the native/ACP server closes its pipes.
       // Core still signals the whole group if the native shutdown stalls.
       if (controller) {
         process.on('SIGINT', stop);
         process.on('SIGTERM', stop);
       }
       try {
-        result = await runCodexTurn({
-          ...ctx,
-          ...(control ? { onSteerReady: control.ready, signal: controller.signal } : {}),
-          onThreadStarted(id) {
-            // Core uses this provisional ID only for the history of a stopped first turn.
-            emit({ type: 'system', subtype: 'codex_thread_started',
-              provider_id: providerId, session_id: encodeExtSession(providerId, id) });
-          },
-        });
+        const steerOpts = control
+          ? { onSteerReady: control.ready, signal: controller.signal }
+          : {};
+        if (providerId === 'cursor') result = await runCursorTurn({ ...ctx, ...steerOpts });
+        else if (providerId === 'grok') result = await runGrokTurn({ ...ctx, ...steerOpts });
+        else {
+          result = await runCodexTurn({
+            ...ctx,
+            ...steerOpts,
+            onThreadStarted(id) {
+              // Core uses this provisional ID only for the history of a stopped first turn.
+              emit({ type: 'system', subtype: 'codex_thread_started',
+                provider_id: providerId, session_id: encodeExtSession(providerId, id) });
+            },
+          });
+        }
       } catch (error) {
         if (!controller?.signal.aborted) throw error;
       } finally {

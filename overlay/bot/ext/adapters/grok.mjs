@@ -9,6 +9,7 @@ import { decodeExtSession, getSelectedModel } from '../store.mjs';
 import { enrichPath, ensureProviderCli } from '../ensure-cli.mjs';
 import { isClaudeModelAlias } from '../codex-native.mjs';
 import { hasNativeGrokAuth } from '../grok-auth.mjs';
+import { runGrokAcpTurn } from './grok-acp.mjs';
 
 const sentinel = /^(norestart(?:-[a-z0-9]+)?|failed|error|unknown)$/i;
 
@@ -60,7 +61,7 @@ function sessionFromParsed(parsedOut) {
   return isGrokSessionId(raw) ? String(raw).trim() : null;
 }
 
-export async function runGrokTurn({ prompt, parsed, cwd, env }) {
+export async function runGrokTurn({ prompt, parsed, cwd, env, onSteerReady, signal }) {
   const envPath = { ...env, PATH: enrichPath(env) };
   let bin = findBin('grok', envPath) || findBin('grok-build', envPath);
   if (!bin) {
@@ -83,6 +84,43 @@ export async function runGrokTurn({ prompt, parsed, cwd, env }) {
   const fromParsed =
     parsed?.model && !isClaudeModelAlias(parsed.model) ? String(parsed.model).trim() : '';
   const model = preferred || fromParsed || null;
+  const decoded = parsed.resume ? decodeExtSession(parsed.resume) : null;
+  const resumeId =
+    decoded?.providerId === 'grok' && isGrokSessionId(decoded.nativeId)
+      ? decoded.nativeId.trim()
+      : null;
+  if (parsed?.resume && decoded?.providerId === 'grok' && !resumeId) {
+    console.error(`[msb/ext/grok] drop bad resume id → new chat`);
+  }
+
+  const childEnv = applyGrokAuthEnv(
+    { ...envPath, GROK_DISABLE_AUTOUPDATER: env.GROK_DISABLE_AUTOUPDATER || '1' },
+    { key, native },
+  );
+
+  if (typeof onSteerReady === 'function') {
+    const raw = await runGrokAcpTurn({
+      bin, cwd, childEnv, model, resumeId, prompt, onSteerReady, signal,
+    });
+    const text = String(raw.parsedOut?.text || '').trim();
+    const sessionId = isGrokSessionId(raw.parsedOut?.sessionId) ? raw.parsedOut.sessionId : null;
+    if (raw.parsedOut?.turnCompleted) {
+      return {
+        ok: true,
+        text: text || '(пустой ответ Grok Build)',
+        nativeSessionId: sessionId,
+        model: model || undefined,
+      };
+    }
+    return {
+      ok: false,
+      text: text
+        ? `${raw.parsedOut.turnFailed || 'Grok ACP'}\n\nЧерновик:\n${text}`
+        : (raw.parsedOut?.turnFailed || 'Grok ACP turn failed'),
+      nativeSessionId: sessionId,
+      model: model || undefined,
+    };
+  }
 
   // json — чтобы забрать sessionId; plain не отдаёт id → shim писал ext:grok:failed.
   // --single=… держит prompt цельным argv (в т.ч. строки, начинающиеся с «-»).
@@ -93,21 +131,9 @@ export async function runGrokTurn({ prompt, parsed, cwd, env }) {
     '--no-auto-update',
   ];
   if (model) args.push('--model', model);
-  const decoded = parsed.resume ? decodeExtSession(parsed.resume) : null;
-  const resumeId =
-    decoded?.providerId === 'grok' && isGrokSessionId(decoded.nativeId)
-      ? decoded.nativeId.trim()
-      : null;
   if (resumeId) args.push('--resume', resumeId);
-  else if (parsed?.resume && decoded?.providerId === 'grok') {
-    console.error(`[msb/ext/grok] drop bad resume id → new chat`);
-  }
   args.push(`--single=${prompt}`);
 
-  const childEnv = applyGrokAuthEnv(
-    { ...envPath, GROK_DISABLE_AUTOUPDATER: env.GROK_DISABLE_AUTOUPDATER || '1' },
-    { key, native },
-  );
   const res = await runCli(bin, args, { cwd, env: childEnv, forwardStderr: false });
   const parsedOut = parseGrokJsonOutput(res.stdout);
   let text = '';
