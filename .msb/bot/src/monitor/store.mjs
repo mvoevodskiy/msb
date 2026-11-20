@@ -1,7 +1,8 @@
 /**
  * JSONL items and separate monitor metadata: poll and digest → shared store.
- * Paths/config: [config](./config.mjs); mutation and read-only fallback checks:
- * [meta integrity](../../tests/monitor-meta-integrity.test.mjs).
+ * Paths/config: [config](./config.mjs).
+ * Checks: [meta integrity](../../tests/monitor-meta-integrity.test.mjs),
+ * [JSONL append boundaries](../../tests/monitor-jsonl-append.test.mjs).
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -74,7 +75,7 @@ export async function appendItems(items, env = process.env) {
 
 async function appendItemsLocked(items, env) {
   await fs.mkdir(monitorDir(env), { recursive: true });
-  const seen = await loadRecentIds(5000, env);
+  const { seen, needsSeparator } = await loadAppendState(5000, env);
   let added = 0;
   const lines = [];
   for (const it of items) {
@@ -84,19 +85,24 @@ async function appendItemsLocked(items, env) {
     lines.push(JSON.stringify({ ...it, id, savedAt: new Date().toISOString() }));
     added += 1;
   }
-  if (lines.length) await fs.appendFile(itemsPath(env), `${lines.join('\n')}\n`);
+  if (lines.length) {
+    const separator = needsSeparator ? '\n' : '';
+    await fs.appendFile(itemsPath(env), `${separator}${lines.join('\n')}\n`);
+  }
   return added;
 }
 
-async function loadRecentIds(limit, env) {
-  const set = new Set();
+async function loadAppendState(limit, env) {
+  const seen = new Set();
+  let needsSeparator = false;
   try {
     const raw = await fs.readFile(itemsPath(env), 'utf8');
+    needsSeparator = raw.length > 0 && !raw.endsWith('\n');
     const lines = raw.trim().split('\n');
     for (const line of lines.slice(-limit)) {
       try {
         const o = JSON.parse(line);
-        if (o.id) set.add(o.id);
+        if (o.id) seen.add(o.id);
       } catch {
         /* skip */
       }
@@ -104,7 +110,7 @@ async function loadRecentIds(limit, env) {
   } catch {
     /* empty */
   }
-  return set;
+  return { seen, needsSeparator };
 }
 
 export async function listRecentItems({ limit = 50, sinceHours = 48 } = {}, env = process.env) {

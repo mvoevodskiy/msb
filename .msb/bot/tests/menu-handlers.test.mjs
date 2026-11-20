@@ -309,11 +309,18 @@ test('a Telegram acknowledgement failure does not claim that a saved env value w
 });
 
 test('real Telegram message handler attaches the measured compact footer', async (t) => {
-  const f = await fixture(t, async () => ({ ok: true, text: 'footer fixture', result: { context: { contextTokens: 71142, contextWindow: 475000 } } }));
+  const prompts = [];
+  const f = await fixture(t, async ({ prompt }) => {
+    prompts.push(prompt);
+    return { ok: true, text: 'footer fixture', result: { context: { contextTokens: 71142, contextWindow: 475000 } } };
+  });
   await f.message('footer fixture');
-  await until(() => f.edits.some(x => x.startsWith('footer fixture')));
-  assert.match(f.edits.at(-1), /footer fixture\n\n<blockquote>⏱ \d+\.\ds · ○○○ 15%<\/blockquote>$/);
-  assert.doesNotMatch(f.edits.at(-1), /Контекст:.*токенов/);
+  await until(() => f.messages.some(x => x.startsWith('footer fixture')));
+  const responses = f.messages.filter(x => x.startsWith('footer fixture'));
+  assert.equal(responses.length, 1);
+  assert.deepEqual(prompts, ['footer fixture']);
+  assert.match(responses[0], /footer fixture\n\n<blockquote>⏱ \d+\.\ds · ○○○ 15%<\/blockquote>$/);
+  assert.doesNotMatch(responses[0], /Контекст:.*токенов/);
 });
 
 test('all baseline menu button routes remain reachable', async (t) => {

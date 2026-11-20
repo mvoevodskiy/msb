@@ -1,0 +1,17 @@
+.msb/bot/tests/attachment-turn.test.mjs
+.msb/bot/tests/attachments.test.mjs
+.msb/bot/tests/codex-cold-attachments.test.mjs
+.msb/bot/tests/media-markers.test.mjs
+.msb/bot/tests/send-media.test.mjs
+.msb/bot/tests/reply-context.test.mjs
+.msb/bot/tests/view-delivery.test.mjs
+.msb/bot/tests/turn-context.test.mjs
+.msb/bot/tests/turn-history.test.mjs
+.msb/bot/tests/progress.test.mjs
+.msb/bot/tests/album-download-errors.test.mjs
+.msb/bot/tests/album-partial-turn.test.mjs
+.msb/bot/tests/inbox.test.mjs
+.msb/bot/tests/inbox-lifecycle.test.mjs
+.msb/bot/tests/turn-lifecycle.test.mjs
+.msb/bot/tests/steer-inbox.test.mjs
+.msb/bot/tests/steer-action.test.mjs

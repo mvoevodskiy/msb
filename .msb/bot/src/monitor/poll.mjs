@@ -4,6 +4,7 @@
  * X handle/username → [source-ref](./source-ref.mjs); merge учитывает снимок строки.
  * Проверки: [source snapshots](../../tests/monitor-source-snapshot.test.mjs),
  * [legacy X](../../tests/monitor-twitter-legacy.test.mjs),
+ * [latest successful poll](../../tests/monitor-last-poll.test.mjs),
  * [scheduled intervals](../../tests/monitor-interval-scheduler.test.mjs).
  */
 import { isDeepStrictEqual } from 'node:util';
@@ -149,7 +150,13 @@ export async function pollAllSources(env = process.env, { log = console.error, s
   await updateMonitorConfig((current) => mergeSourceUpdates(current, sourceUpdates), env);
   const added = await appendItems(collected, env);
   await updateMeta((meta) => {
-    meta.lastPollAt = { ...meta.lastPollAt, ...pollTimes };
+    const lastPollAt = { ...meta.lastPollAt };
+    for (const [source, at] of Object.entries(pollTimes)) {
+      const previous = lastPollAt[source];
+      if (typeof previous === 'string' && Date.parse(previous) > Date.parse(at)) continue;
+      lastPollAt[source] = at;
+    }
+    meta.lastPollAt = lastPollAt;
     if (Object.keys(scheduledAttempts).length) {
       const previous = meta.lastScheduledPollAtByBot?.[scheduleBot] || {};
       const merged = { ...previous };

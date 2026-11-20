@@ -3,7 +3,8 @@
  * or a durable [question](../telegram/task-removal-confirmation.mjs). The
  * [action store](./reminder-store.mjs) locks the file and rechecks definitions.
  * Checks for [spent](../../tests/spent-task-cleanup.test.mjs), [named](../../tests/named-task-cancellation.test.mjs)
- * and [bulk](../../tests/bulk-task-cancellation.test.mjs) removal.
+ * and [bulk](../../tests/bulk-task-cancellation.test.mjs) removal,
+ * including [durable question staging](../../tests/task-bulk-arming-sync.test.mjs).
  */
 import path from 'node:path';
 import { withFileLock } from '../../shared/file-lock.mjs';
@@ -73,10 +74,22 @@ async function applyBulkQuestion(question, questions, file, now) {
   const replace = next => writeRecordArray(file, questions.map(row => row === question ? next : row), { durable: true });
   return withAutonomyPauseLock(async () => {
     if (question.retryGeneration && question.retryGeneration !== await readOwnerPauseGeneration()) return { stale: true };
+    const markApplying = async () => {
+      try {
+        await replace({ ...question, applying: true });
+      } catch (error) {
+        // The rename may have succeeded before sync failed. STOP has not
+        // started, so the original question can safely be restored.
+        await replace(question).catch(restoreError => {
+          console.error('[msb/autonomy] Could not restore bulk removal question:', restoreError.code || restoreError.name);
+        });
+        throw error;
+      }
+    };
     const result = await removeConfirmedAllTasks(question, {
       rail: turn.rail, now: at,
       commit: publish => commitRemoval(publish, turn),
-      markApplying: () => replace({ ...question, applying: true }),
+      markApplying,
       engageStop: () => engageOwnerPauseLocked({ now: at, reason: 'владелец подтвердил снос кнопкой' }),
     });
     if (!result?.failure) return result ?? { stale: true };

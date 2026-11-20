@@ -99,9 +99,9 @@ test('Keep binds to the correct card and a restarted bot refuses a replacement u
   await f.click('ct:mail', { bot });
   assert.equal(f.toast(), 'Подтверждение устарело');
   assert.deepEqual(await f.records(), [replacement]);
-  const edits = f.edits.length;
+  const messages = f.messages.length;
   await f.request(request);
-  await until(() => f.edits.slice(edits).some(text => text.includes('⏱')), 'new question did not finish');
+  await until(() => f.messages.slice(messages).some(text => text.includes('⏱')), 'new question did not finish');
   assert.ok(f.question() > original);
   await f.click('ct-keep', { bot });
   assert.equal(f.toast(), 'Оставил');
@@ -222,11 +222,14 @@ for (const provider of ['claude', 'codex']) {
     await fs.writeFile(file, JSON.stringify([done('local', 'Проверяемая отмена')]));
     await native.respond(cancel('local'));
     await f.message(request);
-    await until(() => f.edits.some(text => text.includes('⏱')), 'controlled provider did not finish', 10_000);
-    const call = (await native.trace()).at(-1);
+    await until(() => f.messages.some(text => text.includes('⏱')), 'controlled provider did not finish', 10_000);
+    const calls = (await native.trace()).filter(row => ['claude', 'codex-app-turn', 'codex-exec'].includes(row.kind));
+    assert.equal(calls.length, 1);
+    const [call] = calls;
+    assert.equal(call.kind, provider === 'codex' ? 'codex-app-turn' : 'claude');
     const prompt = provider === 'claude' ? call.argv[call.argv.indexOf('--append-system-prompt') + 1] : call.prompt;
     assert.match(prompt, /\[CANCEL_TASK:/);
-    assert.match(f.edits.at(-1), /Отменил: «Проверяемая отмена»/);
+    assert.match(f.messages.at(-1), /Отменил: «Проверяемая отмена»/);
     assert.deepEqual(JSON.parse(await fs.readFile(file, 'utf8')), []);
   });
 }

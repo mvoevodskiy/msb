@@ -226,10 +226,13 @@ for (const provider of ['claude', 'codex']) {
     await fs.writeFile(path.join(actionRoot(), 'actions.json'), JSON.stringify([row('owned', 'Проверяемый список')]));
     await native.respond(list);
     await f.message('Покажи мои задачи');
-    await until(() => f.edits.some(text => text.includes('⏱')), 'controlled provider reply did not finish', 10_000);
-    const call = (await native.trace()).at(-1);
+    await until(() => f.messages.some(text => text.includes('⏱')), 'controlled provider reply did not finish', 10_000);
+    const calls = (await native.trace()).filter(row => ['claude', 'codex-app-turn', 'codex-exec'].includes(row.kind));
+    assert.equal(calls.length, 1);
+    const [call] = calls;
+    assert.equal(call.kind, provider === 'codex' ? 'codex-app-turn' : 'claude');
     const prompt = provider === 'claude' ? call.argv[call.argv.indexOf('--append-system-prompt') + 1] : call.prompt;
     assert.match(prompt, /\[LIST_TASKS\].*\[SHOW_TASK:/s);
-    assert.ok(f.edits.some(text => text.includes('Проверяемый список (напоминание)')));
+    assert.ok(f.messages.some(text => text.includes('Проверяемый список (напоминание)')));
   });
 }

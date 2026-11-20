@@ -41,9 +41,9 @@ async function profile(t, records, options) {
   const question = () => f.messages.findLastIndex(text => text.startsWith(prefix)) + 1;
   const toast = () => f.callbackAnswers.at(-1)?.[0]?.text;
   async function ask() {
-    const start = f.edits.length;
+    const start = f.messages.length;
     await f.request('Покажи список фоновых задач');
-    await until(() => f.edits.slice(start).some(text => text.includes('⏱')), 'missing final list');
+    await until(() => f.messages.slice(start).some(text => text.includes('⏱')), 'missing final list');
     return question();
   }
   function click(data, { bot = f.bot, messageId = question(), chatId = chat, uid = 42 } = {}) {
