@@ -27,6 +27,14 @@ export async function runCursorAcpTurn({
   let terminalResolve;
   const done = new Promise((resolve) => { terminalResolve = resolve; });
   const chunks = [];
+  // session/load replays the whole transcript as session/update; only the
+  // chunks after the active session/prompt belong in the Telegram reply.
+  let collectText = false;
+
+  const beginTurnText = () => {
+    chunks.length = 0;
+    collectText = true;
+  };
 
   const invalidate = () => {
     if (!ready) return;
@@ -37,6 +45,7 @@ export async function runCursorAcpTurn({
   const finish = (failed = null) => {
     if (terminal) return;
     terminal = true;
+    collectText = false;
     invalidate();
     parsedOut.text = chunks.join('').trim();
     if (failed) parsedOut.turnFailed = failed;
@@ -59,6 +68,7 @@ export async function runCursorAcpTurn({
       onNotification(msg) {
         if (msg.method !== 'session/update') return;
         const update = msg.params?.update;
+        if (!collectText) return;
         if (update?.sessionUpdate === 'agent_message_chunk' && update.content?.text) {
           chunks.push(String(update.content.text));
         }
@@ -107,6 +117,7 @@ export async function runCursorAcpTurn({
     // Some Cursor builds accept model via session/prompt params.model — keep both soft.
     if (model) promptParams.model = model;
 
+    beginTurnText();
     activePromptId = rpc.notifyRequest('session/prompt', promptParams);
     // Track completion of the active (possibly steered) prompt via takeResult below.
 
@@ -123,6 +134,7 @@ export async function runCursorAcpTurn({
           }
           try {
             // Send-now: second prompt cancels the in-flight turn (Cursor ACP v1).
+            beginTurnText();
             steeredPromptId = rpc.notifyRequest('session/prompt', {
               sessionId,
               prompt: acpTextPrompt(text),
@@ -152,8 +164,7 @@ export async function runCursorAcpTurn({
     let result = await waitPrompt(activePromptId);
     if (terminal) { /* finished via timeout/abort */ }
     else if (steeredPromptId != null) {
-      // Original cancelled; wait for the steer prompt that replaced it.
-      chunks.length = 0;
+      // Original cancelled; steer already reset text via beginTurnText().
       result = await waitPrompt(steeredPromptId);
       if (!terminal) {
         if (result?.stopReason === 'end_turn' || result?.stopReason === 'cancelled') {
@@ -168,7 +179,6 @@ export async function runCursorAcpTurn({
     } else if (result?.stopReason === 'cancelled') {
       // Steered after response arrived; wait if steer id set concurrently.
       if (steeredPromptId != null) {
-        chunks.length = 0;
         result = await waitPrompt(steeredPromptId);
         if (!terminal) finish(result?.stopReason === 'end_turn' ? null : (result?.stopReason || 'Cursor turn cancelled'));
       } else {

@@ -27,6 +27,13 @@ export async function runGrokAcpTurn({
   let terminalResolve;
   const done = new Promise((resolve) => { terminalResolve = resolve; });
   const chunks = [];
+  // Same as Cursor: ignore transcript replay from session/load.
+  let collectText = false;
+
+  const beginTurnText = () => {
+    chunks.length = 0;
+    collectText = true;
+  };
 
   const invalidate = () => {
     if (!ready) return;
@@ -37,6 +44,7 @@ export async function runGrokAcpTurn({
   const finish = (failed = null) => {
     if (terminal) return;
     terminal = true;
+    collectText = false;
     invalidate();
     parsedOut.text = chunks.join('').trim();
     if (failed) parsedOut.turnFailed = failed;
@@ -59,6 +67,7 @@ export async function runGrokAcpTurn({
       onNotification(msg) {
         if (msg.method !== 'session/update') return;
         const update = msg.params?.update;
+        if (!collectText) return;
         if (update?.sessionUpdate === 'agent_message_chunk' && update.content?.text) {
           chunks.push(String(update.content.text));
         }
@@ -109,6 +118,7 @@ export async function runGrokAcpTurn({
       prompt: acpTextPrompt(prompt),
       ...(model ? { model } : {}),
     };
+    beginTurnText();
     activePromptId = rpc.notifyRequest('session/prompt', promptParams);
 
     if (!terminal) {
@@ -140,6 +150,7 @@ export async function runGrokAcpTurn({
             }
           }
           try {
+            beginTurnText();
             steeredPromptId = rpc.notifyRequest('session/prompt', {
               sessionId,
               prompt: acpTextPrompt(text),
@@ -167,12 +178,10 @@ export async function runGrokAcpTurn({
     let result = await waitPrompt(activePromptId);
     if (terminal) { /* done */ }
     else if (steeredPromptId != null) {
-      chunks.length = 0;
       result = await waitPrompt(steeredPromptId);
       if (!terminal) finish(result?.stopReason === 'end_turn' ? null : (result?.stopReason || null));
     } else if (result?.stopReason === 'end_turn' || result?.stopReason === 'cancelled' && steeredPromptId != null) {
       if (result?.stopReason === 'cancelled' && steeredPromptId != null) {
-        chunks.length = 0;
         result = await waitPrompt(steeredPromptId);
         if (!terminal) finish(result?.stopReason === 'end_turn' ? null : (result?.stopReason || null));
       } else {

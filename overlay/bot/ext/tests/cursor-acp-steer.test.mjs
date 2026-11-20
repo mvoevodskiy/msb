@@ -65,3 +65,49 @@ test('Cursor ACP steer send-now accepts and replaces turn text', async () => {
     await fs.rm(dir, { recursive: true, force: true });
   }
 });
+
+/** session/load replays prior agent_message_chunk; reply must ignore them. */
+const peerReplay = `#!/usr/bin/env node
+const readline = require('node:readline');
+const send = x => process.stdout.write(JSON.stringify(x) + '\\n');
+const session = '${session}';
+const reader = readline.createInterface({ input: process.stdin });
+reader.on('line', line => {
+  const m = JSON.parse(line);
+  if (!m.id) return;
+  if (m.method === 'initialize') return send({ jsonrpc:'2.0', id:m.id, result:{ protocolVersion:1, agentCapabilities:{}, authMethods:[{id:'cursor_login'}] } });
+  if (m.method === 'authenticate') return send({ jsonrpc:'2.0', id:m.id, result:{} });
+  if (m.method === 'session/load') {
+    send({ jsonrpc:'2.0', method:'session/update', params:{ sessionId:session, update:{ sessionUpdate:'agent_message_chunk', content:{ type:'text', text:'OLD_REPLY_1\\n' } } } });
+    send({ jsonrpc:'2.0', method:'session/update', params:{ sessionId:session, update:{ sessionUpdate:'agent_message_chunk', content:{ type:'text', text:'OLD_REPLY_2\\n' } } } });
+    return send({ jsonrpc:'2.0', id:m.id, result:{ sessionId: session } });
+  }
+  if (m.method === 'session/new') return send({ jsonrpc:'2.0', id:m.id, result:{ sessionId: session } });
+  if (m.method === 'session/prompt') {
+    send({ jsonrpc:'2.0', method:'session/update', params:{ sessionId:session, update:{ sessionUpdate:'agent_message_chunk', content:{ type:'text', text:'ONLY_NEW' } } } });
+    return send({ jsonrpc:'2.0', id:m.id, result:{ stopReason:'end_turn' } });
+  }
+});
+`;
+
+test('Cursor ACP ignores session/load transcript replay in reply text', async () => {
+  const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'cursor-acp-replay-'));
+  const bin = path.join(dir, 'agent');
+  await fs.writeFile(bin, peerReplay, { mode: 0o700 });
+  try {
+    const out = await runCursorAcpTurn({
+      bin,
+      cwd: dir,
+      childEnv: { ...process.env },
+      resumeId: session,
+      prompt: 'short ask',
+      timeoutMs: 5000,
+      onSteerReady: () => {},
+    });
+    assert.equal(out.parsedOut.turnCompleted, true);
+    assert.equal(out.parsedOut.text, 'ONLY_NEW');
+    assert.doesNotMatch(out.parsedOut.text, /OLD_REPLY/);
+  } finally {
+    await fs.rm(dir, { recursive: true, force: true });
+  }
+});
