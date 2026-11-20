@@ -71,6 +71,10 @@ def intro_selection(bootstrap, first_start, excluded):
     return ['node', '--test', '--test-concurrency=1', '--test-skip-pattern=^' + omitted + '$',
             str(bootstrap), str(first_start)]
 
+def uses_scheduler_fixture(text):
+    """Detect direct scheduler setup and the two shared scheduler fixtures."""
+    return bool(re.search(r'\bstartScheduler\s*\(|(?:reminder-registration-fixture|recurring-reminder-fixture)\.mjs', text))
+
 def native_preflight(cwd, env, host_netns_inode):
     names = require_loopback_only()
     test_netns_inode = os.stat('/proc/self/ns/net').st_ino
@@ -175,15 +179,22 @@ def verify(stage, home, dependencies, tmp_dir=None, host_netns_inode=None):
     scheduler_files = {'autonomy-compact-guard.test.mjs', 'autonomy-store-concurrency.test.mjs',
         'claude-quota-stream.test.mjs', 'recurring-reminder-registration.test.mjs',
         'saved-cursor-prompt.test.mjs', 'saved-prompt-registration.test.mjs'}
+    scheduler_fixtures = {'recurring-reminder-annual.test.mjs', 'recurring-reminder-cron-duplicates.test.mjs',
+        'task-bulk-arming-sync.test.mjs', 'task-control-quoted-examples.test.mjs', 'task-run-history.test.mjs'}
     separately = scheduler_files | {'codex-steer-native.test.mjs', 'autonomy-same-bot-claim.test.mjs', 'autonomy-stop-admission.test.mjs',
         'codex-stop-lock.test.mjs', 'interval-provider-pause.test.mjs', 'interval-spend-pause.test.mjs',
         'legacy-timer-dispatch.test.mjs', 'legacy-timer-conversation.test.mjs', 'menu-handlers.test.mjs',
         'reminder-limits.test.mjs', 'task-reschedule.test.mjs', 'saved-codex-prompt-action.test.mjs',
         'saved-prompt-action.test.mjs', 'saved-spend-pause.test.mjs', 'recurring-reminder.test.mjs',
-        'codex-pause-switch.test.mjs', 'codex-sleep-flow.test.mjs'}
+        'codex-pause-switch.test.mjs', 'codex-sleep-flow.test.mjs', 'autonomy-shutdown.test.mjs',
+        'run-journal-recovery.test.mjs'} | scheduler_fixtures
     for index, root in enumerate(roots):
         all_tests = sorted(root.glob('*.test.mjs'))
-        tests = [p for p in all_tests if p.name not in separately and not excluded.search(p.read_text()) and not re.search(r'\bstartScheduler\s*\(', p.read_text())]
+        unreviewed = [p for p in all_tests if p.name not in separately and not excluded.search(p.read_text())
+                      and uses_scheduler_fixture(p.read_text())]
+        if unreviewed:
+            raise ValueError('Unreviewed scheduler fixture: ' + repr([p.name for p in unreviewed]))
+        tests = [p for p in all_tests if p.name not in separately and not excluded.search(p.read_text())]
         selected_files['node-' + str(index)] = [p.relative_to(source).as_posix() for p in tests]
         excluded_files.extend(p.relative_to(source).as_posix() for p in all_tests if p not in tests)
         if not tests:
@@ -272,14 +283,21 @@ def verify(stage, home, dependencies, tmp_dir=None, host_netns_inode=None):
     if any(not file.is_file() or excluded.search(file.read_text()) for file in audited + scheduler_audit):
         raise ValueError('Audited common test missing or references excluded provider')
     audit_wrappers = [wrapper('audit-' + file.name, file) for file in scheduler_audit]
+    audit_inputs = [wrapper('audit-scoped-' + file.name, file) if file.name in scheduler_fixtures else str(file)
+                    for file in audited]
     run('audit-targeted', ['node', '--experimental-test-module-mocks', '--no-warnings',
         '--test', '--test-concurrency=1', *audit_wrappers,
-        str(fixtures / 'legacy-timer-without-openclaw.mjs'), *map(str, audited)],
+        str(fixtures / 'legacy-timer-without-openclaw.mjs'), *audit_inputs],
         expected_pass=133, expected_skipped=0,
         expected_names=('scheduler shutdown aborts and drains the active interval',
                         'a completed interval survives journal tail: interrupted',
                         'Codex stop reaps a stubborn app-server',
                         'partial photo album survives getFile failure'))
+    scheduler_scoped = [wrapper('scheduler-scoped-' + name, bot_tests / name) for name in sorted(scheduler_fixtures)]
+    run('scheduler-safe', ['node', '--experimental-test-module-mocks', '--no-warnings',
+        '--test', '--test-concurrency=1', *scheduler_scoped], expected_pass=19, expected_skipped=0,
+        expected_names=('an annual cron delivers at the same owner-local minute next year',
+                        'repeated minute and hour values do not create additional cron firings'))
     run('backlog-targeted', ['node', '--experimental-test-module-mocks', '--no-warnings',
         '--test', '--test-concurrency=1', *common], expected_pass=291,
         expected_names=('paused Codex accepts all stop inputs',))

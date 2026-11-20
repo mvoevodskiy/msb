@@ -490,7 +490,7 @@ class Deployment:
            any(not isinstance(proof[k], str) or not re.fullmatch(r'[0-9a-f]{64}', proof[k]) for k in ('wrapper_sha256', 'binary_sha256')):
             raise ValueError('Required isolated native steer verification is absent')
         required = {'node-0', 'node-1', 'node-2', 'node-3', 'service-labels', 'bot-status-view',
-                    'steer-targeted', 'steer-native-isolated', 'intro-safe', 'audit-targeted', 'legacy-timer-conversation-safe', 'backlog-targeted', 'recurring-safe', 'menu-safe', 'test_bot_off_marker', 'test_ipc_reference',
+                    'steer-targeted', 'steer-native-isolated', 'intro-safe', 'audit-targeted', 'scheduler-safe', 'legacy-timer-conversation-safe', 'backlog-targeted', 'recurring-safe', 'menu-safe', 'test_bot_off_marker', 'test_ipc_reference',
                     'test_private_state', 'test_pult_routing', 'test_client_markers', 'fstab-compat'}
         required.update('syntax-' + item['relative'].replace('/', '_') for item in self.manifest['files'])
         checks = verified.get('checks', [])
@@ -504,7 +504,7 @@ class Deployment:
         focused = next(item for item in checks if item['suite'] == 'steer-targeted')
         if (focused.get('tests'), focused.get('passed'), focused.get('skipped')) != (95, 95, 0):
             raise ValueError('Steer and journal verification is incomplete')
-        for suite, count in (('intro-safe', 43), ('audit-targeted', 133)):
+        for suite, count in (('intro-safe', 43), ('audit-targeted', 133), ('scheduler-safe', 19)):
             row = next(item for item in checks if item['suite'] == suite)
             if (row.get('tests'), row.get('passed'), row.get('skipped')) != (count, count, 0):
                 raise ValueError('Audited regression verification is incomplete: ' + suite)

@@ -17,6 +17,12 @@ spec.loader.exec_module(verify)
 
 
 class VerifyRunnerTest(unittest.TestCase):
+    def test_scheduler_fixture_detection_fails_closed_for_shared_helpers(self):
+        self.assertTrue(verify.uses_scheduler_fixture("import { reminderFixture } from './helpers/reminder-registration-fixture.mjs'"))
+        self.assertTrue(verify.uses_scheduler_fixture("import { profile } from './helpers/recurring-reminder-fixture.mjs'"))
+        self.assertTrue(verify.uses_scheduler_fixture('const instance = startScheduler({});'))
+        self.assertFalse(verify.uses_scheduler_fixture('await monitor.tickNow();'))
+
     def test_intro_selection_fences_the_reviewed_unrelated_case(self):
         excluded = re.compile(r'open[\s_-]*claw|native.?oc|\boc\b|🦞|gateway', re.I)
         omitted = 'a seeded workspace does not introduce Claude or OpenClaw as Codex'

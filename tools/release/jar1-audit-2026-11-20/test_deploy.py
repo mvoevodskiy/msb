@@ -151,16 +151,16 @@ def fixture(failure=None):
         (stage / 'manifest.json').write_text(json.dumps(manifest))
         manifest_sha = deploy.digest(stage / 'manifest.json')
         names = {'node-0', 'node-1', 'node-2', 'node-3', 'service-labels', 'bot-status-view',
-                 'steer-targeted', 'steer-native-isolated', 'intro-safe', 'audit-targeted', 'legacy-timer-conversation-safe', 'backlog-targeted', 'recurring-safe', 'menu-safe', 'test_bot_off_marker', 'test_ipc_reference',
+                 'steer-targeted', 'steer-native-isolated', 'intro-safe', 'audit-targeted', 'scheduler-safe', 'legacy-timer-conversation-safe', 'backlog-targeted', 'recurring-safe', 'menu-safe', 'test_bot_off_marker', 'test_ipc_reference',
                  'test_private_state', 'test_pult_routing', 'test_client_markers', 'fstab-compat'}
         names.update('syntax-' + row['relative'].replace('/', '_') for row in entries)
         report = {'native_isolated_verification': {'interfaces': ['lo'], 'cli_path': '/home/client/.msb/ext-tools/bin/codex', 'cli_version': 'codex-cli 0.166.0', 'host_netns_inode': 10, 'test_netns_inode': 11, 'wrapper_sha256': 'a' * 64, 'binary_sha256': 'b' * 64}, 'passed': True, 'manifest_sha256': manifest_sha, 'source_commit': 'a' * 40,
                   'source_archive_sha256': manifest['source_archive_sha256'],
                   'environment': {'fixture': 'same-runtime', 'node_sha256': 'fixture-node'},
                   'checks': [{'suite': name, 'exit_code': 0,
-                              'tests': 95 if name == 'steer-targeted' else 43 if name == 'intro-safe' else 133 if name == 'audit-targeted' else 16 if name == 'fstab-compat' else 7 if name == 'test_client_markers' else 3 if name == 'service-labels' else
+                              'tests': 95 if name == 'steer-targeted' else 43 if name == 'intro-safe' else 133 if name == 'audit-targeted' else 19 if name == 'scheduler-safe' else 16 if name == 'fstab-compat' else 7 if name == 'test_client_markers' else 3 if name == 'service-labels' else
                                        23 if name == 'legacy-timer-conversation-safe' else 291 if name == 'backlog-targeted' else 8 if name == 'recurring-safe' else 10 if name == 'menu-safe' else 9 if name == 'test_bot_off_marker' else 1,
-                              'passed': 95 if name == 'steer-targeted' else 43 if name == 'intro-safe' else 133 if name == 'audit-targeted' else 15 if name == 'fstab-compat' else 0 if name == 'test_client_markers' else 3 if name == 'service-labels' else
+                              'passed': 95 if name == 'steer-targeted' else 43 if name == 'intro-safe' else 133 if name == 'audit-targeted' else 19 if name == 'scheduler-safe' else 15 if name == 'fstab-compat' else 0 if name == 'test_client_markers' else 3 if name == 'service-labels' else
                                         23 if name == 'legacy-timer-conversation-safe' else 291 if name == 'backlog-targeted' else 8 if name == 'recurring-safe' else 10 if name == 'menu-safe' else 9 if name == 'test_bot_off_marker' else 1,
                               'skipped': 7 if name == 'test_client_markers' else 1 if name == 'fstab-compat' else 0} for name in names]}
         next(row for row in report['checks'] if row['suite'] == 'fstab-compat')['skipped_cases'] = ['test_rewrite_preserves_posix_acl']
@@ -175,7 +175,7 @@ def fixture(failure=None):
 
 class DeploymentTest(unittest.TestCase):
     def test_incomplete_new_audit_suites_cannot_authorize_release(self):
-        for suite, passed in (('intro-safe', 42), ('audit-targeted', 132)):
+        for suite, passed in (('intro-safe', 42), ('audit-targeted', 132), ('scheduler-safe', 18)):
             with self.subTest(suite=suite), fixture() as (release, host, roots, _entries, report_path):
                 report = json.loads(report_path.read_text())
                 row = next(item for item in report['checks'] if item['suite'] == suite)
