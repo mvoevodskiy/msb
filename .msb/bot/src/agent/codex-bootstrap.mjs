@@ -4,6 +4,8 @@
  * [state](../state.mjs) and commits [workspace defaults](./bootstrap-workspace.mjs).
  * Allowed facts → [memory](./intro-memory.mjs); session fence → [session](./intro-session.mjs).
  * The prepared ninth input → [pending](./intro-pending.mjs) → [turn](./turn.mjs).
+ * A new base workspace is created before capturing its canonical cwd; existing
+ * attempts and selected projects keep the [path resolver](../projects/paths.mjs) checks.
  * [Tests](../../tests/codex-bootstrap.test.mjs).
  */
 import fs from 'node:fs/promises';
@@ -124,7 +126,12 @@ async function reserve({ scope, env, signal, pending, prompt, pendingCancelled }
     // introduction ID from becoming the active ordinary conversation again.
     const activationEpoch = Number.isSafeInteger(row.activationEpoch) ? row.activationEpoch
       : Number.isSafeInteger(row.capturedEpoch) ? row.capturedEpoch : capturedEpoch;
-    const cwd = await selectedCwd(state, env, workspace);
+    const requestedCwd = await resolveProjectCwd(state, env, workspace);
+    if (!same && requestedCwd === workspace) {
+      if (signal?.aborted) return NO_STATE_WRITE;
+      await fs.mkdir(workspace, { recursive: true });
+    }
+    const cwd = await fs.realpath(requestedCwd);
     if (capturedProject !== state.activeProject || capturedEpoch !== epochOf(state) || (row.cwd && row.cwd !== cwd)) {
       lease = { stale: true };
       return NO_STATE_WRITE;
