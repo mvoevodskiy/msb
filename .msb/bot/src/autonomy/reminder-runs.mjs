@@ -1,11 +1,13 @@
 /**
  * Old per-bot runs.jsonl for local saved actions. [Dispatcher](./reminder-dispatch.mjs)
  * writes; [Telegram menu](./history.mjs), [conversation report](./saved-task-runs.mjs)
- * and Pult read the same records.
+ * and Pult read the same records. [Journal framing](./run-journal.mjs) preserves
+ * the next run after an interrupted line; [checks](../../tests/run-journal-recovery.test.mjs).
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { actionRoot } from '../paths.mjs';
+import { appendRunRecord } from './run-journal.mjs';
 
 export function reminderRunPath(env = process.env) {
   return path.join(actionRoot(env), 'autonomy', 'runs.jsonl');
@@ -23,7 +25,7 @@ export async function appendSavedActionRun(action, ts, result,
     tokensIn: result.tokensIn, tokensOut: result.tokensOut, meteredUsd: result.meteredUsd,
     usageIncomplete: result.usageIncomplete || undefined, nativeJobId: result.nativeJobId,
   };
-  await fs.appendFile(file, JSON.stringify(row) + '\n', { mode: 0o600 });
+  await appendRunRecord(file, row, { mode: 0o600 });
 }
 
 // [Inspection](./saved-task-inspection.mjs) and the legacy frequency brake use the same tail.
