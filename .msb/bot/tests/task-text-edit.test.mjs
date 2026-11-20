@@ -45,10 +45,10 @@ async function profile(t, { output, records = [active], enabled = '1' } = {}) {
   const bytes = () => Promise.all(stable.map(file => fs.readFile(file)));
   const before = await bytes();
   const turn = async () => {
-    const start = f.edits.length;
+    const start = f.messages.length;
     await f.request(request);
-    await until(() => f.edits.slice(start).some(text => text.includes('⏱')), 'edit reply did not finish');
-    return f.edits.slice(start).find(text => text.includes('⏱'));
+    await until(() => f.messages.slice(start).some(text => text.includes('⏱')), 'edit reply did not finish');
+    return f.messages.slice(start).find(text => text.includes('⏱'));
   };
   return { ...f, jobs, journal, stop, put, turn, untouched: async () => assert.deepEqual(await bytes(), before) };
 }
@@ -347,11 +347,14 @@ for (const provider of ['claude', 'codex']) {
     await fs.writeFile(file, JSON.stringify([active]));
     await native.respond(full('EDIT_TASK', 'mail', 'Проверь входящие'));
     await f.message(request);
-    await until(() => f.edits.some(text => text.includes('⏱')), 'provider did not finish', 10_000);
-    const call = (await native.trace()).at(-1);
+    await until(() => f.messages.some(text => text.includes('⏱')), 'provider did not finish', 10_000);
+    const calls = (await native.trace()).filter(row => ['claude', 'codex-app-turn', 'codex-exec'].includes(row.kind));
+    assert.equal(calls.length, 1);
+    const [call] = calls;
+    assert.equal(call.kind, provider === 'codex' ? 'codex-app-turn' : 'claude');
     const prompt = provider === 'claude' ? call.argv[call.argv.indexOf('--append-system-prompt') + 1] : call.prompt;
     for (const marker of ['EDIT_TASK', 'APPEND_TASK', 'DROP_FROM_TASK']) assert.ok(prompt.includes('[' + marker + ':'));
-    assert.match(f.edits.at(-1), /Готово: у «Почта» новый текст/);
+    assert.match(f.messages.at(-1), /Готово: у «Почта» новый текст/);
     assert.equal(JSON.parse(await fs.readFile(file, 'utf8'))[0].task.text, 'Проверь входящие');
   });
 }

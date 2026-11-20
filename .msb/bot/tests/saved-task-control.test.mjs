@@ -216,11 +216,14 @@ for (const provider of ['claude', 'codex']) {
     await fs.writeFile(actionFile, JSON.stringify([target]));
     await native.respond(command('PAUSE', 'Сбор дня'));
     await f.message('Поставь на паузу сбор дня');
-    await until(() => f.edits.some(text => text.includes('⏱')), 'controlled provider reply did not finish', 10_000);
-    const call = (await native.trace()).at(-1);
+    await until(() => f.messages.some(text => text.includes('⏱')), 'controlled provider reply did not finish', 10_000);
+    const calls = (await native.trace()).filter(row => ['claude', 'codex-app-turn', 'codex-exec'].includes(row.kind));
+    assert.equal(calls.length, 1);
+    const [call] = calls;
+    assert.equal(call.kind, provider === 'codex' ? 'codex-app-turn' : 'claude');
     const prompt = provider === 'claude' ? call.argv[call.argv.indexOf('--append-system-prompt') + 1] : call.prompt;
     assert.match(prompt, /\[PAUSE_TASK:.*\[RESUME_TASK:/s);
-    assert.ok(f.edits.some(text => text.includes('⏸ «Сбор дня» на паузе')));
+    assert.ok(f.messages.some(text => text.includes('⏸ «Сбор дня» на паузе')));
     assert.deepEqual(JSON.parse(await fs.readFile(actionFile, 'utf8')), [paused(target)]);
   });
 }

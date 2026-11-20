@@ -69,11 +69,11 @@ async function profile(t) {
     assert.deepEqual(state.costHistory, { '2026-11-08': 1.25 });
   };
   async function ask(result, input = 'Измени лимит автономки', { chatId = 42, threadId } = {}) {
-    const start = f.edits.length;
+    const start = f.messages.length;
     output = result;
     await f.bot.handleUpdate({ message: { message_id: 99, text: input, from: { id: 42 }, chat: { id: chatId },
       ...(threadId ? { message_thread_id: threadId } : {}) } });
-    return until(() => f.edits.slice(start).find(row => row.includes('⏱') || row.includes('Ошибка хода') || row.includes('Моя остановочка')),
+    return until(() => f.messages.slice(start).find(row => row.includes('⏱') || row.includes('Ошибка хода') || row.includes('Моя остановочка')),
       'final Telegram answer is missing');
   }
   const question = () => f.messages.findLastIndex(row => row === questionText) + 1;

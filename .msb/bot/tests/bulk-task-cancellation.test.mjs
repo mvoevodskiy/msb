@@ -51,9 +51,9 @@ async function profile(t, { output = command, records = [active] } = {}) {
       message: { message_id: messageId, chat: { id: chatId }, message_thread_id: 17,
         text: f.messages[messageId - 1] ?? 'Другая карточка' } } });
   async function ask() {
-    const start = f.edits.length;
+    const start = f.messages.length;
     await f.request(request);
-    await until(() => f.edits.slice(start).some(text => text.includes('⏱')), 'missing final Telegram reply');
+    await until(() => f.messages.slice(start).some(text => text.includes('⏱')), 'missing final Telegram reply');
     return question();
   }
   return { ...f, put, stop, journal, jobFile, archives, question, toast, click, ask,
@@ -232,9 +232,9 @@ test('a duplicate confirmation cannot put STOP back after removal and a later re
   assert.ok((await fs.stat(f.stop)).isFile());
   refuseRetirement = false;
   reply = '[RESUME_ALL]';
-  const start = f.edits.length;
+  const start = f.messages.length;
   await f.request('Верни фоновые задачи в работу');
-  await until(() => f.edits.slice(start).some(text => text.includes('Снял стоп')), 'resume did not finish');
+  await until(() => f.messages.slice(start).some(text => text.includes('Снял стоп')), 'resume did not finish');
   await absent(f.stop);
   await f.click('ct-all');
   assert.equal(f.toast(), 'Подтверждение устарело');
@@ -263,11 +263,14 @@ for (const provider of ['claude', 'codex']) {
     await fs.writeFile(file, before);
     await native.respond(command);
     await f.message(request);
-    await until(() => f.edits.some(text => text.includes('⏱')), 'provider did not finish', 10_000);
-    const call = (await native.trace()).at(-1);
+    await until(() => f.messages.some(text => text.includes('⏱')), 'provider did not finish', 10_000);
+    const calls = (await native.trace()).filter(row => ['claude', 'codex-app-turn', 'codex-exec'].includes(row.kind));
+    assert.equal(calls.length, 1);
+    const [call] = calls;
+    assert.equal(call.kind, provider === 'codex' ? 'codex-app-turn' : 'claude');
     const prompt = provider === 'claude' ? call.argv[call.argv.indexOf('--append-system-prompt') + 1] : call.prompt;
     assert.match(prompt, /\[CANCEL_ALL\]/);
-    assert.match(f.edits.at(-1), /Спросил подтверждение ниже, снесу все по кнопке/);
+    assert.match(f.messages.at(-1), /Спросил подтверждение ниже, снесу все по кнопке/);
     assert.equal(await fs.readFile(file, 'utf8'), before);
     assert.ok(f.markupEdits.some(item => item.options.reply_markup.inline_keyboard[0]?.[0]?.callback_data === 'ct-all'));
   });
@@ -342,9 +345,9 @@ for (const failure of ['STOP sync', 'archive publish']) {
     assert.deepEqual(await f.archives(), []);
     refuse = false;
     reply = '[RESUME_ALL]';
-    const edits = f.edits.length;
+    const messages = f.messages.length;
     await f.request('Верни фоновые задачи в работу');
-    await until(() => f.edits.slice(edits).some(text => /Снял (стоп|паузу)/.test(text)), 'resume did not finish');
+    await until(() => f.messages.slice(messages).some(text => /Снял (стоп|паузу)/.test(text)), 'resume did not finish');
     await absent(f.stop);
     await f.click('ct-all');
     assert.equal(f.toast(), 'Подтверждение устарело');

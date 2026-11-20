@@ -406,7 +406,10 @@ for (const provider of ['claude', 'codex']) {
     await native.respond(command(live.id, '+2h'));
     await f.message(request);
     await until(() => f.messages.some(text => text.includes('⏱')), 'provider did not finish', 10_000);
-    const call = (await native.trace()).at(-1);
+    const calls = (await native.trace()).filter(row => ['claude', 'codex-app-turn', 'codex-exec'].includes(row.kind));
+    assert.equal(calls.length, 1);
+    const [call] = calls;
+    assert.equal(call.kind, provider === 'codex' ? 'codex-app-turn' : 'claude');
     const prompt = provider === 'claude' ? call.argv[call.argv.indexOf('--append-system-prompt') + 1] : call.prompt;
     assert.match(prompt, /\[RESCHEDULE_TASK:/);
     assert.match(f.messages.at(-1), /Спросил подтверждение ниже — перенесу по кнопке/);
