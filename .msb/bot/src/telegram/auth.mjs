@@ -3,8 +3,11 @@
  * Чужие апдейты — тишина (как в закрытом ядре), без reply.
  * Первый запуск: [bot](./bot.mjs) и [setup route](./routes/agent.mjs);
  * наличие Codex определяется той же регистрацией overlay, что и сохранённые ходы.
+ * Claude keys: readonly inherit от default — [provider-env-inherit](../../shared/provider-env-inherit.mjs).
  * Проверка: [onboarding guides](../../tests/onboarding-guides.test.mjs).
  */
+import { resolveClaudeCreds } from '../../shared/provider-env-inherit.mjs';
+
 export function isAdmin(ctx, adminId) {
   const uid = ctx.from?.id;
   if (!adminId) return false;
@@ -31,13 +34,12 @@ export function adminGuard(adminId) {
   };
 }
 
-/** Setup Mode: нет authMode и нет ключей в env. */
+/** Setup Mode: нет authMode и нет ключей в env (включая readonly inherit от default). */
 export function isSetupMode(state, env = process.env) {
   if (state?.engine === 'oc') return false;
   if (state?.authMode) return false;
   if (state?.extAuthBypass) return false;
-  if (env.CLAUDE_CODE_OAUTH_TOKEN?.trim()) return false;
-  if (env.MSB_ANTHROPIC_API_KEY?.trim() || env.ANTHROPIC_API_KEY?.trim()) return false;
+  if (resolveClaudeCreds(env).ok) return false;
   return true;
 }
 

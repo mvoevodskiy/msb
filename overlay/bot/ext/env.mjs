@@ -1,7 +1,9 @@
 /**
  * Provider credential file fallback and writes; stock Claude/native Codex keep
  * their existing auth routes. Writes share core [env queue](../shared/env-writes.mjs).
- * Read scopes/empty fallback are unchanged. [Tests](../../../.msb/bot/tests/env-write-order.test.mjs).
+ * AI provider keys: process → bot → default (readonly inherit) → root —
+ * [provider-env-inherit](../shared/provider-env-inherit.mjs).
+ * [Tests](./tests/env.test.mjs), [env-write-order](../../../.msb/bot/tests/env-write-order.test.mjs).
  */
 import fs from 'node:fs/promises';
 import os from 'node:os';
@@ -10,6 +12,7 @@ import { getProvider } from './providers.mjs';
 import { botDir, msbRoot } from './paths.mjs';
 import profile from '../shared/profile.cjs';
 import { serializeEnvMutation } from '../shared/env-writes.mjs';
+import { readEnvKeyChain } from '../shared/provider-env-inherit.mjs';
 
 /** Per-bot .env — как у штатного setEnvVar при MSB_BOT_ID. */
 export function botEnvPath(env = process.env, home = env.HOME || os.homedir()) {
@@ -45,20 +48,7 @@ function serializeEnv(rows) {
 }
 
 export async function readEnvKey(key, env = process.env, home = env.HOME || os.homedir()) {
-  const value = profile.envValue(env, key);
-  if (value?.trim()) return value.trim();
-  if (key.startsWith('MSB_') && value !== undefined) return '';
-  const keys = key.startsWith('MSB_') ? [key, `IIA_${key.slice(4)}`] : [key];
-  for (const file of [botEnvPath(env, home), globalEnvPath(home, env)]) {
-    try {
-      const rows = parseEnvFile(await fs.readFile(file, 'utf8'));
-      const hit = keys.map(candidate => rows.find(r => r.kind === 'kv' && r.key === candidate)).find(Boolean);
-      if (hit?.value?.trim()) return hit.value.trim();
-    } catch (err) {
-      if (err?.code !== 'ENOENT') throw err;
-    }
-  }
-  return '';
+  return readEnvKeyChain(key, env, home);
 }
 
 export async function writeEnvKey(key, value, env = process.env, home = env.HOME || os.homedir()) {

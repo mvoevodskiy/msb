@@ -26,3 +26,7 @@ shared write/delete/dedupe как «bugfix». Существующие read-only
 release остаются историческим evidence. При будущих изменениях тестировать
 изоляцию двух bot.env, сохранность shared fallback и чужих bot settings.
 Откат данного docscommit меняет только инструкции, не секреты/настройки/сервер.
+
+Дополнение 20.11.2026: readonly наследование AI provider keys от bots/default
+для дополнительных ботов — [parity-env-provider-inherit-contract.txt](parity-env-provider-inherit-contract.txt).
+Это расширяет существующий read-only fallback, не возвращая old global write.

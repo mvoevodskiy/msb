@@ -26,6 +26,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { workspaceDir } from '../paths.mjs';
 import { canonicalMcpPath, claudeMcpPath } from '../../shared/mcp-native-scope.mjs';
+import { resolveClaudeCreds } from '../../shared/provider-env-inherit.mjs';
 import { isProviderSession } from '../../shared/session-starts.mjs';
 import { claudeCompactSettings, claudeTurnContext, updateClaudeInputSample } from './claude-context.mjs';
 import { createSteerChannel } from './steer-channel.mjs';
@@ -171,6 +172,9 @@ export async function runClaudeTurn(opts) {
     `[msb/agent-cc] Spawning: claude ${args.slice(0, 3).join(' ')}... (session=${(opts.sessionId || 'new').slice(0, 8)}, model=${opts.model || 'default'}, prompt=${promptBytes}B)`,
   );
 
+  // Readonly inherit from bots/default when this bot has no own Claude creds.
+  const creds = opts.isolated ? { oauth: '', anthropic: '' } : resolveClaudeCreds(process.env);
+
   return new Promise((resolve, reject) => {
     let child;
     let steerChannel;
@@ -196,7 +200,10 @@ export async function runClaudeTurn(opts) {
           MSB_CODEX_INTRO_SCHEMA: opts.codexIntroSummary
             ? fileURLToPath(new URL('./intro-summary.schema.json', import.meta.url)) : undefined,
           CI: '1',
-          CLAUDE_CODE_OAUTH_TOKEN: process.env.CLAUDE_CODE_OAUTH_TOKEN,
+          CLAUDE_CODE_OAUTH_TOKEN: creds.oauth || process.env.CLAUDE_CODE_OAUTH_TOKEN,
+          ...(creds.anthropic && !opts.isolated
+            ? { ANTHROPIC_API_KEY: creds.anthropic, MSB_ANTHROPIC_API_KEY: creds.anthropic }
+            : {}),
           CLAUDE_CODE_AUTO_COMPACT_WINDOW: compact?.window ?? (process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW || '200000'),
           CLAUDE_AUTOCOMPACT_PCT_OVERRIDE: compact?.percent ?? (process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE || '90'),
         },

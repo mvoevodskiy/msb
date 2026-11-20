@@ -29,3 +29,37 @@ test('env: saveProviderSecret for qwen and grok', async () => {
   assert.equal(await readEnvKey('QWEN_API_KEY', env, home), 'sk-sp-test-key-abcdefgh');
   assert.equal(await readEnvKey('DASHSCOPE_API_KEY', env, home), 'sk-sp-test-key-abcdefgh');
 });
+
+test('env: additional bot inherits AI keys from default, keeps override', async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-ext-inherit-'));
+  const root = path.join(home, '.msb');
+  await fs.mkdir(path.join(root, 'bots/default'), { recursive: true });
+  await fs.mkdir(path.join(root, 'bots/extra'), { recursive: true });
+  await fs.writeFile(
+    path.join(root, 'bots/default/.env'),
+    'CURSOR_API_KEY=cursor-from-default-abcdef\nBOT_TOKEN=default-bot-token-should-not-leak\nSERPER_API_KEY=serper-not-inherited\n',
+    { mode: 0o600 },
+  );
+  await fs.writeFile(path.join(root, 'bots/extra/.env'), 'BOT_TOKEN=extra-own-token\n', { mode: 0o600 });
+
+  const extra = { HOME: home, MSB_BOT_ID: 'extra' };
+  assert.equal(await readEnvKey('CURSOR_API_KEY', extra, home), 'cursor-from-default-abcdef');
+  assert.equal(await readEnvKey('BOT_TOKEN', extra, home), 'extra-own-token');
+  assert.equal(await readEnvKey('SERPER_API_KEY', extra, home), '');
+
+  await writeEnvKey('CURSOR_API_KEY', 'cursor-extra-override-xyz', extra, home);
+  assert.equal(await readEnvKey('CURSOR_API_KEY', extra, home), 'cursor-extra-override-xyz');
+  const defaultRaw = await fs.readFile(path.join(root, 'bots/default/.env'), 'utf8');
+  assert.match(defaultRaw, /CURSOR_API_KEY=cursor-from-default-abcdef/);
+  assert.doesNotMatch(defaultRaw, /cursor-extra-override/);
+});
+
+test('env: root .env remains fallback after default for AI keys', async () => {
+  const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-ext-root-'));
+  const root = path.join(home, '.msb');
+  await fs.mkdir(path.join(root, 'bots/extra'), { recursive: true });
+  await fs.writeFile(path.join(root, '.env'), 'XAI_API_KEY=xai-from-root-abcdefghij\n', { mode: 0o600 });
+  await fs.writeFile(path.join(root, 'bots/extra/.env'), '', { mode: 0o600 });
+  const extra = { HOME: home, MSB_BOT_ID: 'extra' };
+  assert.equal(await readEnvKey('XAI_API_KEY', extra, home), 'xai-from-root-abcdefghij');
+});

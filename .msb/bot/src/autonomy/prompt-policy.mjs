@@ -7,6 +7,7 @@
  * [Checks](../../tests/saved-prompt-action.test.mjs),
  * [Cursor checks](../../tests/saved-cursor-prompt.test.mjs).
  */
+import { resolveClaudeCreds } from '../../shared/provider-env-inherit.mjs';
 import { resolveModel } from '../state.mjs';
 import { claudeAutoTurnModel, cleanClaudeModelId, getClaudeModel } from '../agent/models.mjs';
 import { isLocalReminderEngine } from './reminder-policy.mjs';
@@ -23,7 +24,8 @@ export function savedPromptProvider(state, env = process.env, codexAvailable = f
   const provider = state.extAuthBypass || 'claude';
   if (provider === 'cursor' && cursorAvailable && env.JARVIS_CC_ONLY !== '1') return provider;
   if (provider === 'codex' && codexAvailable && subscription && env.JARVIS_CC_ONLY !== '1') return provider;
-  const oauth = (!state.authMode || state.authMode === 'subscription') && env.CLAUDE_CODE_OAUTH_TOKEN?.trim();
+  const oauth = (!state.authMode || state.authMode === 'subscription')
+    && resolveClaudeCreds(env).oauth;
   if (provider === 'claude' && (subscription || oauth)) return provider;
 }
 

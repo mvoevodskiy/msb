@@ -56,6 +56,12 @@ read/modify/write env; scope/валидация остаются у вызыва
 импортируют одну копию shared. [Контракт](../tests/reference/parity-env-write-contract.txt),
 [проверки порядка/ошибок](../tests/env-write-order.test.mjs).
 
+[provider-env-inherit.mjs](provider-env-inherit.mjs) — read-only цепочка AI keys:
+process → bot → default → root. Запись не трогает. Overlay `readEnvKey` и Claude
+auth/spawn используют этот модуль.
+[Контракт](../tests/reference/parity-env-provider-inherit-contract.txt),
+[проверки](../tests/provider-env-inherit.test.mjs).
+
 
 [engine-policy.mjs](engine-policy.mjs) сохраняет old OA/vB/RW: наличие legacy OC
 state делает Claude-only preference неэффективным; [loadState](../src/state.mjs)

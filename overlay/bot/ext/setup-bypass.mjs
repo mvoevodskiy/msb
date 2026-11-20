@@ -7,6 +7,7 @@
  */
 import os from 'node:os';
 import { invalidateFirstSession } from '../shared/session-starts.mjs';
+import { resolveClaudeCreds } from '../shared/provider-env-inherit.mjs';
 import { getProvider } from './providers.mjs';
 import { providerConfigured } from './env.mjs';
 import { loadStore, setActive, setActiveIf } from './store.mjs';
@@ -24,12 +25,8 @@ export function validCodexPauseSwitch(value) {
     (value.phase === 'prepared' || (value.phase === 'committed' && Number.isSafeInteger(value.targetEpoch))));
 }
 
-export async function hasClaudeCreds(env = process.env) {
-  return !!(
-    env.CLAUDE_CODE_OAUTH_TOKEN?.trim() ||
-    env.MSB_ANTHROPIC_API_KEY?.trim() ||
-    env.ANTHROPIC_API_KEY?.trim()
-  );
+export async function hasClaudeCreds(env = process.env, home = env.HOME || os.homedir()) {
+  return resolveClaudeCreds(env, home).ok;
 }
 
 /**
