@@ -33,6 +33,11 @@ export const PROVIDER_MODELS = Object.freeze({
     { id: 'gpt-5.6-sol', label: 'GPT-5.6 Sol', desc: 'через Cursor' },
     { id: 'gemini-3.1-pro', label: 'Gemini 3.1 Pro', desc: 'через Cursor' },
   ],
+  grok: [
+    { id: 'grok-build', label: 'Grok Build', desc: 'агентская модель по умолчанию' },
+    { id: 'grok-4.7', label: 'Grok 4.7', desc: 'флагман xAI' },
+    { id: 'grok-4', label: 'Grok 4', desc: 'предыдущая линия' },
+  ],
   qwen: [
     { id: 'qwen3-coder-plus', label: 'Qwen3 Coder Plus', desc: 'основная coding-модель' },
     { id: 'qwen3-coder-flash', label: 'Qwen3 Coder Flash', desc: 'быстрее' },

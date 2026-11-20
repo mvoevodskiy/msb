@@ -1,6 +1,6 @@
 /**
  * Ставит CLI провайдера, если его нет в PATH.
- * Cursor — официальный install-скрипт; Codex/Qwen — npm в ~/.msb/ext-tools (без sudo).
+ * Cursor / Grok Build — официальные install-скрипты; Codex/Qwen — npm в ~/.msb/ext-tools (без sudo).
  */
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
@@ -55,6 +55,7 @@ export function enrichPath(env = process.env, home = env.HOME || os.homedir()) {
     extToolsBin(home, env),
     path.join(home, '.local', 'bin'),
     path.join(home, '.cursor', 'bin'),
+    path.join(home, '.grok', 'bin'),
   ];
   const parts = [...extras, ...(env.PATH || '').split(path.delimiter)].filter(Boolean);
   const seen = new Set();
@@ -70,7 +71,10 @@ export function enrichPath(env = process.env, home = env.HOME || os.homedir()) {
 export function cliPresent(providerId, env = process.env) {
   const p = getProvider(providerId);
   if (!p || p.id === 'claude') return { ok: true, bin: profile.envValue(env, 'MSB_REAL_CLAUDE') || 'claude' };
-  const names = providerId === 'cursor' ? ['agent', 'cursor-agent'] : [p.bin];
+  const names =
+    providerId === 'cursor' ? ['agent', 'cursor-agent']
+      : providerId === 'grok' ? ['grok', 'grok-build']
+        : [p.bin];
   for (const name of names) {
     const hit = findBin(name, env);
     if (hit) return { ok: true, bin: hit };
@@ -131,6 +135,30 @@ async function installCursor(env, home) {
   return { ok: true, bin: hit, installed: true };
 }
 
+async function installGrok(env, home) {
+  const childEnv = { ...env, PATH: enrichPath(env, home) };
+  console.error(`${MARK} installing Grok Build CLI via x.ai/cli/install.sh`);
+  const res = await run('bash', ['-lc', 'curl -fsSL https://x.ai/cli/install.sh | bash'], {
+    env: childEnv,
+    timeoutMs: 600_000,
+  });
+  if (res.code !== 0) {
+    return {
+      ok: false,
+      error: `Установка Grok Build не удалась: ${(res.stderr || res.stdout || '').slice(-500)}`,
+    };
+  }
+  childEnv.PATH = enrichPath(childEnv, home);
+  const hit = findBin('grok', childEnv) || findBin('grok-build', childEnv);
+  if (!hit) {
+    return {
+      ok: false,
+      error: 'Grok Build install завершился, но `grok` не найден в PATH (~/.grok/bin, ~/.local/bin).',
+    };
+  }
+  return { ok: true, bin: hit, installed: true };
+}
+
 /**
  * @returns {Promise<{ok:boolean, bin?:string, installed?:boolean, skipped?:boolean, error?:string}>}
  */
@@ -146,6 +174,7 @@ export async function ensureProviderCli(providerId, { env = process.env, home = 
   }
 
   if (providerId === 'cursor') return installCursor(envWithPath, home);
+  if (providerId === 'grok') return installGrok(envWithPath, home);
   if (providerId === 'codex') return installNpmPackage(CODEX_NPM_SPEC, 'codex', envWithPath, home);
   if (providerId === 'qwen') {
     return installNpmPackage('@qwen-code/qwen-code@latest', 'qwen', envWithPath, home);

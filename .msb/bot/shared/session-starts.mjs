@@ -1,6 +1,6 @@
 /** Reservations for the first CLI session only; provider switches are not resets. */
 import { randomUUID } from 'node:crypto';
-const providers = new Set(['claude', 'codex', 'cursor', 'qwen']);
+const providers = new Set(['claude', 'codex', 'cursor', 'grok', 'qwen']);
 const sentinel = /^(norestart(?:-[a-z0-9]+)?|failed|error|unknown)$/i;
 const map = value => value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 
@@ -16,6 +16,11 @@ export function isProviderSession(sessionId, provider) {
   if (!decoded || decoded[1] !== provider) return false;
   const native = decoded[2];
   if (provider === 'cursor') return /^[0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(native.trim());
+  if (provider === 'grok') {
+    const trimmed = native.trim();
+    return trimmed.length >= 4 && trimmed.length <= 128 && !sentinel.test(trimmed)
+      && !/^[cxq]\d{10,}$/i.test(trimmed);
+  }
   if (provider === 'codex') {
     const trimmed = native.trim();
     return trimmed.length >= 8 && !sentinel.test(trimmed) && !/^[cxq]\d{10,}$/i.test(trimmed)

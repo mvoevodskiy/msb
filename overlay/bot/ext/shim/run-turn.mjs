@@ -15,6 +15,7 @@ import { isProviderId } from '../providers.mjs';
 import { parseClaudeArgv, readStdin, buildPrompt } from '../adapters/parse-args.mjs';
 import { emit, emitInit, emitAssistantText, emitResult, emitError } from '../adapters/stream.mjs';
 import { runCursorTurn, isCursorSessionId } from '../adapters/cursor.mjs';
+import { runGrokTurn, isGrokSessionId } from '../adapters/grok.mjs';
 import { runCodexTurn } from '../adapters/codex.mjs';
 import { runQwenTurn } from '../adapters/qwen.mjs';
 import { runOpenaiTurn } from '../adapters/openai.mjs';
@@ -59,6 +60,7 @@ function acceptNativeSession(providerId, nativeId) {
   if (!nativeId || typeof nativeId !== 'string') return null;
   if (providerId === 'codex') return isValidCodexThreadId(nativeId) ? nativeId : null;
   if (providerId === 'cursor') return isCursorSessionId(nativeId) ? nativeId.trim() : null;
+  if (providerId === 'grok') return isGrokSessionId(nativeId) ? nativeId.trim() : null;
   // Qwen: не сохраняем фиктивные timestamp id / маркеры ошибок
   if (/^[cxq]\d{10,}$/i.test(nativeId)) return null;
   if (nativeId === 'failed' || nativeId === 'error' || nativeId === 'unknown') return null;
@@ -86,6 +88,7 @@ async function runAlternate(providerId, argv) {
   let result;
   try {
     if (providerId === 'cursor') result = await runCursorTurn(ctx);
+    else if (providerId === 'grok') result = await runGrokTurn(ctx);
     else if (providerId === 'codex') {
       const control = openShimSteerControl(ctx.env);
       const controller = control && new AbortController();

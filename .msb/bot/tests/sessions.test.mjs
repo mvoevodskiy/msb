@@ -45,9 +45,9 @@ test('sessions: page callbacks preserve numbers, reverse text within the page an
  assert.ok(text.indexOf('12. fixture-first-codex-0')<text.indexOf('11. fixture-first-codex-1'));
  assert.deepEqual(buttons(f).map(b=>[b.text,b.callback_data]),[['11','session:'+entries[1].id],['12','session:'+entries[0].id],['« 1-10','sessions:page:0'],['« Назад','menu:back']]);
 });
-for(const provider of ['claude','codex','cursor','qwen'])test('sessions: '+provider+' sees only its own current core-engine ledger, including legacy ID rows',async t=>{
+for(const provider of ['claude','codex','cursor','grok','qwen'])test('sessions: '+provider+' sees only its own current core-engine ledger, including legacy ID rows',async t=>{
  const f=await fixture(t,undefined,{overlay:false}),own=row(provider,1),legacy=row(provider,2);delete legacy.providerId;delete legacy.engine;
- const foreign=['claude','codex','cursor','qwen'].filter(p=>p!==provider).map(p=>row(p,3));
+ const foreign=['claude','codex','cursor','grok','qwen'].filter(p=>p!==provider).map(p=>row(p,3));
  const wrongEngine=row(provider,4,{engine:'oc',firstPrompt:'foreign-engine-must-not-show'});
  const before=await seed([own,...foreign,legacy,wrongEngine],{extAuthBypass:provider,ccSessionId:own.id});await f.callback('menu:sessions');
  assert.ok(edit(f).includes(own.firstPrompt));assert.ok(edit(f).includes(legacy.firstPrompt));

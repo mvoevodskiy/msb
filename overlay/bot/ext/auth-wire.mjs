@@ -261,5 +261,8 @@ export async function wireProviderAuth(providerId, secret, env = process.env, ho
   if (providerId === 'cursor') {
     return { ok: true, detail: 'CURSOR_API_KEY' };
   }
+  if (providerId === 'grok') {
+    return { ok: true, detail: 'XAI_API_KEY' };
+  }
   return { ok: true };
 }

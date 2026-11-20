@@ -20,10 +20,12 @@ test('env: saveProviderSecret rejects short keys', async () => {
   await assert.rejects(() => saveProviderSecret('cursor', 'short', env, home));
 });
 
-test('env: saveProviderSecret for qwen', async () => {
+test('env: saveProviderSecret for qwen and grok', async () => {
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'msb-ext-'));
   const env = { MSB_BOT_ID: 'SMM' };
   await saveProviderSecret('qwen', 'sk-sp-test-key-abcdefgh', env, home);
+  await saveProviderSecret('grok', 'xai-test-key-abcdefghij', env, home);
+  assert.equal(await readEnvKey('XAI_API_KEY', env, home), 'xai-test-key-abcdefghij');
   assert.equal(await readEnvKey('QWEN_API_KEY', env, home), 'sk-sp-test-key-abcdefgh');
   assert.equal(await readEnvKey('DASHSCOPE_API_KEY', env, home), 'sk-sp-test-key-abcdefgh');
 });

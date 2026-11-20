@@ -20,6 +20,16 @@ export const PROVIDERS = Object.freeze([
     icon: '🖱',
   },
   {
+    id: 'grok',
+    title: 'Grok Build',
+    envKey: 'XAI_API_KEY',
+    authViaStock: false,
+    hint:
+      'Ключ xAI (`XAI_API_KEY`, обычно `xai-…`). CLI `grok` ставится сам с x.ai/cli; headless ход идёт через `--single` + JSON.',
+    bin: 'grok',
+    icon: '⚡',
+  },
+  {
     id: 'codex',
     title: 'Codex',
     envKey: 'CODEX_ACCESS_TOKEN',

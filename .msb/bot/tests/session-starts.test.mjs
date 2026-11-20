@@ -42,6 +42,8 @@ test('first-session commit requires actual provider and valid own ID, never sent
     assert.equal(s.ccSessionId, undefined); assert.equal(s.pendingCcSessionStarts, undefined);
   }
   assert.equal(isProviderSession('ext:cursor:0199a213-81c0-7800-8aa1-bbab2a035a53', 'cursor'), true);
+  assert.equal(isProviderSession('ext:grok:0199a213-81c0-7800-8aa1-bbab2a035a53', 'grok'), true);
+  assert.equal(isProviderSession('ext:grok:failed', 'grok'), false);
   assert.equal(isProviderSession('ext:qwen:qwen-native-session', 'qwen'), true);
 });
 test('existing-ID turns never create a first-start reservation; OpenClaw remains inactive for CC', () => {

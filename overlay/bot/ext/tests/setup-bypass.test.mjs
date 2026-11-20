@@ -30,6 +30,20 @@ test('setup-bypass: cursor key sets subscription authMode', async () => {
   assert.equal(st[EXT_AUTH_FLAG], 'cursor');
 });
 
+test('setup-bypass: grok key sets subscription authMode', async () => {
+  const home = await tmpHome();
+  const env = { MSB_BOT_ID: 'default' };
+  await writeEnvKey('XAI_API_KEY', 'xai-test-key-xxxxxxxx', env, home);
+  await setActive('grok', env, home);
+
+  const r = await syncExtAuthGate(env, home);
+  assert.equal(r.changed, true);
+  const st = await readState(env, home);
+  assert.equal(st.authMode, 'subscription');
+  assert.equal(st.hasSubscriptionAuth, true);
+  assert.equal(st[EXT_AUTH_FLAG], 'grok');
+});
+
 test('setup-bypass: switch to bare claude clears bypass', async () => {
   const home = await tmpHome();
   const env = { MSB_BOT_ID: 'default' };

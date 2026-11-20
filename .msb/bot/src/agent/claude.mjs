@@ -316,7 +316,7 @@ export async function runClaudeTurn(opts) {
         opts.onEvent?.(ev);
         switch (ev.type) {
           case 'system':
-            if (['claude', 'codex', 'cursor', 'qwen'].includes(ev.provider_id)) providerId = ev.provider_id;
+            if (['claude', 'codex', 'cursor', 'grok', 'qwen'].includes(ev.provider_id)) providerId = ev.provider_id;
             if (ev.subtype === 'init') {
               if (!providerId && ev.apiKeySource !== 'ext') providerId = 'claude';
               if (ev.session_id) { sessionId = ev.session_id; sessionIdObserved = true; }

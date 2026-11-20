@@ -18,7 +18,7 @@
 | Старый vendor | `.msb/bot/vendor` | [Эталон пользовательского поведения](.msb/bot/vendor/README.md) |
 | Пульт | `.msb/pult` | Веб-панель (в коробке, выкл); sync: `./scripts/sync-pult.sh` |
 
-Чистое ядро использует Claude CLI. Обвязка добавляет Codex/Cursor/Qwen через
+Чистое ядро использует Claude CLI. Обвязка добавляет Codex/Cursor/Grok Build/Qwen через
 PATH-shim и совместимый stream-json. Codex — выбор CLI-провайдера; OS helper
 `msb-engine` управляет отдельными сервисами и имеет другой маршрут.
 

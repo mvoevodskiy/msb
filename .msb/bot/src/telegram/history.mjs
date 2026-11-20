@@ -52,11 +52,11 @@ export async function beginTurnHistory({ input, env = process.env, now = Date.no
         return true;
       } };
     },
-    provider(value) { if (['claude', 'codex', 'cursor', 'qwen', 'openai'].includes(value)) providerId = value; },
+    provider(value) { if (['claude', 'codex', 'cursor', 'grok', 'qwen', 'openai'].includes(value)) providerId = value; },
     async finish({ status = 'error', text = '', delivered = false, result } = {}) {
       if (completed) return;
       completed = true;
-      if (['claude', 'codex', 'cursor', 'qwen', 'openai'].includes(result?.providerId)) providerId = result.providerId;
+      if (['claude', 'codex', 'cursor', 'grok', 'qwen', 'openai'].includes(result?.providerId)) providerId = result.providerId;
       const ended = now();
       await Promise.all([...pending]);
       const ts = new Date(Math.max(ended, lastAcceptedAt)).toISOString();
