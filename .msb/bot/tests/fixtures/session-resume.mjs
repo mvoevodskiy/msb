@@ -80,7 +80,7 @@ try{
  }
  report.state=(await loadState()).state;report.initial=initial;report.target=report.target || target;report.old=old;report.foreign=foreign;report.foreignProvider=foreignProvider;
  report.alpha=alpha;report.beta=beta;report.realAlpha=await fs.realpath(alpha);report.realBeta=await fs.realpath(beta);report.oldContextCleared=results[0]?.result?.context===null;
- const omit=new Set(['ccSessionId','sessionHistory','lastCcUsage','sessionEpoch','activeProject','parkedCcSessions','pendingCcSessionStarts']);
+ const omit=new Set(['ccSessionId','sessionHistory','lastCcUsage','sessionEpoch','activeProject','parkedCcSessions','pendingCcSessionStarts','codexUsageSessions']);
  const profile=s=>Object.fromEntries(Object.entries(s).filter(([key])=>!omit.has(key)));
  report.profilePreserved=JSON.stringify(profile(report.state))===JSON.stringify(profile(initial));report.providerStorePreserved=await fs.readFile(f.storeFile,'utf8')===storeBefore;
  await f.bot.stop();console.log('SESSION_RESUME='+JSON.stringify(report));
