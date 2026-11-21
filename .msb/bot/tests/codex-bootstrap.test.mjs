@@ -505,6 +505,7 @@ test('Codex introduction goes through Telegram /stop without replacing its ordin
   const store = await fs.readFile(f.storeFile, 'utf8');
   await f.message('fixture wait for stop');
   await waitFor(() => fs.access(f.started).then(() => true, () => false));
+  await waitFor(async () => (await loadState()).state.codexUsageSessions?.includes('ext:codex:' + introduction));
   await saveState({ ...(await loadState()).state, ccSessionId: f.resume });
   await f.message('/stop');
   await waitFor(() => f.edits.some(text => text.includes('Моя остановочка')));

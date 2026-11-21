@@ -36,6 +36,11 @@ for(const provider of ['claude','codex']){
 }
 test('session ledger: cap100 evicts only the oldest metadata row, not the new accepted conversation',()=>{
  const r=run('codex','limit');assert.equal(r.state.sessionHistory.length,100);assert.equal(r.state.sessionHistory[0].id,r.secondOldId);assert.equal(r.state.sessionHistory.at(-1).id,r.newId);assert.equal(r.state.sessionHistory.at(-1).messageCount,1);
+ assert.equal(r.state.codexUsageSessions.length,101);assert.ok(r.state.codexUsageSessions.includes(r.initial.sessionHistory[0].id));assert.ok(r.state.codexUsageSessions.includes(r.newId));
+});
+test('Codex usage ownership is retained when a newly started turn is interrupted',()=>{
+ const r=run('codex','started-abort');assert.equal(r.ok,false);assert.equal(r.startedBeforeExit,true);
+ assert.ok(r.state.codexUsageSessions.includes(r.id));assert.equal(r.state.ccSessionId,undefined);
 });
 test('session ledger: updating a retained older ID does not reorder rows or overwrite its first metadata',()=>{
  const r=run('codex','update-order'),row=entry(r);assert.deepEqual(r.state.sessionHistory.map(v=>v.id),r.initial.sessionHistory.map(v=>v.id));assert.equal(row.startedAt,r.initial.sessionHistory[0].startedAt);assert.equal(row.project,r.initial.sessionHistory[0].project);assert.equal(row.firstPrompt,r.initial.sessionHistory[0].firstPrompt);assert.equal(row.messageCount,5);assert.deepEqual(r.state.sessionHistory[1],r.initial.sessionHistory[1]);

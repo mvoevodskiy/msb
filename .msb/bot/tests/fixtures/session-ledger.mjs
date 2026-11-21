@@ -10,6 +10,7 @@ const [provider,scenario]=process.argv.slice(2);
 const home=await fs.mkdtemp(path.join(os.tmpdir(),'msb-session-ledger-')),workspace=path.join(home,'workspace');
 const id=n=>provider==='claude'?'claude-ledger-'+n:'ext:codex:0199a213-81c0-7800-8aa1-'+String(n).padStart(12,'0');
 const calls=[],controller=new AbortController(),watchdog=setTimeout(()=>{console.error('Ledger fixture timeout');process.exit(2);},7000);
+let startedBeforeExit;
 for(const key of Object.keys(process.env))delete process.env[key];
 Object.assign(process.env,{HOME:home,PATH:path.dirname(process.execPath),MSB_WORKSPACE_DIR:workspace,MSB_BOT_ID:'default',CLAUDE_CODE_OAUTH_TOKEN:'fixture-only'});
 globalThis.fetch=()=>{throw Error('External network forbidden');};
@@ -43,6 +44,16 @@ try{
     if(scenario==='project-reset')await updateState(s=>applyProjectSelection(s,'beta'));
     const native=scenario.startsWith('sentinel')?(provider==='claude'?'unknown':'ext:codex:norestart'):scenario.startsWith('foreign')?'ext:qwen:foreign-ledger-session':scenario==='limit'?id(201):id(10);
     const actual=scenario.startsWith('foreign')?'qwen':provider;
+    if(scenario==='started-abort'){
+     child.stdout.write(JSON.stringify({type:'system',subtype:'codex_thread_started',session_id:native,provider_id:'codex'})+'\n');
+     const until=Date.now()+2000;
+     while(!(await loadState()).state.codexUsageSessions?.includes(native)){
+      if(Date.now()>until)throw Error('Started Codex session was not recorded');
+      await new Promise(r=>setTimeout(r,5));
+     }
+     startedBeforeExit=(await loadState()).state.codexUsageSessions.includes(native);
+     controller.abort();return;
+    }
     if(!['carried-error','no-id-first'].includes(scenario))child.stdout.write(JSON.stringify({type:'system',subtype:'init',session_id:native,provider_id:actual,model:'fixture-model'})+'\n');
     if(scenario==='completion-order'){call.respond=()=>{child.stdout.write(JSON.stringify({type:'result',subtype:'success',session_id:native,is_error:false,result:'fixture-completed'})+'\n');close();};call.ready=true;return;}
     if(scenario.startsWith('abort-')){controller.abort();return;}
@@ -64,5 +75,5 @@ try{
  }else try{out=await runAgentTurn({prompt,signal:controller.signal,autonomy:scenario==='autonomy'});}catch(error){out={ok:false,error:error.code||'exception'};}
  if(['repeat','update-order'].includes(scenario))out=await runAgentTurn({prompt:'fixture latest prompt',signal:controller.signal});
  const state=(await loadState()).state;
- console.log('SESSION_LEDGER='+JSON.stringify({provider,scenario,initial,state,calls,completionAfterNewer,ok:out.ok,error:out.error,project:path.join(home,'projects','alpha'),id:id(10),newId:id(201),secondOldId:id(1)}));
+ console.log('SESSION_LEDGER='+JSON.stringify({provider,scenario,initial,state,calls,completionAfterNewer,startedBeforeExit,ok:out.ok,error:out.error,project:path.join(home,'projects','alpha'),id:id(10),newId:id(201),secondOldId:id(1)}));
 }finally{clearTimeout(watchdog);controller.abort();await fs.rm(home,{recursive:true,force:true});}
