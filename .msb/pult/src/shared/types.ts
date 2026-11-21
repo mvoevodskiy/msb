@@ -77,8 +77,20 @@ export interface Bot {
   lastResult: { at: Iso; text: string; durationMin: number; actions: number | null } | null;
   chat24h: { requests: number; minutes: number };
   bg24h: { tasks: number; runs: number; tokens: number; minutes: number };
+  /** Confirmed per-bot Codex usage; null values mean the source is unavailable. */
+  codexUsage?: CodexUsage;
   /** Отрезки за последние 24 часа: чаты и фоновые ходы. */
   timeline: Span[];
+}
+
+export interface CodexUsage {
+  providerId: 'codex';
+  week: number | null;
+  month: number | null;
+  all: number | null;
+  incomplete: boolean;
+  updatedAt: Iso | null;
+  timezone: string;
 }
 
 export interface BotNow {

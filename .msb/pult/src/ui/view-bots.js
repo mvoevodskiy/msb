@@ -4,6 +4,7 @@ import { h } from './dom.js';
 import { pageTitle, secTitle, empty, levelDot, legend, fold } from './parts.js';
 import { lanes } from './charts.js';
 import { botNowInfo, fmtWhen, fmtMinutes, fmtTokens, fmtMb, count, botsServiceLine, laneRows } from './logic.js';
+import { botUsageSection } from './view-bot-usage.js';
 
 function cells(b, ctx) {
   const { s, now } = ctx;
@@ -52,6 +53,9 @@ export function viewBots(ctx) {
       h('div', null, h('dt', null, 'Проекты'), h('dd', { class: 'ink2' }, b.projects.join(', ') || '—')))))));
 
   root.append(h('p', { class: 'note' }, botsServiceLine(s.bots)));
+
+  const usage = botUsageSection(s.bots, now);
+  if (usage) root.append(usage);
 
   root.append(h('section', { class: 'sec sec-lanes', 'aria-labelledby': 'bt-lanes' },
     secTitle('Кто что делал · 24 часа, МСК', 'bt-lanes'),
