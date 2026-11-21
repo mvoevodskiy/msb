@@ -3,6 +3,8 @@
  * writes; [Telegram menu](./history.mjs), [conversation report](./saved-task-runs.mjs)
  * and Pult read the same records. [Journal framing](./run-journal.mjs) preserves
  * the next run after an interrupted line; [checks](../../tests/run-journal-recovery.test.mjs).
+ * Codex saved prompts additionally retain provider, a per-attempt accounting ID and
+ * known partial usage; intervals in the ordinary session are not logged as saved prompts.
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
@@ -18,12 +20,16 @@ export async function appendSavedActionRun(action, ts, result,
   const file = reminderRunPath(env);
   if (result.nativeJobId && (await readSavedActionRunTail(Infinity, env)).some(row => row?.nativeJobId === result.nativeJobId)) return;
   await fs.mkdir(path.dirname(file), { recursive: true, mode: 0o700 });
+  const stoppedCodex = result.providerId === 'codex' && result.status === 'stopped';
   const row = {
     ts, actionId: action.id, kind: action.task.kind, name: action.name,
     status: result.status, costUsd: 0, costVisible, format,
     detail: result.detail || result.error || 'напоминание доставлено',
-    tokensIn: result.tokensIn, tokensOut: result.tokensOut, meteredUsd: result.meteredUsd,
-    usageIncomplete: result.usageIncomplete || undefined, nativeJobId: result.nativeJobId,
+    tokensIn: stoppedCodex ? undefined : result.tokensIn, tokensOut: stoppedCodex ? undefined : result.tokensOut, meteredUsd: result.meteredUsd,
+    usageIncomplete: stoppedCodex ? undefined : result.usageIncomplete || undefined, nativeJobId: result.nativeJobId,
+    ...(result.providerId === 'codex' ? { providerId: 'codex', usageSource: 'saved-prompt', usageRunId: result.usageRunId,
+      usageTokensIn: result.tokensIn, usageTokensOut: result.tokensOut, usageCompletedAt: result.usageCompletedAt,
+      usageAccountingIncomplete: result.usageIncomplete || undefined } : {}),
   };
   await appendRunRecord(file, row, { mode: 0o600 });
 }
