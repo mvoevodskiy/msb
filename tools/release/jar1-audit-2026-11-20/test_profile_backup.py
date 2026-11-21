@@ -4,6 +4,8 @@ import json
 import os
 from pathlib import Path
 import sqlite3
+import subprocess
+import sys
 import tempfile
 import unittest
 from unittest.mock import patch
@@ -204,6 +206,57 @@ class ProfileBackupTests(unittest.TestCase):
                 try: self.assertIn(('wal-fixture',), copied.execute('SELECT x FROM rows').fetchall())
                 finally: copied.close()
             finally: con.close()
+
+    def test_backup_does_not_modify_protected_sqlite_sidecars(self):
+        # A stopped process can leave committed WAL and SHM files behind. A
+        # backup must include that transaction without changing the live tree:
+        # deploy.Host.protected compares it around backup before publishing code.
+        deploy_spec = importlib.util.spec_from_file_location('profile_backup_deploy', Path(__file__).with_name('deploy.py'))
+        deploy = importlib.util.module_from_spec(deploy_spec); deploy_spec.loader.exec_module(deploy)
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp).resolve(); home = self.make_home(tmp)
+            db = home / '.msb/bots/default/projects/fixture/project.sqlite'
+            db.parent.mkdir(parents=True)
+            script = ("import os,sqlite3,sys; c=sqlite3.connect(sys.argv[1]); "
+                      "c.execute('PRAGMA journal_mode=WAL'); c.execute('PRAGMA wal_autocheckpoint=0'); "
+                      "c.execute('CREATE TABLE items(value TEXT)'); "
+                      "c.execute(\"INSERT INTO items VALUES ('synthetic')\"); c.commit(); os._exit(0)")
+            subprocess.run([sys.executable, '-c', script, str(db)], check=True)
+            wal, shm = Path(str(db) + '-wal'), Path(str(db) + '-shm')
+            self.assertGreater(wal.stat().st_size, 0)
+            self.assertTrue(shm.is_file())
+            host = deploy.Host(home); before = host.protected(); dest = base / 'private'
+            backup.backup_profile(home, dest, check_writers=lambda _home: None)
+            self.assertEqual(host.protected(), before, 'Backup must not mutate protected data or SQLite sidecars')
+            self.assertFalse(list(dest.rglob('.sqlite-input-*')), 'Temporary SQLite inputs must be removed')
+            copied = sqlite3.connect(dest / 'data' / db.relative_to(home))
+            try:
+                self.assertEqual(copied.execute('PRAGMA quick_check').fetchone(), ('ok',))
+                self.assertEqual(copied.execute('SELECT value FROM items').fetchall(), [('synthetic',)])
+            finally: copied.close()
+
+    def test_hot_rollback_journal_fails_closed_without_recovering_live_data(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            base = Path(tmp).resolve(); db = base / 'fixture.sqlite'; dest = base / 'copy.sqlite'
+            con = sqlite3.connect(db)
+            try:
+                con.execute('PRAGMA journal_mode=DELETE')
+                con.execute('CREATE TABLE records(value TEXT)')
+                con.executemany('INSERT INTO records VALUES (?)', [('old-' + str(i) + 'x' * 2000,) for i in range(1500)])
+                con.commit()
+            finally: con.close()
+            script = ("import os,sqlite3,sys; c=sqlite3.connect(sys.argv[1]); "
+                      "c.execute('PRAGMA journal_mode=DELETE'); c.execute('PRAGMA synchronous=FULL'); "
+                      "c.execute('PRAGMA cache_size=10'); c.execute('PRAGMA cache_spill=ON'); "
+                      "c.execute('BEGIN IMMEDIATE'); c.execute(\"UPDATE records SET value='new'\"); os._exit(0)")
+            subprocess.run([sys.executable, '-c', script, str(db)], check=True)
+            journal = Path(str(db) + '-journal')
+            self.assertGreater(journal.stat().st_size, 0)
+            before = (backup.fingerprint(db), backup.fingerprint(journal))
+            with self.assertRaises(sqlite3.DatabaseError):
+                backup.copy_sqlite(db, dest, backup.facts(db))
+            self.assertEqual((backup.fingerprint(db), backup.fingerprint(journal)), before)
+            self.assertFalse(list(base.rglob('.sqlite-input-*')))
 
     def test_sqlite_sidecar_creation_is_allowed_but_user_file_changes_are_not(self):
         before = {'dir': {'type':'directory', 'mode': 0o700, 'mtime_ns': 1, 'ctime_ns': 1},

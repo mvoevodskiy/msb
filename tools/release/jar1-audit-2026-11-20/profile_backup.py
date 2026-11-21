@@ -10,6 +10,7 @@ import re
 from pathlib import Path
 import sqlite3
 import stat
+import tempfile
 import time
 from urllib.parse import quote
 
@@ -123,23 +124,40 @@ def copy_regular(source, dest, expected):
 
 
 def copy_sqlite(source, dest, expected, timeout=30):
+    """Back up a stable DB and journal using private input copies, not live SHM.
+
+    The outer backup guards against writers and rechecks the source inventory
+    and durable journal. SQLite may rewrite its SHM even in read-only mode, so
+    it must reconstruct that coordination file beside the temporary copy.
+    """
     dest.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
-    # Normal read-only SQLite backup sees WAL if present; no checkpoint occurs.
-    uri = 'file:' + quote(str(source), safe='/') + '?mode=ro'
-    deadline = time.monotonic() + timeout
-    src = sqlite3.connect(uri, uri=True, timeout=2)
-    try:
-        dst = sqlite3.connect(dest)
+    with tempfile.TemporaryDirectory(prefix='.sqlite-input-', dir=dest.parent) as tmp:
+        staged = Path(tmp) / source.name
+        copy_regular(source, staged, expected)
+        for suffix in ('-wal', '-journal'):
+            sidecar = Path(str(source) + suffix)
+            try: sidecar_facts = facts(sidecar)
+            except FileNotFoundError: continue
+            copy_regular(sidecar, Path(str(staged) + suffix), sidecar_facts)
+        # The staged directory is private and writable, allowing SQLite to
+        # rebuild its wal-index without changing a sidecar in the live profile.
+        # Keep read-only mode: a hot rollback journal must fail closed rather
+        # than recover and potentially follow an external super-journal path.
+        uri = 'file:' + quote(str(staged), safe='/') + '?mode=ro'
+        deadline = time.monotonic() + timeout
+        src = sqlite3.connect(uri, uri=True, timeout=2)
         try:
-            os.chmod(dest, 0o600)
-            def progress(_status, _remaining, _total):
-                if time.monotonic() > deadline: raise TimeoutError('SQLite backup timed out')
-            src.backup(dst, pages=128, progress=progress, sleep=0.05)
-            # The private copy must stand alone even when the source uses WAL.
-            if dst.execute('PRAGMA journal_mode=DELETE').fetchone()[0].lower() != 'delete':
-                raise RuntimeError('Could not seal SQLite snapshot')
-        finally: dst.close()
-    finally: src.close()
+            dst = sqlite3.connect(dest)
+            try:
+                os.chmod(dest, 0o600)
+                def progress(_status, _remaining, _total):
+                    if time.monotonic() > deadline: raise TimeoutError('SQLite backup timed out')
+                src.backup(dst, pages=128, progress=progress, sleep=0.05)
+                # The private copy must stand alone even when the source uses WAL.
+                if dst.execute('PRAGMA journal_mode=DELETE').fetchone()[0].lower() != 'delete':
+                    raise RuntimeError('Could not seal SQLite snapshot')
+            finally: dst.close()
+        finally: src.close()
     check = sqlite3.connect('file:' + quote(str(dest), safe='/') + '?mode=ro', uri=True)
     try:
         if check.execute('PRAGMA quick_check').fetchall() != [('ok',)]: raise RuntimeError('SQLite snapshot failed integrity check')
