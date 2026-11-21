@@ -64,7 +64,7 @@ def main():
        hashlib.sha256(trusted(stage, 'composite.tar.gz')).hexdigest() != manifest['composite_archive_sha256']:
         raise RuntimeError('Usage verification does not belong to this release')
     if {row.get('suite') for row in proof.get('checks', [])} != {'usage-collector', 'usage-ui', 'usage-native', 'usage-release', 'usage-stop',
-       'composite-session', 'composite-intro', 'composite-background', 'composite-claude'} or \
+       'composite-session', 'composite-resume', 'composite-intro', 'composite-background', 'composite-claude'} or \
        any(row.get('exit_code') or row.get('passed', 0) <= 0 for row in proof['checks']):
         raise RuntimeError('Usage verification is incomplete')
     spec = importlib.util.spec_from_file_location('usage_deploy_base', stage / 'deploy_base.py')

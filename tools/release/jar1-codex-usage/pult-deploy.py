@@ -111,7 +111,7 @@ def load(stage, manifest_sha, report_sha):
        report.get('composite_archive_sha256') != manifest['composite_archive_sha256'] or \
        hashlib.sha256(trusted(stage, 'composite.tar.gz')).hexdigest() != manifest['composite_archive_sha256']:
         raise RuntimeError('Usage verification does not match this release')
-    expected_suites = {'usage-collector', 'usage-ui', 'usage-native', 'usage-release', 'usage-stop', 'composite-session',
+    expected_suites = {'usage-collector', 'usage-ui', 'usage-native', 'usage-release', 'usage-stop', 'composite-session', 'composite-resume',
                        'composite-intro', 'composite-background', 'composite-claude'}
     if {row.get('suite') for row in report.get('checks', [])} != expected_suites or \
        any(row.get('exit_code') or row.get('passed', 0) <= 0 for row in report['checks']):

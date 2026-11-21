@@ -109,6 +109,7 @@ def verify(stage, home, dependencies, tmp_dir, host_netns_inode):
          str(source / '.msb/bot/tests/fixtures/saved-codex-without-engine-dispatch.mjs')], 1),
         ('composite-session', ['node', '--test', '--test-name-pattern=cap100|ownership is retained|first codex turn|first claude turn|reset retains',
          str(composite / '.msb/bot/tests/session-ledger.test.mjs')], 8),
+        ('composite-resume', ['node', '--test', str(composite / '.msb/bot/tests/session-resume.test.mjs')], 15),
         ('composite-intro', ['node', '--test', '--test-name-pattern=^Codex introduction goes through Telegram /stop',
          str(composite / '.msb/bot/tests/codex-bootstrap.test.mjs')], 1),
         ('composite-background', ['node', '--experimental-test-module-mocks', '--no-warnings', '--test',
