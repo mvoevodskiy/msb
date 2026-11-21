@@ -12,6 +12,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import { loadState, updateState, NO_STATE_WRITE } from '../state.mjs';
+import { rememberCodexUsageSession } from '../sessions/codex-usage-sessions.mjs';
 import { projectLocations, resolveProjectCwd } from '../projects/paths.mjs';
 import { botRoot } from '../paths.mjs';
 import { parseIntroductionSummary, saveIntroductionSummary } from './intro-memory.mjs';
@@ -193,6 +194,7 @@ async function checkpoint({ scope, lease, result, env, signal }) {
     if (result?.isError) return NO_STATE_WRITE;
     finish = lease.finish || (await bootstrapIdentityExists(lease.workspace) ? 'profile' : undefined);
     sessionId = isProviderSession(result?.sessionId, 'codex') ? result.sessionId : lease.sessionId;
+    rememberCodexUsageSession(state, sessionId);
     return saveEntry(state, scope, { ...lease, sessionId, finish });
   }, env);
   return { current, finish, sessionId };
@@ -242,7 +244,11 @@ export async function runCodexBootstrap({ scope, prompt, env, signal, onStatus, 
     text: 'Контекст знакомства изменился.' };
   const aborted = result => ({ ok: false, error: 'aborted', text: 'Остановлено.', bootstrap: true, result });
   if (signal?.aborted) return aborted();
-  let result;
+  let result, usageTracking = Promise.resolve();
+  const rememberObserved = id => {
+    usageTracking = usageTracking.then(() => updateState(state =>
+      rememberCodexUsageSession(state, id) ? state : NO_STATE_WRITE, env)).catch(() => {});
+  };
   if (!lease.finish) {
     await fs.mkdir(lease.workspace, { recursive: true });
     if (signal?.aborted) return aborted();
@@ -256,12 +262,18 @@ export async function runCodexBootstrap({ scope, prompt, env, signal, onStatus, 
       sessionId: lease.sessionId, codexProfile: profile, codexBootstrap: true,
       systemPrompt: lease.sessionId ? undefined : introPrompt,
       onEvent: event => {
+        if (event.type === 'system' && event.subtype === 'codex_thread_started' && event.provider_id === 'codex') {
+          rememberObserved(event.session_id);
+        }
         if (event.type === 'system' && event.subtype === 'provider') {
           onStatus?.({ kind: 'provider', providerId: event.provider_id });
         }
       },
     });
   }
+  if (result?.providerId === 'codex' && result.spawned &&
+      (result.sessionIdObserved || result.sessionId === lease.sessionId)) rememberObserved(result.sessionId);
+  await usageTracking;
   if (signal?.aborted || result?.aborted) return aborted(result);
   if (result && !result.isError && result.providerId !== 'codex') {
     return { ok: false, bootstrap: true, text: 'Codex не подтвердил запуск знакомства.', result };

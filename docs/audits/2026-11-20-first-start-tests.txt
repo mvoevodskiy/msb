@@ -1,0 +1,11 @@
+.msb/bot/tests/codex-bootstrap-services.test.mjs
+.msb/bot/tests/codex-bootstrap.test.mjs
+.msb/bot/tests/codex-first-start.test.mjs
+.msb/bot/tests/codex-intro-integration.test.mjs
+.msb/bot/tests/intro-memory.test.mjs
+.msb/bot/tests/intro-pending.test.mjs
+.msb/bot/tests/intro-session.test.mjs
+.msb/bot/tests/onboarding-guides.test.mjs
+.msb/bot/tests/start-help.test.mjs
+overlay/bot/ext/tests/codex-device-login.test.mjs
+overlay/bot/ext/tests/intro-summary-policy.test.mjs

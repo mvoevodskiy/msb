@@ -6,6 +6,7 @@ import { readFileSync, existsSync } from 'node:fs';
 import { join, dirname } from 'node:path';
 import { activeProvider } from './sources/provider.ts';
 import { CodexQuota, readCodexLimits } from './sources/codex-quota.ts';
+import { CodexUsageReader } from './sources/codex-usage.ts';
 import { performance } from 'node:perf_hooks';
 import { SNAPSHOT_SCHEMA, type Balance, type Bot, type ServerState, type Service, type Snapshot, type Subscription, type Task } from '../shared/types.ts';
 import type { PultConfig } from '../shared/config.ts';
@@ -64,6 +65,7 @@ export class Collector {
   private clkTck: number | null;
   private prevCpu: CpuSample | null = null;
   private readonly codexQuota: CodexQuota;
+  private readonly codexUsage: CodexUsageReader;
 
   constructor(config: PultConfig, opts: CollectorOptions = {}) {
     this.config = config;
@@ -76,6 +78,7 @@ export class Collector {
     this.diskPath = opts.diskPath ?? '/';
     this.exec = opts.exec ?? execCmd;
     this.env = opts.env ?? process.env;
+    this.codexUsage = new CodexUsageReader(this.env, config.botsRoot);
     this.clock = opts.clock ?? (() => new Date());
     this.firstCpuSampleMs = opts.firstCpuSampleMs ?? 1000;
     this.serverTz = opts.serverTz ?? serverTimeZone();
@@ -128,6 +131,9 @@ export class Collector {
     // ---- боты и их задачи ----
     const bots: Bot[] = [];
     const botTasks: { task: Task; findings: Finding[]; repo: string | null }[] = [];
+    const usageResult = await problems.guardAsync('Расход Codex', () => this.codexUsage.collect(
+      cfg.bots.map(b => ({ id: b.id, directory: join(cfg.botsRoot, b.id) })), tz, now), null);
+    if (usageResult?.failed) problems.add('Расход Codex', new Error('Не удалось получить статистику Codex'));
     let tasksHidden = 0;
     const rates: RateLimitInfo[] = [];
     let hasCodex = false;
@@ -163,6 +169,7 @@ export class Collector {
         lastResult: problems.guard(`бот «${b.name}»: последний итог`, () => this.lastResultFor(data, join(cfg.botsRoot, b.id), nowMs), null),
         chat24h: chat24h(data.traces, nowMs),
         bg24h: bg24h(data.runs, nowMs),
+        ...(usageResult?.usage.has(b.id) ? { codexUsage: usageResult.usage.get(b.id)! } : {}),
         timeline: timeline(data.traces, data.runs, botNowState, nowMs),
       });
     }

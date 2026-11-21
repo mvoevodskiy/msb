@@ -24,6 +24,7 @@ import { buildSystemPrompt } from './system-prompt.mjs';
 import { captureCodexProfile, readSessionContext } from './context.mjs';
 import { claimFirstSession, releaseFirstSession } from '../../shared/session-starts.mjs';
 import {applySessionResult,beginClaudeResumeRecovery} from './session-result.mjs';
+import {rememberCodexUsageSession} from '../sessions/codex-usage-sessions.mjs';
 import {captureSkillInstallTarget} from '../skills/install-target.mjs';
 import {skillInstallPrompt} from '../skills/install-protocol.mjs';
 import {prepareMcpLaunch} from '../mcp/launch.mjs';
@@ -224,6 +225,7 @@ export async function runAgentTurn({
         },
       });
     } : undefined;
+  let usageTracking = Promise.resolve();
   const launch = sessionId => runClaudeTurn({
     prompt,
     sessionId,
@@ -242,6 +244,10 @@ export async function runAgentTurn({
     onSpawn: pendingId ? onIntroPendingLaunched : undefined,
     onSteerReady: steering,
     onEvent(ev) {
+      if (providerId === 'codex' && ev.type === 'system' && ev.subtype === 'codex_thread_started' && ev.provider_id === 'codex') {
+        usageTracking = usageTracking.then(() => updateState(current =>
+          rememberCodexUsageSession(current, ev.session_id) ? current : NO_STATE_WRITE, env)).catch(() => {});
+      }
       if (ev.type === 'system' && typeof ev.provider_id === 'string') streamProvider = ev.provider_id;
       if (ev.type === 'system' && ev.subtype === 'provider') {
         onStatus?.({ kind: 'provider', providerId: ev.provider_id });
@@ -267,6 +273,7 @@ export async function runAgentTurn({
   });
 
   let result = await launch(state.ccSessionId || undefined);
+  await usageTracking;
   if (result.resumeRejected) {
     const recovery = await beginClaudeResumeRecovery(state, env, signal);
     if (recovery) {

@@ -149,6 +149,19 @@ async function earlyPromptError(result, signal, env) {
   return { ...deferred, costPauseDeferred: true };
 }
 
+function usageMetrics(result, plan, interrupted = false) {
+  const usage = result?.usage;
+  const parentInput = usage ? usage.inputTokens + usage.cacheReadTokens + usage.cacheCreationTokens : undefined;
+  // Old JO charged the whole observed helper total to the daily input budget.
+  const knownInputs = [parentInput, result?.helperTokens].filter(Number.isFinite);
+  return { meteredUsd: result?.meteredCostUsd, fileCommitStarted: result?.fileCommitStarted,
+    tokensIn: knownInputs.length ? knownInputs.reduce((total, part) => total + part, 0) : undefined,
+    tokensOut: usage?.outputTokens, usageIncomplete: result?.usageIncomplete || interrupted || undefined,
+    ...(plan.provider === 'codex' && result?.providerId === 'codex' ? { providerId: 'codex',
+      usageCachedTokens: Number.isSafeInteger(result.usageCachedTokens) && result.usageCachedTokens >= 0
+        ? result.usageCachedTokens : undefined } : {}) };
+}
+
 export async function runSavedPrompt(action, plan, { signal, isCurrent, runCodexPrompt, runCursorPrompt }, env = process.env) {
   if (signal.aborted) return stopped;
   if (plan.modelError) {
@@ -192,9 +205,10 @@ export async function runSavedPrompt(action, plan, { signal, isCurrent, runCodex
   const roster = claudeHelpersSupported && team.length ? savedClaudeTeamRoster(team) : undefined;
   const teamPrompt = promptTeamInstructions(team, plan.provider, roster && [...roster.keys()]);
   const prompt = taskInstructions(action, plan, teamPrompt);
-  let result;
+  let result, attemptedCodex = false;
   try {
     if (plan.provider === 'codex') {
+      attemptedCodex = typeof runCodexPrompt === 'function';
       result = await runCodexPrompt?.({ prompt, cwd, model: plan.model, tools: plan.tools,
         directories, denied, signal: turnSignal, canLaunch }, env);
     } else if (plan.provider === 'cursor') {
@@ -212,22 +226,22 @@ export async function runSavedPrompt(action, plan, { signal, isCurrent, runCodex
           ...(claudeHelpersSupported ? { agents } : {}) }, signal: turnSignal });
     }
   } catch {
-    if (signal.aborted) return costPauseDeferred ? { ...stopped, costPauseDeferred: true } : stopped;
+    const unknown = attemptedCodex ? { providerId: 'codex', usageIncomplete: true } : {};
+    if (signal.aborted) return costPauseDeferred ? { ...stopped, ...unknown, costPauseDeferred: true } : { ...stopped, ...unknown };
     if (costPauseDeferred) return { ...deferred, costPauseDeferred: true };
-    return { status: 'error', error: 'не удалось запустить ' + providerLabel(plan.provider) + ' для фоновой задачи' };
+    return { ...unknown, status: 'error', error: 'не удалось запустить ' + providerLabel(plan.provider) + ' для фоновой задачи' };
   }
-  if (signal.aborted) return result?.fileCommitStarted ? { ...stopped, fileCommitStarted: true }
-    : costPauseDeferred ? { ...stopped, costPauseDeferred: true } : stopped;
+  if (signal.aborted) {
+    const known = plan.provider === 'codex' && result?.providerId === 'codex' ? usageMetrics(result, plan, true)
+      : attemptedCodex && !result ? { providerId: 'codex', usageIncomplete: true } : {};
+    return result?.fileCommitStarted ? { ...stopped, ...known, fileCommitStarted: true }
+      : costPauseDeferred ? { ...stopped, ...known, costPauseDeferred: true } : { ...stopped, ...known };
+  }
   if (timeout.aborted && !result) return costPauseDeferred ? { ...deferred, costPauseDeferred: true }
-    : { status: 'error', error: 'ход прерван по сроку', timeout: true };
+    : { ...(attemptedCodex ? { providerId: 'codex', usageIncomplete: true } : {}),
+      status: 'error', error: 'ход прерван по сроку', timeout: true };
   if (!result) return costPauseDeferred ? { ...deferred, costPauseDeferred: true } : deferred;
-  const usage = result.usage;
-  const parentInput = usage ? usage.inputTokens + usage.cacheReadTokens + usage.cacheCreationTokens : undefined;
-  // Old JO charged the whole observed helper total to the daily input budget.
-  const knownInputs = [parentInput, result.helperTokens].filter(Number.isFinite);
-  const metrics = { meteredUsd: result.meteredCostUsd, fileCommitStarted: result.fileCommitStarted,
-    tokensIn: knownInputs.length ? knownInputs.reduce((total, part) => total + part, 0) : undefined,
-    tokensOut: usage?.outputTokens, usageIncomplete: result.usageIncomplete };
+  const metrics = usageMetrics(result, plan, timeout.aborted && plan.provider === 'codex');
   if (timeout.aborted) return { ...metrics, status: 'error', error: 'ход прерван по сроку', timeout: true, text: result.text };
   if (result.isError || (result.providerId && result.providerId !== plan.provider)) {
     return { ...metrics, status: 'error', error: 'ход движка не удался', text: result.assistantTextObserved ? result.text : '' };

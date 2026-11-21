@@ -213,6 +213,9 @@ a.rowlink-inline { text-decoration: none; display: inline-flex; align-items: bas
 .tbl thead th { color: var(--muted); font-weight: 400; text-align: left; padding: 8px 10px; font-size: 12px; border-bottom: 1px solid var(--line2); white-space: nowrap; vertical-align: bottom; }
 .tbl td, .tbl tbody th { padding: 11px 10px; border-bottom: 1px solid var(--line); vertical-align: top; text-align: left; font-weight: 400; }
 .tbl .r { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.usage-table { table-layout: fixed; margin-top: 8px; }
+.usage-table thead th, .usage-table td, .usage-table tbody th { padding: 8px 4px; overflow-wrap: anywhere; white-space: normal; }
+.usage-table thead th:not(:first-child), .usage-table td { text-align: right; font-variant-numeric: tabular-nums; }
 .tbl .c-dot { width: 18px; padding-right: 0; padding-left: 4px; }
 .tbl td.c-dot .dot { margin-top: 5px; }
 .tbl tr.grp th { padding: 18px 10px 6px; color: var(--muted); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; border-bottom: 1px solid var(--line2); font-weight: 400; }

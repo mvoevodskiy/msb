@@ -26,6 +26,7 @@ import { ensureDir, statePath } from './paths.mjs';
  * codexBootstrap holds scoped attempts and separate resume IDs for [introduction](./agent/codex-bootstrap.mjs).
  * codexServiceSetup and servicesSetupShown fence the final [service card](./telegram/bootstrap-services.mjs).
  * sessionHistory (описания/ID, не native transcript) → [sessions](./sessions/README.md);
+ * codexUsageSessions — отдельные подтверждённые ID для учёта, без текстов и лимита меню;
  * записи ID/usage/ledger атомарны через [result](./agent/session-result.mjs).
  * Проверки: [paths/state](../tests/paths-state.test.mjs), [session races](../tests/turn-lifecycle.test.mjs).
  */

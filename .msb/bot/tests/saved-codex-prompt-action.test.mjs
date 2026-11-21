@@ -135,6 +135,11 @@ test('the saved action launches Codex independently of the normal conversation',
   assert.equal((await f.actions())[0].lastStatus, 'ok');
   const [run] = await f.runs();
   assert.deepEqual([run.status, run.costUsd, run.tokensIn, run.tokensOut], ['ok', 0, 30, 5]);
+  assert.equal(run.providerId, 'codex');
+  assert.equal(run.usageSource, 'saved-prompt');
+  assert.equal(run.usageCachedTokens, 8);
+  assert.match(run.usageRunId, /^[0-9a-f-]{36}$/);
+  assert.equal(run.usageCompletedAt, new Date(now).toISOString());
   assert.equal(f.messages.length, 2);
   assert.match(f.messages[0], /Готово: 1 сообщение/);
   assert.equal(f.messages[1], 'Фоновый ответ Codex');
@@ -159,6 +164,31 @@ test('owner pause interrupts saved Codex and discards a late model reply', async
   assert.equal(await fs.readFile(f.stopped, 'utf8'), 'stopped');
   assert.deepEqual(await f.actions(), [original]);
   assert.equal((await f.runs())[0].status, 'stopped');
+  assert.deepEqual(f.messages, []);
+});
+
+test('an interrupted Codex task retains known usage and marks it incomplete', async t => {
+  let started;
+  const ready = new Promise(resolve => { started = resolve; });
+  const f = await profile(t, { runSavedCodex: async ({ signal }) => {
+    started();
+    await new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
+    return { providerId: 'codex', usage: { inputTokens: 20, cacheReadTokens: 7,
+      cacheCreationTokens: 0, outputTokens: 6 }, helperTokens: 11, usageCachedTokens: 9 };
+  } });
+  const tick = f.scheduler.tickNow();
+  await ready;
+  await setOwnerPause(true, { now, check() {}, checkEngine() {} });
+  await tick;
+  const [run] = await f.runs();
+  assert.deepEqual([run.status, run.providerId, run.usageTokensIn, run.usageTokensOut, run.usageAccountingIncomplete],
+    ['stopped', 'codex', 38, 6, true]);
+  assert.equal(run.tokensIn, undefined);
+  assert.equal(run.tokensOut, undefined);
+  assert.equal(run.usageIncomplete, undefined);
+  assert.equal(run.usageSource, 'saved-prompt');
+  assert.equal(run.usageCachedTokens, 9);
+  assert.match(run.usageRunId, /^[0-9a-f-]{36}$/);
   assert.deepEqual(f.messages, []);
 });
 

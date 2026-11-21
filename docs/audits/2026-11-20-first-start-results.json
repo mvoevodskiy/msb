@@ -1,0 +1,126 @@
+{
+  "status": "verified-isolated",
+  "date": "2026-11-20",
+  "repository": "SergeyKoleda/Jarvis",
+  "branch": "codex/open-core-reference-tests",
+  "base_remote_commit": "07d02b553451047c4010641a33bd16a0e8312e58",
+  "base_local_commit": "19e3e9937f3f02a191d4392a623f28016e98f7e8",
+  "base_tree": "f12164b5bc5c3b2202dd6843882a6948c8382ab8",
+  "tested_remote_commit": "0dae6d404f8bd55b3f46dce565b164622b74c80c",
+  "tested_local_commit": "2a2a755f9d400df0575b8a1354f21a50f93ed5d1",
+  "tested_tree": "672b90711788a48e309ea03737b646e0f67c4ce2",
+  "node": "24.22.3",
+  "environment": "temporary synthetic HOME/TMPDIR, minimal PATH, LANG=C.UTF-8, TZ=UTC",
+  "network": "isolated network namespace, interfaces down",
+  "live": false,
+  "deployed": false,
+  "ui_changed": false,
+  "tests": 113,
+  "pass": 113,
+  "fail": 0,
+  "cancelled": 0,
+  "skipped": 0,
+  "todo": 0,
+  "files": 11,
+  "excluded_case_names": [
+    "a seeded workspace does not introduce Claude or OpenClaw as Codex",
+    "valid history remains available but is not activated after a provider, engine, project, epoch, profile or workspace change"
+  ],
+  "tap_sha256": "0340a34d91f0ab25722d7d433c8b7fb2154d12b56a2aae734813d738cd11c65b",
+  "manifest": "2026-11-20-first-start-tests.txt",
+  "exclude_patterns": "2026-11-20-first-start-excluded.json",
+  "command_flags": [
+    "--test",
+    "--test-reporter=tap",
+    "--test-concurrency=2",
+    "--test-timeout=30000"
+  ],
+  "baseline": {
+    "files": 9,
+    "tests": 102,
+    "pass": 102,
+    "fail": 0
+  },
+  "readiness_regression": {
+    "tests": 4,
+    "before": {
+      "pass": 0,
+      "fail": 4
+    },
+    "after": {
+      "pass": 4,
+      "fail": 0
+    },
+    "related_after": {
+      "files": 9,
+      "pass": 105,
+      "fail": 0
+    }
+  },
+  "workspace_regression": {
+    "tests": 1,
+    "before": {
+      "pass": 0,
+      "fail": 1
+    },
+    "after": {
+      "pass": 1,
+      "fail": 0
+    },
+    "with_existing_attempt_boundary": {
+      "pass": 2,
+      "fail": 0
+    }
+  },
+  "new_composed_route": {
+    "tests": 1,
+    "pass": 1,
+    "focused_related": {
+      "pass": 23,
+      "fail": 0
+    },
+    "real_components": [
+      "overlay prepare",
+      "project restoration",
+      "readConfig/createBot",
+      "grammY dispatch",
+      "native login activation",
+      "agent runner",
+      "PATH shim",
+      "summary validation and profile publication",
+      "foreground session handoff"
+    ],
+    "synthetic_components": [
+      "Telegram API transport",
+      "Codex device/login status",
+      "Codex exec and app-server peer"
+    ],
+    "not_executed": [
+      "top-level main/index entrypoints",
+      "Telegram polling",
+      "schedulers",
+      "installer",
+      "real native account or model"
+    ]
+  },
+  "commits": [
+    {
+      "key": "readiness",
+      "remote": "6805f99a9ff57d50c665b62b48dc526000994a57",
+      "local": "5ac36deea8ad0fe9022d24316b31e66983fc2538",
+      "tree": "b178aaf359a9d7ed19c8af79c191ebe15d6da231"
+    },
+    {
+      "key": "workspace",
+      "remote": "6be2d01346e3675e7c32871fad753718329f5343",
+      "local": "9781f597d11e5dff591ecfec8a8502b2b038feca",
+      "tree": "1d527245ea6bdf81b815db38a92d5f8f4fedecb9"
+    },
+    {
+      "key": "first_start_test",
+      "remote": "0dae6d404f8bd55b3f46dce565b164622b74c80c",
+      "local": "2a2a755f9d400df0575b8a1354f21a50f93ed5d1",
+      "tree": "672b90711788a48e309ea03737b646e0f67c4ce2"
+    }
+  ]
+}

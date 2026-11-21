@@ -7,6 +7,7 @@
  * transitions. [Pause lock](./owner-pause.mjs), [deferred cost slot](./cost-pause-pending.mjs),
  * [admission](../../tests/reminder-limits.test.mjs), [pause/resume checks](../../tests/saved-spend-pause.test.mjs).
  */
+import { randomUUID } from 'node:crypto';
 import { loadState, NO_STATE_WRITE, updateState } from '../state.mjs';
 import { singleRequestSignal } from '../telegram/presentation-api.mjs';
 import { isLocalReminderEngine, readReminderPolicy, reminderOwnerChat } from './reminder-policy.mjs';
@@ -99,6 +100,7 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
 
   async function promptOutcome(file, action, chat, plan, turn, quotaCurrent) {
     const active = AbortSignal.any([turn.signal, signal]);
+    const usageRunId = plan.provider === 'codex' ? randomUUID() : undefined;
     try {
       let result = await runSavedPrompt(action, plan, {
         runCodexPrompt,
@@ -112,9 +114,13 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
         const state = await loadState().then(value => value.state, () => undefined);
         if (state?.costPaused) result = { ...result, costPauseDeferred: true };
       }
+      if (result.providerId === 'codex') result = { ...result, usageRunId };
       if (active.aborted) return { status: 'stopped', detail: 'ход прерван остановкой фоновых задач',
-        fileCommitStarted: result.fileCommitStarted, costPauseDeferred: result.costPauseDeferred };
-      return await deliverSavedPrompt(api, chat, result, active);
+        fileCommitStarted: result.fileCommitStarted, costPauseDeferred: result.costPauseDeferred,
+        ...(result.providerId === 'codex' ? { providerId: 'codex', usageRunId, tokensIn: result.tokensIn, usageCachedTokens: result.usageCachedTokens,
+          tokensOut: result.tokensOut, usageIncomplete: true } : {}) };
+      const delivered = await deliverSavedPrompt(api, chat, result, active);
+      return delivered.providerId === 'codex' ? { ...delivered, usageRunId } : delivered;
     } finally {
       turn.release();
     }
@@ -195,6 +201,7 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
           log('[msb/reminder] Could not save reminder breaker: ' + (error.code || error.name));
         }
         if (result.status === 'deferred') continue;
+        if (result.providerId === 'codex') result = { ...result, usageCompletedAt: new Date(now()).toISOString() };
         await appendSavedActionRun(action, ts, result).catch(error => {
           log('[msb/reminder] Could not append run: ' + (error.code || error.name));
         });

@@ -26,6 +26,8 @@ for(const provider of ['claude','codex'])for(const scenario of ['resume','prepar
  }
  if(same){assert.equal(r.afterSelect.parkedCcSessions[r.foreignProvider],r.foreign);assert.equal(r.afterSelect.pendingCcSessionStarts[r.foreignProvider],'fixture-other-token');}
  else{assert.equal(r.afterSelect.parkedCcSessions,undefined);assert.equal(r.afterSelect.pendingCcSessionStarts,undefined);}
+ if(provider==='codex')assert.ok(r.state.codexUsageSessions.includes(r.target.id));
+ else assert.deepEqual(r.state.codexUsageSessions,r.initial.codexUsageSessions);
  assert.equal(r.profilePreserved,true);assert.equal(r.providerStorePreserved,true);
 });
 test('session resume: ID-less Codex -> Claude history/project -> new Claude first -> late Codex cannot return or delete the newer reservation',()=>{
@@ -33,6 +35,7 @@ test('session resume: ID-less Codex -> Claude history/project -> new Claude firs
  assert.equal(r.newReservationSurvived,true);assert.equal(r.afterOld.ccSessionId,undefined);assert.equal(r.afterOld.parkedCcSessions,undefined);const old=r.afterOld.sessionHistory.find(row=>row.id===r.old);assert.ok(old);assert.equal(old.providerId,'codex');assert.equal(old.project,'alpha');assert.equal(old.messageCount,1);assert.deepEqual(r.afterOld.sessionHistory.filter(row=>row.id!==r.old),r.initial.sessionHistory);
  assert.equal(r.oldContextMeasured,true);assert.equal(r.oldContextCleared,true);assert.equal(r.state.extAuthBypass,'codex');assert.equal(r.state.ccSessionId,undefined);assert.equal(r.state.parkedCcSessions.claude,r.next);
  assert.equal(r.state.sessionHistory.some(row=>row.id===r.old),true);const next=r.state.sessionHistory.find(row=>row.id===r.next);assert.equal(next.providerId,'claude');assert.equal(next.project,'beta');assert.equal(next.messageCount,1);
+ assert.ok(r.state.codexUsageSessions.includes(r.old));
  assert.equal(r.calls[0].actualCwd,r.realAlpha);assert.equal(r.calls[1].actualCwd,r.realBeta);assert.equal(parseClaudeArgv(r.calls[1].args).resume,null);assert.equal(r.profilePreserved,true);assert.equal(r.providerStorePreserved,true);
 });
 
@@ -42,4 +45,6 @@ for(const provider of ['claude','codex'])for(const scenario of ['after-reset','a
  const recorded=r.afterOld.sessionHistory.find(row=>row.id===r.old);assert.ok(recorded,'The observed returned ID must remain in old-style history');assert.equal(recorded.providerId,provider);assert.equal(recorded.project,'alpha');assert.equal(recorded.firstPrompt,'fixture old task');assert.equal(recorded.messageCount,1);
  assert.equal(r.afterSelect.ccSessionId,r.old);assert.equal(r.afterSelect.activeProject,'alpha');assert.equal(r.afterSelect.sessionEpoch,2);assert.equal(parseClaudeArgv(r.calls[1].args).resume,r.old);assert.equal(r.calls[1].actualCwd,r.realAlpha);
  assert.equal(r.state.ccSessionId,r.old);assert.equal(r.state.sessionHistory.find(row=>row.id===r.old).messageCount,2);assert.equal(r.profilePreserved,true);assert.equal(r.providerStorePreserved,true);
+ if(provider==='codex')assert.ok(r.state.codexUsageSessions.includes(r.old));
+ else assert.deepEqual(r.state.codexUsageSessions,r.initial.codexUsageSessions);
 });
