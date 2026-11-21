@@ -174,6 +174,52 @@ def fixture(failure=None):
 
 
 class DeploymentTest(unittest.TestCase):
+    def test_codex_cache_focused_report_accepts_exact_suites(self):
+        with fixture() as (release, host, roots, _, report_path):
+            manifest_path = release.stage / 'manifest.json'
+            manifest = json.loads(manifest_path.read_text())
+            manifest['base_commit'] = deploy.FOCUSED_CACHE_BASE
+            manifest['pult_files'] = [{'root': 'pult', 'relative': name} for name in deploy.FOCUSED_CACHE_PULT]
+            manifest_path.write_text(json.dumps(manifest))
+            report = json.loads(report_path.read_text())
+            report['manifest_sha256'] = deploy.digest(manifest_path)
+            report['verification_scope'] = 'codex-cache-focused-v1'
+            counts = {'usage-collector': 20, 'usage-ui': 13, 'usage-native': 1,
+                'usage-release': 6, 'usage-stop': 1, 'composite-session': 8,
+                'composite-resume': 15, 'composite-intro': 1, 'composite-background': 11,
+                'composite-claude': 1}
+            report['checks'] = [{'suite': name, 'exit_code': 0, 'passed': count}
+                                for name, count in counts.items()]
+            report_path.write_text(json.dumps(report))
+            with patch.object(deploy, 'FOCUSED_CACHE_BOT', frozenset(row['relative'] for row in manifest['files'])):
+                checked = deploy.Deployment(release.stage, release.backup, roots, host,
+                    deploy.digest(manifest_path), deploy.digest(report_path))
+            self.assertEqual(checked.environment, report['environment'])
+            self.assertEqual(host.calls, [])
+
+    def test_codex_cache_focused_report_rejects_missing_suite(self):
+        with fixture() as (release, host, roots, _, report_path):
+            manifest_path = release.stage / 'manifest.json'
+            manifest = json.loads(manifest_path.read_text())
+            manifest['base_commit'] = deploy.FOCUSED_CACHE_BASE
+            manifest['pult_files'] = [{'root': 'pult', 'relative': name} for name in deploy.FOCUSED_CACHE_PULT]
+            manifest_path.write_text(json.dumps(manifest))
+            report = json.loads(report_path.read_text())
+            report['manifest_sha256'] = deploy.digest(manifest_path)
+            report['verification_scope'] = 'codex-cache-focused-v1'
+            counts = {'usage-collector': 20, 'usage-ui': 13, 'usage-native': 1,
+                'usage-release': 6, 'usage-stop': 1, 'composite-session': 8,
+                'composite-resume': 15, 'composite-intro': 1, 'composite-background': 11,
+                'composite-claude': 1}
+            report['checks'] = [{'suite': name, 'exit_code': 0, 'passed': count}
+                                for name, count in counts.items() if name != 'composite-claude']
+            report_path.write_text(json.dumps(report))
+            with patch.object(deploy, 'FOCUSED_CACHE_BOT', frozenset(row['relative'] for row in manifest['files'])):
+                with self.assertRaisesRegex(ValueError, 'Focused Codex cache verification'):
+                    deploy.Deployment(release.stage, release.backup, roots, host,
+                        deploy.digest(manifest_path), deploy.digest(report_path))
+            self.assertEqual(host.calls, [])
+
     def test_incomplete_new_audit_suites_cannot_authorize_release(self):
         for suite, passed in (('intro-safe', 42), ('audit-targeted', 132), ('scheduler-safe', 18)):
             with self.subTest(suite=suite), fixture() as (release, host, roots, _entries, report_path):

@@ -33,6 +33,13 @@ RELEASE_ORDER = [('bot', name) for name in (
 ALLOWED = {'lib': set(), 'bin': set(), 'engine': set(), 'bot': {path for _, path in RELEASE_ORDER}}
 ADDED = {('bot', 'src/autonomy/run-journal.mjs')}
 ANCHOR = {'bot': 'src/engines/client.mjs'}
+FOCUSED_CACHE_BASE = '35bf0b6b2092769a8c6b49b4f0b4a2090d22f204'
+FOCUSED_CACHE_BOT = frozenset(('src/autonomy/prompt-turn.mjs', 'src/autonomy/prompt-delivery.mjs',
+    'src/autonomy/reminder-dispatch.mjs', 'src/autonomy/reminder-runs.mjs',
+    'ext/adapters/saved-codex-usage.mjs', 'ext/adapters/saved-codex.mjs'))
+FOCUSED_CACHE_PULT = frozenset(('src/collector/sources/codex-usage-data.ts',
+    'src/collector/sources/codex-usage.ts', 'src/shared/types.ts',
+    'src/ui/view-bot-usage.js', 'src/ui/app.css'))
 
 def bot_owner():
     return (pwd.getpwnam('client').pw_uid, grp.getgrnam('client').gr_gid, 0o664)
@@ -489,38 +496,62 @@ class Deployment:
            any(type(proof[k]) is not int or proof[k] <= 0 for k in ('host_netns_inode', 'test_netns_inode')) or proof['host_netns_inode'] == proof['test_netns_inode'] or \
            any(not isinstance(proof[k], str) or not re.fullmatch(r'[0-9a-f]{64}', proof[k]) for k in ('wrapper_sha256', 'binary_sha256')):
             raise ValueError('Required isolated native steer verification is absent')
-        required = {'node-0', 'node-1', 'node-2', 'node-3', 'service-labels', 'bot-status-view',
-                    'steer-targeted', 'steer-native-isolated', 'intro-safe', 'audit-targeted', 'scheduler-safe', 'legacy-timer-conversation-safe', 'backlog-targeted', 'recurring-safe', 'menu-safe', 'test_bot_off_marker', 'test_ipc_reference',
-                    'test_private_state', 'test_pult_routing', 'test_client_markers', 'fstab-compat'}
-        required.update('syntax-' + item['relative'].replace('/', '_') for item in self.manifest['files'])
-        checks = verified.get('checks', [])
-        if len(checks) != len(required) or {item.get('suite') for item in checks} != required or \
-           any(item.get('exit_code') != 0 or (not item['suite'].startswith('syntax-') and item['suite'] != 'test_client_markers' and
-               (not isinstance(item.get('passed'), int) or item['passed'] <= 0)) for item in checks):
-            raise ValueError('Scoped verification is incomplete')
-        native = next(item for item in checks if item['suite'] == 'steer-native-isolated')
-        if (native.get('tests'), native.get('passed'), native.get('skipped')) != (1, 1, 0):
-            raise ValueError('Native steer verification is incomplete')
-        focused = next(item for item in checks if item['suite'] == 'steer-targeted')
-        if (focused.get('tests'), focused.get('passed'), focused.get('skipped')) != (95, 95, 0):
-            raise ValueError('Steer and journal verification is incomplete')
-        for suite, count in (('intro-safe', 43), ('audit-targeted', 133), ('scheduler-safe', 19)):
-            row = next(item for item in checks if item['suite'] == suite)
-            if (row.get('tests'), row.get('passed'), row.get('skipped')) != (count, count, 0):
-                raise ValueError('Audited regression verification is incomplete: ' + suite)
-        root_cases = next(item for item in checks if item['suite'] == 'test_client_markers')
-        if (root_cases.get('tests'), root_cases.get('passed'), root_cases.get('skipped')) != (9, 0, 9):
-            raise ValueError('Distinct-UID target skips are not accounted for')
-        counts = {item['suite']: item.get('passed') for item in checks}
-        if counts['service-labels'] != 3 or counts['bot-status-view'] != 1 or \
-           counts['legacy-timer-conversation-safe'] != 23 or counts['backlog-targeted'] != 291 or counts['recurring-safe'] != 8 or counts['menu-safe'] != 10 or counts['test_bot_off_marker'] != 9:
-            raise ValueError('Focused verification did not run expected tests')
-        fstab = next(item for item in checks if item['suite'] == 'fstab-compat')
-        fstab_skips = fstab.get('skipped_cases')
-        if fstab.get('tests') != 16 or fstab.get('passed', 0) < 15 or fstab.get('skipped', 0) > 1 or \
-           fstab.get('passed', 0) + fstab.get('skipped', 0) != 16 or \
-           fstab_skips not in ([], ['test_rewrite_preserves_posix_acl']) or len(fstab_skips) != fstab.get('skipped'):
-            raise ValueError('fstab compatibility verification is incomplete')
+        if verified.get('verification_scope') == 'codex-cache-focused-v1':
+            for key, root, expected in (('files', 'bot', FOCUSED_CACHE_BOT),
+                                        ('pult_files', 'pult', FOCUSED_CACHE_PULT)):
+                entries = self.manifest.get(key)
+                if not isinstance(entries, list) or len(entries) != len(expected) or \
+                   any(not isinstance(row, dict) or row.get('root') != root or
+                       not isinstance(row.get('relative'), str) for row in entries) or \
+                   {row['relative'] for row in entries} != expected:
+                    raise ValueError('Focused Codex cache release target list changed')
+            if self.manifest.get('base_commit') != FOCUSED_CACHE_BASE:
+                raise ValueError('Focused Codex cache release baseline changed')
+            required_focused = {'usage-collector': 20, 'usage-ui': 13, 'usage-native': 1,
+                'usage-release': 6, 'usage-stop': 1, 'composite-session': 8,
+                'composite-resume': 15, 'composite-intro': 1, 'composite-background': 11,
+                'composite-claude': 1}
+            checks = verified.get('checks')
+            if not isinstance(checks, list) or len(checks) != len(required_focused) or \
+               any(not isinstance(row, dict) or not isinstance(row.get('suite'), str) for row in checks) or \
+               {row['suite'] for row in checks} != set(required_focused) or \
+               any(type(row.get('exit_code')) is not int or row['exit_code'] != 0 or
+                   type(row.get('passed')) is not int or row['passed'] != required_focused[row['suite']]
+                   for row in checks):
+                raise ValueError('Focused Codex cache verification is incomplete')
+        else:
+            required = {'node-0', 'node-1', 'node-2', 'node-3', 'service-labels', 'bot-status-view',
+                        'steer-targeted', 'steer-native-isolated', 'intro-safe', 'audit-targeted', 'scheduler-safe', 'legacy-timer-conversation-safe', 'backlog-targeted', 'recurring-safe', 'menu-safe', 'test_bot_off_marker', 'test_ipc_reference',
+                        'test_private_state', 'test_pult_routing', 'test_client_markers', 'fstab-compat'}
+            required.update('syntax-' + item['relative'].replace('/', '_') for item in self.manifest['files'])
+            checks = verified.get('checks', [])
+            if len(checks) != len(required) or {item.get('suite') for item in checks} != required or \
+               any(item.get('exit_code') != 0 or (not item['suite'].startswith('syntax-') and item['suite'] != 'test_client_markers' and
+                   (not isinstance(item.get('passed'), int) or item['passed'] <= 0)) for item in checks):
+                raise ValueError('Scoped verification is incomplete')
+            native = next(item for item in checks if item['suite'] == 'steer-native-isolated')
+            if (native.get('tests'), native.get('passed'), native.get('skipped')) != (1, 1, 0):
+                raise ValueError('Native steer verification is incomplete')
+            focused = next(item for item in checks if item['suite'] == 'steer-targeted')
+            if (focused.get('tests'), focused.get('passed'), focused.get('skipped')) != (95, 95, 0):
+                raise ValueError('Steer and journal verification is incomplete')
+            for suite, count in (('intro-safe', 43), ('audit-targeted', 133), ('scheduler-safe', 19)):
+                row = next(item for item in checks if item['suite'] == suite)
+                if (row.get('tests'), row.get('passed'), row.get('skipped')) != (count, count, 0):
+                    raise ValueError('Audited regression verification is incomplete: ' + suite)
+            root_cases = next(item for item in checks if item['suite'] == 'test_client_markers')
+            if (root_cases.get('tests'), root_cases.get('passed'), root_cases.get('skipped')) != (9, 0, 9):
+                raise ValueError('Distinct-UID target skips are not accounted for')
+            counts = {item['suite']: item.get('passed') for item in checks}
+            if counts['service-labels'] != 3 or counts['bot-status-view'] != 1 or \
+               counts['legacy-timer-conversation-safe'] != 23 or counts['backlog-targeted'] != 291 or counts['recurring-safe'] != 8 or counts['menu-safe'] != 10 or counts['test_bot_off_marker'] != 9:
+                raise ValueError('Focused verification did not run expected tests')
+            fstab = next(item for item in checks if item['suite'] == 'fstab-compat')
+            fstab_skips = fstab.get('skipped_cases')
+            if fstab.get('tests') != 16 or fstab.get('passed', 0) < 15 or fstab.get('skipped', 0) > 1 or \
+               fstab.get('passed', 0) + fstab.get('skipped', 0) != 16 or \
+               fstab_skips not in ([], ['test_rewrite_preserves_posix_acl']) or len(fstab_skips) != fstab.get('skipped'):
+                raise ValueError('fstab compatibility verification is incomplete')
         if digest(self.stage / 'source.tar.gz') != self.manifest['source_archive_sha256']:
             raise ValueError('Source archive changed')
         if digest(self.stage / 'verify.py') != self.manifest['verify_sha256'] or \
