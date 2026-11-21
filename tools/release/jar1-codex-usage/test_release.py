@@ -23,6 +23,16 @@ def module(name, file):
 
 
 class ReleaseTests(unittest.TestCase):
+    def test_recovery_refuses_to_replace_code_if_collector_did_not_stop(self):
+        pult = module('pult_usage_stop_test', HERE / 'pult-deploy.py')
+        def command(*args):
+            if 'ActiveState' in args: return 'active'
+            if 'MainPID' in args: return '123'
+            return ''
+        with patch.object(pult, 'command', side_effect=command), \
+             self.assertRaisesRegex(RuntimeError, 'did not stop'):
+            pult.stop_collector()
+
     def test_payload_cannot_differ_from_tested_pult_source(self):
         verify = module('usage_verify_test', HERE / 'verify.py')
         with tempfile.TemporaryDirectory() as temp:

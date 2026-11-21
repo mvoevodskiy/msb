@@ -53,6 +53,14 @@ def command(*args):
     return result.stdout.strip()
 
 
+def stop_collector():
+    command('systemctl', 'stop', 'pult-collector.service')
+    active = command('systemctl', 'show', 'pult-collector.service', '-p', 'ActiveState', '--value')
+    pid = command('systemctl', 'show', 'pult-collector.service', '-p', 'MainPID', '--value')
+    if active not in ('inactive', 'failed') or pid != '0':
+        raise RuntimeError('Pult collector did not stop; recovery guard remains in place')
+
+
 def inventory(manifest, base, after=False):
     changes = {item['relative']: item for item in manifest['pult_files']}
     expected = {item['relative']: item['sha256'] for item in manifest['pult_baseline_inventory']}
@@ -268,7 +276,7 @@ def apply(stage, manifest, base, backup):
         guard(base, backup, manifest)
         installed = dependency(stage, manifest)
         command('runuser', '-u', 'client', '--', str(DEPENDENCY), '--version')
-        command('systemctl', 'stop', 'pult-collector.service')
+        stop_collector()
         for item in record['files']:
             base.atomic_write(PULT, item['relative'], (stage / 'payload/pult' / item['relative']).read_bytes(),
                               item['owner'], create=item['before_sha256'] is None,
@@ -286,7 +294,7 @@ def apply(stage, manifest, base, backup):
         print(json.dumps({'pult_updated': True, 'collector_active': True, 'web_active': True}))
     except BaseException:
         guard(base, backup, manifest)
-        subprocess.run(['systemctl', 'stop', 'pult-collector.service'], check=False)
+        stop_collector()
         restore(base, pult_backup, record)
         inventory(manifest, base)
         clear_marker(base)
@@ -307,7 +315,7 @@ def rollback(manifest, base, backup):
        [item.get('relative') for item in record.get('files', [])] != list(FILES):
         raise RuntimeError('Pult backup does not match this release')
     guard(base, backup, manifest)
-    command('systemctl', 'stop', 'pult-collector.service')
+    stop_collector()
     restore(base, pult_backup, record)
     inventory(manifest, base)
     clear_marker(base)

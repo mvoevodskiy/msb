@@ -103,7 +103,7 @@ def verify(stage, home, dependencies, tmp_dir, host_netns_inode):
         ('usage-native', ['node', '--disable-warning=ExperimentalWarning', '--test',
          str(source / '.msb/pult/tests/collector/codex-usage-native.test.ts')], 1),
         ('usage-release', [sys.executable, '-B', '-m', 'unittest', 'discover', '-s',
-         str(source / 'tools/release/jar1-codex-usage'), '-p', 'test_release.py', '-v'], 3),
+         str(source / 'tools/release/jar1-codex-usage'), '-p', 'test_release.py', '-v'], 4),
         ('usage-stop', ['node', '--experimental-test-module-mocks', '--no-warnings', '--test',
          '--test-name-pattern=^an interrupted Codex task retains known usage and marks it incomplete$',
          str(source / '.msb/bot/tests/fixtures/saved-codex-without-engine-dispatch.mjs')], 1),
