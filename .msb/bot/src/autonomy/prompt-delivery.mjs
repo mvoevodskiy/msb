@@ -62,7 +62,7 @@ export async function deliverSavedPrompt(api, chat, result, signal) {
       if (signal.aborted) {
         if (index === 0) return { status: 'stopped', detail: 'ход прерван остановкой фоновых задач',
           fileCommitStarted: result.fileCommitStarted,
-          ...(result.providerId === 'codex' ? { providerId: 'codex', tokensIn: result.tokensIn,
+          ...(result.providerId === 'codex' ? { providerId: 'codex', tokensIn: result.tokensIn, usageCachedTokens: result.usageCachedTokens,
             tokensOut: result.tokensOut, usageIncomplete: true } : {}) };
         return { ...result, status: result.status === 'error' ? 'error' : 'skipped', outcome: 'stopped',
           detail: 'выдача прервана после отправки части результата' };

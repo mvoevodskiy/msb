@@ -5,12 +5,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { gzipSync } from 'node:zlib';
-import { createSavedCodexUsage } from '../adapters/saved-codex-usage.mjs';
+import { createSavedCodexUsage, parseSavedCodexUsage } from '../adapters/saved-codex-usage.mjs';
 import { openSavedCodexOtlp } from '../adapters/saved-codex-otlp.mjs';
 
 const id = suffix => '0199a213-81c0-7800-8aa1-bbab2a035a' + suffix;
 const root = id('53'), child = id('54'), grandchild = id('55'), foreign = id('56');
-const parent = { input: 7, output: 2, cached: 3 };
+const parent = { input: 7, output: 2, cached: 3, cacheKnown: true };
 const batch = logRecords => ({ resourceLogs: [{ scopeLogs: [{ logRecords }] }] });
 
 function events() {
@@ -38,7 +38,7 @@ function events() {
 
 test('repeated receipts do not multiply equal-sized responses or charge the parent twice', () => {
   const e = events(), usage = createSavedCodexUsage();
-  const first = e.response(child, 29, 2), second = e.response(child, 29, 2);
+  const first = e.response(child, 29, 2, 5), second = e.response(child, 29, 2, 6);
   const receipt = batch([
     e.link('spawn', root, child), e.link('spawn', child, grandchild),
     ...e.response(root, 7, 2, 3), ...first, ...second, ...e.response(grandchild, 4, 3),
@@ -47,7 +47,7 @@ test('repeated receipts do not multiply equal-sized responses or charge the pare
   usage.ingest(receipt);
   usage.ingest(batch([first[1], second[2]]));
   usage.ingest(JSON.parse(JSON.stringify(receipt)));
-  assert.deepEqual(usage.summarize(root, parent, true), { parent, helperTokens: 69, incomplete: false });
+  assert.deepEqual(usage.summarize(root, parent, true), { parent, helperTokens: 69, helperCachedTokens: 11, incomplete: false });
 });
 
 test('incomplete and foreign events preserve the known scoped lower bound', () => {
@@ -58,7 +58,7 @@ test('incomplete and foreign events preserve the known scoped lower bound', () =
     ...e.response(child, 29, 2), ...incomplete.slice(0, 2),
     e.link('result', child, root), ...e.response(foreign, 100, 30),
   ]));
-  assert.deepEqual(usage.summarize(root, parent, true), { parent, helperTokens: 31, incomplete: true });
+  assert.deepEqual(usage.summarize(root, parent, true), { parent, helperTokens: 31, helperCachedTokens: 0, incomplete: true });
   const fallback = usage.summarize(root, undefined, false);
   assert.deepEqual([fallback.parent.input, fallback.parent.output, fallback.helperTokens, fallback.incomplete], [7, 2, 31, true]);
 });
@@ -72,7 +72,31 @@ test('conflicting replay identities do not create a billable response', () => {
     e.link('spawn', root, child), ...e.response(root, 7, 2, 3),
     ...childEvents, conflicting, childEvents[2], e.link('result', child, root),
   ]));
-  assert.deepEqual(usage.summarize(root, parent, true), { parent, helperTokens: undefined, incomplete: true });
+  assert.deepEqual(usage.summarize(root, parent, true), { parent, helperTokens: undefined, helperCachedTokens: undefined, incomplete: true });
+});
+
+test('missing or invalid cache counts stay unknown without losing observed totals', () => {
+  assert.equal(parseSavedCodexUsage({ input_tokens: 7, output_tokens: 2 }).cacheKnown, false);
+  assert.equal(parseSavedCodexUsage({ input_tokens: 7, output_tokens: 2, cached_input_tokens: 8 }).cacheKnown, false);
+  const e = events(), usage = createSavedCodexUsage();
+  const childEvents = e.response(child, 29, 2, 5);
+  childEvents[2].attributes = childEvents[2].attributes.filter(item => item.key !== 'cached_token_count');
+  usage.ingest(batch([e.link('spawn', root, child), ...e.response(root, 7, 2, 3),
+    ...childEvents, e.link('result', child, root)]));
+  const result = usage.summarize(root, parent, true);
+  assert.equal(result.helperTokens, 31);
+  assert.equal(result.helperCachedTokens, undefined);
+});
+
+test('a replay that adds explicit zero cache keeps the helper total once', () => {
+  const e = events(), usage = createSavedCodexUsage();
+  const childEvents = e.response(child, 29, 2, 0);
+  const unknown = structuredClone(childEvents[2]);
+  unknown.attributes = unknown.attributes.filter(item => item.key !== 'cached_token_count');
+  usage.ingest(batch([e.link('spawn', root, child), ...e.response(root, 7, 2, 3),
+    childEvents[0], childEvents[1], unknown, childEvents[2], e.link('result', child, root)]));
+  const result = usage.summarize(root, parent, true);
+  assert.deepEqual([result.helperTokens, result.helperCachedTokens, result.incomplete], [31, 0, false]);
 });
 
 test('the receiver isolates one invocation and accepts only bounded authorized receipts', async t => {
@@ -94,7 +118,7 @@ test('the receiver isolates one invocation and accepts only bounded authorized r
   const accepted = await send(token);
   assert.equal(accepted.status, 200);
   await accepted.text();
-  assert.deepEqual(receiver.summarize(root, parent, true), { parent, helperTokens: undefined, incomplete: false });
+  assert.deepEqual(receiver.summarize(root, parent, true), { parent, helperTokens: undefined, helperCachedTokens: undefined, incomplete: false });
   const oversized = await send(token, gzipSync(Buffer.alloc(4 * 1024 * 1024 + 1)));
   assert.equal(oversized.status, 400);
   await oversized.text();
@@ -102,5 +126,5 @@ test('the receiver isolates one invocation and accepts only bounded authorized r
   assert.equal(damaged.status, 400);
   await damaged.text();
   await receiver.close();
-  assert.deepEqual(receiver.summarize(root, parent, true), { parent, helperTokens: undefined, incomplete: true });
+  assert.deepEqual(receiver.summarize(root, parent, true), { parent, helperTokens: undefined, helperCachedTokens: undefined, incomplete: true });
 });

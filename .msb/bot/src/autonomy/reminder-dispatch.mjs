@@ -117,7 +117,7 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
       if (result.providerId === 'codex') result = { ...result, usageRunId };
       if (active.aborted) return { status: 'stopped', detail: 'ход прерван остановкой фоновых задач',
         fileCommitStarted: result.fileCommitStarted, costPauseDeferred: result.costPauseDeferred,
-        ...(result.providerId === 'codex' ? { providerId: 'codex', usageRunId, tokensIn: result.tokensIn,
+        ...(result.providerId === 'codex' ? { providerId: 'codex', usageRunId, tokensIn: result.tokensIn, usageCachedTokens: result.usageCachedTokens,
           tokensOut: result.tokensOut, usageIncomplete: true } : {}) };
       const delivered = await deliverSavedPrompt(api, chat, result, active);
       return delivered.providerId === 'codex' ? { ...delivered, usageRunId } : delivered;

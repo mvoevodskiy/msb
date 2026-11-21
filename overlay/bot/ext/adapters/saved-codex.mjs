@@ -128,8 +128,10 @@ export async function runSavedCodexPrompt({ cwd, prompt, model, tools, directori
     const parent = measured?.parent ?? nativeUsage;
     const usage = parent && { inputTokens: parent.input - parent.cached, cacheReadTokens: parent.cached,
       cacheCreationTokens: 0, outputTokens: parent.output };
+    const cached = parent?.cacheKnown && (measured?.helperTokens === undefined || measured.helperCachedTokens !== undefined)
+      ? parent.cached + (measured?.helperCachedTokens ?? 0) : undefined;
     return { providerId: 'codex', text: parsed.text, assistantTextObserved: Boolean(parsed.text), fileCommitStarted, isError,
-      usage, helperTokens: measured?.helperTokens,
+      usage, helperTokens: measured?.helperTokens, usageCachedTokens: Number.isSafeInteger(cached) ? cached : undefined,
       usageIncomplete: (!parent || (helpers && (!measured || measured.incomplete))) || undefined };
   } finally {
     await receiver?.close();

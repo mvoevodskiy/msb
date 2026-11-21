@@ -157,7 +157,9 @@ function usageMetrics(result, plan, interrupted = false) {
   return { meteredUsd: result?.meteredCostUsd, fileCommitStarted: result?.fileCommitStarted,
     tokensIn: knownInputs.length ? knownInputs.reduce((total, part) => total + part, 0) : undefined,
     tokensOut: usage?.outputTokens, usageIncomplete: result?.usageIncomplete || interrupted || undefined,
-    ...(plan.provider === 'codex' && result?.providerId === 'codex' ? { providerId: 'codex' } : {}) };
+    ...(plan.provider === 'codex' && result?.providerId === 'codex' ? { providerId: 'codex',
+      usageCachedTokens: Number.isSafeInteger(result.usageCachedTokens) && result.usageCachedTokens >= 0
+        ? result.usageCachedTokens : undefined } : {}) };
 }
 
 export async function runSavedPrompt(action, plan, { signal, isCurrent, runCodexPrompt, runCursorPrompt }, env = process.env) {

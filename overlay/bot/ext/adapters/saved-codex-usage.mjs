@@ -1,5 +1,6 @@
 /**
- * Reconciles one saved CLI's token events with its parent exec summary.
+ * Reconciles one saved CLI's token events with its parent exec summary, including
+ * known cache reads from helpers without treating missing counts as zero.
  * Input is the pinned CLI's [local OTLP receiver](./saved-codex-otlp.mjs).
  * [Native regression](../../../../.msb/bot/tests/fixtures/codex-saved-helper-loopback.mjs).
  */
@@ -33,15 +34,18 @@ function readEvent(record) {
     return { kind: 'completion', thread };
   }
   const input = count(attrs.input_token_count), output = count(attrs.output_token_count);
-  const cached = count(attrs.cached_token_count) ?? 0;
+  const reportedCached = count(attrs.cached_token_count);
+  const cached = reportedCached ?? 0;
   return input === undefined || output === undefined || cached > input ? null
-    : { kind: 'tokens', thread, input, output, cached };
+    : { kind: 'tokens', thread, input, output, cached, cacheKnown: reportedCached !== undefined };
 }
 
 export function parseSavedCodexUsage(usage) {
   const input = count(usage?.input_tokens), output = count(usage?.output_tokens);
   if (input === undefined || output === undefined) return;
-  return { input, output, cached: Math.min(input, count(usage.cached_input_tokens) ?? 0) };
+  const cached = count(usage.cached_input_tokens);
+  return { input, output, cached: Math.min(input, cached ?? 0),
+    cacheKnown: cached !== undefined && cached <= input };
 }
 
 export function createSavedCodexUsage() {
@@ -64,7 +68,13 @@ export function createSavedCodexUsage() {
           // Equal token counts in distinct completed responses must both count.
           const key = [stamp, event.kind, event.thread, event.peer].join('/');
           if (events.has(key)) {
-            if (JSON.stringify(events.get(key)) !== JSON.stringify(event)) {
+            const previous = events.get(key);
+            const sameTokens = previous && event.kind === 'tokens' && previous.kind === 'tokens' &&
+              ['thread', 'input', 'output', 'cached'].every(field => previous[field] === event[field]);
+            if (sameTokens) {
+              // A replay can add an explicit zero cache count without changing the receipt.
+              if (!previous.cacheKnown && event.cacheKnown) events.set(key, event);
+            } else if (JSON.stringify(previous) !== JSON.stringify(event)) {
               events.set(key, null);
               incomplete = true;
             }
@@ -86,13 +96,14 @@ export function createSavedCodexUsage() {
         table.get(event.thread).add(event.peer);
         continue;
       }
-      const row = rows.get(event.thread) ?? { request: 0, completion: 0, tokens: 0, input: 0, output: 0, cached: 0 };
+      const row = rows.get(event.thread) ?? { request: 0, completion: 0, tokens: 0, input: 0, output: 0, cached: 0, cacheKnown: true };
       if (event.kind === 'tokens') {
         if (['input', 'output', 'cached'].some(key => !Number.isSafeInteger(row[key] + event[key]))) {
           partial = true;
           continue;
         }
         for (const key of ['input', 'output', 'cached']) row[key] += event[key];
+        row.cacheKnown &&= event.cacheKnown;
       }
       row[event.kind]++;
       rows.set(event.thread, row);
@@ -106,20 +117,26 @@ export function createSavedCodexUsage() {
       }
     }
 
-    let helperTokens;
+    let helperTokens, helperCachedTokens, helperCacheKnown = true;
     for (const child of family) {
       const row = rows.get(child);
       if (!row?.tokens || row.tokens !== row.completion || row.tokens !== row.request) partial = true;
       if (child === thread || !row?.tokens) continue;
       const total = (helperTokens ?? 0) + row.input + row.output;
-      if (Number.isSafeInteger(total)) helperTokens = total;
+      const cached = (helperCachedTokens ?? 0) + row.cached;
+      if (Number.isSafeInteger(total) && Number.isSafeInteger(cached)) {
+        helperTokens = total;
+        helperCachedTokens = cached;
+        helperCacheKnown &&= row.cacheKnown;
+      }
       else partial = true;
     }
     if ([...rows.keys(), ...children.keys(), ...finished.keys()].some(id => !family.has(id))) partial = true;
 
     const parent = rows.get(thread);
     if (!native || !parent || ['input', 'output', 'cached'].some(key => native[key] !== parent[key])) partial = true;
-    return { parent: native ?? (parent?.tokens ? parent : undefined), helperTokens, incomplete: partial };
+    return { parent: native ?? (parent?.tokens ? parent : undefined), helperTokens,
+      helperCachedTokens: helperCacheKnown ? helperCachedTokens : undefined, incomplete: partial };
   }
 
   return { ingest, summarize, markIncomplete() { incomplete = true; } };

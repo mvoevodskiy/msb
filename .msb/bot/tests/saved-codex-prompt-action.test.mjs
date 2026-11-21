@@ -137,6 +137,7 @@ test('the saved action launches Codex independently of the normal conversation',
   assert.deepEqual([run.status, run.costUsd, run.tokensIn, run.tokensOut], ['ok', 0, 30, 5]);
   assert.equal(run.providerId, 'codex');
   assert.equal(run.usageSource, 'saved-prompt');
+  assert.equal(run.usageCachedTokens, 8);
   assert.match(run.usageRunId, /^[0-9a-f-]{36}$/);
   assert.equal(run.usageCompletedAt, new Date(now).toISOString());
   assert.equal(f.messages.length, 2);
@@ -173,7 +174,7 @@ test('an interrupted Codex task retains known usage and marks it incomplete', as
     started();
     await new Promise(resolve => signal.addEventListener('abort', resolve, { once: true }));
     return { providerId: 'codex', usage: { inputTokens: 20, cacheReadTokens: 7,
-      cacheCreationTokens: 0, outputTokens: 6 }, helperTokens: 11 };
+      cacheCreationTokens: 0, outputTokens: 6 }, helperTokens: 11, usageCachedTokens: 9 };
   } });
   const tick = f.scheduler.tickNow();
   await ready;
@@ -186,6 +187,7 @@ test('an interrupted Codex task retains known usage and marks it incomplete', as
   assert.equal(run.tokensOut, undefined);
   assert.equal(run.usageIncomplete, undefined);
   assert.equal(run.usageSource, 'saved-prompt');
+  assert.equal(run.usageCachedTokens, 9);
   assert.match(run.usageRunId, /^[0-9a-f-]{36}$/);
   assert.deepEqual(f.messages, []);
 });
