@@ -88,6 +88,9 @@ export interface CodexUsage {
   week: number | null;
   month: number | null;
   all: number | null;
+  /** Separate cache reads and other input/output; null means the split is unavailable. */
+  withoutCache: { week: number | null; month: number | null; all: number | null };
+  cacheRead: { week: number | null; month: number | null; all: number | null };
   incomplete: boolean;
   updatedAt: Iso | null;
   timezone: string;

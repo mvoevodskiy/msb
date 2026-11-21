@@ -13,7 +13,7 @@ const execFileAsync = promisify(execFile);
 const UUID_END = /(?:^|[-/])([0-9a-f]{8}(?:-[0-9a-f]{4}){3}-[0-9a-f]{12})$/i;
 const CONFIG = fileURLToPath(new URL('../../../config/ccusage-report.json', import.meta.url));
 const DAY = 86_400_000;
-type Report = { sessions: { sessionId: string; totalTokens: number }[] };
+type Report = { sessions: { sessionId: string; totalTokens: number; cacheReadTokens?: number }[] };
 type Reports = { all: Report; week: Report; month: Report; at: string };
 type BotInput = { id: string; directory: string };
 type Identity = { ids: Set<string>; selected: boolean; partial: boolean; saved: SavedUsage };
@@ -32,14 +32,18 @@ function precedingDay(today: string, days: number): string {
   return new Date(at - days * DAY).toISOString().slice(0, 10);
 }
 
-function sessionRows(report: Report): Map<string, number | null> {
+type SessionUsage = { total: number; cached: number | null };
+function sessionRows(report: Report): Map<string, SessionUsage | null> {
   if (!report || !Array.isArray(report.sessions)) throw new Error('Некорректный отчёт Codex');
-  const rows = new Map<string, number | null>();
+  const rows = new Map<string, SessionUsage | null>();
   for (const row of report.sessions) {
     if (!row || typeof row.sessionId !== 'string') continue;
     const id = UUID_END.exec(row.sessionId)?.[1]?.toLowerCase();
     if (!id) continue;
-    const value = Number.isSafeInteger(row.totalTokens) && row.totalTokens >= 0 ? row.totalTokens : null;
+    const total = Number.isSafeInteger(row.totalTokens) && row.totalTokens >= 0 ? row.totalTokens : null;
+    const cached = total !== null && Number.isSafeInteger(row.cacheReadTokens) && Number(row.cacheReadTokens) >= 0 &&
+      Number(row.cacheReadTokens) <= total ? Number(row.cacheReadTokens) : null;
+    const value = total === null ? null : { total, cached };
     if (rows.has(id)) rows.set(id, null); // Two native files with the same ID are ambiguous.
     else rows.set(id, value);
   }
@@ -75,6 +79,9 @@ export function combineCodexUsage(bots: BotInput[], identities: Map<string, Iden
     if (!identity || (!identity.selected && !identity.ids.size && !identity.saved.hasCodex)) continue;
     const family = families.get(bot.id) ?? new Set<string>();
     const result: Record<Period, number | null> = { week: 0, month: 0, all: 0 };
+    const cacheRead: Record<Period, number | null> = { week: 0, month: 0, all: 0 };
+    const withoutCache: Record<Period, number | null> = { week: 0, month: 0, all: 0 };
+    const missingSplit: Record<Period, boolean> = { week: false, month: false, all: false };
     const known: Record<Period, number> = { week: 0, month: 0, all: 0 };
     // Historical native IDs, anonymous older runs and stopped model calls cannot always be reconstructed.
     let incomplete = true;
@@ -99,7 +106,12 @@ export function combineCodexUsage(bots: BotInput[], identities: Map<string, Iden
       for (const period of ['week', 'month', 'all'] as const) {
         const value = maps[period].get(id);
         if (value === null) { incomplete = true; continue; }
-        result[period] = (result[period] ?? 0) + (value ?? 0);
+        result[period] = (result[period] ?? 0) + (value?.total ?? 0);
+        if (value?.cached === null) missingSplit[period] = true;
+        else if (value) {
+          cacheRead[period]! += value.cached!;
+          withoutCache[period]! += value.total - value.cached!;
+        }
         known[period]++;
       }
     }
@@ -110,7 +122,15 @@ export function combineCodexUsage(bots: BotInput[], identities: Map<string, Iden
       for (const period of ['week', 'month', 'all'] as const) {
         if (completed < starts[period] || completed > today || result[period] === null) continue;
         if (started < starts[period]) { incomplete = true; continue; }
-        result[period]! += (row.input ?? 0) + (row.output ?? 0);
+        const subtotal = (row.input ?? 0) + (row.output ?? 0);
+        result[period]! += subtotal;
+        if (row.input === null || row.output === null || !Number.isSafeInteger(row.cached) ||
+            row.cached === null || row.cached < 0 || row.cached > row.input) {
+          missingSplit[period] = true;
+        } else {
+          cacheRead[period]! += row.cached;
+          withoutCache[period]! += subtotal - row.cached;
+        }
         if (row.input !== null || row.output !== null) known[period]++;
       }
     }
@@ -119,14 +139,30 @@ export function combineCodexUsage(bots: BotInput[], identities: Map<string, Iden
       if (!known[period] || (result[period] !== null && !Number.isSafeInteger(result[period]))) {
         result[period] = null; incomplete = true;
       }
+      if (result[period] === null || missingSplit[period] || !Number.isSafeInteger(cacheRead[period]) ||
+          !Number.isSafeInteger(withoutCache[period])) {
+        cacheRead[period] = withoutCache[period] = null;
+        incomplete = true;
+      }
     }
     if ((result.week !== null && result.month !== null && result.week > result.month) ||
         (result.month !== null && result.all !== null && result.month > result.all)) {
       result.week = result.month = result.all = null;
+      cacheRead.week = cacheRead.month = cacheRead.all = null;
+      withoutCache.week = withoutCache.month = withoutCache.all = null;
       incomplete = true;
     }
+    for (const part of [cacheRead, withoutCache]) {
+      if ((part.week !== null && part.month !== null && part.week > part.month) ||
+          (part.month !== null && part.all !== null && part.month > part.all)) {
+        cacheRead.week = cacheRead.month = cacheRead.all = null;
+        withoutCache.week = withoutCache.month = withoutCache.all = null;
+        incomplete = true;
+        break;
+      }
+    }
     output.set(bot.id, { providerId: 'codex', week: result.week, month: result.month, all: result.all,
-      incomplete, updatedAt: reports?.at ?? null, timezone });
+      cacheRead, withoutCache, incomplete, updatedAt: reports?.at ?? null, timezone });
   }
   return output;
 }

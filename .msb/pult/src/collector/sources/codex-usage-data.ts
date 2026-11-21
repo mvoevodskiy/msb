@@ -110,6 +110,7 @@ export interface SavedUsageRow {
   completedAt: string;
   input: number | null;
   output: number | null;
+  cached: number | null;
   incomplete: boolean;
 }
 export interface SavedUsage { rows: SavedUsageRow[]; unknown: string[]; partial: boolean; hasCodex: boolean }
@@ -153,10 +154,18 @@ export async function readSavedCodexUsage(directory: string): Promise<SavedUsage
       }
       const row: SavedUsageRow = { id: raw.usageRunId.toLowerCase(), startedAt: raw.ts,
         completedAt: raw.usageCompletedAt, input: count(raw.usageTokensIn), output: count(raw.usageTokensOut),
+        cached: count(raw.usageCachedTokens),
         incomplete: raw.usageAccountingIncomplete === true };
       const existing = rows.get(row.id);
       if (existing === undefined) rows.set(row.id, row);
-      else if (existing && JSON.stringify(existing) !== JSON.stringify(row)) { rows.set(row.id, null); partial = true; }
+      else if (existing && JSON.stringify(existing) !== JSON.stringify(row)) {
+        const { cached: oldCache, ...oldTotal } = existing;
+        const { cached: newCache, ...newTotal } = row;
+        // Different cache receipts must not erase an otherwise identical total.
+        if (JSON.stringify(oldTotal) === JSON.stringify(newTotal)) rows.set(row.id, { ...existing, cached: null });
+        else rows.set(row.id, null);
+        partial = true;
+      }
     }
   } catch { throw new Error('Не удалось прочитать журнал фоновых задач'); }
   return { rows: [...rows.values()].filter((row): row is SavedUsageRow => row !== null), unknown, partial, hasCodex };

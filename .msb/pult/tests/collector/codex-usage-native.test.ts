@@ -30,4 +30,6 @@ test('native ccusage selects the bot session and excludes an unrelated session',
     assert.equal(result.failed, false);
     assert.deepEqual([result.usage.get('default')?.week, result.usage.get('default')?.month,
       result.usage.get('default')?.all], [13, 13, 13]);
+    assert.deepEqual(result.usage.get('default')?.cacheRead, { week: 2, month: 2, all: 2 });
+    assert.deepEqual(result.usage.get('default')?.withoutCache, { week: 11, month: 11, all: 11 });
   });
