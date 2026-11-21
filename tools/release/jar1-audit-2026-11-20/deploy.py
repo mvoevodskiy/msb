@@ -509,7 +509,7 @@ class Deployment:
             if (row.get('tests'), row.get('passed'), row.get('skipped')) != (count, count, 0):
                 raise ValueError('Audited regression verification is incomplete: ' + suite)
         root_cases = next(item for item in checks if item['suite'] == 'test_client_markers')
-        if (root_cases.get('tests'), root_cases.get('passed'), root_cases.get('skipped')) != (7, 0, 7):
+        if (root_cases.get('tests'), root_cases.get('passed'), root_cases.get('skipped')) != (9, 0, 9):
             raise ValueError('Distinct-UID target skips are not accounted for')
         counts = {item['suite']: item.get('passed') for item in checks}
         if counts['service-labels'] != 3 or counts['bot-status-view'] != 1 or \

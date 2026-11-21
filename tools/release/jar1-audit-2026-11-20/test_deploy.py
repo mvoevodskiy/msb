@@ -158,11 +158,11 @@ def fixture(failure=None):
                   'source_archive_sha256': manifest['source_archive_sha256'],
                   'environment': {'fixture': 'same-runtime', 'node_sha256': 'fixture-node'},
                   'checks': [{'suite': name, 'exit_code': 0,
-                              'tests': 95 if name == 'steer-targeted' else 43 if name == 'intro-safe' else 133 if name == 'audit-targeted' else 19 if name == 'scheduler-safe' else 16 if name == 'fstab-compat' else 7 if name == 'test_client_markers' else 3 if name == 'service-labels' else
+                              'tests': 95 if name == 'steer-targeted' else 43 if name == 'intro-safe' else 133 if name == 'audit-targeted' else 19 if name == 'scheduler-safe' else 16 if name == 'fstab-compat' else 9 if name == 'test_client_markers' else 3 if name == 'service-labels' else
                                        23 if name == 'legacy-timer-conversation-safe' else 291 if name == 'backlog-targeted' else 8 if name == 'recurring-safe' else 10 if name == 'menu-safe' else 9 if name == 'test_bot_off_marker' else 1,
                               'passed': 95 if name == 'steer-targeted' else 43 if name == 'intro-safe' else 133 if name == 'audit-targeted' else 19 if name == 'scheduler-safe' else 15 if name == 'fstab-compat' else 0 if name == 'test_client_markers' else 3 if name == 'service-labels' else
                                         23 if name == 'legacy-timer-conversation-safe' else 291 if name == 'backlog-targeted' else 8 if name == 'recurring-safe' else 10 if name == 'menu-safe' else 9 if name == 'test_bot_off_marker' else 1,
-                              'skipped': 7 if name == 'test_client_markers' else 1 if name == 'fstab-compat' else 0} for name in names]}
+                              'skipped': 9 if name == 'test_client_markers' else 1 if name == 'fstab-compat' else 0} for name in names]}
         next(row for row in report['checks'] if row['suite'] == 'fstab-compat')['skipped_cases'] = ['test_rewrite_preserves_posix_acl']
         report_path = stage / 'test-home/results/verification.json'
         report_path.write_text(json.dumps(report))

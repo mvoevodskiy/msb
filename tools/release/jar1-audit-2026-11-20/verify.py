@@ -335,7 +335,7 @@ def verify(stage, home, dependencies, tmp_dir=None, host_netns_inode=None):
     # Linux container, while this target suite deliberately runs as client.
     run('test_client_markers', [sys.executable, '-B', '-m', 'unittest', 'discover',
         '-s', str(source / 'usr-local-lib/msb-engine/tests'), '-p', 'test_client_markers.py', '-v'],
-        timeout=180, expected_pass=0, expected_skipped=7)
+        timeout=180, expected_pass=0, expected_skipped=9)
     # Synthetic fixture files live on the isolated test-home filesystem so
     # Linux xattr/ACL checks do not depend on the sandbox's /tmp tmpfs.
     fixture_tmp = home / 'fstab-tmp'
