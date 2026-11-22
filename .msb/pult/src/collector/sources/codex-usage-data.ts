@@ -117,13 +117,33 @@ export interface SavedUsage { rows: SavedUsageRow[]; unknown: string[]; partial:
 const count = (x: unknown): number | null => Number.isSafeInteger(x) && Number(x) >= 0 ? Number(x) : null;
 const instant = (x: unknown): x is string => typeof x === 'string' && Number.isFinite(Date.parse(x));
 
+// A fresh bot need not have a run journal. A completed prompt action without one
+// is evidence that recorded background work is missing; a blocked claim is not.
+function missingSavedJournalIsPartial(directory: string): boolean {
+  let fd: number;
+  try { fd = openSync(join(directory, 'actions.json'), constants.O_RDONLY | (constants.O_NOFOLLOW || 0) | (constants.O_NONBLOCK || 0)); }
+  catch (error) { return (error as NodeJS.ErrnoException).code !== 'ENOENT'; }
+  try {
+    const stat = fstatSync(fd);
+    if (!stat.isFile() || stat.size > 16 * 1024 * 1024) return true;
+    const rows: unknown = JSON.parse(readFileSync(fd, 'utf8'));
+    if (!Array.isArray(rows)) return true;
+    return rows.some(raw => {
+      const action = obj(raw), task = obj(action.task);
+      return (task.kind ?? action.requestedKind) === 'prompt' && instant(action.lastRunAt) &&
+        (['ok', 'error', 'stopped'].includes(String(action.lastStatus)) || action.lastOutcome === 'empty');
+    });
+  } catch { return true; }
+  finally { closeSync(fd); }
+}
+
 /** Read a bounded snapshot of the per-bot journal; truncation is explicitly partial. */
 export async function readSavedCodexUsage(directory: string): Promise<SavedUsage> {
   const file = join(directory, 'autonomy', 'runs.jsonl');
   let fd: number;
   try { fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW || 0) | (constants.O_NONBLOCK || 0)); }
   catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { rows: [], unknown: [], partial: true, hasCodex: false };
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') return { rows: [], unknown: [], partial: missingSavedJournalIsPartial(directory), hasCodex: false };
     throw new Error('Не удалось прочитать журнал фоновых задач');
   }
   let stat;

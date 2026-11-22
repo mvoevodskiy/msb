@@ -28,4 +28,9 @@ test('Codex usage shows uncached, cached and total in order and explains tariffs
   assert.deepEqual(find(rows[2], 'td').map(text), ['Недоступно', 'Недоступно', '200']);
   assert.match(text(section), /чтение кеша обычно дешевле/);
   assert.match(text(section), /история может быть неполной/);
+  const complete = botUsageSection([{ name: 'Тест', codexUsage: { providerId: 'codex',
+    week: 100, month: 200, all: 300, withoutCache: { week: 20, month: 40, all: 60 },
+    cacheRead: { week: 80, month: 160, all: 240 }, incomplete: false,
+    updatedAt: null, timezone: 'UTC' } }], Date.now());
+  assert.doesNotMatch(text(complete), /история может быть неполной/);
 });
