@@ -2,7 +2,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { chmod, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
 import { botCodexIdentity, codexEdges, readSavedCodexUsage } from '../../src/collector/sources/codex-usage-data.ts';
@@ -14,6 +14,68 @@ const when = '2026-11-21T12:00:00.000Z';
 const report = (rows: [number, number, number?][]) => ({ sessions: rows.map(([n, totalTokens, cacheReadTokens]) => ({
   sessionId: `2026/11/20/rollout-2026-11-20T12-00-00-${id(n)}`, totalTokens, cacheReadTokens,
 })) });
+
+test('complete bot usage has no warning and ignores unrelated old sessions', () => {
+  const bot = { id: 'a', directory: '/fixture' };
+  const identity = { ids: new Set([id(1)]), selected: true, partial: false, saved: {
+    rows: [{ id: id(20), startedAt: when, completedAt: when, input: 5, output: 2, cached: 3, incomplete: false }],
+    unknown: [], partial: false, hasCodex: true,
+  } };
+  const reports = { all: report([[1, 100, 70], [9, 9000, 5000]]),
+    week: report([[1, 20, 10]]), month: report([[1, 50, 30], [9, 9000, 5000]]), at: when };
+  const out = combineCodexUsage([bot], new Map([['a', identity]]),
+    { children: new Map(), partial: false }, reports, 'UTC', new Date(when)).get('a')!;
+  assert.deepEqual([out.week, out.month, out.all], [27, 57, 107]);
+  assert.deepEqual(out.cacheRead, { week: 13, month: 33, all: 73 });
+  assert.deepEqual(out.withoutCache, { week: 14, month: 24, all: 34 });
+  assert.equal(out.incomplete, false);
+});
+
+test('a fully metered saved prompt needs no native session graph', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'pult-codex-saved-only-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  const bot = join(root, 'default');
+  await mkdir(join(bot, 'autonomy'), { recursive: true });
+  await writeFile(join(bot, 'state.json'), JSON.stringify({ extAuthBypass: 'codex' }));
+  await writeFile(join(bot, 'autonomy/runs.jsonl'), JSON.stringify({ kind: 'prompt', providerId: 'codex',
+    usageSource: 'saved-prompt', usageRunId: id(20), ts: when, usageCompletedAt: when,
+    usageTokensIn: 5, usageTokensOut: 2, usageCachedTokens: 3 }) + '\n');
+  const source = new CodexUsageReader({ HOME: root, PULT_CCUSAGE_BIN: join(root, 'missing') }, root);
+  const result = await source.collect([{ id: 'default', directory: bot }], 'UTC', new Date(when));
+  assert.equal(result.failed, false);
+  assert.equal(result.usage.get('default')?.all, 7);
+  assert.equal(result.usage.get('default')?.incomplete, false);
+  const other = join(root, 'other');
+  await mkdir(other);
+  await writeFile(join(other, 'state.json'), JSON.stringify({ extAuthBypass: 'codex', ccSessionId: encoded(1) }));
+  const mixed = await source.collect([{ id: 'default', directory: bot }, { id: 'other', directory: other }], 'UTC', new Date(when));
+  assert.equal(mixed.failed, true);
+  assert.equal(mixed.usage.get('default')?.incomplete, false);
+  assert.equal(mixed.usage.get('other')?.incomplete, true);
+});
+
+test('an absent background journal warns only when completed prompt work is recorded', async t => {
+  const root = await mkdtemp(join(tmpdir(), 'pult-codex-empty-journal-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+  assert.equal((await readSavedCodexUsage(root)).partial, false);
+  await mkdir(join(root, '.codex', 'sessions'), { recursive: true });
+  await writeFile(join(root, 'state.json'), JSON.stringify({ extAuthBypass: 'codex', ccSessionId: encoded(1) }));
+  const binary = join(root, 'ccusage');
+  await writeFile(binary, `#!/bin/sh\nif [ "$1" = "--version" ]; then printf 'ccusage 20.0.51\\n'; else printf '%s\\n' '${JSON.stringify(report([[1, 100, 70]]))}'; fi\n`);
+  await chmod(binary, 0o755);
+  const reader = new CodexUsageReader({ HOME: root, PATH: '/usr/bin:/bin', PULT_CCUSAGE_BIN: binary }, root);
+  const bots = [{ id: 'default', directory: root }];
+  await writeFile(join(root, 'actions.json'), JSON.stringify([
+    { task: { kind: 'prompt' }, lastRunAt: when, lastStatus: 'skipped', lastOutcome: 'blocked' },
+  ]));
+  assert.equal((await readSavedCodexUsage(root)).partial, false);
+  assert.equal((await reader.collect(bots, 'UTC', new Date(when))).usage.get('default')?.incomplete, false);
+  await writeFile(join(root, 'actions.json'), JSON.stringify([
+    { task: { kind: 'prompt' }, lastRunAt: when, lastStatus: 'ok', lastOutcome: 'ok' },
+  ]));
+  assert.equal((await readSavedCodexUsage(root)).partial, true);
+  assert.equal((await reader.collect(bots, 'UTC', new Date(when))).usage.get('default')?.incomplete, true);
+});
 
 test('per-bot sessions, child replay and saved prompt usage are combined once without Claude', async t => {
   const root = await mkdtemp(join(tmpdir(), 'pult-codex-usage-'));
@@ -106,6 +168,7 @@ test('a legacy saved run without cache retains the total but makes only its spli
   assert.deepEqual([out.week, out.month, out.all], [27, 57, 107]);
   assert.deepEqual(out.cacheRead, { week: null, month: null, all: null });
   assert.deepEqual(out.withoutCache, { week: null, month: null, all: null });
+  assert.equal(out.incomplete, true);
 });
 
 test('an impossible cache count does not invalidate the known total or invent a split', () => {
@@ -118,6 +181,7 @@ test('an impossible cache count does not invalidate the known total or invent a 
   assert.deepEqual([out.week, out.month, out.all], [20, 50, 100]);
   assert.deepEqual(out.cacheRead, { week: null, month: null, all: null });
   assert.deepEqual(out.withoutCache, { week: null, month: null, all: null });
+  assert.equal(out.incomplete, true);
 });
 
 test('a saved run cannot report more cache reads than its input', () => {
@@ -132,6 +196,7 @@ test('a saved run cannot report more cache reads than its input', () => {
   assert.deepEqual([out.week, out.month, out.all], [32, 62, 112]);
   assert.deepEqual(out.cacheRead, { week: null, month: null, all: null });
   assert.deepEqual(out.withoutCache, { week: null, month: null, all: null });
+  assert.equal(out.incomplete, true);
 });
 
 test('a review subagent is attached by native session metadata without opening the state database', async t => {

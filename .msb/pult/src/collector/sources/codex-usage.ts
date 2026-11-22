@@ -83,8 +83,8 @@ export function combineCodexUsage(bots: BotInput[], identities: Map<string, Iden
     const withoutCache: Record<Period, number | null> = { week: 0, month: 0, all: 0 };
     const missingSplit: Record<Period, boolean> = { week: false, month: false, all: false };
     const known: Record<Period, number> = { week: 0, month: 0, all: 0 };
-    // Historical native IDs, anonymous older runs and stopped model calls cannot always be reconstructed.
-    let incomplete = true;
+    // Report concrete gaps in owned data; unrelated native sessions do not imply a gap for this bot.
+    let incomplete = false;
     if ((family.size && !maps) || (!family.size && !identity.saved.hasCodex)) result.week = result.month = result.all = null;
     const safe = new Set<string>();
     if (maps) {
@@ -134,7 +134,7 @@ export function combineCodexUsage(bots: BotInput[], identities: Map<string, Iden
         if (row.input !== null || row.output !== null) known[period]++;
       }
     }
-    if (identity.partial || identity.saved.partial || identity.saved.unknown.length || edges.partial) incomplete = true;
+    if (identity.partial || identity.saved.partial || identity.saved.unknown.length || (family.size > 0 && edges.partial)) incomplete = true;
     for (const period of ['week', 'month', 'all'] as const) {
       if (!known[period] || (result[period] !== null && !Number.isSafeInteger(result[period]))) {
         result[period] = null; incomplete = true;
@@ -192,6 +192,8 @@ export class CodexUsageReader {
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
     }
+    // A missing optional journal can become a confirmed gap when an action finishes.
+    if (signature === 'missing') return readSavedCodexUsage(directory);
     const cached = this.savedCache.get(directory);
     if (cached?.signature === signature) return cached.saved;
     const saved = await readSavedCodexUsage(directory);
