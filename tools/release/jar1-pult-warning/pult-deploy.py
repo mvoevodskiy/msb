@@ -15,6 +15,10 @@ BASE = 'a19689e080a6bb2be212ded5fe53eca54df82d26'
 SCOPE = 'pult-usage-warning-v1'
 FILES = ('src/collector/sources/codex-usage-data.ts', 'src/collector/sources/codex-usage.ts')
 CCUSAGE_SHA256 = '7ddd309d8f4d1c2c007647f43c300a8261acbe9e5cb355e70cc428f0f419f8d2'
+EXCLUDED_TESTS = [
+    'provider routing never lends Claude rateLimitInfo to Codex, Cursor, Qwen, unknown or OpenClaw',
+    'check: построчно ✓/✗, ключ не печатается, --json, ненулевой код при ошибке',
+]
 
 
 def digest(data):
@@ -49,10 +53,11 @@ def validate_report(report, manifest, manifest_sha):
     if not report.get('passed') or report.get('scope') != SCOPE or \
        report.get('source_commit') != manifest['source_commit'] or report.get('manifest_sha256') != manifest_sha or \
        report.get('source_archive_sha256') != manifest.get('source_archive_sha256') or \
+       report.get('excluded_tests') != EXCLUDED_TESTS or \
        not valid_hash(report.get('environment', {}).get('node_sha256')) or \
        {row.get('suite') for row in checks} != {'typecheck', 'pult-tests', 'release-tests'} or \
        len(checks) != 3 or any(row.get('exit_code') != 0 or row.get('passed', 0) < 1 for row in checks) or \
-       next(row for row in checks if row['suite'] == 'pult-tests').get('skipped') != 1:
+       next(row for row in checks if row['suite'] == 'pult-tests').get('skipped') != 0:
         raise RuntimeError('Pult verification does not match this release')
 
 

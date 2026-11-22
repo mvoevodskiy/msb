@@ -15,7 +15,9 @@ Manifest закрепляет source commit, Pult inventory, baseline каждо
    создать `stage/test-home` владельца client и запустить
    `python3 stage/launcher.py --stage STAGE --manifest-sha HASH`. Launcher
    запускает проверку без сети в отдельном HOME и временном каталоге. Это полный
-   тест Пульта, кроме одного теста OpenClaw по явному решению владельца.
+   тест Пульта, кроме одного теста OpenClaw по решению владельца и теста CLI,
+   которому нужен настоящий systemd: PID namespace изоляции его не содержит.
+   Активность systemd-служб проверяется отдельно планом и после установки.
 3. После проверки запечатать `test-home` владельцем root без group/world write,
    вычислить SHA-256 `test-home/results/verification.json` и выполнить
    `pult-deploy.py --stage STAGE --backup /var/lib/msb-ops/releases/UNIQUE

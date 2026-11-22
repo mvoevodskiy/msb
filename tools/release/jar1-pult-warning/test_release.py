@@ -21,8 +21,9 @@ def manifest():
 def report(m):
     return {'scope': deploy.SCOPE, 'source_commit': m['source_commit'], 'manifest_sha256': 'f' * 64,
             'source_archive_sha256': m['source_archive_sha256'], 'environment': {'node_sha256': 'a' * 64},
+            'excluded_tests': deploy.EXCLUDED_TESTS,
             'checks': [{'suite': 'typecheck', 'passed': 1, 'exit_code': 0},
-                       {'suite': 'pult-tests', 'passed': 20, 'exit_code': 0, 'skipped': 1},
+                       {'suite': 'pult-tests', 'passed': 20, 'exit_code': 0, 'skipped': 0},
                        {'suite': 'release-tests', 'passed': 3, 'exit_code': 0}], 'passed': True}
 
 
