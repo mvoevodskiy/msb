@@ -20,6 +20,13 @@ profile = load('attachment_profile_test', HERE / 'profile.py')
 launcher = load('attachment_launcher_test', HERE / 'launcher.py')
 
 class GuardTests(unittest.TestCase):
+    def test_existing_executable_shim_mode_is_preserved(self):
+        class Base:
+            @staticmethod
+            def bot_owner(): return (1000, 1000, 0o664)
+        self.assertEqual(deploy.expected_bot_owner(Base, 'src/telegram/bot.mjs'), (1000, 1000, 0o664))
+        self.assertEqual(deploy.expected_bot_owner(Base, 'ext/shim/run-turn.mjs'), (1000, 1000, 0o775))
+
     def test_reused_stage_guard_checks_the_actual_launcher(self):
         base = load('attachment_launcher_base_test', HERE.parent / 'jar1-audit-2026-11-20/launcher.py')
         seen = []

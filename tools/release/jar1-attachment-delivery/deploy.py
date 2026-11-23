@@ -20,6 +20,12 @@ def module(name, path):
     spec.loader.exec_module(result); return result
 
 
+def expected_bot_owner(base, name):
+    uid, gid, mode = base.bot_owner()
+    # The installed native shim is executable; the Telegram modules are not.
+    return uid, gid, 0o775 if name == 'ext/shim/run-turn.mjs' else mode
+
+
 def trusted(stage, name):
     rel = Path(name)
     if rel.is_absolute() or not rel.parts or any(part in ('', '.', '..') for part in rel.parts):
@@ -113,7 +119,7 @@ def main():
             super().check()
             for name in (*build.FILES, *build.DEPENDENCIES):
                 row = base.info(base.safe_file(self.roots['bot'], name))
-                if (row['uid'], row['gid'], row['mode']) != base.bot_owner():
+                if (row['uid'], row['gid'], row['mode']) != expected_bot_owner(base, name):
                     raise RuntimeError('Unexpected runtime file ownership or mode: ' + name)
     base.Deployment = Narrow
     profile = module('attachment_profile', stage / 'profile.py')
