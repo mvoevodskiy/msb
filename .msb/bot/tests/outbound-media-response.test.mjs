@@ -41,9 +41,10 @@ for (const [provider, marker, file, method] of [
     assert.ok(!f.deleted.includes(99), 'the incoming user message is retained');
     assert.ok(!f.messages.some(text => text.includes('Ответ не пришёл')));
     assert.deepEqual(events, ['media', 'footer'], 'the existing telemetry follows the confirmed attachment');
-    const turns = (await native.trace()).filter(row => ['claude', 'codex-app-turn'].includes(row.kind));
+    const codexKind = process.env.MSB_TEST_CODEX_TRANSPORT === 'exec' ? 'codex-exec' : 'codex-app-turn';
+    const turns = (await native.trace()).filter(row => ['claude', 'codex-app-turn', 'codex-exec'].includes(row.kind));
     assert.equal(turns.length, 1);
-    assert.equal(turns[0].kind, provider === 'codex' ? 'codex-app-turn' : 'claude');
+    assert.equal(turns[0].kind, provider === 'codex' ? codexKind : 'claude');
   });
 }
 
