@@ -18,6 +18,8 @@ FILES = (
 ) + tuple(name + suffix for name in DATABASES for suffix in ('', '-wal', '-shm', '-journal'))
 DIRECTORIES = ('.msb/bots/default', '.msb/autonomy', '.msb/monitor',
                '.codex/sessions', '.claude/projects', 'workspace/memory')
+PROFILE_LINK = '.msb/bots/default/projects/CLAUDE.md'
+PROFILE_LINK_TARGET = '.msb/bots/default/cwd/CLAUDE.md'
 
 
 def is_transient(path, home=HOME):
@@ -80,7 +82,14 @@ def snapshot(home=HOME):
             for name in files:
                 path = Path(base) / name
                 if is_transient(path, home): continue
-                if path.is_symlink(): raise RuntimeError('Unexpected protected data symlink')
                 key = path.relative_to(home).as_posix()
+                if path.is_symlink():
+                    target = home / PROFILE_LINK_TARGET
+                    if key != PROFILE_LINK or os.readlink(path) != str(target) or \
+                       target.parent.is_symlink() or target.is_symlink() or not target.is_file():
+                        raise RuntimeError('Unexpected protected data symlink')
+                    st = path.lstat()
+                    result[key] = ('symlink', os.readlink(path), st.st_uid, st.st_gid, fingerprint(target))
+                    continue
                 result[key] = fingerprint(path)
     return result

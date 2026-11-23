@@ -82,6 +82,17 @@ class ScopedChecksTests(unittest.TestCase):
             heartbeat.write_text('heartbeat-2')
             lock.write_text('lock-2')
             self.assertEqual(first, protected.snapshot(home))
+            link = home / protected.PROFILE_LINK
+            target = home / protected.PROFILE_LINK_TARGET
+            link.parent.mkdir(parents=True)
+            target.parent.mkdir(parents=True)
+            target.write_text('synthetic profile')
+            link.symlink_to(target)
+            with_link = protected.snapshot(home)
+            target.write_text('changed synthetic profile')
+            self.assertNotEqual(with_link, protected.snapshot(home))
+            link.unlink()
+            target.unlink()
             wal = path.parent / 'state.lock.sqlite-wal'
             wal.write_text('protected-wal')
             self.assertNotEqual(first, protected.snapshot(home))
