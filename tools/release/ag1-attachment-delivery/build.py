@@ -49,7 +49,7 @@ def build(commit, output):
     for name in ('.msb/bot/node_modules', 'overlay/bot/node_modules'):
         path = source / name
         if os.path.lexists(path): raise ValueError('Unexpected tracked node_modules')
-        path.symlink_to('/tmp/ag1-dependencies', target_is_directory=True)
+        path.symlink_to(contract.ISOLATED_DEPENDENCIES, target_is_directory=True)
     targets = []
     for relative, (source_path, before, after) in contract.FILES.items():
         data = blob(commit, source_path)

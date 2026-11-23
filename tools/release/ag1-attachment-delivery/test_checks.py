@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+import subprocess
 import sys
 import tempfile
 from types import SimpleNamespace
@@ -17,6 +18,19 @@ import verify
 
 
 class ScopedChecksTests(unittest.TestCase):
+    def test_isolated_modules_resolve_sibling_dependencies(self):
+        with tempfile.TemporaryDirectory(prefix='ag1-node-resolution-') as tmp:
+            root = Path(tmp)
+            modules = root / 'runtime' / contract.ISOLATED_DEPENDENCIES.name
+            (modules / 'first').mkdir(parents=True)
+            (modules / 'second').mkdir()
+            (modules / 'first/index.js').write_text("module.exports = require('second')\n")
+            (modules / 'second/index.js').write_text("module.exports = 42\n")
+            source = root / 'source'; source.mkdir()
+            (source / 'node_modules').symlink_to(modules, target_is_directory=True)
+            result = subprocess.check_output(['node', '-e', "process.stdout.write(String(require('first')))"], cwd=source, text=True)
+            self.assertEqual(result, '42')
+
     def test_changed_dependency_or_unexpected_file_is_rejected(self):
         with tempfile.TemporaryDirectory(prefix='ag1-inventory-') as tmp:
             root = Path(tmp).resolve()
@@ -78,7 +92,7 @@ class ScopedChecksTests(unittest.TestCase):
 
     def test_test_proof_rejects_skips_and_missing_cases(self):
         summary = '''AG1_OPERATOR_TESTS_BEGIN
-Ran 8 tests in 0.1s
+Ran 9 tests in 0.1s
 OK
 AG1_OPERATOR_TESTS_END
 AG1_TARGETED_TESTS_BEGIN

@@ -14,13 +14,14 @@ BOT = Path('/home/client/.msb/bot')
 OWNER = 'client'
 MODE = 0o664
 DEPENDENCIES = BOT / 'node_modules'
+ISOLATED_DEPENDENCIES = Path('/tmp/ag1-runtime/node_modules')
 BACKUPS = Path('/var/lib/msb-ops/ag1-attachment-delivery')
 TOOLS = 'tools/release/ag1-attachment-delivery'
 OLD_PRIMITIVES = 'tools/release/jar1-audit-2026-11-20/deploy.py'
 OLD_RUNTIME = 'tools/release/jar1-audit-2026-11-20/runtime.py'
 BASELINE_FILES = ('ag1-code-inventory.json', 'ag1-entry-inventory.json')
 OPERATOR_TESTS = ('test_transaction.py', 'test_deploy.py', 'test_checks.py')
-OPERATOR_TEST_COUNT = 8
+OPERATOR_TEST_COUNT = 9
 
 # runtime path -> (candidate Git path, live-before SHA-256, candidate SHA-256)
 FILES = {

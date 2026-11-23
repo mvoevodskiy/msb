@@ -71,7 +71,8 @@ def child(stage, host_net):
     subprocess.run(['mount', '--make-rprivate', '/'], check=True)
     subprocess.run(['mount', '-t', 'tmpfs', '-o', 'mode=755,size=4m', 'tmpfs', '/run'], check=True)
     subprocess.run(['mount', '-t', 'tmpfs', '-o', 'mode=1777,size=256m', 'tmpfs', '/tmp'], check=True)
-    deps = Path('/tmp/ag1-dependencies')
+    deps = contract.ISOLATED_DEPENDENCIES
+    deps.parent.mkdir(mode=0o755)
     deps.mkdir(mode=0o755)
     subprocess.run(['mount', '--bind', str(contract.DEPENDENCIES), str(deps)], check=True)
     subprocess.run(['mount', '-o', 'remount,bind,ro', str(deps)], check=True)
