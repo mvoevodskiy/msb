@@ -20,6 +20,13 @@ def load(path):
     result = importlib.util.module_from_spec(spec); spec.loader.exec_module(result); return result
 
 
+def validate_stage(base, stage, manifest_sha):
+    # The reused guard checks __file__ against the actual entry point.  Its
+    # module is loaded under another filename; bind that check to this launcher.
+    base.__file__ = __file__
+    base.validate_stage(stage, manifest_sha)
+
+
 def main():
     p = argparse.ArgumentParser(); p.add_argument('--stage', required=True); p.add_argument('--manifest-sha', required=True)
     p.add_argument('--child-host-netns', type=int); a = p.parse_args(); stage = Path(a.stage).absolute()
@@ -33,7 +40,7 @@ def main():
         if path.is_symlink() or st.st_uid != 0 or st.st_mode & 0o022 or not path.is_file() or \
            hashlib.sha256(path.read_bytes()).hexdigest() != manifest[name.removesuffix('.py') + '_sha256']:
             raise RuntimeError('Untrusted release tool')
-    base = load(stage / 'launcher_base.py'); base.validate_stage(stage, a.manifest_sha)
+    base = load(stage / 'launcher_base.py'); validate_stage(base, stage, a.manifest_sha)
     allowed_links = {'source/.msb/bot/node_modules': '/home/client/.msb/bot/node_modules',
         'source/overlay/bot/node_modules': '/home/client/.msb/bot/node_modules',
         'source/overlay/bot/shared': '../../.msb/bot/shared'}

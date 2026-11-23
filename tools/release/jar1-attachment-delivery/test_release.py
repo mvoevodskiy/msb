@@ -17,8 +17,16 @@ build = load('attachment_build_test', HERE / 'build.py')
 deploy = load('attachment_deploy_test', HERE / 'deploy.py')
 audit = load('attachment_audit_test', HERE.parent / 'jar1-audit-2026-11-20/deploy.py')
 profile = load('attachment_profile_test', HERE / 'profile.py')
+launcher = load('attachment_launcher_test', HERE / 'launcher.py')
 
 class GuardTests(unittest.TestCase):
+    def test_reused_stage_guard_checks_the_actual_launcher(self):
+        base = load('attachment_launcher_base_test', HERE.parent / 'jar1-audit-2026-11-20/launcher.py')
+        seen = []
+        base.validate_stage = lambda stage, digest: seen.append((Path(base.__file__).resolve(), stage, digest))
+        launcher.validate_stage(base, Path('/var/tmp/synthetic-release'), 'test-digest')
+        self.assertEqual(seen, [(HERE / 'launcher.py', Path('/var/tmp/synthetic-release'), 'test-digest')])
+
     def proof(self):
         manifest = {'source_commit': 'a'*40, 'source_archive_sha256': 'b'*64}
         proof = {'passed': True, 'scope': 'jar1-attachment-delivery-v1', 'manifest_sha256': 'c'*64,
