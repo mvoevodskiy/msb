@@ -6,7 +6,7 @@
 
 Модуль принимает события Telegram, показывает меню и ведёт пользовательский ход.
 Текстовые формы выделены в [dispatcher](forms.mjs) и подмодули [auth](forms/auth.mjs),
-[env](forms/env.mjs) (name→value→description/skip, transient draft/общий TTL), [Pult](forms/pult.mjs) и [источники](forms/monitor.mjs); они не запускают отдельный agent path.
+[env](forms/env.mjs) (name→value→description/skip, transient draft/общий TTL), [Pult](forms/pult.mjs); они не запускают отдельный agent path.
 Точка сборки — [`createBot`](bot.mjs): owner guard, команды, callback/text/voice
 handlers, общие `pending`, `running` и [очередь](#очередь). [`main`](../main.mjs) управляет запуском
 и shutdown процесса.
@@ -108,7 +108,7 @@ Owner boundary остаётся перед core router: middleware бота и h
 | [settings](routes/settings.mjs) | `handleSettingsRoute`: `.env`, timezone, лимиты, сведения, STT и уведомления |
 | [engines](routes/engines.mjs) | `handleEnginesRoute`: обычный экран и опциональный OS dispatcher |
 | [autonomy](routes/autonomy.mjs) | `handleAutonomyRoute`: задачи, история, таймеры и сохранённые права |
-| [monitor](routes/monitor.mjs) → [форма выбора](forms/monitor.mjs) | `handleMonitorRoute`: источники, дайджест, сбор и настройки; [@ник и отмена](../../tests/monitor-source-choice.test.mjs) |
+| [monitor](routes/monitor.mjs) | `handleMonitorRoute`: источники, дайджест, сбор и настройки |
 | [workspace](routes/workspace.mjs) | `handleWorkspaceRoute`: MCP callbacks → [MCP](../mcp/README.md) |
 
 Диспетчер сохраняет исходный порядок; поздние setup/misc обработчики вызываются
@@ -162,15 +162,6 @@ Owner boundary остаётся перед core router: middleware бота и h
 [`prepareAttachment`](attachments.mjs) сохраняет байты в `workspace/.media/`
 и собирает текстовый prompt (как old agent-cc a$A) → тот же `executeTurn`.
 Альбомы `media_group_id` собираются 2.5 с, затем один ход.
-
-Частично доступный альбом продолжает обработку после ошибки скачивания
-отдельного элемента. Модель получает доступные файлы и исходные позиции
-пропущенных вложений; при полном отказе остаётся прежний ответ с ошибкой.
-Остановка и ошибки обязательной локальной записи/чтения завершают ход.
-Повторов скачивания нет; успешный альбом и интерфейс сохраняются.
-Границы: [контракт](../../tests/reference/partial-album-contract.txt),
-[проверки обработчика](../../tests/album-partial-turn.test.mjs) и
-[ошибок загрузки](../../tests/album-download-errors.test.mjs).
 
 Альбомы уже в [`prepareAttachment`](attachments.mjs). Исходящий ответ:
 [`extractMediaMarkers`](media-markers.mjs) убирает `[ГОЛОС: путь подпись]`,
@@ -245,16 +236,6 @@ old provenance and still-pending catalog locks are in
 
 
 ## Подтверждение плана и правки
-
-По решению владельца 15.11.2026 обычный итоговый ответ тоже приходит новым
-сообщением: [response](response.mjs) удаляет статус thinking и отправляет ответ
-с прежними форматированием, footer и topic. Если удаление статуса не удалось,
-это не блокирует отправку ответа. Это намеренное отличие от старого редактирования
-короткого ответа. Анимацию завершает и дожидается её последнего edit
-[progress](progress.mjs); отдельная команда /stop без частичного ответа сохраняет
-прежний статус остановки. [Проверки](../../tests/response-delivery.test.mjs),
-[гонка progress](../../tests/presentation-retry.test.mjs),
-[полный ход](../../tests/turn-lifecycle.test.mjs).
 
 Финальный ответ → [plan parser](plan.mjs) → [response](response.mjs) удаляет
 thinking и отправляет отдельную прежнюю карточку; footer/keyboard только на

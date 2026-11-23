@@ -11,15 +11,24 @@ import re
 import sqlite3
 import sys
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from client_fs import open_dir  # noqa: E402
+
+def open_dir(path):
+    if not os.path.isabs(path):
+        raise ValueError('expected absolute path')
+    flags = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC
+    fd = os.open('/', flags)
+    try:
+        for part in (part for part in path.split('/') if part):
+            child = os.open(part, flags, dir_fd=fd)
+            os.close(fd)
+            fd = child
+        return fd
+    except BaseException:
+        os.close(fd)
+        raise
 
 
-class StaleMarker(Exception):
-    pass
-
-
-def change(path, data, expected=None):
+def change(path, data):
     directory, name = os.path.split(path)
     if not re.fullmatch(r'sleep\.[a-zA-Z0-9_-]{1,32}', name):
         raise ValueError('invalid marker')
@@ -28,8 +37,6 @@ def change(path, data, expected=None):
     try:
         dfd = open_dir(directory)
     except FileNotFoundError:
-        if expected is not None:
-            raise StaleMarker()
         if data is None:
             return
         raise
@@ -46,14 +53,6 @@ def change(path, data, expected=None):
             db.execute('BEGIN IMMEDIATE')
             try:
                 if data is None:
-                    if expected is not None:
-                        try:
-                            st = os.stat(name, dir_fd=dfd, follow_symlinks=False)
-                        except FileNotFoundError:
-                            raise StaleMarker()
-                        current = f'{st.st_dev}:{st.st_ino}:{st.st_ctime_ns}'
-                        if current != expected:
-                            raise StaleMarker()
                     try:
                         os.unlink(name, dir_fd=dfd)
                     except FileNotFoundError:
@@ -89,19 +88,13 @@ def change(path, data, expected=None):
 
 
 def main():
-    if len(sys.argv) not in (3, 4) or sys.argv[2] not in ('write', 'remove', 'compare-remove'):
-        return 2
-    expected = sys.argv[3] if len(sys.argv) == 4 else None
-    if (sys.argv[2] == 'compare-remove') != (expected is not None) or \
-            (expected is not None and not re.fullmatch(r'[0-9]{1,20}:[0-9]{1,20}:[0-9]{1,20}', expected)):
+    if len(sys.argv) != 3 or sys.argv[2] not in ('write', 'remove'):
         return 2
     data = sys.stdin.buffer.read(4097) if sys.argv[2] == 'write' else None
     if data is not None and len(data) > 4096:
         return 2
     try:
-        change(sys.argv[1], data, expected)
-    except StaleMarker:
-        return 3
+        change(sys.argv[1], data)
     except (OSError, ValueError, sqlite3.Error):
         return 1
     return 0

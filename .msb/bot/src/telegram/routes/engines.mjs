@@ -3,19 +3,12 @@
  * Навигация: [Telegram](../README.md).
  */
 import { handleNativeEngineCallback } from '../../engines/telegram.mjs';
-import { wakeWithFallback } from '../../engines/wake.mjs';
 import { isCodexSelected } from '../../engines/codex-active.mjs';
-import { botId } from '../../paths.mjs';
 import { UNHANDLED } from './shared.mjs';
 
 export async function handleEnginesRoute({ data, state, show, bot, engineMenu, signal }) {
-  if (data === 'eng:wake') {
-    const sleep = bot[Symbol.for('msb.engineSleep')];
-    // Codex uses the existing local marker directly; do not publish a system
-    // request or involve another engine if local wake fails.
-    const ok = isCodexSelected(state)
-      ? await sleep?.wake()
-      : await wakeWithFallback(sleep, { botId: botId(), signal });
+  if (data === 'eng:wake' && isCodexSelected(state)) {
+    const ok = await bot[Symbol.for('msb.engineSleep')]?.wake();
     if (!ok) return show({ text: 'Не получилось переключить бота. Попробуй ещё раз.', keyboard: (await engineMenu()).keyboard });
     return show(await engineMenu());
   }

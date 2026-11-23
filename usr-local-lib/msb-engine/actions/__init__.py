@@ -2,11 +2,9 @@ from .bots import act_disable_jarvis, act_enable_jarvis
 from .openclaw import act_disable_openclaw, act_enable_openclaw, act_update_openclaw
 from .pult import act_disable_pult, act_enable_pult, act_reload_pult
 from .status import act_status
-from .archives import act_restore
 
 ACTS = {
     "status": act_status,
-    "restore": act_restore,
     "enable-msb": act_enable_jarvis,
     "disable-msb": act_disable_jarvis,
     "enable-jarvis": act_enable_jarvis,

@@ -69,7 +69,6 @@ export async function engineStatusSnapshot() {
     pult: state.pult || null,
     actions: state.actions?.client || [],
     last: state.last || null,
-    hold: state.hold,
     host_ready: state.host_ready,
     at: state.at,
   };

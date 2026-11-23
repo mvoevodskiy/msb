@@ -1,12 +1,9 @@
 {
-  "name": "msb-bot-open-core",
-  "version": "0.3.0",
-  "private": true,
   "type": "module",
   "scripts": {
-    "start": "node index.js",
-    "start:closed": "MSB_USE_CLOSED_CORE=1 node index.js",
-    "test": "node --test tests/*.test.mjs"
+    "start": "node run.mjs",
+    "start:stock": "node index.js",
+    "test:ext": "node --test ext/tests/*.test.mjs"
   },
   "dependencies": {
     "grammy": "^1.41.1",

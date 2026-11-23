@@ -1,10 +1,3 @@
-"""Read engine and bot facts into state.json for cli.py and the Telegram client.
-
-OpenClaw scope is selected by openclaw_service.py and root-owned setup facts by
-openclaw_readiness.py; request results remain here. Checks: tests/test_switch_safety.py
-and tests/test_openclaw_service.py. Deletion trash is read as client via
-archive_service.py; tests/test_archive_restore.py covers its state contract.
-"""
 import json
 import os
 
@@ -15,23 +8,17 @@ from const import (
     CLIENT_ROOT,
     CODES,
     HELPER_VERSION,
-    LEGACY_ADOPTION_PENDING,
-    LEGACY_OC_MARKER,
-    LEGACY_OC_OFF,
     MARKS_DIR,
     OC_HOME,
     OC_MARKER,
     OC_OFF,
-    OC_SETUP,
+    OC_UNITS,
     RUN_DIR,
     SLEEP_PREFIX,
     SOURCE_ACTIONS,
     SOURCES,
     STATE_DIR,
 )
-from openclaw_service import discover as discover_oc_service, word as oc_service_word
-from openclaw_readiness import incomplete as openclaw_incomplete, legacy_adopted
-from archive_service import list_trash
 from util import (
     cc_cli_version,
     disk,
@@ -144,44 +131,20 @@ def jarvis_info():
 
 
 def detect_oc_unit():
-    """Compatibility accessor; use discover_oc_service for its required scope."""
-    service = discover_oc_service()
-    return service.get('unit') if service else None
-
-
-def openclaw_off_paths(scope):
-    paths = [OC_OFF]
-    # Before adoption retain old off intent. Once adoption has copied that
-    # intent, the new marker is authoritative and old data remains inert.
-    if scope == 'user' and not legacy_adopted(OC_MARKER):
-        paths.append(LEGACY_OC_OFF)
-    return [path for path in paths if os.path.lexists(path)]
+    for u in OC_UNITS:
+        for base in ("/etc/systemd/system", "/usr/lib/systemd/system", "/lib/systemd/system"):
+            if os.path.lexists(f"{base}/{u}"):
+                return u
+    return None
 
 
 def openclaw_info():
-    marker = os.path.lexists(OC_MARKER)
-    home = os.path.isdir(os.path.join(OC_HOME, ".openclaw"))
-    service = discover_oc_service()
-    unit = service.get('unit') if service else None
-    scope = service.get('scope') if service else None
-    legacy = scope == 'user' and os.path.lexists(LEGACY_OC_MARKER)
-    off = bool(openclaw_off_paths(scope))
-    pending = os.path.lexists(LEGACY_ADOPTION_PENDING)
-    if scope in ('unknown', 'ambiguous'):
-        return {
-            "installed": True if marker or scope == 'ambiguous' else None,
-            "enabled": None,
-            "incomplete": None,
-            "gateway": "unknown",
-            "plugin": None,
-            "plugin_alive": False,
-            "version": None,
-            "frozen": None,
-            "unit": None,
-            "scope": scope,
-            "adoption_pending": pending,
-        }
-    if not marker and not legacy and not home and not service:
+    marker = os.path.lexists(OC_MARKER) or os.path.isdir(
+        os.path.join(OC_HOME, ".openclaw")
+    )
+    unit = detect_oc_unit()
+    off = os.path.lexists(OC_OFF)
+    if not marker and not unit:
         return {
             "installed": False,
             "enabled": False,
@@ -192,26 +155,21 @@ def openclaw_info():
             "version": None,
             "frozen": None,
             "unit": None,
-            "scope": scope,
-            "adoption_pending": pending,
         }
     gateway = "unknown"
     if unit:
-        st = oc_service_word(service, "is-active")
-        gateway = st if st else "unknown"
+        st = systemctl_word("is-active", unit)
+        gateway = st if st else "inactive"
     return {
         "installed": True,
         "enabled": not off,
-        "incomplete": openclaw_incomplete(OC_MARKER, OC_SETUP),
-        # The off marker is intent, not evidence that systemd has stopped.
-        "gateway": gateway,
+        "incomplete": False,
+        "gateway": gateway if not off else "inactive",
         "plugin": None,
         "plugin_alive": False,
         "version": None,
         "frozen": None,
         "unit": unit,
-        "scope": scope,
-        "adoption_pending": pending,
     }
 
 
@@ -224,11 +182,9 @@ def way_back(o):
     )
 
 
-def available_actions(j, o, p=None, trash=None):
+def available_actions(j, o, p=None):
     acts = ["status"]
-    if trash:
-        acts.append("restore")
-    if o["installed"] and not o.get("adoption_pending") and o.get("scope") in ("system", "user") and isinstance(o.get("enabled"), bool):
+    if o["installed"]:
         acts.append("disable-openclaw" if o["enabled"] else "enable-openclaw")
         if o["enabled"]:
             acts.append("update-openclaw")
@@ -272,7 +228,6 @@ def compute_state():
     j = jarvis_info()
     o = openclaw_info()
     p = pult_info()
-    trash = list_trash()
     return {
         "v": 1,
         "helper_version": HELPER_VERSION,
@@ -281,7 +236,7 @@ def compute_state():
         "managed": True,
         "hold": False,
         "host_ready": True,
-        "actions": available_actions(j, o, p, trash),
+        "actions": available_actions(j, o, p),
         "codes": list(CODES),
         # `jarvis` — совместимое имя блока MSB-ботов (контракт UI/старых экранов).
         # `msb` — канонический алиас без бренда создателя.
@@ -304,7 +259,7 @@ def compute_state():
         "puller": {"timer_enabled": False, "timer_active": False},
         "base_pulse": {"installed": False, "timer_active": False},
         "usage": {"day": time_day(), "jarvis_sessions": 0, "openclaw_sessions": 0},
-        "trash": trash,
+        "trash": [],
         "openclaw_version_offered": None,
         "update": None,
         "snapshot": None,

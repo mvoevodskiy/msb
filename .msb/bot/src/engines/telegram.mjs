@@ -36,8 +36,7 @@ export async function handleNativeEngineCallback({ data, state, show, providerVi
       const { id } = await submitRequest(action, {
         bot_id: process.env.MSB_BOT_ID || 'default',
       });
-      // The service has up to ten minutes for drain, state publication and wake.
-      const result = await waitRequestResult(id, { timeoutMs: 630_000 });
+      const result = await waitRequestResult(id, { timeoutMs: 60_000 });
       const snap = await engineStatusSnapshot();
       const screen = await engineMenu(snap);
       const note = result

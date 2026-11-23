@@ -1,9 +1,8 @@
 #!/usr/bin/env python3
 """msb-engine CLI: run | tick | status | setup.
 
-IPC is in ipc.py, state in state.py and OpenClaw's system/user target is selected
-in openclaw_service.py. Bot off-marker checks: tests/test_bot_off_marker.py;
-service scope checks: tests/test_openclaw_service.py.
+IPC is in ipc.py, state in state.py. Bot off-marker checks:
+tests/test_bot_off_marker.py.
 """
 
 from __future__ import annotations
@@ -20,14 +19,10 @@ if _LIB not in sys.path:
 from actions import ACTS  # noqa: E402
 from const import (  # noqa: E402
     HELPER_VERSION,
-    LEGACY_ADOPTION_PENDING,
-    LEGACY_OC_MARKER,
     REQUEST_NAME,
     SOURCE_ACTIONS,
     SOURCES,
     STUCK_SLEEP,
-    OC_HOME,
-    STATE_DIR,
 )
 from ipc import cleanup_claims, locked, parse_request, spend, take_request  # noqa: E402
 from state import (  # noqa: E402
@@ -136,28 +131,15 @@ def cmd_tick(_args):
                 systemctl_ok("start", unit)
                 log(f"revived {unit}")
         # OpenClaw revive if installed and not OC_OFF
-        from openclaw_service import ok as oc_service_ok, word as oc_service_word
-        from state import openclaw_info, openclaw_off_paths
+        from const import OC_OFF
+        from state import detect_oc_unit, openclaw_info
 
         o = openclaw_info()
-        off = bool(openclaw_off_paths(o.get("scope")))
-        if asleep and off:
-            # Retry a failed wake after an attempted stop; never revive OC here.
-            from actions.bots import set_sleep
-            try:
-                set_sleep(sorted(asleep), False, "tick")
-            except Refused:
-                log("could not wake sleeping bots")
-        if o["installed"] and o["enabled"] and not off and not o.get('adoption_pending'):
-            unit = o.get("unit")
-            service = {"unit": unit, "scope": o.get("scope")}
-            status = oc_service_word(service, "is-active") if unit else ""
-            if status in ("inactive", "failed"):
-                reset = status != "failed" or oc_service_ok(service, "reset-failed")
-                if reset and oc_service_ok(service, "start"):
-                    log(f"revived {unit}")
-                else:
-                    log(f"revive failed {unit}")
+        if o["installed"] and o["enabled"] and not os.path.lexists(OC_OFF):
+            unit = o.get("unit") or detect_oc_unit()
+            if unit and systemctl_word("is-active", unit) != "active":
+                systemctl_ok("start", unit)
+                log(f"revived {unit}")
         write_state(compute_state())
     finally:
         os.close(lock)
@@ -200,45 +182,18 @@ def cmd_setup(_args):
     return 0
 
 
-def cmd_adopt_legacy(_args):
-    """Operator-only migration of facts; never starts services or reads auth."""
-    need_root()
-    lock = locked()
-    try:
-        if not os.path.lexists(LEGACY_OC_MARKER):
-            if os.path.lexists(LEGACY_ADOPTION_PENDING):
-                raise Refused('NOT_AVAILABLE', detail={'reason': 'ADOPTION_SOURCE_MISSING'})
-            log('legacy facts: absent')
-            return 0
-        from legacy_adoption import adopt
-        from legacy_gate import acquire_old_lock, assert_quiet
-        from openclaw_service import discover
-        assert_quiet()
-        old_lock = acquire_old_lock('/run/jarvis-engine')
-        try:
-            assert_quiet()
-            result = adopt('/var/lib/jarvis-engine', STATE_DIR, OC_HOME, discover(), uid_of('openclaw'))
-            log(f'legacy facts: {result}')
-            return 0
-        finally:
-            os.close(old_lock)
-    finally:
-        os.close(lock)
-
-
 COMMANDS = {
     "run": cmd_run,
     "tick": cmd_tick,
     "status": cmd_status,
     "setup": cmd_setup,
-    "adopt-legacy": cmd_adopt_legacy,
 }
 
 
 def main(argv=None):
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv or argv[0] in ("-h", "--help"):
-        print("usage: msb-engine {run|tick|status|setup|adopt-legacy}", file=sys.stderr)
+        print("usage: msb-engine {run|tick|status|setup}", file=sys.stderr)
         return 2
     cmd = argv[0]
     if cmd not in COMMANDS:
