@@ -1,9 +1,11 @@
 /**
- * Queued media descriptor → Telegram send* after the text answer.
+ * Queued media descriptor → Telegram send* after the text answer, or before the
+ * footer when an answer consists only of media.
  * Old F9Q/C9Q: local path or http(s) URL; optional H.264 convert for video.
  * Caller [bot](./bot.mjs) uses the [turn's](../agent/turn.mjs) captured cwd.
  * Markers → [media-markers](./media-markers.mjs).
- * Checks: [send-media](../../tests/send-media.test.mjs).
+ * Checks: [send-media](../../tests/send-media.test.mjs),
+ * [attachment-only response](../../tests/outbound-media-response.test.mjs).
  */
 import fs from 'node:fs/promises';
 import { execFile } from 'node:child_process';

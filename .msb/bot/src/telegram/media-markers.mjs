@@ -1,8 +1,9 @@
 /**
  * Final model text → outbound Telegram media markers stripped to a send queue.
  * Old e8A/okA/skA: [ФОТО|ФАЙЛ|…: path caption]. Caller [bot](./bot.mjs) delivers
- * clean text first, then [sendMedia](./send-media.mjs).
- * Checks: [media-markers](../../tests/media-markers.test.mjs).
+ * text and [sendMedia](./send-media.mjs); media-only replies send files first.
+ * Checks: [media-markers](../../tests/media-markers.test.mjs),
+ * [attachment-only response](../../tests/outbound-media-response.test.mjs).
  */
 
 const TYPES = {
