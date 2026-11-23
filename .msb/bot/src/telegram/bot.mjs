@@ -49,7 +49,7 @@ import { createInbox, isForwarded, retainAdmittedTimerParts } from './inbox.mjs'
 import { prepareBatch, batchStatus } from './batch.mjs';
 import { createPlanActions } from './plan-actions.mjs';
 import { parsePlanResponse } from './plan.mjs';
-import { deliverTurnResponse } from './response.mjs';
+import { deliverTurnResponse, formatTurnFooter } from './response.mjs';
 import { deliverView } from './view-delivery.mjs';
 import { processPauseMarkers } from './pause-markers.mjs';
 import { processGroupTaskRemovalMarkers, processTaskCancelMarkers } from './task-removal-markers.mjs';
@@ -887,13 +887,36 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       const before = errorDisplay ? stripMcpMarkerPayloads(errorDisplay.before) : '';
       const after = errorDisplay ? stripMcpMarkerPayloads(errorDisplay.after) : '';
       const restoreText = value => before + restoreLegacyTimerLiterals(restoreTaskTextLiterals(value, textEdits), legacyTimers) + after;
-      await deliverTurnResponse(ctx, status.message_id, replyText, out.ok || out.partialReply ? {
+      const telemetry = out.ok || out.partialReply ? {
         elapsedMs: performance.now() - startedAt, costUsd: result?.costUsd,
         context: out.partialReply ? out.partialReply.context : result?.context,
-      } : {}, { restoreText });
-      deliveredText = restoreText(parsePlanResponse(replyText)?.cleanText ?? replyText); delivered = true;
-      if (media.items.length) {
-        await sendMediaQueue(ctx.api, chatId, media.items, { threadId: thread, cwd: out.cwd });
+      } : {};
+      const plan = parsePlanResponse(replyText);
+      const cleanText = restoreText(plan?.cleanText ?? replyText);
+      const mediaOnly = out.ok && media.items.length > 0 && !plan && !cleanText.trim();
+      if (mediaOnly) {
+        const sent = await sendMediaQueue(ctx.api, chatId, media.items, { threadId: thread, cwd: out.cwd });
+        if (sent.sent > 0) { deliveredText = cleanText; delivered = true; }
+        if (sent.sent > 0 && sent.failed === 0) {
+          // The attachment is the answer; keep the existing timing/context footer
+          // after it without inventing an empty-answer error or a fake text reply.
+          const footer = formatTurnFooter(telemetry);
+          if (footer) {
+            await deliverTurnResponse(ctx, status.message_id, footer, {}, { allowPlan: false })
+              .catch(() => console.error('[msb/bot] attachment footer delivery failed'));
+          } else {
+            await ctx.api.deleteMessage(chatId, status.message_id, presentationSignal(AbortSignal.timeout(15_000))).catch(() => {});
+          }
+        } else {
+          await deliverTurnResponse(ctx, status.message_id, replyText, telemetry, { restoreText });
+          deliveredText = cleanText; delivered = true;
+        }
+      } else {
+        await deliverTurnResponse(ctx, status.message_id, replyText, telemetry, { restoreText });
+        deliveredText = cleanText; delivered = true;
+        if (media.items.length) {
+          await sendMediaQueue(ctx.api, chatId, media.items, { threadId: thread, cwd: out.cwd });
+        }
       }
       if (out.bootstrapComplete) await deliverBootstrapServices(ctx);
     } catch (err) {

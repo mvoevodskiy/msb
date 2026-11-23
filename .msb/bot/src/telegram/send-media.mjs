@@ -95,13 +95,17 @@ export async function sendMediaItem(api, chatId, item, { threadId, env = process
   }
 }
 
-/** Deliver queued media after the text answer; failures are logged, not fatal. */
+/** Deliver queued media in order; return actual successes while logging individual failures. */
 export async function sendMediaQueue(api, chatId, items, { threadId, env = process.env, cwd, log = console.error } = {}) {
+  const outcome = { sent: 0, failed: 0 };
   for (const item of items) {
     try {
       await sendMediaItem(api, chatId, item, { threadId, env, cwd });
+      outcome.sent++;
     } catch (err) {
+      outcome.failed++;
       log(`[msb/bot] send_media failed (${item.type}): ${err.message}`);
     }
   }
+  return outcome;
 }
