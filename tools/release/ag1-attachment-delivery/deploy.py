@@ -217,13 +217,17 @@ def stop_quiet(host):
 def recover(stage, manifest, manifest_sha, backup, host):
     record = validate_backup(backup, manifest, manifest_sha)
     marker(backup)
-    host.ensure_guard_startup()
     previous_pid = 0
     if host.bot_active():
+        # systemd cannot freeze, thaw or stop an active masked instance. If a
+        # prior operator died in that state, restore the expected unit first.
+        if P.unit_properties(contract.UNIT, 'UnitFileState').get('UnitFileState') == 'masked':
+            host.unguard_startup()
         previous_pid = stop_quiet(host)
     else:
         host.bot_stopped()
         check_code_processes(None)
+    host.ensure_guard_startup()
     stage_checks.check_live_inventory(contract.BOT, manifest, after=None)
     validate_backup(backup, manifest, manifest_sha)
     transaction.rollback(contract.BOT, backup, record)
@@ -255,7 +259,6 @@ def apply(stage, manifest, manifest_sha, proof):
         host.bot_idle(frozen=True)
         check_code_processes(pid)
         snapshot = protected.snapshot()
-        host.guard_startup()
         host.call('thaw')
         frozen = False
         host.bot_idle()
@@ -264,6 +267,7 @@ def apply(stage, manifest, manifest_sha, proof):
         host.call('stop')
         host.bot_stopped()
         check_code_processes(None)
+        host.guard_startup()
         if protected.snapshot() != snapshot:
             raise RuntimeError('Protected data changed while stopping; no data was restored')
         stage_checks.validate(stage, manifest_sha)

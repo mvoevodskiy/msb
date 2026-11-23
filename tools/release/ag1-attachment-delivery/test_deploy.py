@@ -29,6 +29,8 @@ class FakeHost:
             raise RuntimeError('simulated ' + name)
 
     def call(self, name):
+        if self.guarded and name in ('freeze', 'thaw', 'stop'):
+            raise RuntimeError('systemctl cannot control a masked instance')
         if name == 'freeze': self.frozen = True
         elif name == 'thaw': self.frozen = False
         elif name == 'stop': self.running = False
@@ -54,6 +56,8 @@ class FakeHost:
         self.fail('unguard')
 
     def thaw_if_needed(self):
+        if self.frozen and self.guarded:
+            raise RuntimeError('systemctl cannot thaw a masked instance')
         self.frozen = False
 
     def bot_active(self):
@@ -96,7 +100,8 @@ class DeployRecoveryTests(unittest.TestCase):
             host = FakeHost(failure if failure != 'partial' else None)
             def props(_unit, *_fields):
                 return {'MainPID': str(host.pid if host.running else 0),
-                        'FreezerState': 'frozen' if host.frozen else 'running'}
+                        'FreezerState': 'frozen' if host.frozen else 'running',
+                        'UnitFileState': 'masked' if host.guarded else 'enabled'}
             def inventory(_root, _manifest, *, after):
                 for row in rows:
                     value = deploy.contract.sha_bytes((live / row['relative']).read_bytes())
@@ -134,13 +139,17 @@ class DeployRecoveryTests(unittest.TestCase):
             from contextlib import ExitStack
             with ExitStack() as stack:
                 for item in patches: stack.enter_context(item)
-                with self.assertRaisesRegex(RuntimeError, 'previous code restored'):
+                if failure is None:
                     deploy.apply(stage, manifest, 'b' * 64, {})
+                else:
+                    with self.assertRaisesRegex(RuntimeError, 'previous code restored'):
+                        deploy.apply(stage, manifest, 'b' * 64, {})
             self.assertTrue(host.running)
             self.assertFalse(host.frozen)
             self.assertFalse(host.guarded)
             for number, row in enumerate(rows):
-                self.assertEqual((live / row['relative']).read_bytes(), f'old-{number}'.encode())
+                expected = 'new' if failure is None else 'old'
+                self.assertEqual((live / row['relative']).read_bytes(), f'{expected}-{number}'.encode())
             backups = list(backup_root.iterdir())
             self.assertEqual(len(backups), 1)
             self.assertFalse((backups[0] / 'guard.pending').exists())
@@ -149,6 +158,28 @@ class DeployRecoveryTests(unittest.TestCase):
         for failure in ('freeze', 'guard', 'thaw', 'stop', 'partial', 'unguard', 'start'):
             with self.subTest(failure=failure):
                 self.run_case(failure)
+
+    def test_successful_install_thaws_before_masking(self):
+        self.run_case(None)
+
+    def test_recovery_handles_a_frozen_masked_active_unit(self):
+        host = FakeHost()
+        host.frozen = True
+        host.guarded = True
+        def props(_unit, *_fields):
+            return {'MainPID': str(host.pid if host.running else 0),
+                    'FreezerState': 'frozen' if host.frozen else 'running',
+                    'UnitFileState': 'masked' if host.guarded else 'enabled'}
+        with patch.object(deploy.P, 'unit_properties', side_effect=props), \
+             patch.object(deploy, 'validate_backup', return_value={}), \
+             patch.object(deploy, 'marker'), patch.object(deploy, 'finish'), \
+             patch.object(deploy, 'check_code_processes'), patch.object(deploy, 'host_identity'), \
+             patch.object(deploy, 'ready'), patch.object(deploy.transaction, 'rollback'), \
+             patch.object(deploy.stage_checks, 'check_live_inventory'):
+            deploy.recover(Path('/tmp/stage'), {}, 'digest', Path('/tmp/backup'), host)
+        self.assertTrue(host.running)
+        self.assertFalse(host.frozen)
+        self.assertFalse(host.guarded)
 
 
 if __name__ == '__main__':

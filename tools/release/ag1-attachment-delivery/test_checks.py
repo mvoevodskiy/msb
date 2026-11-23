@@ -103,7 +103,7 @@ class ScopedChecksTests(unittest.TestCase):
 
     def test_test_proof_rejects_skips_and_missing_cases(self):
         summary = '''AG1_OPERATOR_TESTS_BEGIN
-Ran 9 tests in 0.1s
+Ran 11 tests in 0.1s
 OK
 AG1_OPERATOR_TESTS_END
 AG1_TARGETED_TESTS_BEGIN

@@ -21,7 +21,7 @@ OLD_PRIMITIVES = 'tools/release/jar1-audit-2026-11-20/deploy.py'
 OLD_RUNTIME = 'tools/release/jar1-audit-2026-11-20/runtime.py'
 BASELINE_FILES = ('ag1-code-inventory.json', 'ag1-entry-inventory.json')
 OPERATOR_TESTS = ('test_transaction.py', 'test_deploy.py', 'test_checks.py')
-OPERATOR_TEST_COUNT = 9
+OPERATOR_TEST_COUNT = 11
 
 # runtime path -> (candidate Git path, live-before SHA-256, candidate SHA-256)
 FILES = {
