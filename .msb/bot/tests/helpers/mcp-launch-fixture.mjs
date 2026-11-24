@@ -21,10 +21,11 @@ export async function nativeFixtures(f) {
   const bin=path.join(f.home,'.local/bin');
   const configuration={log,collision,hold,readError,response,apifyA,apifyB,supadata,modelThread};
   const claudeSource=`import fs from 'node:fs';
+import readCliPrompt from ${JSON.stringify(new URL('./read-cli-prompt.cjs',import.meta.url).href)};
 const data=${JSON.stringify(configuration)};
 const argv=process.argv.slice(2);
 if(argv.includes('--version')){console.log('2.1.154 (Claude Code)');process.exit(0);}
-const prompt=fs.readFileSync(0,'utf8');
+const prompt=await readCliPrompt(process.stdin,argv);
 const index=argv.indexOf('--mcp-config'),config=index>=0?argv[index+1]:null;
 const file=config&&!config.startsWith('{')?config:null;
 const projection=file?fs.readFileSync(file,'utf8'):config;

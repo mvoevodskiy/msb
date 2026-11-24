@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { fileURLToPath } from 'node:url';
 import { fixture } from './helpers/menu-fixture.mjs';
 import { runAgentTurn } from '../src/agent/turn.mjs';
 import { loadState, saveState } from '../src/state.mjs';
@@ -30,16 +31,18 @@ async function verifyTurn(t, { model, nativeModel = model, usages = defaultUsage
   const cli = [
     '#!' + process.execPath,
     'const fs = require("node:fs");',
+    'const readCliPrompt = require(' + JSON.stringify(fileURLToPath(new URL('./helpers/read-cli-prompt.cjs', import.meta.url))) + ');',
     'const c = ' + JSON.stringify(config) + ';',
     'const args = process.argv.slice(2);',
-    'fs.readFileSync(0, "utf8");',
-    'fs.writeFileSync(c.trace, JSON.stringify({model:args[args.indexOf("--model") + 1],',
-    '  window:process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW, percent:process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE}));',
-    'const emit = data => console.log(JSON.stringify(data));',
-    'emit({type:"system",subtype:"init",session_id:c.session,model:"claude-haiku-5-5"});',
-    'for (const usage of c.usages) emit({type:"assistant",message:{usage,content:[]}});',
-    'emit({type:"result",subtype:"success",is_error:false,session_id:c.session,result:c.answer,',
-    '  usage:c.terminalUsage,modelUsage:{"claude-haiku-5-5":{inputTokens:3500000,contextWindow:1000000}}});',
+    'readCliPrompt(process.stdin, args).then(() => {',
+    '  fs.writeFileSync(c.trace, JSON.stringify({model:args[args.indexOf("--model") + 1],',
+    '    window:process.env.CLAUDE_CODE_AUTO_COMPACT_WINDOW, percent:process.env.CLAUDE_AUTOCOMPACT_PCT_OVERRIDE}));',
+    '  const emit = data => console.log(JSON.stringify(data));',
+    '  emit({type:"system",subtype:"init",session_id:c.session,model:"claude-haiku-5-5"});',
+    '  for (const usage of c.usages) emit({type:"assistant",message:{usage,content:[]}});',
+    '  emit({type:"result",subtype:"success",is_error:false,session_id:c.session,result:c.answer,',
+    '    usage:c.terminalUsage,modelUsage:{"claude-haiku-5-5":{inputTokens:3500000,contextWindow:1000000}}});',
+    '});',
   ].join('\n');
   await fs.writeFile(path.join(bin, 'claude'), cli, { mode: 0o700 });
   process.env.PATH = [bin, path.dirname(process.execPath), '/usr/bin', '/bin'].join(path.delimiter);

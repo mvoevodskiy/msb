@@ -7,8 +7,9 @@
  */
 import { savedSpendLimit } from '../../billing/owner-spend.mjs';
 import { updateState } from '../../state.mjs';
+import { readNoticeMutes } from '../../notifications/mutes.mjs';
 import { envScreen, envDeleteScreen, limitScreen, settingsScreen, notificationsScreen, serverStatusScreen, sttScreen, tzScreen } from '../screens.mjs';
-import { skipEnvComment } from '../forms/env.mjs';
+import { envInputKeyboard, skipEnvComment } from '../forms/env.mjs';
 import { deleteEnvKey, listEnvEntries } from '../../env/store.mjs';
 import { resolveEnvKeyReference } from '../../env/callback-key.mjs';
 import { UNHANDLED } from './shared.mjs';
@@ -25,7 +26,7 @@ export async function handleSettingsRoute({ data, state, show, pending, chatId, 
     pending.set(chatId, 'env-key-name');
     return show({
       text: 'Пришли имя ключа (например <code>MY_API_KEY</code>).',
-      keyboard: (await envScreen()).keyboard,
+      keyboard: envInputKeyboard(),
     });
   }
   if (data.startsWith('settings:env:quick:')) {
@@ -35,7 +36,7 @@ export async function handleSettingsRoute({ data, state, show, pending, chatId, 
     pending.set(chatId, `env:${key}`);
     return show({
       text: `Пришли значение для <code>${escapeHtml(key)}</code>.`,
-      keyboard: (await envScreen()).keyboard,
+      keyboard: envInputKeyboard(),
     });
   }
   if (data.startsWith('settings:env:delete:')) {
@@ -71,6 +72,6 @@ export async function handleSettingsRoute({ data, state, show, pending, chatId, 
   }
   if (data === 'settings:server-status') return show(serverStatusScreen(cfg));
   if (data === 'settings:stt') return show(sttScreen());
-  if (data === 'nm:list') return show(notificationsScreen());
+  if (data === 'nm:list') return show(notificationsScreen(await readNoticeMutes()));
   return UNHANDLED;
 }

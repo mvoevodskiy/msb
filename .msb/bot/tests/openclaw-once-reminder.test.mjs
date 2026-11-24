@@ -12,7 +12,7 @@ import { openClawTaskMaintenancePrompt } from '../src/autonomy/reminder-protocol
 import { loadState } from '../src/state.mjs';
 import { readRecentRuns } from '../src/autonomy/history.mjs';
 import { statePath } from '../src/paths.mjs';
-import { chat, marker, reminderFixture, scheduledAt, until } from './helpers/reminder-registration-fixture.mjs';
+import { chat, marker, reminderFixture, scheduledAt } from './helpers/reminder-registration-fixture.mjs';
 
 const text = 'Проверить почту <входящие>';
 const due = Date.parse(scheduledAt);
@@ -86,10 +86,9 @@ async function profile(t, { rejectAdd = false, foreign = false, rejectEnable = f
   })).trim().split('\n').filter(Boolean).map(JSON.parse);
   async function command(output, userText = 'Проверь мою задачу') {
     reply = output;
-    const before = f.edits.length;
+    const from = f.messages.length;
     await f.request(userText);
-    await until(() => f.edits.slice(before).some(edit => edit.includes('⏱')), 'OpenClaw command did not finish', 12_000);
-    return f.edits.slice(before).find(edit => edit.includes('⏱'));
+    return f.final({ from, timeoutMs: 12_000 });
   }
   return { ...f, config, other, jobs: () => read(jobs), writeJobs: rows => fs.writeFile(jobs, json(rows)), calls, command,
     failToggles: commands => fs.writeFile(toggleFailures, json(commands)),

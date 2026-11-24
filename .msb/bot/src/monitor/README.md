@@ -29,7 +29,7 @@
 пустым состоянием; отсутствие файла по-прежнему создаёт начальное состояние.
 [Контракт и границы](../../tests/reference/parity-monitor-meta-integrity-contract.txt),
 [проверки](../../tests/monitor-meta-integrity.test.mjs).
-Реальный backend — JSONL. Сохранение значения `sqlite` в UI не создаёт SQLite backend;
+Реальный backend — JSONL. Кнопка SQLite сообщает о недоступности и сохраняет прежнюю конфигурацию.
 [старое хранилище и граница включения](../../tests/reference/parity-monitor-storage-evidence.txt),
 [синтетический baseline](../../tests/reference/probe-monitor-storage-baseline.mjs) и
 [проверка ключей](../../tests/reference/probe-monitor-storage-id-collision.mjs).

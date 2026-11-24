@@ -21,8 +21,7 @@ export async function runCursorAcpTurn({
   let ready = false;
   let terminal = false;
   let sessionId = resumeId || null;
-  let activePromptId = null;
-  let steeredPromptId = null;
+  let steeredPrompt = null;
   let finishTimer;
   let terminalResolve;
   const done = new Promise((resolve) => { terminalResolve = resolve; });
@@ -118,14 +117,13 @@ export async function runCursorAcpTurn({
     if (model) promptParams.model = model;
 
     beginTurnText();
-    activePromptId = rpc.notifyRequest('session/prompt', promptParams);
-    // Track completion of the active (possibly steered) prompt via takeResult below.
+    const activePrompt = rpc.notifyRequest('session/prompt', promptParams);
 
     if (!terminal) {
       ready = true;
       const handle = {
         threadId: sessionId,
-        turnId: String(activePromptId),
+        turnId: String(activePrompt.id),
         invalidate,
         async steer(text) {
           if (!ready || terminal || rpc.closed) return { status: 'rejected' };
@@ -135,11 +133,11 @@ export async function runCursorAcpTurn({
           try {
             // Send-now: second prompt cancels the in-flight turn (Cursor ACP v1).
             beginTurnText();
-            steeredPromptId = rpc.notifyRequest('session/prompt', {
+            steeredPrompt = rpc.notifyRequest('session/prompt', {
               sessionId,
               prompt: acpTextPrompt(text),
             });
-            handle.turnId = String(steeredPromptId);
+            handle.turnId = String(steeredPrompt.id);
             return { status: 'accepted' };
           } catch {
             return { status: 'unknown' };
@@ -150,10 +148,9 @@ export async function runCursorAcpTurn({
     }
 
     // Wait until the latest prompt finishes (original or steered).
-    const waitPrompt = async (id) => {
+    const waitPrompt = async (request) => {
       try {
-        const result = await rpc.takeResult(id, { waitMs: timeoutMs });
-        return result;
+        return await request.result;
       } catch (error) {
         if (error?.timeout) return finish('Cursor timeout');
         if (error?.closed || signal?.aborted) return finish(signal?.aborted ? 'Cursor stopped' : 'Cursor connection lost');
@@ -161,11 +158,11 @@ export async function runCursorAcpTurn({
       }
     };
 
-    let result = await waitPrompt(activePromptId);
+    let result = await waitPrompt(activePrompt);
     if (terminal) { /* finished via timeout/abort */ }
-    else if (steeredPromptId != null) {
+    else if (steeredPrompt) {
       // Original cancelled; steer already reset text via beginTurnText().
-      result = await waitPrompt(steeredPromptId);
+      result = await waitPrompt(steeredPrompt);
       if (!terminal) {
         if (result?.stopReason === 'end_turn' || result?.stopReason === 'cancelled') {
           // cancelled here would mean a further replacement; treat end_turn as success.
@@ -178,8 +175,8 @@ export async function runCursorAcpTurn({
       finish(null);
     } else if (result?.stopReason === 'cancelled') {
       // Steered after response arrived; wait if steer id set concurrently.
-      if (steeredPromptId != null) {
-        result = await waitPrompt(steeredPromptId);
+      if (steeredPrompt) {
+        result = await waitPrompt(steeredPrompt);
         if (!terminal) finish(result?.stopReason === 'end_turn' ? null : (result?.stopReason || 'Cursor turn cancelled'));
       } else {
         finish('Cursor turn cancelled');

@@ -80,6 +80,11 @@ FIFO-элемент через createBot. Модель запускается п
 | Последующее текстовое значение формы | [`forms.mjs`](forms.mjs): dispatcher к auth/env/Pult inputs; `createBot` хранит pending и приоритет reply-stop/timezone; форму открывает нужный обработчик `routes/` | [menu-handlers](../../tests/menu-handlers.test.mjs) проверяет переходы и отмену форм |
 | Значение `.env` | [`envScreen`](screens/settings.mjs) → [`handleSettingsRoute`](routes/settings.mjs) / pending → [`setEnvKey`](../env/store.mjs) | [monitor-env](../../tests/monitor-env.test.mjs) проверяет хранилище; [menu-handlers](../../tests/menu-handlers.test.mjs) — ввод |
 
+В «Отключённых уведомлениях» прежние записи читаются через
+[readNoticeMutes](../notifications/mutes.mjs). Баланс мониторинга относится к
+серверу, остальные записи относятся к текущему боту. Экран показывает
+сохранённые настройки прежнего ядра. [Проверки](../../tests/notification-settings.test.mjs).
+
 Env удаление использует прежний двухшаговый путь: `settings:env:delete:*`
 лишь открывает подтверждение; `settings:env:confirm-delete:*` вызывает store.
 Возврат к списку и прежний `settings:env:cancel` сбрасывают ожидание ввода в core
@@ -87,6 +92,10 @@ Env удаление использует прежний двухшаговый 
 открытия; переход к значению не продлевает 10 минут. После истечения следующий
 текст потребляется с прежним сообщением, без записи/модели/перезапуска. У voice и
 прочих нет нового общего срока. [Контракт форм](../../tests/reference/parity-forms-contract.txt).
+
+Входы в «Подключение» из «Агент» и «Настройки» используют общий экран.
+[connectionNavigation](../../shared/connection-navigation.mjs) сохраняет
+возврат по кнопке текущего сообщения и контексту открытой формы.
 
 Callback-строки — внешние идентификаторы кнопок. При разделении файлов сохранять
 их, порядок обработки, обратные переходы и owner guard. Стандартные Claude/OC

@@ -12,6 +12,7 @@ import https from 'node:https';
 import dgram from 'node:dgram';
 import { syncBuiltinESMExports } from 'node:module';
 import { Bot } from 'grammy';
+import readCliPrompt from '../../helpers/read-cli-prompt.cjs';
 
 const scenario = process.argv[2];
 const fixtureHome = process.env.HOME;
@@ -108,9 +109,8 @@ childProcess.spawn = (command, args, options) => {
     child.emit('close', code, signal);
   };
   child.kill = (signal) => { close(null, signal); return true; };
-  child.stdin.setEncoding('utf8');
-  child.stdin.on('data', (text) => { call.prompt += text; });
-  child.stdin.on('end', () => {
+  readCliPrompt(child.stdin, args).then(prompt => {
+    call.prompt = prompt;
     const emit = (event) => child.stdout.write(JSON.stringify(event) + '\n');
     emit({ type: 'system', subtype: 'init', session_id: 'reference-native-session', model: 'claude-haiku-4-5-20251001' });
     timer = setTimeout(() => {

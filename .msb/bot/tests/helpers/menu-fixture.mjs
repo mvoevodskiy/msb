@@ -88,10 +88,14 @@ export async function fixture(t, runTurn = async () => ({ ok: true, text: 'fixtu
   await saveState({ engine: 'cc', extAuthBypass: 'codex', ccSessionId: 'ext:codex:0199a213-81c0-7800-8aa1-bbab2a035a53', dailySpendLimit: 10 });
   const storeFile = path.join(process.env.MSB_RUNTIME_ROOT, 'bots/default/ext-providers.json');
   await fs.writeFile(storeFile, JSON.stringify({ version: 1, active: 'codex', models: { codex: 'gpt-6.1-terra' }, efforts: { codex: 'max' } }));
-  const callback = async (data, uid = 42, { chatId = 42, messageId = 1, threadId, waitForRender = true } = {}) => {
+  const callback = async (data, uid = 42, { chatId = 42, messageId = 1, threadId, replyMarkup, waitForRender = true } = {}) => {
     const tasks = Symbol.for('msb.callbackTasks');
     const prior = new Set(bot[tasks] || []);
-    await bot.handleUpdate({ callback_query: { id: 'q', data, from: { id: uid }, message: { message_id: messageId, chat: { id: chatId }, ...(threadId ? { message_thread_id: threadId } : {}) } } });
+    await bot.handleUpdate({ callback_query: { id: 'q', data, from: { id: uid }, message: {
+      message_id: messageId, chat: { id: chatId },
+      ...(threadId ? { message_thread_id: threadId } : {}),
+      ...(replyMarkup ? { reply_markup: replyMarkup } : {}),
+    } } });
     // UI assertions wait only their own newly detached catalog view. Latency/
     // shutdown tests use waitForRender:false; never drain an older status task.
     if (waitForRender && (['menu:agent','settings:model','settings:model:ver','settings:effort'].includes(data) || isSkillReadCallback(data))) {

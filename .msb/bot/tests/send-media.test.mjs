@@ -42,10 +42,11 @@ test('sendMediaQueue continues after one failure', async (t) => {
       if (calls.length === 1) throw Error('boom');
     },
   };
-  await sendMediaQueue(api, 1, [
+  const outcome = await sendMediaQueue(api, 1, [
     { type: 'document', path: ok },
     { type: 'document', path: ok },
   ], { env: { MSB_WORKSPACE_DIR: home }, log: (line) => logs.push(line) });
   assert.equal(calls.length, 2);
   assert.match(logs[0], /send_media failed/);
+  assert.deepEqual(outcome, { sent: 1, failed: 1 });
 });

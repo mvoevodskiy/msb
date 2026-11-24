@@ -16,6 +16,80 @@ import { trySessionOperation } from '../src/agent/session-operation.mjs';
 import { presentationAwareRetry } from '../src/telegram/presentation-api.mjs';
 import { installUpdateHook } from '../../../overlay/bot/ext/install.mjs';
 
+async function tapConnectionButton(f, label, { options = f.editOptions.at(-1), messageId } = {}) {
+  const replyMarkup = options?.reply_markup;
+  const button = replyMarkup?.inline_keyboard.flat()
+    .find(row => row.callback_data === label || row.text === label);
+  assert.ok(button, `Missing button: ${label}`);
+  await f.callback(button.callback_data, 42, { messageId, replyMarkup });
+}
+
+for (const overlay of [false, true]) {
+  for (const [parent, entry] of [['menu:agent', 'settings:conn'], ['menu:settings', 'settings:auth']]) {
+    test(`connection Back returns to ${parent}, overlay=${overlay}`, async t => {
+      const f = await fixture(t, undefined, { overlay });
+      const state = (await loadState()).state;
+      const providers = await fs.readFile(f.storeFile, 'utf8');
+      await f.callback(parent);
+      const parentText = f.edits.at(-1);
+      await tapConnectionButton(f, entry);
+      await tapConnectionButton(f, '« Назад');
+      assert.equal(f.edits.at(-1), parentText);
+      assert.deepEqual((await loadState()).state, state);
+      assert.equal(await fs.readFile(f.storeFile, 'utf8'), providers);
+    });
+  }
+}
+
+test('connection Back still returns to Agent after a confirmed provider selection', async t => {
+  const f = await fixture(t);
+  process.env.CLAUDE_CODE_OAUTH_TOKEN = 'fixture-claude-token';
+  await f.callback('menu:agent');
+  await tapConnectionButton(f, 'settings:conn');
+  await tapConnectionButton(f, 'ext:conn:set:claude');
+  assert.match(f.edits.at(-1), /Агент теперь/);
+  assert.equal(JSON.parse(await fs.readFile(f.storeFile, 'utf8')).active, 'claude');
+  await tapConnectionButton(f, '« Назад');
+  assert.match(f.edits.at(-1), /<b>🧠 Агент<\/b>/);
+});
+
+test('the Claude token form only offers Back to the Settings where it opened', async t => {
+  let turns = 0;
+  const f = await fixture(t, async () => {
+    turns++;
+    return { ok: true, text: 'fixture reply' };
+  }, { overlay: false });
+  await f.callback('menu:settings');
+  const settings = f.edits.at(-1);
+  await tapConnectionButton(f, 'settings:auth');
+  await tapConnectionButton(f, 'settings:auth:switch-sub');
+  assert.match(f.edits.at(-1), /Пришли следующим сообщением токен Claude/);
+  assert.deepEqual(f.editOptions.at(-1).reply_markup.inline_keyboard.flat()
+    .map(button => [button.text, button.callback_data]), [['« Назад', 'menu:settings']]);
+  await tapConnectionButton(f, '« Назад');
+  assert.equal(f.edits.at(-1), settings);
+  await f.message('ordinary task');
+  await until(() => turns === 1);
+  assert.equal((await readEnvMap()).map.has('CLAUDE_CODE_OAUTH_TOKEN'), false);
+});
+
+test('connection Back preserves Agent after the OpenRouter form advances to its next prompt', async t => {
+  const f = await fixture(t);
+  await f.callback('menu:agent');
+  const agent = f.edits.at(-1);
+  await tapConnectionButton(f, 'settings:conn');
+  await tapConnectionButton(f, 'settings:auth:openrouter');
+  assert.match(f.edits.at(-1), /OpenAI-совместимый · ключ/);
+  await f.message('fixture-openai-key');
+  assert.match(f.messages.at(-1), /OpenAI-совместимый · URL/);
+  await tapConnectionButton(f, '« Назад', { options: f.messageOptions.at(-1), messageId: f.messages.length });
+  assert.match(f.edits.at(-1), /Подключение/);
+  await tapConnectionButton(f, '« Назад');
+  assert.equal(f.edits.at(-1), agent);
+  const { getPendingAuth } = await import('../../../overlay/bot/ext/auth.mjs');
+  assert.equal(getPendingAuth(42), null);
+});
+
 test('explicit Back and start cancel env/auth input before ordinary text', async (t) => {
   const f = await fixture(t);
   for (const cancel of [() => f.callback('settings:back'), () => f.message('/start'), () => f.callback('menu:agent')]) {
@@ -340,7 +414,11 @@ test('all baseline menu button routes remain reachable', async (t) => {
   for (const [name, expected] of Object.entries(contract.screens)) {
     // The pinned open-core snapshot exposed NODE_ENV deletion. Old bY55151
     // protects it; this one unsafe action is restored by the env contract.
-    const restored = name === 'envScreen' ? expected.filter(data => data !== 'settings:env:delete:NODE_ENV') : expected;
+    let restored = expected;
+    if (name === 'envScreen') restored = expected.filter(data => data !== 'settings:env:delete:NODE_ENV');
+    if (name === 'settingsScreen') {
+      restored = expected.toSpliced(expected.indexOf('eng:home') + 1, 0, 'settings:routing');
+    }
     const actual = callbacks(await screens[name](screenInput[name] ?? state));
     if (name === 'limitScreen') {
       // Old 52919–52927 restores two missing choices and their original order.
@@ -351,10 +429,12 @@ test('all baseline menu button routes remain reachable', async (t) => {
     }
   }
   for (const [name, expected] of Object.entries(contract.overlay)) {
-    // The OpenAI-compatible provider adds its two routes before the back button.
-    const routes = name === 'buildConnMenu'
-      ? expected.toSpliced(-1, 0, 'ext:conn:set:openai', 'ext:auth:openai')
-      : expected;
+    let routes = expected;
+    if (name === 'buildConnMenu') {
+      routes = expected
+        .toSpliced(expected.indexOf('ext:conn:set:codex'), 0, 'ext:conn:set:grok', 'ext:auth:grok')
+        .toSpliced(-1, 0, 'ext:conn:set:openai', 'ext:auth:openai');
+    }
     assert.deepEqual(callbacks(await overlay[name](process.env, f.home)), routes, name);
   }
 });
@@ -372,13 +452,13 @@ test('stored settings and cost history survive a real project selection reset', 
   assert.equal((await loadState()).state.costPaused, false);
   await f.callback('auto:rights-toggle');
   assert.equal((await loadState()).state.autonomyRights, true);
-  await f.callback('mon:storage:set:sqlite');
-  const config = JSON.parse(await fs.readFile(path.join(f.home, '.msb/monitor/config.json'), 'utf8'));
-  assert.equal(config.storage, 'sqlite');
+  await saveMonitorConfig({ ...defaultConfig(), storage: 'sqlite' });
   await f.callback('menu:newproject');
   await f.message('fixture-project');
   assert.equal((await loadState()).state.activeProject, 'fixture-project');
   assert.ok((await fs.stat(path.join(f.home, 'projects/fixture-project'))).isDirectory());
+  const config = JSON.parse(await fs.readFile(path.join(f.home, '.msb/monitor/config.json'), 'utf8'));
+  assert.equal(config.storage, 'sqlite', 'Project selection preserves a saved legacy choice');
   await f.callback('ext:permmode:set:plan');
   assert.equal((await loadState()).state.permissionMode, 'plan');
   assert.equal((await loadState()).state.ccSessionId, undefined);
@@ -430,12 +510,31 @@ test('switching explicit forms clears incompatible secret input only', async (t)
   assert.match(f.edits.at(-1), /токен Claude/);
   await f.callback('settings:back');
   await f.callback('settings:env:quick:TEST_MENU_TOKEN');
-  await f.callback('ext:auth:cursor');
-  assert.equal(getPendingAuth(42).providerId, 'cursor');
+  await f.callback('ext:auth:qwen');
+  assert.equal(getPendingAuth(42).providerId, 'qwen');
   await f.callback('settings:auth');
   assert.equal(getPendingAuth(42), null);
   await f.message('ordinary task');
   assert.equal((await readEnvMap()).map.has('TEST_MENU_TOKEN'), false);
+});
+
+test('SSH instruction explains an existing connection and returns to the SSH screen', async t => {
+  const f = await fixture(t);
+  await f.callback('settings:ssh');
+  const buttons = () => f.editOptions.at(-1).reply_markup.inline_keyboard.flat();
+  const instruction = buttons().find(button => button.text.includes('Инструкция'));
+  assert.equal(instruction?.callback_data, 'settings:ssh:help');
+
+  await f.callback(instruction.callback_data);
+  assert.match(f.edits.at(-1), /Как подключиться по SSH/);
+  assert.match(f.edits.at(-1), /ssh client@IP_СЕРВЕРА/);
+  assert.match(f.edits.at(-1), /консоль хостера/);
+  assert.deepEqual(buttons().map(button => button.callback_data), ['settings:ssh']);
+
+  await f.callback(buttons()[0].callback_data);
+  assert.match(f.edits.at(-1), /SSH доступ к серверу/);
+  await f.callback('settings:ssh:add-key');
+  assert.match(f.edits.at(-1), /управление SSH-ключами.*не подключено/iu);
 });
 
 test('closed-core routes still reach their original handlers and mode is fixed at startup', async (t) => {
@@ -449,7 +548,7 @@ test('closed-core routes still reach their original handlers and mode is fixed a
   process.env.MSB_USE_CLOSED_CORE = '0';
   process.env.CLAUDE_CODE_OAUTH_TOKEN = 'fixture-claude-token';
   const bot = new ClosedHarness();
-  const routes = ['settings:ssh:add-key', 'settings:ssh:list-keys', 'settings:ssh:add-ip', 'settings:ssh:list-ips', 'settings:auth:openrouter', 'settings:engine:set:oc', 'settings:auth:switch-sub', 'settings:auth:help'];
+  const routes = ['settings:ssh:add-key', 'settings:ssh:list-keys', 'settings:ssh:add-ip', 'settings:ssh:list-ips', 'settings:ssh:help', 'settings:auth:openrouter', 'settings:engine:set:oc', 'settings:auth:switch-sub', 'settings:auth:help'];
   for (const data of routes) await bot.handleUpdate({ callback_query: { id: 'q', data, from: { id: 42 }, message: { message_id: 1, chat: { id: 42 } } } });
   assert.deepEqual(seen, routes);
   assert.deepEqual(edits, []);

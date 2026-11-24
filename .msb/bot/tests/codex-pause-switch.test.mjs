@@ -342,18 +342,17 @@ test('a confirmed re-selection of Codex cancels a stale pending Claude switch', 
   assert.equal(await fs.readFile(marker, 'utf8'), 'synthetic');
 });
 
-test('a Claude credential not available to the running process cannot clear the Codex pause', async t => {
+test('a Claude credential in the bot env lets explicit selection clear the Codex pause', async t => {
   const f = await fixture(t);
   for (const key of ['CLAUDE_CODE_OAUTH_TOKEN', 'ANTHROPIC_API_KEY', 'MSB_ANTHROPIC_API_KEY']) delete process.env[key];
+  const before = (await loadState()).state;
   const marker = await sleepMarker();
   await fs.writeFile(path.join(f.home, '.msb/bots/default/.env'), 'CLAUDE_CODE_OAUTH_TOKEN=fixture-only\n');
   await f.callback('settings:engine:set:cc');
-  assert.equal(await fs.readFile(marker, 'utf8'), 'synthetic');
-  assert.ok(f.edits.some(text => text.includes('Пауза сохранена')));
-  assert.equal((await loadState()).state.extAuthBypass, 'codex');
-  await f.callback('settings:engine:set:cc');
-  assert.equal(await fs.readFile(marker, 'utf8'), 'synthetic');
-  assert.equal((await loadState()).state.extAuthBypass, 'codex');
+  await assert.rejects(fs.stat(marker), { code: 'ENOENT' });
+  const after = (await loadState()).state;
+  assert.equal(after.extAuthBypass, undefined);
+  assert.equal(after.parkedCcSessions.codex, before.ccSessionId);
 });
 
 test('an unreadable marker cannot block ordinary Claude reselection', async t => {
