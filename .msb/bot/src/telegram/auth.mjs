@@ -1,6 +1,6 @@
 /**
  * Ворота владельца: только ADMIN_ID.
- * Чужие апдейты — тишина (как в закрытом ядре), без reply.
+ * Чужие апдейты пропускаются молча. У кнопок nm:* есть прежнее предупреждение владельца.
  * Первый запуск: [bot](./bot.mjs) и [setup route](./routes/agent.mjs);
  * наличие Codex определяется той же регистрацией overlay, что и сохранённые ходы.
  * Проверка: [onboarding guides](../../tests/onboarding-guides.test.mjs).
@@ -25,7 +25,12 @@ export function adminGuard(adminId) {
       return;
     }
     if (!isAdmin(ctx, adminId)) {
-      return; // silent drop
+      if (ctx.callbackQuery?.data === 'pause-off') {
+        await ctx.answerCallbackQuery({ text: 'Снимает паузу только владелец бота', show_alert: true }).catch(() => {});
+      } else if (/^nm:.+$/.test(ctx.callbackQuery?.data ?? '')) {
+        await ctx.answerCallbackQuery({ text: 'Настраивает только владелец бота', show_alert: true }).catch(() => {});
+      }
+      return;
     }
     return next();
   };

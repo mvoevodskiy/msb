@@ -8,6 +8,7 @@ import { QUICK_KEYS, listEnvEntries, PROTECTED_KEYS } from '../../env/store.mjs'
 import { envKeyReference } from '../../env/callback-key.mjs';
 import { escapeHtml } from '../edit.mjs';
 import { BLANK, describeSpendLimit } from './shared.mjs';
+import { NOTICE_KINDS } from '../../notification-mutes.mjs';
 
 export function settingsScreen(state, { showEngines = true } = {}) {
   const limit = `💰 Лимит API: ${describeSpendLimit(state.dailySpendLimit)}`;
@@ -90,17 +91,23 @@ ${BLANK}`,
   };
 }
 
-export function notificationsScreen({ labels = [], complete = true } = {}) {
-  const lines = ['<b>🔕 Отключённые уведомления</b>', '', 'Сохранённые настройки прежнего ядра.'];
-  if (labels.length) {
-    lines.push(...labels.map(label => `• ${escapeHtml(label)}`));
+export function notificationsScreen({ kinds, complete }, note) {
+  const lines = ['🔕 <b>Отключённые уведомления</b>', ''];
+  const keyboard = new InlineKeyboard();
+  if (note) lines.push(escapeHtml(note), '');
+  if (kinds.length) {
+    lines.push('Ты попросил это больше не присылать:');
+    for (const kind of kinds) {
+      const { name, short } = NOTICE_KINDS[kind];
+      lines.push(`• ${name.charAt(0).toUpperCase()}${name.slice(1)}`);
+      keyboard.text(`▶️ Вернуть: ${short}`, `nm:on:${kind}`).row();
+    }
   } else if (complete) {
     lines.push('Ничего не отключено.');
+    lines.push('Под повторяющимися уведомлениями есть кнопка «🔕 Больше не присылать». Что отключишь, появится здесь, и его можно будет вернуть.');
   }
   if (!complete) lines.push('Часть настроек не удалось прочитать.');
-  lines.push(BLANK);
-  return {
-    text: lines.join('\n'),
-    keyboard: new InlineKeyboard().text('« Назад', 'settings:back'),
-  };
+  lines.push('', '«🧪 Прислать примеры» пришлёт по одному примеру каждого уведомления: посмотреть, как выглядит, и проверить кнопки.', BLANK);
+  keyboard.text('🧪 Прислать примеры', 'nm:demo').row().text('« Назад', 'settings:back');
+  return { text: lines.join('\n'), keyboard };
 }

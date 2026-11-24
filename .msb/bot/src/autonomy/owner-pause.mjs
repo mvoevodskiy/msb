@@ -102,11 +102,12 @@ export async function engageOwnerPauseLocked({ now, reason, env = process.env })
   return result;
 }
 
-export async function setOwnerPause(stop, { now, check, checkEngine, signal, env = process.env } = {}) {
+export async function setOwnerPause(stop, { now, check, checkEngine, onlyIfPaused = false, signal, env = process.env } = {}) {
   return withAutonomyPauseLock(async () => {
     signal?.throwIfAborted();
     let error = await check();
     if (error) return { error };
+    if (!stop && onlyIfPaused && !await readOwnerPauseGeneration(env)) return { alreadyRunning: true };
     const file = stopPath(env);
     // Read current engine after policy I/O and serialize only the stop marker
     // transition with ordinary in-process engine switches. No state.json write.
