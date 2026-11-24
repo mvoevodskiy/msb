@@ -58,6 +58,7 @@ TOOLS = {
     'profile_backup.py': AUDIT + 'profile_backup.py',
 }
 SOURCES = (
+    '.msb/puller.cjs', '.msb/sync.cjs',
     '.msb/bot/index.js', '.msb/bot/package.json', '.msb/bot/package-lock.json',
     '.msb/bot/OPEN-CORE.md', '.msb/bot/src', '.msb/bot/shared', '.msb/bot/tests',
     'overlay/bot/run.mjs', 'overlay/bot/ext', 'overlay/bot/shared',
