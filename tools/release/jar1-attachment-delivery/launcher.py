@@ -35,7 +35,10 @@ def main():
     raw = (stage / 'manifest.json').read_bytes()
     if hashlib.sha256(raw).hexdigest() != a.manifest_sha: raise RuntimeError('Manifest mismatch')
     manifest = json.loads(raw)
-    for name in ('launcher_base.py', 'deploy_base.py', 'runtime.py', 'profile_backup.py', 'build.py', 'profile.py'):
+    tools = ('launcher_base.py', 'deploy_base.py', 'runtime.py', 'profile_backup.py', 'build.py', 'profile.py')
+    if 'source_guard_sha256' in manifest:
+        tools += ('source_guard.py',)
+    for name in tools:
         path = stage / name; st = path.lstat()
         if path.is_symlink() or st.st_uid != 0 or st.st_mode & 0o022 or not path.is_file() or \
            hashlib.sha256(path.read_bytes()).hexdigest() != manifest[name.removesuffix('.py') + '_sha256']:
@@ -61,7 +64,7 @@ def main():
             raise RuntimeError('Isolated verification failed; no proof created. ' + run.stderr[-3000:])
         proof = json.loads(run.stdout)
         if not proof.get('passed') or proof.get('manifest_sha256') != a.manifest_sha or \
-           proof.get('scope') != 'jar1-attachment-delivery-v1' or proof.get('source_commit') != manifest['source_commit']:
+           proof.get('scope') != manifest.get('scope') or proof.get('source_commit') != manifest['source_commit']:
             raise RuntimeError('Isolated verification proof mismatch')
         proof_path = stage / 'proof.json'
         data = (json.dumps(proof, sort_keys=True, indent=2) + '\n').encode()

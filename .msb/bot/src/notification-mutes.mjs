@@ -1,14 +1,14 @@
 /**
  * Read-only view of the legacy notice-mute.json choices for Settings.
  * The bot-scoped record lives beside sessions. The monitor record is shared.
- * [Telegram route](../telegram/routes/settings.mjs) and
- * [scope checks](../../tests/notification-settings.test.mjs).
+ * [Telegram route](./telegram/routes/settings.mjs) and
+ * [scope checks](../tests/notification-settings.test.mjs).
  */
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import profile from '../../shared/profile.cjs';
-import { actionRoot, botId, msbRoot } from '../paths.mjs';
-import { monitorDir } from '../monitor/config.mjs';
+import profile from '../shared/profile.cjs';
+import { actionRoot, botId, msbRoot } from './paths.mjs';
+import { monitorDir } from './monitor/config.mjs';
 
 async function readMuteFile(directory) {
   try {

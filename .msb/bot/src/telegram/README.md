@@ -81,7 +81,7 @@ FIFO-элемент через createBot. Модель запускается п
 | Значение `.env` | [`envScreen`](screens/settings.mjs) → [`handleSettingsRoute`](routes/settings.mjs) / pending → [`setEnvKey`](../env/store.mjs) | [monitor-env](../../tests/monitor-env.test.mjs) проверяет хранилище; [menu-handlers](../../tests/menu-handlers.test.mjs) — ввод |
 
 В «Отключённых уведомлениях» прежние записи читаются через
-[readNoticeMutes](../notifications/mutes.mjs). Баланс мониторинга относится к
+[readNoticeMutes](../notification-mutes.mjs). Баланс мониторинга относится к
 серверу, остальные записи относятся к текущему боту. Экран показывает
 сохранённые настройки прежнего ядра. [Проверки](../../tests/notification-settings.test.mjs).
 
