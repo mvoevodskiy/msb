@@ -6,7 +6,7 @@
  */
 import { INPUT_TTL_MS } from '../shared/input-notices.mjs';
 
-const pending = new Map(); // userId -> { providerId, at, chatId, step?, draft? }
+const pending = new Map(); // userId -> scoped input and temporary connection entry
 
 export function setPendingAuth(userId, providerId, chatId, extra = {}) {
   pending.set(Number(userId), {
@@ -15,6 +15,7 @@ export function setPendingAuth(userId, providerId, chatId, extra = {}) {
     at: Date.now(),
     step: extra.step || 'key',
     draft: extra.draft && typeof extra.draft === 'object' ? { ...extra.draft } : {},
+    ...(extra.connectionEntry && { connectionEntry: extra.connectionEntry }),
   });
 }
 

@@ -4,6 +4,7 @@
  */
 import { isClaudeModelChoice } from '../../shared/claude-models.mjs';
 import { normalizePermissionMode } from '../../shared/permission-modes.mjs';
+import { connectionNavigation } from '../../shared/connection-navigation.mjs';
 import { isProviderId, getProvider } from '../providers.mjs';
 import { setActive } from '../store.mjs';
 import { providerConfigured } from '../env.mjs';
@@ -33,6 +34,9 @@ export async function handleCallback(bot, cq, closedCore = false, pauseCapture) 
   const messageId = cq.message?.message_id;
   const userId = cq.from?.id;
   if (!chatId || !userId) return false;
+  const navigation = closedCore ? undefined : connectionNavigation(data, cq.message);
+  const connectionEntry = navigation?.entry;
+  const connectionMenu = () => buildConnMenu(process.env, undefined, navigation?.back);
   if (!closedCore && !pauseCapture && ['settings:engine:set:cc', 'settings:conn:set:cc', 'ext:conn:set:claude'].includes(data)) {
     try { pauseCapture = { captured: true, intent: await captureCodexPause(bot) }; }
     catch { pauseCapture = { captured: true, error: true }; }
@@ -104,7 +108,7 @@ export async function handleCallback(bot, cq, closedCore = false, pauseCapture) 
     await bot.api.answerCallbackQuery(cq.id).catch(() => {});
     await editOrReply(bot, chatId, messageId,
       'Это подключение в текущем ядре не реализовано. Выбранный движок и сессия сохранены.',
-      { inline_keyboard: [[{ text: '« Назад', callback_data: 'settings:conn' }]] });
+      { inline_keyboard: [[{ text: '« Назад', callback_data: connectionEntry ?? 'settings:auth' }]] });
     return true;
   }
   if (data === 'settings:auth:openrouter' || data === 'settings:conn:set:openrouter') {
@@ -113,8 +117,8 @@ export async function handleCallback(bot, cq, closedCore = false, pauseCapture) 
       cq.data = 'ext:conn:set:openai';
       return handleCallback(bot, cq, closedCore);
     }
-    const prompt = openaiCompatPrompt('key');
-    setPendingAuth(userId, 'openai', chatId, { step: 'key', draft: {} });
+    const prompt = openaiCompatPrompt('key', {}, connectionEntry);
+    setPendingAuth(userId, 'openai', chatId, { step: 'key', draft: {}, connectionEntry });
     await editOrReply(bot, chatId, messageId, prompt.text, prompt.keyboard);
     return true;
   }
@@ -139,7 +143,7 @@ export async function handleCallback(bot, cq, closedCore = false, pauseCapture) 
   if (data === 'settings:auth' || data === 'settings:conn' || data === 'ext:conn') {
     if (ccOnly()) return false;
     if ((await readEngine()) === 'oc') return false;
-    const menu = await buildConnMenu();
+    const menu = await connectionMenu();
     await bot.api.answerCallbackQuery(cq.id).catch(() => {});
     await editOrReply(bot, chatId, messageId, menu.text, menu.keyboard);
     return true;
@@ -157,17 +161,17 @@ export async function handleCallback(bot, cq, closedCore = false, pauseCapture) 
     await bot.api.answerCallbackQuery(cq.id).catch(() => {});
 
     if (id === 'codex') {
-      await selectCodexNative(bot, chatId, messageId);
+      await selectCodexNative(bot, chatId, messageId, navigation);
       return true;
     }
     if (id === 'cursor') {
       const { hasNativeCursorAuth } = await import('../cursor-auth.mjs');
       if (!(await providerConfigured(p))) {
-        await connectCursorNative(bot, chatId, messageId);
+        await connectCursorNative(bot, chatId, messageId, navigation);
         return true;
       }
       if (await hasNativeCursorAuth()) {
-        await selectCursorNative(bot, chatId, messageId);
+        await selectCursorNative(bot, chatId, messageId, navigation);
         return true;
       }
       // Остался только CURSOR_API_KEY — обычный setActive ниже.
@@ -175,11 +179,11 @@ export async function handleCallback(bot, cq, closedCore = false, pauseCapture) 
     if (id === 'grok') {
       const { hasNativeGrokAuth } = await import('../grok-auth.mjs');
       if (!(await providerConfigured(p))) {
-        await connectGrokNative(bot, chatId, messageId);
+        await connectGrokNative(bot, chatId, messageId, navigation);
         return true;
       }
       if (await hasNativeGrokAuth()) {
-        await selectGrokNative(bot, chatId, messageId);
+        await selectGrokNative(bot, chatId, messageId, navigation);
         return true;
       }
     }
@@ -189,8 +193,8 @@ export async function handleCallback(bot, cq, closedCore = false, pauseCapture) 
         cq.data = 'settings:auth:switch-sub';
         return false;
       }
-      const prompt = authPrompt(id);
-      setPendingAuth(userId, id, chatId);
+      const prompt = authPrompt(id, connectionEntry);
+      setPendingAuth(userId, id, chatId, { connectionEntry });
       await editOrReply(bot, chatId, messageId, prompt.text, prompt.keyboard);
       return true;
     }
@@ -199,18 +203,18 @@ export async function handleCallback(bot, cq, closedCore = false, pauseCapture) 
       if (!ok) return true;
     }
     if (id === 'claude' && pauseCapture?.error) {
-      const menu = await buildConnMenu();
+      const menu = await connectionMenu();
       await editOrReply(bot, chatId, messageId, 'Не удалось проверить паузу. Попробуй ещё раз.', menu.keyboard);
       return true;
     }
     const pauseIntent = id === 'claude' ? pauseCapture?.intent : null;
     if (pauseIntent && !await hasClaudeCreds()) {
-      const menu = await buildConnMenu();
+      const menu = await connectionMenu();
       await editOrReply(bot, chatId, messageId, 'Claude ещё не подключён. Пауза сохранена.', menu.keyboard);
       return true;
     }
     if (pauseIntent && !await beginClaudePauseSwitch(pauseIntent)) {
-      const menu = await buildConnMenu();
+      const menu = await connectionMenu();
       await editOrReply(bot, chatId, messageId, 'Пауза или движок изменились. Попробуй ещё раз.', menu.keyboard);
       return true;
     }
@@ -219,14 +223,14 @@ export async function handleCallback(bot, cq, closedCore = false, pauseCapture) 
       ? await syncExtAuthGate(process.env, undefined, { pauseSwitch: pauseIntent })
       : await syncExtAuthGate();
     if (pauseIntent && synced.reason === 'pause-switch-need-claude-setup') {
-      const menu = await buildConnMenu();
+      const menu = await connectionMenu();
       await editOrReply(bot, chatId, messageId, 'Claude ещё не подключён. Пауза сохранена.', menu.keyboard);
       return true;
     }
     if (pauseIntent && !synced.selected) return true;
     const wake = id === 'claude' ? await finishClaudePauseSwitch(bot, pauseIntent) : { ok: true };
     if (wake.superseded) return true;
-    const menu = await buildConnMenu();
+    const menu = await connectionMenu();
     if (wake.notReady) {
       await editOrReply(bot, chatId, messageId, 'Claude ещё не подключён. Пауза сохранена.', menu.keyboard);
       return true;
@@ -245,20 +249,20 @@ export async function handleCallback(bot, cq, closedCore = false, pauseCapture) 
 
     if (id === 'codex') {
       // Перелогин / первый вход — без запроса секрета в чат.
-      await connectCodexNative(bot, chatId, messageId);
+      await connectCodexNative(bot, chatId, messageId, navigation);
       return true;
     }
     if (id === 'cursor') {
-      await connectCursorNative(bot, chatId, messageId);
+      await connectCursorNative(bot, chatId, messageId, navigation);
       return true;
     }
     if (id === 'grok') {
-      await connectGrokNative(bot, chatId, messageId);
+      await connectGrokNative(bot, chatId, messageId, navigation);
       return true;
     }
 
-    const prompt = authPrompt(id);
-    setPendingAuth(userId, id, chatId);
+    const prompt = authPrompt(id, connectionEntry);
+    setPendingAuth(userId, id, chatId, { connectionEntry });
     await editOrReply(bot, chatId, messageId, prompt.text, prompt.keyboard);
     return true;
   }

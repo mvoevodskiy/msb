@@ -9,6 +9,7 @@ import { AUTH_INPUT_EXPIRED } from '../../shared/input-notices.mjs';
 import { setActive, setSelectedModel } from '../store.mjs';
 import { saveProviderSecret } from '../env.mjs';
 import { buildConnMenu, buildModelMenu, openaiCompatPrompt, savedKeyText } from '../menu.mjs';
+import { connectionNavigation } from '../../shared/connection-navigation.mjs';
 import { getPendingAuth, clearPendingAuth, setPendingAuth } from '../auth.mjs';
 import { ensureProviderCli, enrichPath } from '../ensure-cli.mjs';
 import { wireProviderAuth } from '../auth-wire.mjs';
@@ -138,7 +139,7 @@ export async function handleAuthMessage(bot, msg) {
 
     await setActive(pending.providerId);
     await syncExtAuthGate();
-    const menu = await buildConnMenu();
+    const menu = await buildConnMenu(process.env, undefined, connectionNavigation(pending.connectionEntry)?.back);
     const extra = cli.installed ? `\nCLI: <code>${cli.bin}</code>` : '';
     await sendInputNotice(bot,
       chatId,
@@ -159,6 +160,7 @@ async function handleOpenaiWizard(bot, msg, pending) {
   const text = (msg.text || '').trim();
   const step = pending.step || 'key';
   const draft = { ...(pending.draft || {}) };
+  const navigation = connectionNavigation(pending.connectionEntry);
 
   if (step === 'model-only') {
     try {
@@ -183,9 +185,9 @@ async function handleOpenaiWizard(bot, msg, pending) {
       return true;
     }
     draft.apiKey = text;
-    setPendingAuth(userId, 'openai', chatId, { step: 'url', draft });
+    setPendingAuth(userId, 'openai', chatId, { step: 'url', draft, connectionEntry: navigation?.entry });
     await bot.api.deleteMessage(chatId, msg.message_id).catch(() => {});
-    const prompt = openaiCompatPrompt('url', draft);
+    const prompt = openaiCompatPrompt('url', draft, navigation?.entry);
     await sendInputNotice(bot, chatId, prompt.text, { parse_mode: 'HTML', reply_markup: prompt.keyboard });
     return true;
   }
@@ -197,9 +199,9 @@ async function handleOpenaiWizard(bot, msg, pending) {
       await sendInputNotice(bot, chatId, `❌ ${String(err.message || err).slice(0, 200)}\nПришли URL ещё раз.`);
       return true;
     }
-    setPendingAuth(userId, 'openai', chatId, { step: 'model', draft });
+    setPendingAuth(userId, 'openai', chatId, { step: 'model', draft, connectionEntry: navigation?.entry });
     await bot.api.deleteMessage(chatId, msg.message_id).catch(() => {});
-    const prompt = openaiCompatPrompt('model', draft);
+    const prompt = openaiCompatPrompt('model', draft, navigation?.entry);
     await sendInputNotice(bot, chatId, prompt.text, { parse_mode: 'HTML', reply_markup: prompt.keyboard });
     return true;
   }
@@ -215,7 +217,7 @@ async function handleOpenaiWizard(bot, msg, pending) {
       await bot.api.deleteMessage(chatId, msg.message_id).catch(() => {});
       await setActive('openai');
       await syncExtAuthGate();
-      const menu = await buildConnMenu();
+      const menu = await buildConnMenu(process.env, undefined, navigation?.back);
       await sendInputNotice(
         bot,
         chatId,

@@ -46,24 +46,24 @@ async function activateCodex(profile, activateCli = false) {
   return true;
 }
 
-function rejectCodexSelection(bot, chatId, messageId) {
+function rejectCodexSelection(bot, chatId, messageId, navigation) {
   return editOrReply(bot, chatId, messageId, 'Codex CLI не подтвердил вход. Выбранный движок и сессия сохранены.',
-    { inline_keyboard: [[{ text: '🔐 Вход', callback_data: 'ext:auth:codex' }], [{ text: '« Назад', callback_data: 'settings:conn' }]] });
+    { inline_keyboard: [[{ text: '🔐 Вход', callback_data: 'ext:auth:codex' }], [{ text: '« Назад', callback_data: navigation?.entry ?? 'settings:auth' }]] });
 }
 
-async function showCodexSelection(bot, chatId, messageId) {
-  const menu = await buildConnMenu();
+async function showCodexSelection(bot, chatId, messageId, navigation) {
+  const menu = await buildConnMenu(process.env, undefined, navigation?.back);
   await editOrReply(bot, chatId, messageId, switchedText('codex') + '\n\n' + menu.text, menu.keyboard);
 }
 
-export async function selectCodexNative(bot, chatId, messageId) {
+export async function selectCodexNative(bot, chatId, messageId, navigation) {
   if (!await ensureAndReport(bot, chatId, messageId, 'codex')) return false;
   const profile = await captureCodexLogin().catch(() => null);
   if (!profile || !(await codexLoginStatus(profile.env, profile.home)).ok || !await activateCodex(profile, true)) {
-    await rejectCodexSelection(bot, chatId, messageId);
+    await rejectCodexSelection(bot, chatId, messageId, navigation);
     return false;
   }
-  await showCodexSelection(bot, chatId, messageId);
+  await showCodexSelection(bot, chatId, messageId, navigation);
   return true;
 }
 
@@ -96,23 +96,23 @@ export async function ensureAndReport(bot, chatId, messageId, providerId) {
   return true;
 }
 
-export async function connectCodexNative(bot, chatId, messageId) {
+export async function connectCodexNative(bot, chatId, messageId, navigation) {
   const okCli = await ensureAndReport(bot, chatId, messageId, 'codex');
   if (!okCli) return false;
 
   const profile = await captureCodexLogin().catch(() => null);
   if (!profile) {
-    await rejectCodexSelection(bot, chatId, messageId);
+    await rejectCodexSelection(bot, chatId, messageId, navigation);
     return false;
   }
   if (await hasNativeCodexAuth(profile.home, profile.profileDir)) {
     const status = await codexLoginStatus(profile.env, profile.home);
     if (status.ok) {
       if (!await activateCodex(profile)) {
-        await rejectCodexSelection(bot, chatId, messageId);
+        await rejectCodexSelection(bot, chatId, messageId, navigation);
         return false;
       }
-      await showCodexSelection(bot, chatId, messageId);
+      await showCodexSelection(bot, chatId, messageId, navigation);
       console.error(`${EXT_MARKER} active provider → codex (native auth)`);
       return true;
     }
@@ -186,10 +186,10 @@ export async function connectCodexNative(bot, chatId, messageId) {
   }
 
   if (!await activateCodex(profile)) {
-    await rejectCodexSelection(bot, chatId, messageId);
+    await rejectCodexSelection(bot, chatId, messageId, navigation);
     return false;
   }
-  const menu = await buildConnMenu();
+  const menu = await buildConnMenu(process.env, undefined, navigation?.back);
   await bot.api
     .sendMessage(chatId, `${switchedText('codex')}\n\n${menu.text}`, {
       parse_mode: 'HTML',
@@ -208,7 +208,7 @@ async function activateExtProvider(providerId, activateCli = false) {
   return false;
 }
 
-function rejectNativeSelection(bot, chatId, messageId, providerId, title) {
+function rejectNativeSelection(bot, chatId, messageId, providerId, title, navigation) {
   return editOrReply(
     bot,
     chatId,
@@ -217,19 +217,19 @@ function rejectNativeSelection(bot, chatId, messageId, providerId, title) {
     {
       inline_keyboard: [
         [{ text: '🔐 Вход', callback_data: `ext:auth:${providerId}` }],
-        [{ text: '« Назад', callback_data: 'settings:conn' }],
+        [{ text: '« Назад', callback_data: navigation?.entry ?? 'settings:auth' }],
       ],
     },
   );
 }
 
-async function showProviderSelection(bot, chatId, messageId, providerId) {
-  const menu = await buildConnMenu();
+async function showProviderSelection(bot, chatId, messageId, providerId, navigation) {
+  const menu = await buildConnMenu(process.env, undefined, navigation?.back);
   await editOrReply(bot, chatId, messageId, `${switchedText(providerId)}\n\n${menu.text}`, menu.keyboard);
 }
 
-async function finishNativeLogin(bot, chatId, providerId) {
-  const menu = await buildConnMenu();
+async function finishNativeLogin(bot, chatId, providerId, navigation) {
+  const menu = await buildConnMenu(process.env, undefined, navigation?.back);
   await bot.api
     .sendMessage(chatId, `${switchedText(providerId)}\n\n${menu.text}`, {
       parse_mode: 'HTML',
@@ -245,17 +245,17 @@ async function finishNativeLogin(bot, chatId, providerId) {
  */
 async function runNativeLoginFlow(bot, chatId, messageId, {
   providerId, title, startLabel, startLogin, waitAuth, hasAuth, guide,
-  requireCode = true, force = false, clearAuth,
+  requireCode = true, force = false, clearAuth, navigation,
 }) {
   if (!await ensureAndReport(bot, chatId, messageId, providerId)) return false;
 
   if (!force && await hasAuth()) {
     const activated = await activateExtProvider(providerId, true);
     if (!activated) {
-      await rejectNativeSelection(bot, chatId, messageId, providerId, title);
+      await rejectNativeSelection(bot, chatId, messageId, providerId, title, navigation);
       return false;
     }
-    await showProviderSelection(bot, chatId, messageId, providerId);
+    await showProviderSelection(bot, chatId, messageId, providerId, navigation);
     console.error(`${EXT_MARKER} active provider → ${providerId} (native auth)`);
     return true;
   }
@@ -333,31 +333,32 @@ async function runNativeLoginFlow(bot, chatId, messageId, {
   }
 
   if (!await activateExtProvider(providerId)) {
-    await rejectNativeSelection(bot, chatId, messageId, providerId, title);
+    await rejectNativeSelection(bot, chatId, messageId, providerId, title, navigation);
     return false;
   }
-  await finishNativeLogin(bot, chatId, providerId);
+  await finishNativeLogin(bot, chatId, providerId, navigation);
   console.error(`${EXT_MARKER} active provider → ${providerId} (native login ok)`);
   return true;
 }
 
-export async function selectCursorNative(bot, chatId, messageId) {
+export async function selectCursorNative(bot, chatId, messageId, navigation) {
   if (!await ensureAndReport(bot, chatId, messageId, 'cursor')) return false;
   const status = await cursorLoginStatus();
   if (!status.ok) {
     // Протухший auth.json: сразу повторный вход, а не тупик «не подтвердил».
-    return connectCursorNative(bot, chatId, messageId);
+    return connectCursorNative(bot, chatId, messageId, navigation);
   }
   if (!await activateExtProvider('cursor', true)) {
-    await rejectNativeSelection(bot, chatId, messageId, 'cursor', 'Cursor');
+    await rejectNativeSelection(bot, chatId, messageId, 'cursor', 'Cursor', navigation);
     return false;
   }
-  await showProviderSelection(bot, chatId, messageId, 'cursor');
+  await showProviderSelection(bot, chatId, messageId, 'cursor', navigation);
   return true;
 }
 
-export async function connectCursorNative(bot, chatId, messageId) {
+export async function connectCursorNative(bot, chatId, messageId, navigation) {
   return runNativeLoginFlow(bot, chatId, messageId, {
+    navigation,
     providerId: 'cursor',
     title: 'Cursor',
     startLabel: '⏳ Запускаю штатный вход Cursor (ссылка в браузере)…',
@@ -371,22 +372,23 @@ export async function connectCursorNative(bot, chatId, messageId) {
   });
 }
 
-export async function selectGrokNative(bot, chatId, messageId) {
+export async function selectGrokNative(bot, chatId, messageId, navigation) {
   if (!await ensureAndReport(bot, chatId, messageId, 'grok')) return false;
   const status = await grokLoginStatus();
   if (!status.ok) {
-    return connectGrokNative(bot, chatId, messageId);
+    return connectGrokNative(bot, chatId, messageId, navigation);
   }
   if (!await activateExtProvider('grok', true)) {
-    await rejectNativeSelection(bot, chatId, messageId, 'grok', 'Grok Build');
+    await rejectNativeSelection(bot, chatId, messageId, 'grok', 'Grok Build', navigation);
     return false;
   }
-  await showProviderSelection(bot, chatId, messageId, 'grok');
+  await showProviderSelection(bot, chatId, messageId, 'grok', navigation);
   return true;
 }
 
-export async function connectGrokNative(bot, chatId, messageId) {
+export async function connectGrokNative(bot, chatId, messageId, navigation) {
   return runNativeLoginFlow(bot, chatId, messageId, {
+    navigation,
     providerId: 'grok',
     title: 'Grok Build',
     startLabel: '⏳ Запускаю штатный вход Grok Build (device code)…',

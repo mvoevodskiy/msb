@@ -105,7 +105,7 @@ export function permModeScreen(state = {}) {
   };
 }
 
-export async function connScreen(state, env = process.env) {
+export async function connScreen(state, env = process.env, back = 'menu:agent') {
   const connected = hasClaudeAuth(env, state);
   const display = await agentDisplay(state, env);
   const ccOnly = env.JARVIS_CC_ONLY === '1';
@@ -115,7 +115,7 @@ export async function connScreen(state, env = process.env) {
       keyboard: new InlineKeyboard()
         .text('👾 Claude Code', 'settings:conn:set:cc')
         .row()
-        .text('« Назад', 'menu:agent'),
+        .text('« Назад', back),
     };
   }
 
@@ -135,7 +135,7 @@ export async function connScreen(state, env = process.env) {
   if (!ccOnly) {
     kb.text('⚙️ Движки', 'eng:home').row();
   }
-  kb.text('« Назад', 'menu:agent');
+  kb.text('« Назад', back);
   return { text, keyboard: kb };
 }
 
