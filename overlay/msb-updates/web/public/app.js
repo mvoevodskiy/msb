@@ -30,7 +30,7 @@ async function boot() {
     });
     sessionToken = redeemed.token;
     history.replaceState({}, '', '/');
-    instructionEl.textContent = 'Новая установка MSB — в боте: «Создать сервер» или «Настроить систему».';
+    instructionEl.textContent = 'Новая установка MSB — в боте: «Создать сервер», «Настроить систему» или «Миграция IIA → MSB».';
     instructionEl.classList.remove('hidden');
   } catch (e) {
     showErr(e.message || String(e));

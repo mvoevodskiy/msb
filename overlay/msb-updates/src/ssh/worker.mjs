@@ -1,6 +1,7 @@
 import { createHetznerServer, getHetznerServer } from '../hoster/hetzner.mjs';
 import { redact } from '../util.mjs';
 import { buildAdminBootstrapScript, buildDropAdminKeyScript, nextSetupAction } from './admin-bootstrap.mjs';
+import { buildIiaMigrationScript, parseBackupPath, parseBackupSpace } from './iia-migrate.mjs';
 import { buildUpdatesUrlScript } from './updates-url.mjs';
 import { ensureHubKey } from './keys.mjs';
 import { createSshRunner } from './remote.mjs';
@@ -81,10 +82,6 @@ export function createSshWorker({ config, intents, clients = null, secretBox = n
   }
 
   async function setupSystem(intent) {
-    if (intent.migrate_from === 'iia') {
-      await failSetup(intent, 'iia_removed');
-      return;
-    }
     const action = nextSetupAction(intent);
     if (action === 'need_host') {
       await failSetup(intent, 'need_host');
@@ -188,6 +185,59 @@ export function createSshWorker({ config, intents, clients = null, secretBox = n
         await failSetup(intent, 'admin_bootstrap_failed', platformToken);
         return;
       }
+      let migratedFrom = null;
+      let iiaBackup = null;
+      let backupSkipped = false;
+      if (intent.migrate_from === 'iia') {
+        const migrated = await runner.run(intent.host, {
+          port: intent.port,
+          user,
+          command,
+          stdin: buildIiaMigrationScript({ skipBackup: intent.skip_iia_backup === true }),
+          timeoutMs: 300000,
+        });
+        const out = migrated.stdout || '';
+        const space = parseBackupSpace(out);
+        if (space) {
+          await intents.setStatus(intent.id, 'awaiting_backup_confirm', {
+            error: null,
+            result: { backup_need: space.need, backup_free: space.free },
+          });
+          if (intent.installation_id && clients) {
+            await clients.updateInstallation(intent.installation_id, {
+              host: intent.host,
+              status: 'need_backup_confirm',
+              error: null,
+              admin_key_installed: true,
+            });
+          }
+          await intents.appendLog(intent.id, `backup needs confirmation need=${space.need} free=${space.free}`);
+          return;
+        }
+        if (!migrated.ok || (!out.includes('IIA_MIGRATED') && !out.includes('IIA_MIGRATED_ALREADY'))) {
+          await intents.appendLog(intent.id, redact(migrated.stderr || out || 'iia migration failed', [platformToken]).slice(0, 500));
+          const reason = out.includes('IIA_NOT_FOUND')
+            ? 'iia_not_found'
+            : out.includes('IIA_MSB_EXISTS')
+              ? 'msb_exists'
+              : out.includes('IIA_COPY_SPACE')
+                ? 'iia_copy_space'
+                : 'iia_migration_failed';
+          await failSetup(intent, reason, platformToken);
+          return;
+        }
+        migratedFrom = 'iia';
+        iiaBackup = parseBackupPath(out);
+        backupSkipped = out.includes('IIA_BACKUP_SKIPPED');
+        await intents.appendLog(
+          intent.id,
+          out.includes('IIA_MIGRATED_ALREADY')
+            ? 'iia already migrated'
+            : iiaBackup
+              ? `iia backup ${iiaBackup}`
+              : 'iia data copied without backup',
+        );
+      }
       if (!config.updatesBaseUrl) {
         await intents.appendLog(intent.id, 'updates url is not configured');
         await failSetup(intent, 'updates_url_missing', platformToken);
@@ -212,6 +262,9 @@ export function createSshWorker({ config, intents, clients = null, secretBox = n
           status: 'ready',
           error: null,
           admin_key_installed: true,
+          migrated_from: migratedFrom,
+          iia_backup: iiaBackup,
+          backup_skipped: backupSkipped,
         });
       }
       await intents.setStatus(intent.id, 'done', { error: null, host: intent.host });

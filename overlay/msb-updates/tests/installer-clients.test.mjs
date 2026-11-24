@@ -7,6 +7,7 @@ import { isInstallerAdmin, loadConfig } from '../src/config.mjs';
 import { createHetznerServer } from '../src/hoster/hetzner.mjs';
 import { buildAccessScript } from '../src/bot/access-script.mjs';
 import { buildAdminBootstrapScript, buildDropAdminKeyScript, nextSetupAction } from '../src/ssh/admin-bootstrap.mjs';
+import { buildIiaMigrationScript, parseBackupPath, parseBackupSpace } from '../src/ssh/iia-migrate.mjs';
 import { buildUpdatesUrlScript } from '../src/ssh/updates-url.mjs';
 import { createIntentStore } from '../src/store/intents.mjs';
 import { createClientStore } from '../src/store/clients.mjs';
@@ -81,7 +82,17 @@ test('server create is not repeated after the provider id is saved', () => {
   assert.equal(nextSetupAction({ type: 'ext_overlay', host: '203.0.113.10' }), 'skip');
 });
 
-test('new intent does not keep an IIA migration flag', async () => {
+test('iia migration copies data and leaves the old tree', () => {
+  const script = buildIiaMigrationScript();
+  assert.match(script, /\/home\/client\/\.iia/);
+  assert.match(script, /bind,nofail,x-systemd\.device-timeout=1s/);
+  assert.match(script, /IIA_MIGRATED/);
+  assert.doesNotMatch(script, /\$IIA\/bot(?!s)/);
+  assert.equal(parseBackupSpace('IIA_BACKUP_SPACE need=20 free=5\n').free, '5');
+  assert.equal(parseBackupPath('IIA_BACKUP /home/client/iia-backups/20260101T000000Z\n'), '/home/client/iia-backups/20260101T000000Z');
+});
+
+test('intent keeps an IIA migration flag', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'msb-intents-'));
   const intents = createIntentStore(dir);
   const intent = await intents.create({
@@ -91,10 +102,8 @@ test('new intent does not keep an IIA migration flag', async () => {
     migrate_from: 'iia',
     skip_iia_backup: true,
   });
-  assert.equal(intent.migrate_from, undefined);
-  assert.equal(intent.skip_iia_backup, undefined);
-  const stored = fs.readFileSync(path.join(dir, 'intents', `${intent.id}.json`), 'utf8');
-  assert.doesNotMatch(stored, /iia/);
+  assert.equal(intent.migrate_from, 'iia');
+  assert.equal(intent.skip_iia_backup, true);
 });
 
 test('client record keeps the owner and the platform token, not the bot token', async () => {

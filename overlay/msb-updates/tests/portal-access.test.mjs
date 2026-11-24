@@ -89,17 +89,12 @@ test('portal schema creates the client, ticket and grant tables', async () => {
   assert.ok(applied.length >= 6);
 });
 
-test('installer sources do not offer an IIA install', () => {
-  assert.equal(fs.existsSync(path.join(root, 'src/ssh/iia-migrate.mjs')), false);
-  const files = [
-    'src/bot/app.mjs',
-    'src/ssh/worker.mjs',
-    'src/api/server.mjs',
-    'web/public/app.js',
-    'README.md',
-  ];
-  for (const file of files) {
-    const text = fs.readFileSync(path.join(root, file), 'utf8');
-    assert.doesNotMatch(text, /Миграция IIA|iia-migrate|IIA_MIGRATED/);
-  }
+test('installer mentions IIA only as migration to MSB', () => {
+  assert.equal(fs.existsSync(path.join(root, 'src/ssh/iia-migrate.mjs')), true);
+  const app = fs.readFileSync(path.join(root, 'src/bot/app.mjs'), 'utf8');
+  const worker = fs.readFileSync(path.join(root, 'src/ssh/worker.mjs'), 'utf8');
+  assert.match(app, /Миграция IIA → MSB/);
+  assert.match(worker, /buildIiaMigrationScript/);
+  assert.doesNotMatch(worker, /iia_removed/);
+  assert.doesNotMatch(app + worker, /установить IIA|install iia-bot/i);
 });

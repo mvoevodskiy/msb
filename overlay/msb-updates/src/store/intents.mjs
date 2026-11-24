@@ -22,6 +22,8 @@ export function createIntentStore(dataDir) {
       installation_id: input.installation_id || null,
       platform_account_id: input.platform_account_id || null,
       provider_server_id: input.provider_server_id || null,
+      migrate_from: input.migrate_from === 'iia' ? 'iia' : null,
+      skip_iia_backup: input.skip_iia_backup === true,
       status: 'awaiting_ssh',
       created_at: nowIso(),
       updated_at: nowIso(),

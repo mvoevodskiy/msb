@@ -87,7 +87,7 @@ export function createServer(ctx) {
       return sendJson(res, 200, {
         public_key: worker.getPublicKey(),
         egress_ips: config.egressIps,
-        instruction: 'Новая установка MSB — в боте: «Создать сервер» или «Настроить систему».',
+        instruction: 'Новая установка MSB — в боте: «Создать сервер», «Настроить систему» или «Миграция IIA → MSB».',
         base_url: config.baseUrl,
       });
     }
