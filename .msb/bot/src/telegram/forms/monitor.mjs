@@ -2,15 +2,18 @@
  * Old ambiguous @handle input/choice; [dispatcher](../forms.mjs) accepts input,
  * [route](../routes/monitor.mjs) accepts selection, [store](../../monitor/config.mjs)
  * writes only after a type is known. [Checks](../../../tests/monitor-source-choice.test.mjs).
- * Transient choice belongs to its chat and delivered prompt; /start or its cancel clears it.
+ * Input and choice are scoped to their originating message within the chat.
+ * /start or the matching Cancel clears the form.
  */
 import { InlineKeyboard } from 'grammy';
 import { addSourceFromInput, classifySourceInput } from '../../monitor/config.mjs';
 
 const CHOICE = 'mon-source-choice';
-export function cancelMonitorSourceChoice({ pending, chatId, msgId }) {
+export function cancelMonitorSourceInput({ pending, chatId, msgId }) {
+  const kind = pending.get(chatId);
+  if (kind !== 'mon-source' && kind !== CHOICE) return;
   const draft = pending.payload(chatId);
-  if (pending.get(chatId) === CHOICE && draft && Number.isSafeInteger(msgId) && draft.messageId === msgId) pending.delete(chatId);
+  if (Number.isSafeInteger(msgId) && draft?.messageId === msgId) pending.delete(chatId);
 }
 const back = () => new InlineKeyboard().text('« Назад', 'mon:sources');
 const again = () => new InlineKeyboard().text('➕ Ещё источник', 'mon:add-hint').text('« К источникам', 'mon:sources');

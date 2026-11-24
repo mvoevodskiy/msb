@@ -3,19 +3,20 @@
  * Ввод/выбор типа → [monitor form](../forms/monitor.mjs); [checks](../../../tests/monitor-source-choice.test.mjs).
  * Навигация: [Telegram](../README.md).
  */
+import { InlineKeyboard } from 'grammy';
 import { monitorDigestScreen, monitorHelpScreen, monitorScreen, monitorSettingsScreen, monitorSourcesScreen, placeholder } from '../screens.mjs';
 import { removeSource } from '../../monitor/config.mjs';
 import { pollAllSources } from '../../monitor/poll.mjs';
 import { buildDigestText, updateDigestSettings } from '../../monitor/digest.mjs';
 import { UNHANDLED } from './shared.mjs';
-import { cancelMonitorSourceChoice, handleMonitorSourceChoice } from '../forms/monitor.mjs';
+import { cancelMonitorSourceInput, handleMonitorSourceChoice } from '../forms/monitor.mjs';
 
 export async function handleMonitorRoute({ data, show, pending, chatId, bot, ctx, msgId }) {
   // —— monitor ——
   if (data === 'mon:back' || data === 'auto:monitor') return show(await monitorScreen(data === 'auto:monitor' ? 'auto:home' : 'menu:back'));
   if (data === 'mon:sources') return show(await monitorSourcesScreen());
   if (data === 'mon:add:cancel') {
-    cancelMonitorSourceChoice({ pending, chatId, msgId });
+    cancelMonitorSourceInput({ pending, chatId, msgId });
     return show(await monitorSourcesScreen());
   }
   if (data === 'mon:add:as:telegram' || data === 'mon:add:as:twitter') {
@@ -26,9 +27,10 @@ export async function handleMonitorRoute({ data, show, pending, chatId, bot, ctx
   if (data === 'mon:settings') return show(monitorSettingsScreen());
   if (data === 'mon:add-hint') {
     pending.set(chatId, 'mon-source');
+    pending.advance(chatId, 'mon-source', { messageId: msgId });
     return show({
       text: 'Пришли ссылку или @ник источника (YouTube, X, GitHub, Telegram, RSS).',
-      keyboard: (await monitorSourcesScreen()).keyboard,
+      keyboard: new InlineKeyboard().text('Отмена', 'mon:add:cancel'),
     });
   }
   if (data.startsWith('mon:src-key:')) {
