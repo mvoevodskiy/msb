@@ -3,6 +3,7 @@ import test from 'node:test';import assert from 'node:assert/strict';import fs f
 import {installFixture,payload,block,installed,invalid,failed,skillPath,installIngressProbe} from './helpers/skills-install-fixture.mjs';
 import {loadState,saveState} from '../src/state.mjs';
 import {agentOptionsProbe} from './helpers/agent-options.mjs';
+import {projectPath} from '../shared/project-paths.mjs';
 const write=async(file,text)=>{await fs.mkdir(path.dirname(file),{recursive:true});await fs.writeFile(file,text);};
 for(const provider of ['claude','codex'])test('skill install: '+provider+' writes its own native user skill then reports the old exact success',async t=>{
  const f=await installFixture(t,{provider}),other=skillPath(f.home,provider==='claude'?'codex':'claude');
@@ -47,7 +48,16 @@ test('skill install: a provider change during the model call cannot redirect the
  const f=await installFixture(t,{beforeReturn:async()=>{const {state}=await loadState();await saveState({...state,extAuthBypass:'claude'});}});await f.run();assert.equal((await loadState()).state.extAuthBypass,'claude');assert.equal(await f.exists(skillPath(f.home,'codex')),true);assert.equal(await f.exists(skillPath(f.home,'claude')),false);
 });
 test('skill install: project Add advice still installs in the native user scope and does not edit project context',async t=>{
- const f=await installFixture(t),project=path.join(f.home,'project');await fs.mkdir(project);await fs.writeFile(path.join(project,'AGENTS.md'),'unchanged project context');const {state}=await loadState();await saveState({...state,activeProject:'alpha'});await f.callback('skills:add:project');await f.run();assert.equal(await f.exists(skillPath(f.home)),true);assert.equal(await fs.readFile(path.join(project,'AGENTS.md'),'utf8'),'unchanged project context');assert.equal(await f.exists(path.join(project,'.agents')),false);
+ const f = await installFixture(t);
+ const project = projectPath('alpha');
+ await write(path.join(project, 'AGENTS.md'), 'unchanged project context');
+ const { state } = await loadState();
+ await saveState({ ...state, activeProject: 'alpha' });
+ await f.callback('skills:add:project');
+ await f.run();
+ assert.equal(await f.exists(skillPath(f.home)), true);
+ assert.equal(await fs.readFile(path.join(project, 'AGENTS.md'), 'utf8'), 'unchanged project context');
+ assert.equal(await f.exists(path.join(project, '.agents')), false);
 });
 test('skill install: a completed partial error still processes the returned model text',async t=>{
  const f=await installFixture(t,{ok:false});await f.run();assert.equal(await f.exists(skillPath(f.home)),true);assert.ok(f.final().includes(installed()));
