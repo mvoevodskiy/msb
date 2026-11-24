@@ -52,7 +52,7 @@ export async function handleCallback(bot, cq, closedCore = false, pauseCapture) 
   // SSH-экран: показываем статус + кнопку локального IP (иначе на LAN всё красное).
   if (data === 'settings:ssh') {
     await bot.api.answerCallbackQuery(cq.id).catch(() => {});
-    await showLocalAwareSshHome(bot, chatId, messageId);
+    await showLocalAwareSshHome(bot, chatId, messageId, { manage: closedCore });
     return true;
   }
 
