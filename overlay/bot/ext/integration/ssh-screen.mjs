@@ -1,5 +1,5 @@
 /**
- * Прежний SSH-экран; backend остаётся в local-ssh.mjs.
+ * Статус и инструкция SSH. Чтение состояния принадлежит local-ssh.mjs.
  * Навигация: [Обвязка](../README.md).
  */
 import { getLocalSshHost, handleLocalConstructorRequest, constructorBaseUrl } from '../local-ssh.mjs';
@@ -84,4 +84,18 @@ export async function showLocalAwareSshHome(bot, chatId, messageId) {
 
   const text = `<b>🔐 SSH доступ к серверу</b>\n\n${statusText}`;
   await editOrReply(bot, chatId, messageId, text, { inline_keyboard: rows });
+}
+
+export function showSshHelp(bot, chatId, messageId) {
+  const text = [
+    '<b>🔐 Как подключиться по SSH</b>',
+    '',
+    '1. Открой терминал на компьютере, где настроен твой SSH-ключ.',
+    '2. Подключись по своему SSH-псевдониму или командой <code>ssh client@IP_СЕРВЕРА</code>. Используй адрес, пользователя и порт своего сервера.',
+    '3. Если подключение не открывается, используй консоль хостера или уже настроенный способ доступа.',
+    '',
+    '«Локальный SSH IP» задаёт адрес для проверки статуса из внутренней сети.',
+  ].join('\n');
+  return editOrReply(bot, chatId, messageId, text,
+    { inline_keyboard: [[{ text: '« Назад', callback_data: 'settings:ssh' }]] });
 }

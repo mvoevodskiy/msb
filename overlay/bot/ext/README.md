@@ -127,7 +127,7 @@ OpenClaw/service actions находятся в [core engines](../../../.msb/bot/
 [`local-ssh.mjs`](local-ssh.mjs): `installLocalSshFetchPatch` направляет подходящие
 constructor-запросы в `handleLocalConstructorRequest`; здесь же находятся
 проверка локального адреса, SSH keys/firewall и вызовы управления ботами.
-Статус показывает [`showLocalAwareSshHome`](integration/ssh-screen.mjs), форму строит
+Статус и инструкцию показывает [`ssh-screen.mjs`](integration/ssh-screen.mjs), форму строит
 [`menu.mjs`](menu.mjs), а ввод принимает [`handleLocalSshIpMessage`](integration/text-input.mjs).
 Проверка — [local-ssh.test.mjs](tests/local-ssh.test.mjs).
 
