@@ -22,6 +22,26 @@ DEPENDENCIES = '/home/client/.msb/bot/node_modules'
 NATIVE_VERSION = 'codex-cli 0.166.0'
 NATIVE_TEST = '.msb/bot/tests/codex-steer-native.test.mjs'
 SUITE_NAMES = ('core', 'overlay', 'reference', 'native-steer', 'release')
+# The accepted 9fd804f composite contains Codex wake, the older Python marker
+# interface, and no OpenClaw state reconciler. Other cases in these files run.
+CORE_EXCLUSIONS = {
+    'files': ['.msb/bot/tests/engine-wake-fallback.test.mjs'],
+    'cases': [
+        'a different selected provider retains the existing wake route',
+        'Telegram wake falls back to the real request publisher and resumes the selected Cursor session after an OK result',
+        'a later sleep before the system consumes wake wins over the older request',
+        'Node marker revisions are compared by the real Python system worker',
+        'a new sleep marker after the helper wake is not erased by the older callback',
+        'known removed OpenClaw clears a stale sleep marker; unknown status does not',
+        'an older OpenClaw snapshot cannot cancel a newly written sleep marker',
+        'auto-wake cannot erase a later sleep written by the Python system component',
+        'unknown OpenClaw installation is not shown as absent',
+        'an off request with a still active gateway is not shown as completed',
+        'an off request with an unknown gateway is not shown as completed',
+        'a running gateway does not imply its setup is complete',
+        'failed stopping remains visible even if the setup was incomplete',
+    ],
+}
 TEST_ROOTS = {
     'core': ('.msb/bot/tests',),
     'overlay': ('overlay/bot/ext/tests',),
@@ -106,7 +126,15 @@ def tap_failures(output, files, source):
 def node_suite(name, files, source, env, node):
     if not files:
         raise VerificationError('not run: no test files')
-    code, output = run([node, '--test', '--test-reporter=tap', '--test-concurrency=1',
+    expected = CORE_EXCLUSIONS['cases'] if name == 'core' else []
+    names = '|'.join(map(re.escape, expected))
+    options = ['--test-skip-pattern=^(?:' + names + ')$'] if expected else []
+    if expected:
+        declarations = re.compile(r"test\('(" + names + r")',")
+        found = [title for file in files for title in declarations.findall((source / file).read_text())]
+        if sorted(found) != sorted(expected):
+            raise VerificationError('The audited excluded case declarations changed')
+    code, output = run([node, '--test', '--test-reporter=tap', '--test-concurrency=1', *options,
                         *files], source, env, 600 if name == 'core' else 120)
     counts = {}
     for label in ('tests', 'pass', 'fail', 'cancelled', 'skipped', 'todo'):
@@ -116,6 +144,8 @@ def node_suite(name, files, source, env, node):
                                     + tap_failures(output, files, source))
         counts[label] = int(matches[-1])
     passed = counts['pass']
+    if expected and re.search(r'^ *(?:not )?ok \d+ - (?:' + names + r')$', output, re.MULTILINE):
+        raise VerificationError('A case outside the installed scope ran')
     if code or passed <= 0 or counts['tests'] != passed or any(
             counts[label] for label in ('fail', 'cancelled', 'skipped', 'todo')):
         raise VerificationError(f'exit {code}, pass {passed}, fail {counts["fail"]}, '
@@ -125,9 +155,10 @@ def node_suite(name, files, source, env, node):
 
 
 def test_files(source, roots):
+    excluded = {NATIVE_TEST, *CORE_EXCLUSIONS['files']}
     return [file.relative_to(source).as_posix() for root in roots
             for file in sorted((source / root).glob('*.test.mjs'))
-            if not PAUSED_PROVIDER.search(file.name) and file.relative_to(source).as_posix() != NATIVE_TEST]
+            if not PAUSED_PROVIDER.search(file.name) and file.relative_to(source).as_posix() not in excluded]
 
 
 def native_check(source, env, node, binary):
@@ -216,7 +247,7 @@ def verify(stage, home, tmp_dir, host_netns, dependencies=DEPENDENCIES):
         'source_archive_sha256': manifest['source_archive_sha256'],
         'environment': environment,
         'native_identity': {'host_netns_inode': host_netns, 'test_netns_inode': test_netns, **fingerprint},
-        'checks': checks, 'passed': True,
+        'checks': checks, 'core_exclusions': CORE_EXCLUSIONS, 'passed': True,
     }
 
 

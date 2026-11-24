@@ -47,13 +47,15 @@ def load(name, path):
     return module
 
 
-def verify_proof(proof, manifest, manifest_sha):
+def verify_proof(proof, manifest, manifest_sha, core_exclusions):
     if proof.get('passed') is not True or proof.get('manifest_sha256') != manifest_sha or any(
             proof.get(key) != manifest[key] for key in ('scope', 'source_commit', 'source_archive_sha256')):
         raise RuntimeError('Proof does not describe this candidate')
     checks = proof.get('checks')
     if not isinstance(checks, list) or len(checks) != len(SUITES) or {row.get('suite') for row in checks} != SUITES:
         raise RuntimeError('Required test suites are missing')
+    if proof.get('core_exclusions') != core_exclusions:
+        raise RuntimeError('Unexpected exclusions from the installed scope')
     for row in checks:
         if row.get('exit_code') != 0 or row.get('cancelled') != 0 or row.get('skipped') != 0 or \
                 type(row.get('passed')) is not int or row['passed'] < 1:
@@ -116,7 +118,8 @@ def main():
         if sha(trusted(stage, name)) != manifest.get(name.removesuffix('.py') + '_sha256'):
             raise RuntimeError('Release tool changed: ' + name)
     expected = verify_payload(stage, manifest, builder)
-    environment, native = verify_proof(proof, manifest, args.manifest_sha)
+    verifier = load('ux_verify', stage / 'verify.py')
+    environment, native = verify_proof(proof, manifest, args.manifest_sha, verifier.CORE_EXCLUSIONS)
 
     base = load('ux_audit_transaction', stage / 'deploy_base.py')
     profile = load('ux_profile', stage / 'profile.py')

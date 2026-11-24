@@ -7,6 +7,7 @@ from unittest.mock import patch
 
 import build
 import deploy
+import verify
 
 
 class ReleaseTests(unittest.TestCase):
@@ -21,7 +22,8 @@ class ReleaseTests(unittest.TestCase):
             **self.manifest,
             'manifest_sha256': self.manifest_sha,
             'passed': True,
-            'checks': [{'suite': name, 'exit_code': 0, 'passed': 1, 'skipped': 0, 'cancelled': 0}
+            'core_exclusions': copy.deepcopy(verify.CORE_EXCLUSIONS),
+            'checks': [{'suite': name, 'exit_code': 0, 'passed': 1, 'cancelled': 0, 'skipped': 0}
                        for name in sorted(deploy.SUITES)],
             'environment': {'platform': 'linux', 'node': 'v22.23.5', 'node_sha256': '4' * 64},
             'native_identity': {'host_netns_inode': 100, 'test_netns_inode': 101,
@@ -29,23 +31,33 @@ class ReleaseTests(unittest.TestCase):
         }
 
     def test_only_this_candidate_with_all_suites_can_pass(self):
-        env, native = deploy.verify_proof(self.proof, self.manifest, self.manifest_sha)
+        env, native = deploy.verify_proof(self.proof, self.manifest, self.manifest_sha, verify.CORE_EXCLUSIONS)
         self.assertEqual(env['node'], 'v22.23.5')
         self.assertNotEqual(native['host_netns_inode'], native['test_netns_inode'])
         with self.assertRaisesRegex(RuntimeError, 'candidate'):
-            deploy.verify_proof(self.proof, self.manifest, '0' * 64)
+            deploy.verify_proof(self.proof, self.manifest, '0' * 64, verify.CORE_EXCLUSIONS)
         self.proof['checks'].pop()
         with self.assertRaisesRegex(RuntimeError, 'suites'):
-            deploy.verify_proof(self.proof, self.manifest, self.manifest_sha)
+            deploy.verify_proof(self.proof, self.manifest, self.manifest_sha, verify.CORE_EXCLUSIONS)
 
     def test_skipped_or_unisolated_native_cannot_pass(self):
         partial = copy.deepcopy(self.proof)
         next(row for row in partial['checks'] if row['suite'] == 'native-steer')['skipped'] = 1
         with self.assertRaisesRegex(RuntimeError, 'Incomplete test suite'):
-            deploy.verify_proof(partial, self.manifest, self.manifest_sha)
+            deploy.verify_proof(partial, self.manifest, self.manifest_sha, verify.CORE_EXCLUSIONS)
         self.proof['native_identity']['test_netns_inode'] = 100
         with self.assertRaisesRegex(RuntimeError, 'Isolated Codex identity'):
-            deploy.verify_proof(self.proof, self.manifest, self.manifest_sha)
+            deploy.verify_proof(self.proof, self.manifest, self.manifest_sha, verify.CORE_EXCLUSIONS)
+
+    def test_unexpected_core_skips_are_rejected(self):
+        partial = copy.deepcopy(self.proof)
+        partial['core_exclusions']['cases'].append('another case')
+        with self.assertRaisesRegex(RuntimeError, 'Unexpected exclusions'):
+            deploy.verify_proof(partial, self.manifest, self.manifest_sha, verify.CORE_EXCLUSIONS)
+        row = next(row for row in self.proof['checks'] if row['suite'] == 'core')
+        row['skipped'] += 1
+        with self.assertRaisesRegex(RuntimeError, 'Incomplete test suite'):
+            deploy.verify_proof(self.proof, self.manifest, self.manifest_sha, verify.CORE_EXCLUSIONS)
 
     def test_previous_manifest_delta_becomes_the_installed_baseline(self):
         existing = {'root': 'bot', 'relative': 'src/example.mjs', 'sha256': '1' * 64}
