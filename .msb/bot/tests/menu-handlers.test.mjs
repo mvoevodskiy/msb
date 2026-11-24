@@ -444,6 +444,25 @@ test('switching explicit forms clears incompatible secret input only', async (t)
   assert.equal((await readEnvMap()).map.has('TEST_MENU_TOKEN'), false);
 });
 
+test('SSH instruction explains an existing connection and returns to the SSH screen', async t => {
+  const f = await fixture(t);
+  await f.callback('settings:ssh');
+  const buttons = () => f.editOptions.at(-1).reply_markup.inline_keyboard.flat();
+  const instruction = buttons().find(button => button.text.includes('Инструкция'));
+  assert.equal(instruction?.callback_data, 'settings:ssh:help');
+
+  await f.callback(instruction.callback_data);
+  assert.match(f.edits.at(-1), /Как подключиться по SSH/);
+  assert.match(f.edits.at(-1), /ssh client@IP_СЕРВЕРА/);
+  assert.match(f.edits.at(-1), /консоль хостера/);
+  assert.deepEqual(buttons().map(button => button.callback_data), ['settings:ssh']);
+
+  await f.callback(buttons()[0].callback_data);
+  assert.match(f.edits.at(-1), /SSH доступ к серверу/);
+  await f.callback('settings:ssh:add-key');
+  assert.match(f.edits.at(-1), /управление SSH-ключами.*не подключено/iu);
+});
+
 test('closed-core routes still reach their original handlers and mode is fixed at startup', async (t) => {
   const f = await fixture(t);
   const seen = [], edits = [];
@@ -455,7 +474,7 @@ test('closed-core routes still reach their original handlers and mode is fixed a
   process.env.MSB_USE_CLOSED_CORE = '0';
   process.env.CLAUDE_CODE_OAUTH_TOKEN = 'fixture-claude-token';
   const bot = new ClosedHarness();
-  const routes = ['settings:ssh:add-key', 'settings:ssh:list-keys', 'settings:ssh:add-ip', 'settings:ssh:list-ips', 'settings:auth:openrouter', 'settings:engine:set:oc', 'settings:auth:switch-sub', 'settings:auth:help'];
+  const routes = ['settings:ssh:add-key', 'settings:ssh:list-keys', 'settings:ssh:add-ip', 'settings:ssh:list-ips', 'settings:ssh:help', 'settings:auth:openrouter', 'settings:engine:set:oc', 'settings:auth:switch-sub', 'settings:auth:help'];
   for (const data of routes) await bot.handleUpdate({ callback_query: { id: 'q', data, from: { id: 42 }, message: { message_id: 1, chat: { id: 42 } } } });
   assert.deepEqual(seen, routes);
   assert.deepEqual(edits, []);

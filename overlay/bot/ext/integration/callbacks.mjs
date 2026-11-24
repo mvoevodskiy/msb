@@ -22,7 +22,7 @@ import {
   selectCursorNative, connectCursorNative,
   selectGrokNative, connectGrokNative,
 } from './native-login.mjs';
-import { showLocalAwareSshHome } from './ssh-screen.mjs';
+import { showLocalAwareSshHome, showSshHelp } from './ssh-screen.mjs';
 import { writeBotPermissionMode } from './actions.mjs';
 import { EXT_MARKER } from './shared.mjs';
 import { captureCodexPause, beginClaudePauseSwitch, finishClaudePauseSwitch } from '../codex-pause-switch.mjs';
@@ -41,6 +41,10 @@ export async function handleCallback(bot, cq, closedCore = false, pauseCapture) 
   if (data.startsWith('settings:ssh:')) {
     if (closedCore) return false;
     await bot.api.answerCallbackQuery(cq.id).catch(() => {});
+    if (data === 'settings:ssh:help') {
+      await showSshHelp(bot, chatId, messageId);
+      return true;
+    }
     await editOrReply(bot, chatId, messageId, 'Управление SSH-ключами и firewall через это меню пока не подключено. Существующий доступ к серверу не меняется.', { inline_keyboard: [[{ text: '« Назад', callback_data: 'settings:ssh' }]] });
     return true;
   }
