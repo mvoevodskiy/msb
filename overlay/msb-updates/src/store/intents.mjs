@@ -19,6 +19,9 @@ export function createIntentStore(dataDir) {
       host: input.host || null,
       port: input.port || 22,
       ssh_user: input.ssh_user || 'client',
+      installation_id: input.installation_id || null,
+      platform_account_id: input.platform_account_id || null,
+      provider_server_id: input.provider_server_id || null,
       status: 'awaiting_ssh',
       created_at: nowIso(),
       updated_at: nowIso(),
@@ -80,7 +83,8 @@ export function createIntentStore(dataDir) {
     for (const name of names) {
       if (!name.endsWith('.json')) continue;
       const rec = await readJson(path.join(p.intents, name), null);
-      if (rec && ['awaiting_ssh', 'probing', 'applying', 'queued'].includes(rec.status) && rec.host) {
+      if (rec && ['awaiting_ssh', 'probing', 'applying', 'queued'].includes(rec.status)) {
+        if (!rec.host && rec.type !== 'system_setup') continue;
         all.push(rec);
       }
     }

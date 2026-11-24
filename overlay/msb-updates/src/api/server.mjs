@@ -4,7 +4,6 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readJsonBody, sendJson } from '../util.mjs';
-import { loadSshInstruction } from '../bot/copy.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_ROOT = path.resolve(__dirname, '../../web/public');
@@ -73,10 +72,7 @@ export function createServer(ctx) {
       return sendJson(res, 200, {
         public_key: worker.getPublicKey(),
         egress_ips: config.egressIps,
-        instruction: loadSshInstruction({
-          publicKey: worker.getPublicKey(),
-          egressIps: config.egressIps,
-        }),
+        instruction: 'Новая установка MSB — в боте: «Создать сервер» или «Настроить систему».',
         base_url: config.baseUrl,
       });
     }
@@ -164,19 +160,10 @@ export function createServer(ctx) {
       if (!meta) return sendJson(res, 401, { error: 'unauthorized' });
       const body = await readJsonBody(req);
       const type = body.type;
-      if (type === 'ext_overlay') requireScope(meta, 'install:ext');
-      else if (type === 'empty_bot') requireScope(meta, 'install:empty');
-      else return sendJson(res, 400, { error: 'bad type' });
-
-      const rec = await intents.create({
-        type,
-        tg_user_id: meta.tg_user_id,
-        host: body.host || null,
-        port: body.port || 22,
-        ssh_user: body.ssh_user || config.defaultSshUser,
-      });
-      if (rec.host) await worker.enqueue(rec.id);
-      return sendJson(res, 200, { intent: publicIntent(rec) });
+      if (type === 'ext_overlay' || type === 'empty_bot') {
+        return sendJson(res, 410, { error: 'overlay_retired' });
+      }
+      return sendJson(res, 400, { error: 'bad type' });
     }
 
     const intentMatch = pathname.match(/^\/v1\/install\/intents\/([^/]+)(?:\/(retry))?$/);

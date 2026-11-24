@@ -1,10 +1,11 @@
-import fs from 'node:fs';
-import fsp from 'node:fs/promises';
-import { id, nowIso } from '../util.mjs';
+import { createHetznerServer, getHetznerServer } from '../hoster/hetzner.mjs';
+import { redact } from '../util.mjs';
+import { buildAdminBootstrapScript, buildDropAdminKeyScript, nextSetupAction } from './admin-bootstrap.mjs';
+import { buildUpdatesUrlScript } from './updates-url.mjs';
 import { ensureHubKey } from './keys.mjs';
-import { buildRemoteExtInstallScript, createSshRunner } from './remote.mjs';
+import { createSshRunner } from './remote.mjs';
 
-export function createSshWorker({ config, auth, releases, intents }) {
+export function createSshWorker({ config, intents, clients = null, secretBox = null }) {
   let runner = null;
   let busy = false;
   let pubKey = '';
@@ -27,7 +28,8 @@ export function createSshWorker({ config, auth, releases, intents }) {
     if (busy || !runner) return;
     const pending = await intents.listPending(5);
     const job = pending.find((i) => i.status === 'queued' || i.status === 'awaiting_ssh');
-    if (!job || !job.host) return;
+    if (!job) return;
+    if (!job.host && job.type !== 'system_setup') return;
     if (job.status === 'awaiting_ssh') {
       // ждём явного retry/queued от API после ввода host — но если host уже есть, берём в работу
     }
@@ -45,200 +47,212 @@ export function createSshWorker({ config, auth, releases, intents }) {
     setTimeout(() => { tick().catch(() => {}); }, 100);
   }
 
-  async function processIntent(intentId) {
-    const intent = await intents.get(intentId);
-    if (!intent?.host) return;
-
-    await intents.setStatus(intentId, 'probing');
-    await intents.appendLog(intentId, `SSH probe ${intent.ssh_user}@${intent.host}:${intent.port}`);
-
-    const probe = await runner.probe(intent.host, {
-      port: intent.port,
-      user: intent.ssh_user || config.defaultSshUser,
-    });
-    if (!probe.ok || !probe.stdout.includes('MSB_SSH_OK')) {
-      await intents.setStatus(intentId, 'awaiting_ssh', {
-        error: 'ssh_probe_failed',
-        result: { stderr: probe.stderr, stdout: probe.stdout },
-      });
-      await intents.appendLog(intentId, `probe failed: ${(probe.stderr || probe.stdout || '').slice(0, 500)}`);
-      return;
-    }
-    await intents.appendLog(intentId, probe.stdout.trim().split('\n').join(' | '));
-
-    if (intent.type === 'ext_overlay' || intent.type === 'empty_bot') {
-      await intents.setStatus(intentId, 'applying');
-      await applyExtOverlay(intent, probe);
+  async function failSetup(intent, error, secret) {
+    const safe = redact(error, [secret].filter(Boolean)).slice(0, 300);
+    await intents.setStatus(intent.id, 'failed', { error: safe });
+    if (intent.installation_id && clients) {
+      await clients.updateInstallation(intent.installation_id, { status: 'failed', error: safe });
     }
   }
 
-  async function detectCoreVersion(intent) {
-    const r = await runner.run(intent.host, {
-      port: intent.port,
-      user: intent.ssh_user,
-      command: `python3 - <<'PY'
-import json,hashlib,pathlib
-live=pathlib.Path.home()/".msb"
-core=""
-st=live/".puller-state.json"
-if st.exists():
-  try: core=json.loads(st.read_text()).get("applied_platform_version") or ""
-  except: pass
-fp=""
-idx=live/"bot"/"index.js"
-if idx.exists(): fp=hashlib.sha256(idx.read_bytes()).hexdigest()
-print(core)
-print(fp)
-print("HAS_INDEX" if idx.exists() else "NO_INDEX")
-PY`,
-    });
-    if (!r.ok) return { core: null, fingerprint: null, hasIndex: false, err: r.stderr };
-    const [core, fp, flag] = r.stdout.trim().split('\n');
-    return { core: core || null, fingerprint: fp || null, hasIndex: flag === 'HAS_INDEX', err: null };
-  }
-
-  async function applyExtOverlay(intent) {
-    const detected = await detectCoreVersion(intent);
-    if (detected.err) {
-      await intents.setStatus(intent.id, 'failed', { error: 'detect_core_failed', result: detected });
-      return;
-    }
-    if (!detected.hasIndex && intent.type === 'ext_overlay') {
-      await intents.setStatus(intent.id, 'failed', { error: 'no_core_bundle', result: detected });
-      await intents.appendLog(intent.id, 'на сервере нет bot/index.js — это не существующий бот');
-      return;
-    }
-
-    let coreVersion = detected.core || (detected.fingerprint ? `sha256:${detected.fingerprint}` : null);
-    await intents.appendLog(intent.id, `core=${coreVersion || 'unknown'}`);
-
-    let manifest = null;
-    if (coreVersion && !String(coreVersion).startsWith('sha256:')) {
-      manifest = await releases.compatibleExt(coreVersion);
-    }
-    if (!manifest) {
-      // fallback: latest ext if no platform version string
-      const latest = await releases.latest('ext');
-      if (latest && (!coreVersion || String(coreVersion).startsWith('sha256:'))) {
-        manifest = latest;
-        await intents.appendLog(intent.id, `нет platform_version — берём latest ext ${latest.version}`);
-      }
-    }
-    if (!manifest) {
-      await intents.setStatus(intent.id, 'failed', {
-        error: 'no_compatible_ext',
-        core_version: coreVersion,
-      });
-      await intents.appendLog(intent.id, 'нет совместимого релиза обвязки для этого ядра');
-      return;
-    }
-
-    const filesB64 = [];
-    for (const f of manifest.files) {
-      const blobFile = releases.openBlob(f.sha256);
-      if (!blobFile) throw new Error(`missing blob ${f.sha256}`);
-      const buf = await fsp.readFile(blobFile);
-      filesB64.push({
-        path: f.path,
-        sha256: f.sha256,
-        mode: f.mode || '644',
-        b64: buf.toString('base64'),
-      });
-    }
-
-    const boxId = id('box');
-    const { token } = await auth.issueToken({
-      tgUserId: intent.tg_user_id,
-      kind: 'install_box',
-      scopes: ['core:read', 'ext:read'],
-      boxId,
-    });
-    await auth.bindBox(intent.tg_user_id, boxId);
-
-    const script = buildRemoteExtInstallScript({
-      apiBase: config.baseUrl,
-      installToken: token,
-      manifestJson: manifest,
-      filesBase64: filesB64,
-    });
-
-    // upload script and run
-    const remoteScript = `/tmp/msb-ext-install-${intent.id}.sh`;
-    const up = await runner.uploadBytes(
-      intent.host,
-      { port: intent.port, user: intent.ssh_user },
-      remoteScript,
-      script,
-    );
-    if (!up.ok) {
-      await intents.setStatus(intent.id, 'failed', { error: 'upload_failed', result: up });
-      return;
-    }
-
+  async function writeBotToken(intent, botToken) {
+    const user = intent.ssh_user || 'root';
+    const command = user === 'root'
+      ? 'umask 077; cat > /root/bot-default.env'
+      : 'umask 077; sudo -n tee /root/bot-default.env >/dev/null';
     const run = await runner.run(intent.host, {
       port: intent.port,
-      user: intent.ssh_user,
-      command: `chmod +x ${remoteScript} && bash ${remoteScript}; rm -f ${remoteScript}`,
-      timeoutMs: 300000,
+      user,
+      command,
+      stdin: `BOT_TOKEN=${botToken}\n`,
+      timeoutMs: 30000,
     });
-    await intents.appendLog(intent.id, (run.stdout || '').slice(-1500));
-    if (run.stderr) await intents.appendLog(intent.id, `stderr: ${(run.stderr || '').slice(0, 800)}`);
-    if (!run.ok || !(run.stdout || '').includes('DONE')) {
-      const errLine = (run.stderr || run.stdout || 'remote failed').trim().split('\n').slice(-3).join(' | ');
-      await intents.appendLog(intent.id, `apply failed: ${errLine.slice(0, 500)}`);
-      await intents.setStatus(intent.id, 'failed', {
-        error: 'remote_apply_failed',
-        result: { stderr: run.stderr, stdout: run.stdout },
-      });
+    if (!run.ok) return false;
+    const chmod = user === 'root'
+      ? 'chmod 600 /root/bot-default.env'
+      : 'sudo -n chmod 600 /root/bot-default.env';
+    const mode = await runner.run(intent.host, {
+      port: intent.port,
+      user,
+      command: chmod,
+      timeoutMs: 15000,
+    });
+    return mode.ok;
+  }
+
+  async function setupSystem(intent) {
+    if (intent.migrate_from === 'iia') {
+      await failSetup(intent, 'iia_removed');
       return;
     }
-
-    if (intent.type === 'empty_bot') {
-      // если ядра нет — пробуем поставить latest core перед ext (уже поставили ext); отдельно догрузим core
-      if (!detected.hasIndex) {
-        await intents.appendLog(intent.id, 'empty_bot: ядра нет, ставлю latest core');
-        const core = await releases.latest('core');
-        if (core) {
-          await remoteApplyChannel(intent, core);
-        } else {
-          await intents.appendLog(intent.id, 'релиза core нет — только обвязка');
+    const action = nextSetupAction(intent);
+    if (action === 'need_host') {
+      await failSetup(intent, 'need_host');
+      return;
+    }
+    let platformToken = null;
+    if (action === 'create' || action === 'refresh') {
+      const account = clients
+        ? await clients.getPlatformAccount(intent.tg_user_id, intent.platform_account_id)
+        : null;
+      if (!account?.token) {
+        await failSetup(intent, 'no_platform_token');
+        return;
+      }
+      if (config.hoster?.provider !== 'hetzner' || account.provider !== 'hetzner') {
+        await failSetup(intent, 'unsupported_hoster', account.token);
+        return;
+      }
+      platformToken = account.token;
+    }
+    try {
+      if (action === 'create') {
+        const name = `msb-${String(intent.id).replace(/^intent_/, '').slice(0, 12)}`;
+        const created = await createHetznerServer({
+          token: platformToken,
+          name,
+          publicKey: pubKey,
+          serverType: config.hoster.serverType,
+          image: config.hoster.image,
+          location: config.hoster.location,
+          onServer: async (server) => {
+            intent.provider_server_id = server.serverId;
+            if (server.ipv4) intent.host = server.ipv4;
+            await intents.save(intent);
+            if (intent.installation_id && clients) {
+              await clients.updateInstallation(intent.installation_id, {
+                provider: 'hetzner',
+                provider_server_id: server.serverId,
+                host: server.ipv4 || null,
+                name: server.name,
+              });
+            }
+          },
+        });
+        intent.host = created.ipv4;
+        intent.provider_server_id = created.serverId;
+        await intents.save(intent);
+      } else if (action === 'refresh') {
+        const server = await getHetznerServer({
+          token: platformToken,
+          serverId: intent.provider_server_id,
+        });
+        if (!server.ipv4) {
+          await intents.setStatus(intent.id, 'queued', { error: 'no_ipv4' });
+          return;
+        }
+        intent.host = server.ipv4;
+        await intents.save(intent);
+        if (intent.installation_id && clients) {
+          await clients.updateInstallation(intent.installation_id, { host: server.ipv4, provider: 'hetzner' });
         }
       }
-    }
 
-    await intents.setStatus(intent.id, 'done', {
-      error: null,
-      box_id: boxId,
-      core_version: coreVersion,
-      ext_version: manifest.version,
-      result: { finished_at: nowIso(), dropin: (run.stdout || '').includes('DROPIN_OK') },
-    });
-    await intents.appendLog(intent.id, `готово ext=${manifest.version}`);
+      if (!intent.host) {
+        await failSetup(intent, 'no_host', platformToken);
+        return;
+      }
+
+      await intents.setStatus(intent.id, 'probing');
+      const user = intent.ssh_user || 'root';
+      await intents.appendLog(intent.id, `SSH probe ${user}@${intent.host}:${intent.port}`);
+      const probe = await runner.probe(intent.host, { port: intent.port, user });
+      if (!probe.ok || !probe.stdout.includes('MSB_SSH_OK')) {
+        await intents.setStatus(intent.id, 'awaiting_ssh', { error: 'ssh_probe_failed' });
+        await intents.appendLog(intent.id, 'ssh probe failed');
+        return;
+      }
+
+      const botToken = secretBox?.peek(intent.installation_id) || null;
+      if (botToken) {
+        const wrote = await writeBotToken(intent, botToken);
+        if (!wrote) {
+          await intents.appendLog(intent.id, 'bot token write failed');
+          await intents.setStatus(intent.id, 'awaiting_ssh', { error: 'bot_token_write_failed' });
+          return;
+        }
+        secretBox.drop(intent.installation_id);
+        await intents.appendLog(intent.id, 'bot token written on server');
+      }
+
+      const command = user === 'root' ? 'bash -s' : 'sudo -n bash -s';
+      const run = await runner.run(intent.host, {
+        port: intent.port,
+        user,
+        command,
+        stdin: buildAdminBootstrapScript(pubKey),
+        timeoutMs: 120000,
+      });
+      if (!run.ok || !(run.stdout || '').includes('MSB_ADMIN_READY')) {
+        await intents.appendLog(intent.id, redact(run.stderr || run.stdout || 'admin bootstrap failed', [platformToken]).slice(0, 500));
+        await failSetup(intent, 'admin_bootstrap_failed', platformToken);
+        return;
+      }
+      if (!config.updatesBaseUrl) {
+        await intents.appendLog(intent.id, 'updates url is not configured');
+        await failSetup(intent, 'updates_url_missing', platformToken);
+        return;
+      }
+      const urlRun = await runner.run(intent.host, {
+        port: intent.port,
+        user,
+        command,
+        stdin: buildUpdatesUrlScript(config.updatesBaseUrl),
+        timeoutMs: 30000,
+      });
+      if (!urlRun.ok || !(urlRun.stdout || '').includes('MSB_UPDATES_URL_SET')) {
+        await intents.appendLog(intent.id, 'updates url was not written');
+        await failSetup(intent, 'updates_url_failed', platformToken);
+        return;
+      }
+      if (intent.installation_id && clients) {
+        await clients.updateInstallation(intent.installation_id, {
+          host: intent.host,
+          provider_server_id: intent.provider_server_id || null,
+          status: 'ready',
+          error: null,
+          admin_key_installed: true,
+        });
+      }
+      await intents.setStatus(intent.id, 'done', { error: null, host: intent.host });
+      await intents.appendLog(intent.id, `msb-admin ready @ ${intent.host}`);
+    } catch (err) {
+      await failSetup(intent, err.message || 'setup_failed', platformToken);
+    }
   }
 
-  async function remoteApplyChannel(intent, manifest) {
-    const filesB64 = [];
-    for (const f of manifest.files) {
-      const blobFile = releases.openBlob(f.sha256);
-      const buf = await fsp.readFile(blobFile);
-      filesB64.push({ path: f.path, sha256: f.sha256, mode: f.mode || '644', b64: buf.toString('base64') });
+  async function dropAdminKey(installationId) {
+    if (!clients || !runner) return { ok: false, error: 'not_ready' };
+    const rec = await clients.getInstallation(installationId);
+    if (!rec?.host) return { ok: false, error: 'no_host' };
+    const run = await runner.run(rec.host, {
+      port: rec.port || 22,
+      user: 'msb-admin',
+      command: 'bash -s',
+      stdin: buildDropAdminKeyScript(pubKey),
+      timeoutMs: 30000,
+    });
+    if (!run.ok || !(run.stdout || '').includes('MSB_ADMIN_KEY_REMOVED')) {
+      return { ok: false, error: 'drop_failed' };
     }
-    const script = buildRemoteExtInstallScript({
-      apiBase: config.baseUrl,
-      installToken: 'unused',
-      manifestJson: manifest,
-      filesBase64: filesB64,
-    });
-    // reuse installer without rewriting token meaningfully — still ok for core files
-    const remoteScript = `/tmp/msb-core-install-${intent.id}.sh`;
-    await runner.uploadBytes(intent.host, { port: intent.port, user: intent.ssh_user }, remoteScript, script);
-    await runner.run(intent.host, {
-      port: intent.port,
-      user: intent.ssh_user,
-      command: `chmod +x ${remoteScript} && bash ${remoteScript}; rm -f ${remoteScript}`,
-      timeoutMs: 300000,
-    });
+    await clients.updateInstallation(rec.id, { admin_key_installed: false });
+    return { ok: true };
   }
 
-  return { start, enqueue, processIntent, getPublicKey, tick };
+  async function processIntent(intentId) {
+    const intent = await intents.get(intentId);
+    if (!intent) return;
+    if (intent.type === 'system_setup') {
+      await setupSystem(intent);
+      return;
+    }
+    if (intent.type === 'ext_overlay' || intent.type === 'empty_bot') {
+      await intents.setStatus(intent.id, 'failed', { error: 'overlay_retired' });
+      await intents.appendLog(intent.id, 'установка обвязки на существующий бот снята');
+      return;
+    }
+    await intents.setStatus(intent.id, 'failed', { error: 'unsupported_install' });
+  }
+
+  return { start, enqueue, processIntent, getPublicKey, tick, dropAdminKey };
 }

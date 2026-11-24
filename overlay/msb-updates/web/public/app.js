@@ -1,11 +1,7 @@
 const errEl = document.getElementById('err');
 const instructionEl = document.getElementById('instruction');
-const formEl = document.getElementById('form');
-const statusEl = document.getElementById('status');
 
 let sessionToken = null;
-let intentId = null;
-let pollTimer = null;
 
 function showErr(msg) {
   errEl.textContent = msg || '';
@@ -34,67 +30,11 @@ async function boot() {
     });
     sessionToken = redeemed.token;
     history.replaceState({}, '', '/');
-    const info = await api('/v1/installer/info');
-    instructionEl.textContent = info.instruction;
+    instructionEl.textContent = 'Новая установка MSB — в боте: «Создать сервер» или «Настроить систему».';
     instructionEl.classList.remove('hidden');
-    formEl.classList.remove('hidden');
   } catch (e) {
     showErr(e.message || String(e));
   }
 }
 
-async function startInstall(type) {
-  showErr('');
-  const host = document.getElementById('host').value.trim();
-  const port = Number(document.getElementById('port').value) || 22;
-  if (!host) {
-    showErr('Укажи хост');
-    return;
-  }
-  try {
-    const { intent } = await api('/v1/install/intents', {
-      method: 'POST',
-      body: JSON.stringify({ type, host, port }),
-    });
-    intentId = intent.id;
-    statusEl.classList.remove('hidden');
-    renderStatus(intent);
-    if (pollTimer) clearInterval(pollTimer);
-    pollTimer = setInterval(refreshStatus, 3000);
-  } catch (e) {
-    showErr(e.message || String(e));
-  }
-}
-
-async function refreshStatus() {
-  if (!intentId) return;
-  try {
-    const { intent } = await api(`/v1/install/intents/${intentId}`);
-    renderStatus(intent);
-    if (intent.status === 'done' || intent.status === 'failed') {
-      clearInterval(pollTimer);
-    }
-  } catch (e) {
-    showErr(e.message || String(e));
-  }
-}
-
-function renderStatus(intent) {
-  const lines = [
-    `Задача: ${intent.id}`,
-    `Тип: ${intent.type}`,
-    `Статус: ${intent.status}`,
-    intent.host ? `Хост: ${intent.host}:${intent.port}` : '',
-    intent.error ? `Ошибка: ${intent.error}` : '',
-    intent.ext_version ? `Обвязка: ${intent.ext_version}` : '',
-    intent.core_version ? `Ядро: ${intent.core_version}` : '',
-    '',
-    'Лог:',
-    ...(intent.log || []).slice(-12).map((l) => `• ${l.line}`),
-  ].filter(Boolean);
-  statusEl.textContent = lines.join('\n');
-}
-
-document.getElementById('btn-ext').onclick = () => startInstall('ext_overlay');
-document.getElementById('btn-empty').onclick = () => startInstall('empty_bot');
 boot();

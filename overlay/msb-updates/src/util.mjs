@@ -46,6 +46,14 @@ export function nowIso() {
   return new Date().toISOString();
 }
 
+export function redact(text, secrets) {
+  let out = String(text ?? '');
+  for (const secret of secrets || []) {
+    if (secret && String(secret).length >= 6) out = out.split(String(secret)).join('[REDACTED]');
+  }
+  return out;
+}
+
 export function sendJson(res, status, body) {
   const payload = JSON.stringify(body);
   res.writeHead(status, {
