@@ -13,7 +13,7 @@ export async function handleBotsRoute({ data, show, pending, chatId, bot }) {
     pending.set(chatId, 'bot-token');
     return show({
       text: `👾 <b>Новый бот</b>\n\nПришли токен от @BotFather (<code>1234567890:ABC…</code>).\nЯ сам поставлю юнит через <code>sudo bot-ctl.sh add</code>.`,
-      keyboard: (await botsScreen()).keyboard,
+      keyboard: new InlineKeyboard().text('✖ Отмена', 'settings:bots:cancel'),
     });
   }
   if (data === 'settings:bots:cancel') {
