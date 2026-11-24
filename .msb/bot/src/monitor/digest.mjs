@@ -1,7 +1,14 @@
+/**
+ * Build the monitor digest and deliver it through the [scheduler](./scheduler.mjs),
+ * [monitor button](../telegram/routes/monitor.mjs) or [command](../telegram/bot.mjs).
+ * Storage and delivery checks: [digest regression](../../tests/monitor-digest-delivery.test.mjs).
+ */
+import { InputFile } from 'grammy';
 import { loadMonitorConfig, updateMonitorConfig } from './config.mjs';
 import { listRecentItems, updateMeta } from './store.mjs';
 import { loadState } from '../state.mjs';
 import { botId } from '../paths.mjs';
+import { visibleHtmlLength } from '../telegram/response.mjs';
 
 export async function buildDigestText(env = process.env) {
   const cfg = await loadMonitorConfig(env);
@@ -13,12 +20,25 @@ export async function buildDigestText(env = process.env) {
   const lines = [`📨 <b>Дайджест</b> · ${items.length} материалов`, ''];
   for (const it of items) {
     const when = (it.publishedAt || '').slice(0, 16).replace('T', ' ');
-    lines.push(`• <b>${esc(it.sourceName || it.sourceType)}</b> · ${when}`);
+    lines.push(`• <b>${esc(it.sourceName || it.sourceType)}</b> · ${esc(when)}`);
     lines.push(`  ${esc(it.title)}`);
     if (it.url) lines.push(`  ${esc(it.url)}`);
     lines.push('');
   }
   return { empty: false, text: lines.join('\n'), count: items.length };
+}
+
+export function deliverDigest(text, sendMessage, sendDocument) {
+  if (visibleHtmlLength(text) <= 4096) return sendMessage(text);
+
+  // A single upload keeps the complete digest together if scheduled delivery retries.
+  // All material fields were escaped by buildDigestText before adding the fixed markup.
+  const document = `<!doctype html>
+<html lang="ru">
+<head><meta charset="utf-8"><title>Дайджест</title></head>
+<body><div style="white-space: pre-wrap; overflow-wrap: anywhere">${text}</div></body>
+</html>`;
+  return sendDocument(new InputFile(Buffer.from(document, 'utf8'), 'digest.html'));
 }
 
 export async function maybeSendDigest({ api, adminId, force = false, env = process.env, log = console.error } = {}) {
@@ -44,7 +64,9 @@ export async function maybeSendDigest({ api, adminId, force = false, env = proce
     const dig = await buildDigestText(env);
     if (dig.empty && !force) return { sent: false, reason: 'empty' };
 
-    await api.sendMessage(adminId, dig.text, { parse_mode: 'HTML', link_preview_options: { is_disabled: true } });
+    await deliverDigest(dig.text,
+      text => api.sendMessage(adminId, text, { parse_mode: 'HTML', link_preview_options: { is_disabled: true } }),
+      file => api.sendDocument(adminId, file));
     meta.lastDigestAt = now.toISOString();
     return { sent: true, count: dig.count || 0 };
   }, env);
