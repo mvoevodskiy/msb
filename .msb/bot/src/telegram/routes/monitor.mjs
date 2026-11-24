@@ -7,7 +7,7 @@ import { InlineKeyboard } from 'grammy';
 import { monitorDigestScreen, monitorHelpScreen, monitorScreen, monitorSettingsScreen, monitorSourcesScreen, placeholder } from '../screens.mjs';
 import { removeSource } from '../../monitor/config.mjs';
 import { pollAllSources } from '../../monitor/poll.mjs';
-import { buildDigestText, updateDigestSettings } from '../../monitor/digest.mjs';
+import { buildDigestText, deliverDigest, updateDigestSettings } from '../../monitor/digest.mjs';
 import { UNHANDLED } from './shared.mjs';
 import { cancelMonitorSourceInput, handleMonitorSourceChoice } from '../forms/monitor.mjs';
 
@@ -63,7 +63,11 @@ export async function handleMonitorRoute({ data, show, pending, chatId, bot, ctx
   }
   if (data === 'digest:now') {
     const dig = await buildDigestText();
-    await bot.api.sendMessage(chatId, dig.text, { parse_mode: 'HTML' });
+    const threadId = ctx?.callbackQuery?.message?.message_thread_id;
+    const topic = threadId ? { message_thread_id: threadId } : {};
+    await deliverDigest(dig.text,
+      text => bot.api.sendMessage(chatId, text, { parse_mode: 'HTML', ...topic }),
+      file => bot.api.sendDocument(chatId, file, topic));
     return show(await monitorDigestScreen());
   }
   if (data === 'mon:poll:all') {

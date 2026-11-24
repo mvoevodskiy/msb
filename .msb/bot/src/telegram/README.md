@@ -80,10 +80,11 @@ FIFO-элемент через createBot. Модель запускается п
 | Последующее текстовое значение формы | [`forms.mjs`](forms.mjs): dispatcher к auth/env/Pult inputs; `createBot` хранит pending и приоритет reply-stop/timezone; форму открывает нужный обработчик `routes/` | [menu-handlers](../../tests/menu-handlers.test.mjs) проверяет переходы и отмену форм |
 | Значение `.env` | [`envScreen`](screens/settings.mjs) → [`handleSettingsRoute`](routes/settings.mjs) / pending → [`setEnvKey`](../env/store.mjs) | [monitor-env](../../tests/monitor-env.test.mjs) проверяет хранилище; [menu-handlers](../../tests/menu-handlers.test.mjs) — ввод |
 
-В «Отключённых уведомлениях» прежние записи читаются через
-[readNoticeMutes](../notifications/mutes.mjs). Баланс мониторинга относится к
+[Кнопки уведомлений](routes/notifications.mjs) меняют прежние записи через
+[хранилище](../notifications/mutes.mjs). Баланс мониторинга относится к
 серверу, остальные записи относятся к текущему боту. Экран показывает
-сохранённые настройки прежнего ядра. [Проверки](../../tests/notification-settings.test.mjs).
+отключённые уведомления, возвращает их и посылает интерактивные примеры в
+текущую тему. [Проверки](../../tests/notification-settings.test.mjs).
 
 Env удаление использует прежний двухшаговый путь: `settings:env:delete:*`
 лишь открывает подтверждение; `settings:env:confirm-delete:*` вызывает store.

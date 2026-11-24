@@ -1,6 +1,7 @@
 /**
  * Callback вход из [createBot](./bot.mjs): тот же callback_data и один context.
  * ROUTES ниже задаёт прежний порядок; только UNHANDLED передаёт управление дальше.
+ * Отключённые уведомления → [notifications](./routes/notifications.mjs).
  * Настройки/формы → [settings](./routes/settings.mjs), модели → [models](./routes/models.mjs), auth/права → [agent](./routes/agent.mjs),
  * выбор движка → [engines](./routes/engines.mjs), проекты → [projects](./routes/projects.mjs),
  * навыки → [skills](./routes/skills.mjs), MCP → [workspace](./routes/workspace.mjs), сессии → [sessions](./routes/sessions.mjs),
@@ -29,6 +30,7 @@ import { handleAgentRoute, handleSetupRoute } from './routes/agent.mjs';
 import { handleSystemRoute } from './routes/system.mjs';
 import { handleBotsRoute } from './routes/bots.mjs';
 import { handleSettingsRoute } from './routes/settings.mjs';
+import { handleNoticeRoute, isNoticeCallback } from './routes/notifications.mjs';
 import { handleEnginesRoute } from './routes/engines.mjs';
 import { handlePauseConfirmation, isPauseConfirmation } from './pause-confirmation.mjs';
 import { handleLimitConfirmation, isLimitConfirmation } from './limit-confirmation.mjs';
@@ -57,6 +59,7 @@ const ROUTES = [
   handleSystemRoute,
   handleBotsRoute,
   handleSettingsRoute,
+  handleNoticeRoute,
   handleEnginesRoute,
   handleAutonomyRoute,
   handleMonitorRoute,
@@ -94,7 +97,7 @@ export async function handleCallback({ bot, cfg, pending, ctx, plan, steerAction
   const rescheduleConfirmation = isTaskRescheduleConfirmation(data);
   const legacyTimerConfirmation = isLegacyTimerConfirmation(data);
   if (!isModelSelectionCallback(data) && !isPauseConfirmation(data) && !limitConfirmation && !frequencyConfirmation &&
-      !removalConfirmation && !rescheduleConfirmation && !legacyTimerConfirmation) await answer();
+      !removalConfirmation && !rescheduleConfirmation && !legacyTimerConfirmation && !isNoticeCallback(data)) await answer();
   if (!chatId) return;
   if (['menu:back', 'menu:close', 'menu:agent', 'menu:settings', 'settings:back', 'mon:back', 'settings:bots:cancel', 'settings:routing:wiz:cancel'].includes(data)) pending.delete(chatId);
   const show = async view => {

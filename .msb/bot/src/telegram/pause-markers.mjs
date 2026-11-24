@@ -100,14 +100,14 @@ async function describeResume(result, tasks, { now, timezone }) {
   return 'Снял паузу, задачи снова в работе (' + tasks.length + '):\n' + names.join('\n') + timerNote + nativeNote;
 }
 
-async function changePause(command, context, ctx) {
+async function changePause(command, context, ctx, onlyIfPaused = false) {
   const stop = command === 'STOP_ALL';
   let result;
   try {
     const unavailable = await checkPolicy(context);
     if (unavailable) return { error: unavailable };
     result = await setOwnerPause(stop, {
-      now: context.now, signal: context.signal, check: () => checkPolicy(context),
+      now: context.now, signal: context.signal, onlyIfPaused, check: () => checkPolicy(context),
       checkEngine: state => {
         const matches = context.rail === 'oc' ? state.engine === 'oc' && reminderOwnerChat(state, context.ownerId)
           : isLocalReminderEngine(state.engine);
@@ -119,6 +119,7 @@ async function changePause(command, context, ctx) {
     return { error: stop ? 'Не удалось остановить фоновые задачи.' : 'Не удалось снять стоп.' };
   }
   if (result.error) return result;
+  if (result.alreadyRunning) return { text: 'Пауза уже снята, снимать нечего.' };
   if (context.rail === 'oc') {
     result.native = await syncOwnedNativeReminderPause(stop, context).catch(() => ({ unavailable: true, tasks: [] }));
   }
@@ -126,6 +127,11 @@ async function changePause(command, context, ctx) {
     ?? await localActiveTasks(context.now, context.codexAvailable, context.cursorAvailable);
   const text = stop ? await describeStop(result, tasks, ctx, context) : await describeResume(result, tasks, context);
   return { text };
+}
+
+/** The owner notice resumes the same local tasks and timers as the conversational command. */
+export function resumeFromPauseNotice(context, ctx) {
+  return changePause('RESUME_ALL', { ...context, rail: 'cc' }, ctx, true);
 }
 
 export async function processPauseMarkers(text, context, ctx) {

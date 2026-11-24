@@ -374,9 +374,11 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
   });
   bot.command('digest', async (ctx) => {
-    const { buildDigestText } = await import('../monitor/digest.mjs');
+    const { buildDigestText, deliverDigest } = await import('../monitor/digest.mjs');
     const dig = await buildDigestText();
-    await ctx.reply(dig.text, { parse_mode: 'HTML' });
+    await deliverDigest(dig.text,
+      text => ctx.reply(text, { parse_mode: 'HTML' }),
+      file => ctx.replyWithDocument(file));
   });
   bot.command('sources', async (ctx) => {
     const { monitorSourcesScreen } = await import('./screens.mjs');
@@ -706,7 +708,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   async function executeTurn(ctx, text, turn, voice = false, entry = {}) {
     const chatId = ctx.chat.id;
     const signal = turn.controller.signal;
-    const requireCodex = entry.recovered || entry.items?.some(item => item.batchDocument) === true;
+    const requireCodex = entry.recovered || entry.items?.some(item => item.batchAttachment) === true;
     let status;
     let progress;
     let transcription;
@@ -1064,10 +1066,10 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     }
     if (stopping) return;
     await recoverIntroPending().catch(() => console.error('[msb/bot] introduction recovery unavailable'));
-    // Keep the Codex document in the reserved forward position, even with a Telegram group ID.
-    if (kind === 'document' && supportsCodexAttachments(state) &&
+    // Reserve each forwarded photo/document in arrival order, including Telegram groups.
+    if ((kind === 'document' || kind === 'photo') && supportsCodexAttachments(state) &&
         (isForwarded(ctx.message) || inbox.isCollecting(ctx))) {
-      inbox.push({ ...build(false), batchDocument: true });
+      inbox.push({ ...build(false), batchAttachment: kind });
       return;
     }
     const groupId = ctx.message?.media_group_id;
