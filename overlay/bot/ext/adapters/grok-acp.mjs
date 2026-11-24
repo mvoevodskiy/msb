@@ -21,8 +21,7 @@ export async function runGrokAcpTurn({
   let terminal = false;
   let sessionId = resumeId || null;
   let interjectSupported = true;
-  let steeredPromptId = null;
-  let activePromptId = null;
+  let steeredPrompt = null;
   let finishTimer;
   let terminalResolve;
   const done = new Promise((resolve) => { terminalResolve = resolve; });
@@ -119,13 +118,13 @@ export async function runGrokAcpTurn({
       ...(model ? { model } : {}),
     };
     beginTurnText();
-    activePromptId = rpc.notifyRequest('session/prompt', promptParams);
+    const activePrompt = rpc.notifyRequest('session/prompt', promptParams);
 
     if (!terminal) {
       ready = true;
       const handle = {
         threadId: sessionId,
-        turnId: String(activePromptId),
+        turnId: String(activePrompt.id),
         invalidate,
         async steer(text) {
           if (!ready || terminal || rpc.closed) return { status: 'rejected' };
@@ -151,11 +150,11 @@ export async function runGrokAcpTurn({
           }
           try {
             beginTurnText();
-            steeredPromptId = rpc.notifyRequest('session/prompt', {
+            steeredPrompt = rpc.notifyRequest('session/prompt', {
               sessionId,
               prompt: acpTextPrompt(text),
             });
-            handle.turnId = String(steeredPromptId);
+            handle.turnId = String(steeredPrompt.id);
             return { status: 'accepted' };
           } catch {
             return { status: 'unknown' };
@@ -165,9 +164,9 @@ export async function runGrokAcpTurn({
       try { onSteerReady?.(handle); } catch { invalidate(); }
     }
 
-    const waitPrompt = async (id) => {
+    const waitPrompt = async (request) => {
       try {
-        return await rpc.takeResult(id, { waitMs: timeoutMs });
+        return await request.result;
       } catch (error) {
         if (error?.timeout) return finish('Grok timeout');
         if (error?.closed || signal?.aborted) return finish(signal?.aborted ? 'Grok stopped' : 'Grok connection lost');
@@ -175,14 +174,14 @@ export async function runGrokAcpTurn({
       }
     };
 
-    let result = await waitPrompt(activePromptId);
+    let result = await waitPrompt(activePrompt);
     if (terminal) { /* done */ }
-    else if (steeredPromptId != null) {
-      result = await waitPrompt(steeredPromptId);
+    else if (steeredPrompt) {
+      result = await waitPrompt(steeredPrompt);
       if (!terminal) finish(result?.stopReason === 'end_turn' ? null : (result?.stopReason || null));
-    } else if (result?.stopReason === 'end_turn' || result?.stopReason === 'cancelled' && steeredPromptId != null) {
-      if (result?.stopReason === 'cancelled' && steeredPromptId != null) {
-        result = await waitPrompt(steeredPromptId);
+    } else if (result?.stopReason === 'end_turn' || result?.stopReason === 'cancelled' && steeredPrompt) {
+      if (result?.stopReason === 'cancelled' && steeredPrompt) {
+        result = await waitPrompt(steeredPrompt);
         if (!terminal) finish(result?.stopReason === 'end_turn' ? null : (result?.stopReason || null));
       } else {
         finish(result?.stopReason === 'end_turn' ? null : (result?.stopReason || null));

@@ -10,7 +10,7 @@ const session = '11111111-1111-4111-8111-111111111111';
 
 const peer = `#!/usr/bin/env node
 const readline = require('node:readline');
-const send = x => process.stdout.write(JSON.stringify(x) + '\\n');
+const send = (...messages) => process.stdout.write(messages.map(x => JSON.stringify(x)).join('\\n') + '\\n');
 const session = '${session}';
 let firstPromptId = null;
 const reader = readline.createInterface({ input: process.stdin });
@@ -27,10 +27,12 @@ reader.on('line', line => {
       send({ jsonrpc:'2.0', method:'session/update', params:{ sessionId:session, update:{ sessionUpdate:'tool_call', toolCallId:'t1', title:'sleep' } } });
       return;
     }
-    // Send-now: cancel the original turn, complete the steer.
-    send({ jsonrpc:'2.0', id:firstPromptId, result:{ stopReason:'cancelled' } });
-    send({ jsonrpc:'2.0', method:'session/update', params:{ sessionId:session, update:{ sessionUpdate:'agent_message_chunk', content:{ type:'text', text: text.includes('STEER') ? 'STEERED_OK' : 'NEXT' } } } });
-    send({ jsonrpc:'2.0', id:m.id, result:{ stopReason:'end_turn' } });
+    // Both responses can arrive in one read before the caller awaits the replacement.
+    send(
+      { jsonrpc:'2.0', id:firstPromptId, result:{ stopReason:'cancelled' } },
+      { jsonrpc:'2.0', method:'session/update', params:{ sessionId:session, update:{ sessionUpdate:'agent_message_chunk', content:{ type:'text', text: text.includes('STEER') ? 'STEERED_OK' : 'NEXT' } } } },
+      { jsonrpc:'2.0', id:m.id, result:{ stopReason:'end_turn' } },
+    );
   }
 });
 `;
