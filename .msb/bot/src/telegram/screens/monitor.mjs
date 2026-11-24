@@ -122,11 +122,12 @@ export function monitorSettingsScreen() {
   return {
     text: `<b>⚙️ Настройки мониторинга</b>
 
-Выбор хранилища сохраняется. Текущий open-core записывает материалы в JSONL; backend SQLite пока не подключён.
+Фактическое хранилище: <b>JSONL</b>.
+SQLite пока недоступен.
 ${BLANK}`,
     keyboard: new InlineKeyboard()
-      .text('💾 jsonl', 'mon:storage:set:jsonl')
-      .text('💾 sqlite', 'mon:storage:set:sqlite')
+      .text('💾 JSONL ✓', 'mon:storage:set:jsonl')
+      .text('💾 SQLite · недоступно', 'mon:storage:set:sqlite')
       .row()
       .text('⚡ Собрать всё сейчас', 'mon:poll:all')
       .row()
