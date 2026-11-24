@@ -1,6 +1,7 @@
 /**
  * Disposable bot and scheduler for [one-off](../one-shot-reminder.test.mjs)
  * and [recurring](../recurring-reminder-registration.test.mjs) conversation markers.
+ * Final replies are observed through the fake API used by [delivery](../../src/telegram/response.mjs).
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
@@ -23,6 +24,13 @@ export async function until(check, label, timeoutMs = 3000) {
     if (Date.now() >= deadline) assert.fail(label);
     await new Promise(resolve => setTimeout(resolve, 5));
   }
+}
+
+// Ordinary final replies are sent after the temporary status is removed.
+export async function waitForFinalReply(messages, { from = 0, timeoutMs } = {}) {
+  const findReply = () => messages.slice(from).find(text => text.includes('⏱'));
+  await until(findReply, 'final Telegram message missing', timeoutMs);
+  return findReply();
 }
 
 export async function reminderFixture(t, { output = marker(), enabled = '1', engine = 'cc', bound = true } = {}) {
@@ -60,10 +68,7 @@ export async function reminderFixture(t, { output = marker(), enabled = '1', eng
     await f.bot.handleUpdate({ message: { message_id: ++messageId, text, from: { id: userId },
       chat: { id: chat }, message_thread_id: 17 } });
   }
-  async function final() {
-    await until(() => f.messages.some(text => text.includes('⏱')), 'final Telegram message missing');
-    return f.messages.find(text => text.includes('⏱'));
-  }
+  const final = options => waitForFinalReply(f.messages, options);
   return { ...f, actionFile, schedules, directory, modelCalls, sent, scheduler, request, final,
     setTime(value) { clock = value; },
     records: async () => JSON.parse(await fs.readFile(actionFile, 'utf8')),
