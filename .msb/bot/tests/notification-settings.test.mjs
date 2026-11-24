@@ -231,3 +231,52 @@ test('the owner can resume from the notice in its topic and keep independent con
   await drainCallbackTasks(f.bot);
   assert.match(f.messages.at(-1), /Пауза уже снята/);
 });
+
+test('overlapping resume and mute taps remove both buttons from the same notice', async t => {
+  const f = await fixture(t, undefined, { overlay: false });
+  process.env.AUTONOMY_ENABLED = '1';
+  const stop = path.join(f.home, '.msb/bots/default/autonomy/STOP');
+  await fs.mkdir(path.dirname(stop), { recursive: true });
+  await fs.writeFile(stop, 'fixture\n2026-11-20T12:00:00Z\n');
+  const firstEdit = Promise.withResolvers();
+  const releaseEdit = Promise.withResolvers();
+  const muteSaved = Promise.withResolvers();
+  const edit = f.bot.api.editMessageReplyMarkup;
+  let blocked = false;
+  t.mock.method(f.bot.api, 'editMessageReplyMarkup', async (...args) => {
+    if (args[1] === 8 && !blocked) {
+      blocked = true;
+      firstEdit.resolve();
+      await releaseEdit.promise;
+    }
+    return edit(...args);
+  });
+  const sharedAnswers = f.callbackAnswers;
+  const push = sharedAnswers.push.bind(sharedAnswers);
+  sharedAnswers.push = (...answers) => {
+    if (answers.some(([answer]) => answer?.text === 'Запомнил')) muteSaved.resolve();
+    return push(...answers);
+  };
+  const external = { text: 'Подключения', callback_data: 'settings:auth' };
+  const controls = { inline_keyboard: [
+    [{ text: '▶️ Снять паузу', callback_data: 'pause-off' }, external],
+    [{ text: '🔕 Больше не присылать', callback_data: 'nm:pause_reminder' }],
+  ] };
+  const options = { messageId: 8, threadId: 77, replyMarkup: controls };
+  let mute;
+  try {
+    await f.callback('pause-off', 42, options);
+    await firstEdit.promise;
+    mute = f.callback('nm:pause_reminder', 42, options);
+    await muteSaved.promise;
+    await f.callback('nm:pause_reminder', 42, { ...options, messageId: 9 });
+  } finally {
+    releaseEdit.resolve();
+    await mute;
+    await drainCallbackTasks(f.bot);
+  }
+  assert.deepEqual(f.markupEdits.filter(entry => entry.messageId === 8).at(-1).options.reply_markup.inline_keyboard, [[external]]);
+  assert.deepEqual(f.markupEdits.find(entry => entry.messageId === 9).options.reply_markup.inline_keyboard, [controls.inline_keyboard[0]]);
+  assert.equal(f.messages.filter(text => text.startsWith('Хорошо, запомнил')).length, 1);
+  assert.ok(f.messageOptions.every(opts => opts.message_thread_id === 77));
+});
