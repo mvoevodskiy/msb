@@ -56,3 +56,15 @@ CREATE TABLE IF NOT EXISTS installation_capabilities (
   valid_until timestamptz,
   PRIMARY KEY (installation_id, capability)
 );
+
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS tg_user_id bigint;
+ALTER TABLE tickets ADD COLUMN IF NOT EXISTS case_revision integer NOT NULL DEFAULT 0;
+ALTER TABLE outbox ADD COLUMN IF NOT EXISTS operation_id text;
+
+CREATE UNIQUE INDEX IF NOT EXISTS tickets_one_open_tg
+  ON tickets (tg_user_id)
+  WHERE status = 'open' AND tg_user_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS outbox_operation
+  ON outbox (operation_id)
+  WHERE operation_id IS NOT NULL;

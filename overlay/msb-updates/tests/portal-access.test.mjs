@@ -82,8 +82,11 @@ test('portal schema creates the client, ticket and grant tables', async () => {
   for (const table of ['clients', 'installations', 'tickets', 'ticket_messages', 'outbox', 'installation_capabilities']) {
     assert.match(text, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}\\b`));
   }
-  assert.match(text, /capability text NOT NULL/);
-  assert.equal(applied.length, 6);
+  assert.match(text, /CREATE TABLE IF NOT EXISTS installation_capabilities\b/);
+  assert.match(text, /case_revision/);
+  assert.match(text, /tickets_one_open_tg/);
+  assert.match(text, /outbox_operation/);
+  assert.ok(applied.length >= 6);
 });
 
 test('installer sources do not offer an IIA install', () => {

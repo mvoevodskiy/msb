@@ -10,6 +10,9 @@ import { createServer } from '../src/api/server.mjs';
 import { createInstallerBot } from '../src/bot/app.mjs';
 import { createAccess } from '../src/portal/access.mjs';
 import { openPortal } from '../src/portal/db.mjs';
+import { createSqlStore } from '../src/portal/sql-store.mjs';
+import { createTicketService } from '../src/portal/ticket-service.mjs';
+import { createSupportBot } from '../src/bot/support.mjs';
 import { ensureDir } from '../src/util.mjs';
 
 const config = loadConfig();
@@ -33,10 +36,16 @@ const access = createAccess({
   policy: config.accessPolicy,
   findGrant: (installationId, capability) => portal.findGrant(installationId, capability),
 });
+const tickets = portal.enabled ? createTicketService(createSqlStore(portal)) : null;
 
-const ctx = { config, auth, releases, intents, worker, clients, secretBox, portal, access };
+const ctx = { config, auth, releases, intents, worker, clients, secretBox, portal, access, tickets };
 const botApp = createInstallerBot(ctx);
 if (botApp) ctx.botHandleUpdate = botApp.handleUpdate;
+const supportBot = createSupportBot(ctx);
+if (supportBot) {
+  ctx.supportHandleUpdate = supportBot.handleUpdate;
+  if (tickets) setInterval(() => { tickets.deliverNext((row) => supportBot.send(row)).catch(() => {}); }, 1000);
+}
 
 const server = createServer(ctx);
 server.listen(config.port, '0.0.0.0', () => {
@@ -45,4 +54,7 @@ server.listen(config.port, '0.0.0.0', () => {
   console.log(`[msb-updates] public key:\n${worker.getPublicKey()}`);
 });
 
-if (botApp) await botApp.start();
+const starts = [];
+if (botApp) starts.push(botApp.start());
+if (supportBot) starts.push(supportBot.start());
+if (starts.length) await Promise.all(starts);

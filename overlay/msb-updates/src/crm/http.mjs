@@ -3,8 +3,9 @@
 // Токены площадки в страницу не попадают. Проверка: tests/crm.test.mjs.
 
 import { passwordsMatch, createSessionStore } from './session.mjs';
-import { publicCard, renderCard, renderList, renderLogin } from './render.mjs';
+import { publicCard, renderCard, renderList, renderLogin, renderTicket } from './render.mjs';
 import { readBody } from '../util.mjs';
+import { randomUUID } from 'node:crypto';
 
 function sendHtml(res, status, html, headers = {}) {
   const payload = Buffer.from(html);
@@ -20,6 +21,15 @@ function sendHtml(res, status, html, headers = {}) {
 async function readForm(req) {
   const raw = await readBody(req);
   return new URLSearchParams(raw.toString('utf8'));
+}
+
+function replyError(code) {
+  if (code === 'REVISION_CONFLICT') return 'Обращение изменилось. Обновите страницу.';
+  if (code === 'IDEMPOTENCY_CONFLICT') return 'Этот ответ уже отправлялся с другим текстом.';
+  if (code === 'PREVIOUS_UNRESOLVED') return 'Прошлая отправка не подтверждена.';
+  if (code === 'ticket_closed') return 'Обращение закрыто.';
+  if (code === 'empty_text') return 'Напишите текст ответа.';
+  return 'Ответ не поставлен в очередь.';
 }
 
 export function createCrm(ctx) {
@@ -61,6 +71,53 @@ export function createCrm(ctx) {
       sendHtml(res, 200, renderLogin());
       return true;
     }
+    const ticketMatch = url.pathname.match(/^\/crm\/tickets\/([^/]+)(?:\/(reply|close))?$/);
+    if (ticketMatch && ctx.tickets) {
+      const ticketId = decodeURIComponent(ticketMatch[1]);
+      if (req.method === 'POST' && ticketMatch[2]) {
+        const form = await readForm(req);
+        if (form.get('csrf') !== session.csrf) {
+          sendHtml(res, 403, renderLogin({ error: 'Сессия не подтверждена.' }));
+          return true;
+        }
+        try {
+          if (ticketMatch[2] === 'close') await ctx.tickets.close(ticketId);
+          else {
+            await ctx.tickets.reply({
+              ticketId,
+              operationId: form.get('operation_id') || '',
+              text: form.get('text') || '',
+              expectedRevision: form.get('expected_revision'),
+            });
+          }
+        } catch (err) {
+          const ticket = await ctx.tickets.get(ticketId);
+          if (!ticket) {
+            sendHtml(res, 404, renderLogin({ error: 'Обращение не найдено.' }));
+            return true;
+          }
+          sendHtml(res, err.code === 'REVISION_CONFLICT' ? 409 : 400, renderTicket({
+            ticket,
+            csrf: session.csrf,
+            operationId: randomUUID(),
+            error: replyError(err.code),
+          }));
+          return true;
+        }
+        res.writeHead(303, { location: `/crm/tickets/${encodeURIComponent(ticketId)}` });
+        res.end();
+        return true;
+      }
+      if (req.method === 'GET' && !ticketMatch[2]) {
+        const ticket = await ctx.tickets.get(ticketId);
+        if (!ticket) {
+          sendHtml(res, 404, renderLogin({ error: 'Обращение не найдено.' }));
+          return true;
+        }
+        sendHtml(res, 200, renderTicket({ ticket, csrf: session.csrf, operationId: randomUUID() }));
+        return true;
+      }
+    }
     const cardMatch = url.pathname.match(/^\/crm\/installations\/([^/]+)$/);
     if (req.method === 'GET' && cardMatch) {
       const installation = await ctx.clients.getInstallation(decodeURIComponent(cardMatch[1]));
@@ -74,7 +131,8 @@ export function createCrm(ctx) {
     }
     if (req.method === 'GET' && url.pathname === '/crm') {
       const installations = (await ctx.clients.listInstallations()).map(publicCard);
-      sendHtml(res, 200, renderList({ installations, csrf: session.csrf }));
+      const tickets = ctx.tickets ? await ctx.tickets.listOpen() : null;
+      sendHtml(res, 200, renderList({ installations, csrf: session.csrf, tickets }));
       return true;
     }
     sendHtml(res, 404, renderLogin({ error: 'Страница не найдена.' }));

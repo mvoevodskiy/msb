@@ -41,6 +41,8 @@ export function loadConfig(envMap = process.env) {
     egressIps,
     botToken: envMap.INSTALLER_BOT_TOKEN || '',
     webhookSecret: envMap.TELEGRAM_WEBHOOK_SECRET || '',
+    supportBotToken: envMap.SUPPORT_BOT_TOKEN || '',
+    supportWebhookSecret: envMap.SUPPORT_WEBHOOK_SECRET || '',
     botMode: envMap.BOT_MODE || (envMap.PUBLIC_BASE_URL ? 'webhook' : 'polling'),
     defaultSshUser: envMap.MSB_SSH_USER || 'client',
     sshStrictHostKey: envMap.MSB_SSH_STRICT !== '0',

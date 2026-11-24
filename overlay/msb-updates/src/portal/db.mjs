@@ -1,6 +1,6 @@
 // Подключение схемы Портала и чтение права установки.
 // Вход: PORTAL_DATABASE_URL. Пустой адрес — база выключена, findGrant возвращает null.
-// Выход: { enabled, findGrant(installationId, capability), close() }.
+// Выход: { enabled, findGrant, withTransaction, close }.
 // Схему берёт из schema.sql через schema.mjs. Проверка доступа: portal/access.mjs.
 // Запуск: bin/serve.mjs. Проверка разбора схемы: tests/portal-access.test.mjs.
 
@@ -24,6 +24,9 @@ export async function openPortal(databaseUrl) {
         return null;
       },
       async close() {},
+      async withTransaction() {
+        throw Object.assign(new Error('portal_unavailable'), { code: 'portal_unavailable' });
+      },
     };
   }
   const { default: pg } = await import('pg');
@@ -47,6 +50,20 @@ export async function openPortal(databaseUrl) {
     },
     async close() {
       await pool.end();
+    },
+    async withTransaction(fn) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const result = await fn((text, params) => client.query(text, params));
+        await client.query('COMMIT');
+        return result;
+      } catch (err) {
+        await client.query('ROLLBACK').catch(() => {});
+        throw err;
+      } finally {
+        client.release();
+      }
     },
   };
 }

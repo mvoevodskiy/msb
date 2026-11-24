@@ -34,6 +34,7 @@ function installationId(installation) {
 
 export function createAccess({ policy, findGrant }) {
   return {
+    policy,
     async allow(installation, capability) {
       const id = installationId(installation);
       const grant = policy === 'restricted' && id && findGrant

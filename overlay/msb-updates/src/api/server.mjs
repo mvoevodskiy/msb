@@ -53,6 +53,16 @@ export function createServer(ctx) {
         return sendJson(res, 200, { ok: true });
       }
 
+      if (req.method === 'POST' && pathname === '/telegram/support') {
+        if (config.supportWebhookSecret) {
+          const got = req.headers['x-telegram-bot-api-secret-token'];
+          if (got !== config.supportWebhookSecret) return sendJson(res, 401, { error: 'bad webhook secret' });
+        }
+        const body = await readJsonBody(req);
+        if (ctx.supportHandleUpdate) await ctx.supportHandleUpdate(body);
+        return sendJson(res, 200, { ok: true });
+      }
+
       if (pathname.startsWith('/v1/')) {
         return await handleApi(req, res, url);
       }
