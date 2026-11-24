@@ -16,6 +16,78 @@ import { trySessionOperation } from '../src/agent/session-operation.mjs';
 import { presentationAwareRetry } from '../src/telegram/presentation-api.mjs';
 import { installUpdateHook } from '../../../overlay/bot/ext/install.mjs';
 
+async function tapConnectionButton(f, label, { options = f.editOptions.at(-1), messageId } = {}) {
+  const replyMarkup = options?.reply_markup;
+  const button = replyMarkup?.inline_keyboard.flat()
+    .find(row => row.callback_data === label || row.text === label);
+  assert.ok(button, `Missing button: ${label}`);
+  await f.callback(button.callback_data, 42, { messageId, replyMarkup });
+}
+
+for (const overlay of [false, true]) {
+  for (const [parent, entry] of [['menu:agent', 'settings:conn'], ['menu:settings', 'settings:auth']]) {
+    test(`connection Back returns to ${parent}, overlay=${overlay}`, async t => {
+      const f = await fixture(t, undefined, { overlay });
+      const state = (await loadState()).state;
+      const providers = await fs.readFile(f.storeFile, 'utf8');
+      await f.callback(parent);
+      const parentText = f.edits.at(-1);
+      await tapConnectionButton(f, entry);
+      await tapConnectionButton(f, '« Назад');
+      assert.equal(f.edits.at(-1), parentText);
+      assert.deepEqual((await loadState()).state, state);
+      assert.equal(await fs.readFile(f.storeFile, 'utf8'), providers);
+    });
+  }
+}
+
+test('connection Back still returns to Agent after a confirmed provider selection', async t => {
+  const f = await fixture(t);
+  process.env.CLAUDE_CODE_OAUTH_TOKEN = 'fixture-claude-token';
+  await f.callback('menu:agent');
+  await tapConnectionButton(f, 'settings:conn');
+  await tapConnectionButton(f, 'ext:conn:set:claude');
+  assert.match(f.edits.at(-1), /Агент теперь/);
+  assert.equal(JSON.parse(await fs.readFile(f.storeFile, 'utf8')).active, 'claude');
+  await tapConnectionButton(f, '« Назад');
+  assert.match(f.edits.at(-1), /<b>🧠 Агент<\/b>/);
+});
+
+test('connection Back preserves Settings when closing the core Claude token form', async t => {
+  let turns = 0;
+  const f = await fixture(t, async () => {
+    turns++;
+    return { ok: true, text: 'fixture reply' };
+  }, { overlay: false });
+  await f.callback('menu:settings');
+  const settings = f.edits.at(-1);
+  await tapConnectionButton(f, 'settings:auth');
+  await tapConnectionButton(f, 'settings:auth:switch-sub');
+  assert.match(f.edits.at(-1), /Пришли следующим сообщением токен Claude/);
+  await tapConnectionButton(f, '« Назад');
+  assert.equal(f.edits.at(-1), settings);
+  await f.message('ordinary task');
+  await until(() => turns === 1);
+  assert.equal((await readEnvMap()).map.has('CLAUDE_CODE_OAUTH_TOKEN'), false);
+});
+
+test('connection Back preserves Agent after the OpenRouter form advances to its next prompt', async t => {
+  const f = await fixture(t);
+  await f.callback('menu:agent');
+  const agent = f.edits.at(-1);
+  await tapConnectionButton(f, 'settings:conn');
+  await tapConnectionButton(f, 'settings:auth:openrouter');
+  assert.match(f.edits.at(-1), /OpenAI-совместимый · ключ/);
+  await f.message('fixture-openai-key');
+  assert.match(f.messages.at(-1), /OpenAI-совместимый · URL/);
+  await tapConnectionButton(f, '« Назад', { options: f.messageOptions.at(-1), messageId: f.messages.length });
+  assert.match(f.edits.at(-1), /Подключение/);
+  await tapConnectionButton(f, '« Назад');
+  assert.equal(f.edits.at(-1), agent);
+  const { getPendingAuth } = await import('../../../overlay/bot/ext/auth.mjs');
+  assert.equal(getPendingAuth(42), null);
+});
+
 test('explicit Back and start cancel env/auth input before ordinary text', async (t) => {
   const f = await fixture(t);
   for (const cancel of [() => f.callback('settings:back'), () => f.message('/start'), () => f.callback('menu:agent')]) {

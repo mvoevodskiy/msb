@@ -62,7 +62,7 @@ export function providerSupportsEffort(providerId) {
   return providerId === 'codex';
 }
 
-export async function buildConnMenu(env = process.env, home) {
+export async function buildConnMenu(env = process.env, home, back = BACK) {
   const store = await loadStore(env, home);
   const configured = await configuredMap(env, home);
   const active = getProvider(store.active) || PROVIDERS[0];
@@ -120,13 +120,13 @@ export async function buildConnMenu(env = process.env, home) {
     }
     rows.push(row);
   }
-  rows.push([btn('« Назад', BACK)]);
+  rows.push([btn('« Назад', back)]);
 
   return { text: lines.join('\n'), keyboard: keyboard(rows), active: store.active, configured };
 }
 
-export function openaiCompatPrompt(step = 'key', draft = {}) {
-  const back = keyboard([[btn('« Назад', 'settings:auth')]]);
+export function openaiCompatPrompt(step = 'key', draft = {}, entry = 'settings:auth') {
+  const back = keyboard([[btn('« Назад', entry)]]);
   if (step === 'url') {
     return {
       text:
@@ -167,11 +167,11 @@ export function openaiCompatPrompt(step = 'key', draft = {}) {
   };
 }
 
-export function authPrompt(providerId) {
+export function authPrompt(providerId, entry = 'settings:auth') {
   const p = getProvider(providerId);
   if (!p) return null;
   if (p.id === 'openai' || p.authViaWizard) {
-    return openaiCompatPrompt('key');
+    return openaiCompatPrompt('key', {}, entry);
   }
   if (p.authViaNative) {
     return {
@@ -181,7 +181,7 @@ export function authPrompt(providerId) {
         `Бот поставит CLI (если нужно) и запустит штатный ChatGPT login.\n\n` +
         `${esc(p.hint)}\n\n` +
         'Отмена: « Назад.',
-      keyboard: keyboard([[btn('« Назад', 'settings:auth')]]),
+      keyboard: keyboard([[btn('« Назад', entry)]]),
       nativeLogin: true,
     };
   }
@@ -191,7 +191,7 @@ export function authPrompt(providerId) {
       `Пришли ключ одним сообщением. Я сразу удалю его из чата и сохраню в .env бота.\n\n` +
       `${esc(p.hint)}\n\n` +
       'Отмена: « Назад.',
-    keyboard: keyboard([[btn('« Назад', 'settings:auth')]]),
+    keyboard: keyboard([[btn('« Назад', entry)]]),
   };
 }
 

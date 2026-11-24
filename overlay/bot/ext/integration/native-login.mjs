@@ -35,24 +35,24 @@ async function activateCodex(profile, activateCli = false) {
   return true;
 }
 
-function rejectCodexSelection(bot, chatId, messageId) {
+function rejectCodexSelection(bot, chatId, messageId, navigation) {
   return editOrReply(bot, chatId, messageId, 'Codex CLI не подтвердил вход. Выбранный движок и сессия сохранены.',
-    { inline_keyboard: [[{ text: '🔐 Вход', callback_data: 'ext:auth:codex' }], [{ text: '« Назад', callback_data: 'settings:conn' }]] });
+    { inline_keyboard: [[{ text: '🔐 Вход', callback_data: 'ext:auth:codex' }], [{ text: '« Назад', callback_data: navigation?.entry ?? 'settings:auth' }]] });
 }
 
-async function showCodexSelection(bot, chatId, messageId) {
-  const menu = await buildConnMenu();
+async function showCodexSelection(bot, chatId, messageId, navigation) {
+  const menu = await buildConnMenu(process.env, undefined, navigation?.back);
   await editOrReply(bot, chatId, messageId, switchedText('codex') + '\n\n' + menu.text, menu.keyboard);
 }
 
-export async function selectCodexNative(bot, chatId, messageId) {
+export async function selectCodexNative(bot, chatId, messageId, navigation) {
   if (!await ensureAndReport(bot, chatId, messageId, 'codex')) return false;
   const profile = await captureCodexLogin().catch(() => null);
   if (!profile || !(await codexLoginStatus(profile.env, profile.home)).ok || !await activateCodex(profile, true)) {
-    await rejectCodexSelection(bot, chatId, messageId);
+    await rejectCodexSelection(bot, chatId, messageId, navigation);
     return false;
   }
-  await showCodexSelection(bot, chatId, messageId);
+  await showCodexSelection(bot, chatId, messageId, navigation);
   return true;
 }
 
@@ -85,23 +85,23 @@ export async function ensureAndReport(bot, chatId, messageId, providerId) {
   return true;
 }
 
-export async function connectCodexNative(bot, chatId, messageId) {
+export async function connectCodexNative(bot, chatId, messageId, navigation) {
   const okCli = await ensureAndReport(bot, chatId, messageId, 'codex');
   if (!okCli) return false;
 
   const profile = await captureCodexLogin().catch(() => null);
   if (!profile) {
-    await rejectCodexSelection(bot, chatId, messageId);
+    await rejectCodexSelection(bot, chatId, messageId, navigation);
     return false;
   }
   if (await hasNativeCodexAuth(profile.home, profile.profileDir)) {
     const status = await codexLoginStatus(profile.env, profile.home);
     if (status.ok) {
       if (!await activateCodex(profile)) {
-        await rejectCodexSelection(bot, chatId, messageId);
+        await rejectCodexSelection(bot, chatId, messageId, navigation);
         return false;
       }
-      await showCodexSelection(bot, chatId, messageId);
+      await showCodexSelection(bot, chatId, messageId, navigation);
       console.error(`${EXT_MARKER} active provider → codex (native auth)`);
       return true;
     }
@@ -175,10 +175,10 @@ export async function connectCodexNative(bot, chatId, messageId) {
   }
 
   if (!await activateCodex(profile)) {
-    await rejectCodexSelection(bot, chatId, messageId);
+    await rejectCodexSelection(bot, chatId, messageId, navigation);
     return false;
   }
-  const menu = await buildConnMenu();
+  const menu = await buildConnMenu(process.env, undefined, navigation?.back);
   await bot.api
     .sendMessage(chatId, `${switchedText('codex')}\n\n${menu.text}`, {
       parse_mode: 'HTML',

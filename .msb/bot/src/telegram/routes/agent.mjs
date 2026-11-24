@@ -11,12 +11,15 @@ import { applyEffort, applyPermMode } from '../actions.mjs';
 import { hasCodexSetup } from '../auth.mjs';
 import { UNHANDLED } from './shared.mjs';
 import { InlineKeyboard } from 'grammy';
+import { connectionNavigation } from '../../../shared/connection-navigation.mjs';
 
-export async function handleAgentRoute({ data, state, show, pending, chatId, bot }) {
+export async function handleAgentRoute({ data, state, show, pending, chatId, ctx }) {
   // —— agent / model ——
   if (data === 'settings:effort') return show(effortScreen(state, await readClaudeVersion()));
   if (data === 'settings:permmode') return show(permModeScreen(state));
-  if (data === 'settings:conn' || data === 'settings:auth') return show(await connScreen(state));
+  if (data === 'settings:conn' || data === 'settings:auth') {
+    return show(await connScreen(state, process.env, connectionNavigation(data).back));
+  }
   if (data === 'settings:conn:noop') return;
   if (data === 'settings:conn:set:cc' || data === 'settings:engine:set:cc') {
     await updateState((s) => {
@@ -27,9 +30,10 @@ export async function handleAgentRoute({ data, state, show, pending, chatId, bot
   }
   if (data === 'settings:auth:switch-sub' || data === 'setup:subscription') {
     pending.set(chatId, 'auth-token');
+    const navigation = connectionNavigation(data, ctx?.callbackQuery?.message);
     return show({
       text: 'Пришли следующим сообщением токен Claude (<code>claude setup-token</code>) или ключ <code>sk-ant-…</code>.\nОтмена: /start',
-      keyboard: (await connScreen(state)).keyboard,
+      keyboard: (await connScreen(state, process.env, navigation?.back)).keyboard,
     });
   }
   if (data.startsWith('settings:effort:set:')) {
@@ -44,22 +48,22 @@ export async function handleAgentRoute({ data, state, show, pending, chatId, bot
   return UNHANDLED;
 }
 
-export async function handleSetupRoute({ data, show, bot, pending, chatId }) {
+export async function handleSetupRoute({ data, show, bot, pending, chatId, ctx }) {
   const codexAvailable = hasCodexSetup(bot);
-  const back = () => new InlineKeyboard().text('« Назад', 'setup:back');
+  const back = connectionNavigation(data, ctx?.callbackQuery?.message)?.entry ?? 'setup:back';
   // A guide does not accept a Claude token; don't consume the next ordinary text as one.
   if (['setup:help', 'setup:help:codex', 'setup:back'].includes(data) && pending.get(chatId) === 'auth-token') pending.delete(chatId);
   // —— setup ——
   if (data === 'setup:help') {
     return show({
       text: '<b>Claude Code · инструкция</b>\n\n1. На машине, где работает бот, выполни <code>claude setup-token</code> и скопируй токен. Можно использовать и API-ключ Anthropic.\n2. Нажми «🔑 Новый токен Claude» и пришли токен или ключ боту.',
-      keyboard: new InlineKeyboard().text('🔑 Новый токен Claude', 'setup:subscription').row().text('« Назад', 'setup:back'),
+      keyboard: new InlineKeyboard().text('🔑 Новый токен Claude', 'setup:subscription').row().text('« Назад', back),
     });
   }
   if (data === 'setup:help:codex' && codexAvailable) {
     return show({
       text: '<b>Codex · инструкция</b>\n\n1. Открой /settings → «🔌 Подключения».\n2. Рядом с Codex нажми «🔐 Вход». При необходимости бот установит Codex CLI.\n3. Открой полученную ссылку, войди в ChatGPT и введи код из сообщения.\n4. Дождись подтверждения бота: после успешного входа он выберет Codex.\n\nПароль и токены не отправляй в чат.',
-      keyboard: back(),
+      keyboard: new InlineKeyboard().text('« Назад', back),
     });
   }
   if (data.startsWith('setup:')) return show(setupScreen({ codexAvailable }));
