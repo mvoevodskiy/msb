@@ -36,6 +36,7 @@ export function loadConfig(envMap = process.env) {
     updatesBaseUrl,
     accessPolicy,
     databaseUrl: String(envMap.PORTAL_DATABASE_URL || '').trim(),
+    crmPassword: String(envMap.CRM_PASSWORD || ''),
     adminIds,
     egressIps,
     botToken: envMap.INSTALLER_BOT_TOKEN || '',

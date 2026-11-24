@@ -4,12 +4,14 @@ import fsp from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readJsonBody, sendJson } from '../util.mjs';
+import { createCrm } from '../crm/http.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_ROOT = path.resolve(__dirname, '../../web/public');
 
 export function createServer(ctx) {
   const { config, auth, releases, intents, worker } = ctx;
+  const crm = ctx.crm || createCrm(ctx);
 
   async function authenticate(req) {
     const h = req.headers.authorization || '';
@@ -54,6 +56,8 @@ export function createServer(ctx) {
       if (pathname.startsWith('/v1/')) {
         return await handleApi(req, res, url);
       }
+
+      if (await crm(req, res, url)) return;
 
       sendJson(res, 404, { error: 'not found' });
     } catch (err) {
