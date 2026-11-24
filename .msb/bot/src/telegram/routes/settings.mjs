@@ -7,8 +7,7 @@
  */
 import { savedSpendLimit } from '../../billing/owner-spend.mjs';
 import { updateState } from '../../state.mjs';
-import { readNoticeMutes } from '../../notifications/mutes.mjs';
-import { envScreen, envDeleteScreen, limitScreen, settingsScreen, notificationsScreen, serverStatusScreen, sttScreen, tzScreen } from '../screens.mjs';
+import { envScreen, envDeleteScreen, limitScreen, settingsScreen, serverStatusScreen, sttScreen, tzScreen } from '../screens.mjs';
 import { envInputKeyboard, skipEnvComment } from '../forms/env.mjs';
 import { deleteEnvKey, listEnvEntries } from '../../env/store.mjs';
 import { resolveEnvKeyReference } from '../../env/callback-key.mjs';
@@ -72,6 +71,5 @@ export async function handleSettingsRoute({ data, state, show, pending, chatId, 
   }
   if (data === 'settings:server-status') return show(serverStatusScreen(cfg));
   if (data === 'settings:stt') return show(sttScreen());
-  if (data === 'nm:list') return show(notificationsScreen(await readNoticeMutes()));
   return UNHANDLED;
 }
