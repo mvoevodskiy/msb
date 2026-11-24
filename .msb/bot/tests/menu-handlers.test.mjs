@@ -450,13 +450,13 @@ test('stored settings and cost history survive a real project selection reset', 
   assert.equal((await loadState()).state.costPaused, false);
   await f.callback('auto:rights-toggle');
   assert.equal((await loadState()).state.autonomyRights, true);
-  await f.callback('mon:storage:set:sqlite');
-  const config = JSON.parse(await fs.readFile(path.join(f.home, '.msb/monitor/config.json'), 'utf8'));
-  assert.equal(config.storage, 'sqlite');
+  await saveMonitorConfig({ ...defaultConfig(), storage: 'sqlite' });
   await f.callback('menu:newproject');
   await f.message('fixture-project');
   assert.equal((await loadState()).state.activeProject, 'fixture-project');
   assert.ok((await fs.stat(path.join(f.home, 'projects/fixture-project'))).isDirectory());
+  const config = JSON.parse(await fs.readFile(path.join(f.home, '.msb/monitor/config.json'), 'utf8'));
+  assert.equal(config.storage, 'sqlite', 'Project selection preserves a saved legacy choice');
   await f.callback('ext:permmode:set:plan');
   assert.equal((await loadState()).state.permissionMode, 'plan');
   assert.equal((await loadState()).state.ccSessionId, undefined);

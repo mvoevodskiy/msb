@@ -73,9 +73,10 @@ export async function handleMonitorRoute({ data, show, pending, chatId, bot, ctx
     );
     return show(await monitorScreen());
   }
-  if (data.startsWith('mon:storage:set:')) {
+  if (data === 'mon:storage:set:sqlite') return show(monitorSettingsScreen());
+  if (data === 'mon:storage:set:jsonl') {
     const { updateMonitorConfig } = await import('../../monitor/config.mjs');
-    await updateMonitorConfig((cfg) => { cfg.storage = data.split(':').pop(); });
+    await updateMonitorConfig(cfg => { cfg.storage = 'jsonl'; });
     return show(monitorSettingsScreen());
   }
   if (

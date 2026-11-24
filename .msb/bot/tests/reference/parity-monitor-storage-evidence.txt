@@ -10,8 +10,8 @@ external ID and URL. The old UI writes MONITOR_STORAGE and resets the store.
 The readable source exports initialSync (41750-41758); a caller or complete
 history migration is not established by a search for its symbol/name.
 
-New open-core monitorSettingsScreen tells the user SQLite is not connected.
-mon:storage:set only saves cfg.storage in config.json; poll.mjs calls JSONL
+At the audit baseline, monitorSettingsScreen stated SQLite was not connected,
+while mon:storage:set saved cfg.storage in config.json. poll.mjs calls JSONL
 appendItems and digest.mjs calls JSONL listRecentItems regardless of that value.
 Consequently a profile may already contain storage:sqlite while its actual
 history has continued in JSONL. Automatically honoring the saved value after
