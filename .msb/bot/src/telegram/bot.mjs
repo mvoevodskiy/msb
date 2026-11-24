@@ -708,7 +708,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   async function executeTurn(ctx, text, turn, voice = false, entry = {}) {
     const chatId = ctx.chat.id;
     const signal = turn.controller.signal;
-    const requireCodex = entry.recovered || entry.items?.some(item => item.batchDocument) === true;
+    const requireCodex = entry.recovered || entry.items?.some(item => item.batchAttachment) === true;
     let status;
     let progress;
     let transcription;
@@ -1046,10 +1046,10 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     }
     if (stopping) return;
     await recoverIntroPending().catch(() => console.error('[msb/bot] introduction recovery unavailable'));
-    // Keep the Codex document in the reserved forward position, even with a Telegram group ID.
-    if (kind === 'document' && supportsCodexAttachments(state) &&
+    // Reserve each forwarded photo/document in arrival order, including Telegram groups.
+    if ((kind === 'document' || kind === 'photo') && supportsCodexAttachments(state) &&
         (isForwarded(ctx.message) || inbox.isCollecting(ctx))) {
-      inbox.push({ ...build(false), batchDocument: true });
+      inbox.push({ ...build(false), batchAttachment: kind });
       return;
     }
     const groupId = ctx.message?.media_group_id;

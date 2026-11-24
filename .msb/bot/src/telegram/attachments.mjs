@@ -135,15 +135,32 @@ function photoPrompt(paths, caption, { includeTask = true } = {}) {
   return `${head}\n${list}\n\n${task}`;
 }
 
-async function preparePhoto(entry, botToken, signal) {
+async function saveMessagePhoto(entry, botToken, signal) {
   const message = entry.ctx.message;
   const photos = message.photo || [];
   const best = photos[photos.length - 1];
   if (!best) throw Error('Нет фото в сообщении');
-  const file = await saveImage(entry.ctx.api, botToken, best.file_id, 'photo.jpg', {
+  return saveImage(entry.ctx.api, botToken, best.file_id, 'photo.jpg', {
     signal, sizeHint: best.file_size, env: entry.env,
   });
-  return withReply(entry.ctx, photoPrompt([file], message.caption));
+}
+
+/** One photo in the [forward collector](./batch.mjs), using the ordinary image store. */
+export async function prepareForwardedPhoto(entry, botToken, signal, budget) {
+  if (budget.photos === 0) return { label: 'фото — не приложено (предел пачки)' };
+  budget.photos--;
+  try {
+    const file = await saveMessagePhoto(entry, botToken, signal);
+    return { label: 'фото — открой через Read: ' + file };
+  } catch {
+    signal.throwIfAborted();
+    return { label: 'фото — не удалось скачать' };
+  }
+}
+
+async function preparePhoto(entry, botToken, signal) {
+  const file = await saveMessagePhoto(entry, botToken, signal);
+  return withReply(entry.ctx, photoPrompt([file], entry.ctx.message.caption));
 }
 
 async function prepareVideo(entry, botToken, signal) {
