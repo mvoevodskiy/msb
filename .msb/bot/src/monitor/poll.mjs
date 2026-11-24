@@ -252,6 +252,7 @@ async function fetchTelegramPublic(username, name) {
     entries.push({
       id: itemId('telegram', username, url, url),
       sourceType: 'telegram',
+      telegramPostVerified: true,
       sourceId: username,
       sourceName: name || `@${username}`,
       title: summary.slice(0, 120) || url,
