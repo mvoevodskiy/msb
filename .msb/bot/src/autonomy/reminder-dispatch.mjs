@@ -12,6 +12,7 @@ import { loadState, NO_STATE_WRITE, updateState } from '../state.mjs';
 import { singleRequestSignal } from '../telegram/presentation-api.mjs';
 import { isLocalReminderEngine, readReminderPolicy, reminderOwnerChat } from './reminder-policy.mjs';
 import { readAutonomyPause, trackAutonomyTurn, withAutonomyPauseLock } from './owner-pause.mjs';
+import { sendStalePauseNotice } from './pause-notice.mjs';
 import { currentReminderRefusal, readBoxReminderRefusal } from './reminder-admission.mjs';
 import { codexQuotaRefusal } from './subscription-gate.mjs';
 import { readReminderBreakerRefusal } from './reminder-breaker.mjs';
@@ -31,13 +32,19 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
   let boundChat;
   const planFor = (action, state) => savedPromptPlan(action, state, process.env, Boolean(runCodexPrompt), Boolean(runCursorPrompt));
   const supports = (action, state) => action.task.kind === 'reminder' || Boolean(planFor(action, state));
-  async function destination(isStopped) {
+  async function destination(isStopped, checkPauseNotice = false) {
     if (isStopped() || !api || !adminId) return;
     const { state } = await loadState();
     const chat = reminderOwnerChat(state, adminId);
     if (!chat) return;
     const policy = await readReminderPolicy(state);
-    if (!policy.enabled || !policy.local || policy.stopped || policy.asleep || isStopped()) return;
+    if (!policy.enabled || !policy.local || policy.asleep || isStopped()) return;
+    if (policy.stopped) {
+      if (checkPauseNotice && policy.ownerStopped) {
+        await sendStalePauseNotice({ api, chat, adminId, now, timezone, signal, isStopped });
+      }
+      return;
+    }
     // The old local runner is wired to the saved owner chat when it starts.
     boundChat ??= chat;
     return { chat: boundChat, reserveFraction: policy.reserveFraction, timezone: state.timezone || timezone, state };
@@ -127,7 +134,8 @@ export function createReminderDispatcher({ api, adminId, timezone, now, log, sig
   }
 
   return async function dispatchReminders(isStopped) {
-    const target = await destination(isStopped);
+    // Revalidation calls during task admission already hold the pause lock.
+    const target = await destination(isStopped, true);
     if (!target) return;
     let snapshot = await savedActionSnapshot();
     const visited = await applyReminderFrequencyBrake(snapshot, {
