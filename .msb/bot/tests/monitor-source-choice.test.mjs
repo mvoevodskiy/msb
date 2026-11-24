@@ -23,6 +23,25 @@ async function startChoice(f, value) {
   return id;
 }
 
+test('adding a source replaces the list keyboard and Cancel exits only that input', async t => {
+  const turns = [];
+  const f = await fixture(t, async ({ prompt }) => {
+    turns.push(prompt);
+    return { ok: true, text: 'fixture' };
+  }, { overlay: false });
+  await addSourceFromInput('https://t.me/kept');
+  await f.callback('mon:sources', 42, { messageId: 17 });
+  await f.callback('mon:add-hint', 42, { messageId: 17 });
+  assert.deepEqual(buttons(f.editOptions.at(-1)), [['Отмена', 'mon:add:cancel']]);
+
+  await f.callback('mon:add:cancel', 42, { messageId: 17 });
+  assert.match(f.edits.at(-1), /Источники/);
+  await f.message('ordinary task after cancellation');
+  for (let i = 0; turns.length === 0 && i < 100; i++) await new Promise(resolve => setTimeout(resolve, 10));
+  assert.deepEqual(turns, ['ordinary task after cancellation']);
+  assert.deepEqual((await loadMonitorConfig()).telegram.channels.map(row => row.username), ['kept']);
+});
+
 for (const type of ['telegram', 'twitter']) {
   test(`ambiguous @name asks before adding, then adds only selected ${type}`, async t => {
     const f = await fixture(t, undefined, {overlay:false});
