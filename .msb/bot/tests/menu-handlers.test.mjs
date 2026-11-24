@@ -53,7 +53,7 @@ test('connection Back still returns to Agent after a confirmed provider selectio
   assert.match(f.edits.at(-1), /<b>🧠 Агент<\/b>/);
 });
 
-test('connection Back preserves Settings when closing the core Claude token form', async t => {
+test('the Claude token form only offers Back to the Settings where it opened', async t => {
   let turns = 0;
   const f = await fixture(t, async () => {
     turns++;
@@ -64,6 +64,8 @@ test('connection Back preserves Settings when closing the core Claude token form
   await tapConnectionButton(f, 'settings:auth');
   await tapConnectionButton(f, 'settings:auth:switch-sub');
   assert.match(f.edits.at(-1), /Пришли следующим сообщением токен Claude/);
+  assert.deepEqual(f.editOptions.at(-1).reply_markup.inline_keyboard.flat()
+    .map(button => [button.text, button.callback_data]), [['« Назад', 'menu:settings']]);
   await tapConnectionButton(f, '« Назад');
   assert.equal(f.edits.at(-1), settings);
   await f.message('ordinary task');

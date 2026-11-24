@@ -31,9 +31,10 @@ export async function handleAgentRoute({ data, state, show, pending, chatId, ctx
   if (data === 'settings:auth:switch-sub' || data === 'setup:subscription') {
     pending.set(chatId, 'auth-token');
     const navigation = connectionNavigation(data, ctx?.callbackQuery?.message);
+    const back = navigation?.back ?? (data === 'setup:subscription' ? 'setup:back' : 'menu:agent');
     return show({
       text: 'Пришли следующим сообщением токен Claude (<code>claude setup-token</code>) или ключ <code>sk-ant-…</code>.\nОтмена: /start',
-      keyboard: (await connScreen(state, process.env, navigation?.back)).keyboard,
+      keyboard: new InlineKeyboard().text('« Назад', back),
     });
   }
   if (data.startsWith('settings:effort:set:')) {

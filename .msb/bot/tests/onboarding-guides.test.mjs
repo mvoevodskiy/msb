@@ -38,7 +38,12 @@ test('first start offers distinct Claude and Codex instructions for the installe
     'the Claude guide keeps the direct token action');
   await f.callback('setup:subscription');
   assert.match(f.edits.at(-1), /токен Claude/);
-  await f.message('/start');
+  const promptKeyboard = f.editOptions.at(-1).reply_markup;
+  assert.deepEqual(buttons(f.editOptions.at(-1)).map(button => button.callback_data), ['setup:back']);
+  await f.callback('setup:back', 42, { replyMarkup: promptKeyboard });
+  assert.match(f.edits.at(-1), /Сначала подключи AI/);
+  await f.message('Проверка');
+  assert.equal(f.deleted.includes(99), false, 'text after Back is not consumed as a Claude token');
   assert.deepEqual((await loadState()).state, before);
   const env = (await readEnvMap()).map;
   assert.equal(env.has('CLAUDE_CODE_OAUTH_TOKEN'), false);
