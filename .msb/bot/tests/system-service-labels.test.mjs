@@ -8,6 +8,7 @@ import { nativeEnginesScreen } from '../src/engines/screen.mjs';
 import { handleNativeEngineCallback } from '../src/engines/telegram.mjs';
 import { submitRequest } from '../src/engines/request.mjs';
 import { pultScreen } from '../src/telegram/screens.mjs';
+import { fixtureSystemd } from './helpers/systemd-fixture.mjs';
 
 const unwantedName = /helper|помощник/i;
 
@@ -21,6 +22,14 @@ test('engine status keeps the service value and its existing callback without th
       ['settings:engine:set:cc', 'eng:status', 'eng:oc:on', 'eng:oc:off', 'menu:settings']);
     if (snap) assert.match(view.text, /msb-engine/);
   }
+});
+
+test('engine screen shows the responding bot separately from an unavailable service snapshot', () => {
+  const view = nativeEnginesScreen({ engine: 'cc' }, { error: 'NO_STATE' }, { activeTitle: 'Codex' });
+  assert.match(view.text, /Сейчас отвечает: <b>Codex<\/b>/);
+  assert.match(view.text, /Текущий бот: отвечает/);
+  assert.match(view.text, /Системная служба:.*нет снимка статуса/);
+  assert.doesNotMatch(view.text, /MSB-бот: нет данных/);
 });
 
 test('Pult unknown and known states do not refer to the old system component name', () => {
@@ -45,6 +54,7 @@ test('a busy system request gives a clear message without the old name', async t
 });
 
 test('engine status timeout uses the system service wording', async t => {
+  await fixtureSystemd(t, { 'msb-engine.path': 'active' });
   const root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), 'engine-labels-timeout-')));
   const names = ['MSB_RUNTIME_PROFILE', 'MSB_RUNTIME_ROOT', 'MSB_BOT_ID'];
   const previous = new Map(names.map(name => [name, process.env[name]]));

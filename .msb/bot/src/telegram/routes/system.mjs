@@ -14,7 +14,7 @@ import {
   sshUnavailableScreen,
   updatesScreen,
 } from '../screens.mjs';
-import { parsePultStatus } from '../../pult/status.mjs';
+import { parsePultStatus, readPultServiceStatus } from '../../pult/status.mjs';
 import { botId } from '../../paths.mjs';
 import { cancelPultInput } from '../forms/pult.mjs';
 import { escapeHtml } from '../edit.mjs';
@@ -62,7 +62,11 @@ export async function handleSystemRoute({ data, show, chatId, bot, pending, sign
     };
     const showPult = async (note = '', snapshot) => {
       const snap = snapshot ?? await engineStatusSnapshot();
-      return show(pultScreen(snap.pult, await loadPultCfg(), note));
+      const [cfg, services] = await Promise.all([
+        loadPultCfg(),
+        parsePultStatus(snap.pult).known ? null : readPultServiceStatus({ signal }),
+      ]);
+      return show(pultScreen(snap.pult, cfg, note, services));
     };
     const reloadIfNeeded = async () => {
       try {
@@ -85,7 +89,8 @@ export async function handleSystemRoute({ data, show, chatId, bot, pending, sign
     if (data === 'settings:pult:refresh') {
       // Deferred input exit belongs to router admission, before any await.
       try {
-        const { result, snapshot } = await refreshEngineStatus({ signal });
+        const { result, snapshot, serviceUnavailable } = await refreshEngineStatus({ signal });
+        if (serviceUnavailable) return showPult('Системная служба не запущена. Статус управления недоступен.', snapshot);
         if (!result) return showPult('Обновление статуса не подтверждено: нет ответа системной службы.', { pult: null });
         if (result.code !== 'OK') return showPult(`Не удалось обновить статус: <code>${escapeHtml(result.code)}</code>.`, { pult: null });
         if (!parsePultStatus(snapshot.pult).known) return showPult('Системная служба не вернула полный статус Пульта.', { pult: null });

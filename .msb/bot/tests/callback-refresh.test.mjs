@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { fixture } from './helpers/menu-fixture.mjs';
+import { fixtureSystemd } from './helpers/systemd-fixture.mjs';
 import { loadState } from '../src/state.mjs';
 import { autoRetry } from '@grammyjs/auto-retry';
 import { presentationAwareRetry } from '../src/telegram/presentation-api.mjs';
@@ -14,6 +15,7 @@ async function statusFixture(t) {
   // never leaves a 20-second poll or any test process running in real HOME.
   t.after(async () => { releaseResponse();await call?.catch(() => {}); });
   const f = await fixture(t);
+  await fixtureSystemd(t, { 'msb-engine.path': 'active' });
   process.env.MSB_OS_ENGINE = 'native';
   const readFile = fs.readFile.bind(fs);
   let request, started, released = false;
