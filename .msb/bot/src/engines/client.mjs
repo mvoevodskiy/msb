@@ -8,6 +8,7 @@ import fs from 'node:fs/promises';
 import { setTimeout as delay } from 'node:timers/promises';
 import profile from '../../shared/profile.cjs';
 import { submitRequest } from './request.mjs';
+import { readSystemdUnitState } from './systemd-status.mjs';
 export { engineDir, requestPath, newRequestId, submitRequest } from './request.mjs';
 
 const RUN_CANDIDATES = ['/run/msb-engine/state.json'];
@@ -76,6 +77,12 @@ export async function engineStatusSnapshot() {
 
 /** One existing status round trip for native controls and Pult; no enable/reload. */
 export async function refreshEngineStatus({ signal, timeoutMs = 20_000, pollMs = 400 } = {}, env = process.env) {
+  signal?.throwIfAborted();
+  const watcher = await readSystemdUnitState('msb-engine.path', { env, signal });
+  signal?.throwIfAborted();
+  if (watcher === 'inactive' || watcher === 'failed' || watcher === 'not-found') {
+    return { id: null, result: null, snapshot: { error: 'NO_STATE' }, serviceUnavailable: true };
+  }
   const { id } = await submitRequest('status', { bot_id: profile.botId(env) }, env, { signal });
   const result = await waitRequestResult(id, { timeoutMs, pollMs, signal });
   signal?.throwIfAborted();

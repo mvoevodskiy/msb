@@ -36,24 +36,39 @@ export function extrasScreen() {
   };
 }
 
+const PULT_SERVICE_STATE = Object.freeze({
+  active: 'работает',
+  activating: 'запускается',
+  inactive: 'не работает',
+  failed: 'ошибка службы',
+  deactivating: 'останавливается',
+  reloading: 'перезагружается',
+  'not-found': 'юнит не найден',
+});
+
 /**
  * Раздел настроек Пульта: пароль, вкл/выкл, IP прослушивания, опц. бот тревог.
  * @param {object|null} pultSnap — блок pult из msb-engine
  * @param {object} cfg — { password, host, tgToken, publicUrl, sessionHours }
  * @param {string} note
+ * @param {object|null} services — наблюдение веб-службы и сборщика в systemd
  */
-export function pultScreen(pultSnap = null, cfg = {}, note = '') {
+export function pultScreen(pultSnap = null, cfg = {}, note = '', services = null) {
   const p = parsePultStatus(pultSnap);
   const installed = p.installed;
   const on = p.enabled;
   const active = p.active;
   let status;
-  if (!p.known) status = 'нет данных от системной службы — нажми «Обновить»';
+  if (!p.known) status = services ? 'управление через системную службу не подтверждено'
+    : 'нет данных от системной службы — нажми «Обновить»';
   else if (!installed) status = `полная установка Пульта не найдена (${p.root}) — проверь ядро и службы`;
   else if (on && active) status = 'включён, службы работают';
   else if (on) status = 'включён, но службы не active — journalctl -u pult-web';
   else status = 'выключен';
 
+  const serviceLines = !p.known && services
+    ? `\nВеб-служба: ${PULT_SERVICE_STATE[services.web] ?? 'нет данных'}\nСборщик: ${PULT_SERVICE_STATE[services.collector] ?? 'нет данных'}`
+    : '';
   const password = cfg.password ? 'задан' : 'не задан';
   const host = cfg.host || '127.0.0.1';
   const hostLabel =
@@ -85,7 +100,7 @@ export function pultScreen(pultSnap = null, cfg = {}, note = '') {
 Веб-панель ботов, задач и сервера. Открывается командой <code>/pult</code> из любого бота.
 Mini App — вход по подписи Telegram; веб-ссылка — одноразовая (билет сгорает при любом переходе).
 
-Статус: <b>${escapeHtml(status)}</b>
+Статус: <b>${escapeHtml(status)}</b>${serviceLines}
 Пароль: <b>${escapeHtml(password)}</b>
 Слушает: <b>${escapeHtml(hostLabel)}</b> (<code>${escapeHtml(host)}</code>)
 Сессия браузера: <b>${sessionHours} ч</b>

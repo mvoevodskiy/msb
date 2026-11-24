@@ -17,10 +17,10 @@ export async function handleNativeEngineCallback({ data, state, show, providerVi
   }
   if (data === 'eng:status') {
     try {
-      const { result, snapshot: snap } = await refreshEngineStatus({ signal });
-      const note = result
-        ? `\n\nЗаявка <code>${result.code}</code> (${result.result})`
-        : '\n\n⚠️ Системная служба не ответила за 20с';
+      const { result, snapshot: snap, serviceUnavailable } = await refreshEngineStatus({ signal });
+      let note = '\n\n⚠️ Системная служба не ответила за 20с';
+      if (serviceUnavailable) note = '\n\n⚠️ Системная служба не запущена.';
+      if (result) note = `\n\nЗаявка <code>${result.code}</code> (${result.result})`;
       const screen = await engineMenu(snap);
       return show({ text: screen.text + note, keyboard: screen.keyboard });
     } catch (err) {

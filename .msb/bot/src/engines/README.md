@@ -13,6 +13,7 @@
 | Обработать native callback | [telegram.mjs](telegram.mjs): `handleNativeEngineCallback` |
 | Показать состояние helper | [screen.mjs](screen.mjs): `nativeEnginesScreen` |
 | Прочитать snapshot / запросить свежий status / дождаться результата | [client.mjs](client.mjs): `engineStatusSnapshot`, `refreshEngineStatus`, `waitRequestResult` |
+| Подтвердить состояние watcher и служб Пульта | [systemd-status.mjs](systemd-status.mjs), [Pult status](../pult/status.mjs) |
 | Опубликовать request без замены чужого slot | [request.mjs](request.mjs): `submitRequest` (совместимый re-export в client) |
 
 Профиль `msb` по умолчанию включает native routes; `jar1` сохраняет legacy UI и запрещает
@@ -20,6 +21,10 @@
 `<profile root>/engine/request` → `/run/msb-engine/state.json` (`jar1`: `~/.iia`).
 Status read возвращает callback polling сразу; [общая UI-граница](../../shared/callback-renders.mjs)
 отменяет obsolete read/retry, но дожидается уже отправленной Telegram доставки.
+Ручное обновление не публикует заявку при подтверждённо остановленном watcher.
+При активном или неизвестном watcher сохраняется обычная проверка через IPC,
+в том числе на холодном старте. Пульт показывает отдельно наблюдаемые службы
+и состояние управления из снимка.
 Mutation actions не отменяются простой навигацией. `stop` бота дожидается tracked
 status/delivery work. [Проверка](../../tests/callback-refresh.test.mjs).
 
