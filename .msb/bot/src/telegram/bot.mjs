@@ -374,9 +374,11 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
     await ctx.reply(view.text, { parse_mode: 'HTML', reply_markup: view.keyboard });
   });
   bot.command('digest', async (ctx) => {
-    const { buildDigestText } = await import('../monitor/digest.mjs');
+    const { buildDigestText, deliverDigest } = await import('../monitor/digest.mjs');
     const dig = await buildDigestText();
-    await ctx.reply(dig.text, { parse_mode: 'HTML' });
+    await deliverDigest(dig.text,
+      text => ctx.reply(text, { parse_mode: 'HTML' }),
+      file => ctx.replyWithDocument(file));
   });
   bot.command('sources', async (ctx) => {
     const { monitorSourcesScreen } = await import('./screens.mjs');
