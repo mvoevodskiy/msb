@@ -5,7 +5,7 @@
 import { getLocalSshHost, handleLocalConstructorRequest, constructorBaseUrl } from '../local-ssh.mjs';
 import { editOrReply } from './shared.mjs';
 
-export async function showLocalAwareSshHome(bot, chatId, messageId) {
+export async function showLocalAwareSshHome(bot, chatId, messageId, { manage = false } = {}) {
   const host = getLocalSshHost();
   const base = constructorBaseUrl();
   let statusText = '';
@@ -65,7 +65,7 @@ export async function showLocalAwareSshHome(bot, chatId, messageId) {
   }
 
   const rows = [];
-  if (ok) {
+  if (ok && manage) {
     rows.push([{ text: '🔑 Добавить SSH ключ', callback_data: 'settings:ssh:add-key' }]);
     rows.push([{ text: '📋 Показать ключи', callback_data: 'settings:ssh:list-keys' }]);
     rows.push([{ text: '🌐 Открыть IP', callback_data: 'settings:ssh:add-ip' }]);

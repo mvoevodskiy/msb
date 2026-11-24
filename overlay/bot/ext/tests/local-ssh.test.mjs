@@ -249,3 +249,37 @@ test('local multibot add/remove via mocked bot-ctl', async () => {
   assert.equal(rmBody.ok, true);
   assert.equal(calls[1].args[2], 'remove');
 });
+
+test('SSH status does not offer management actions whose open-core callbacks are disabled', async t => {
+  const previous = {
+    MSB_LOCAL_SSH_HOST: process.env.MSB_LOCAL_SSH_HOST,
+    SYNC_URL: process.env.SYNC_URL,
+    SYNC_KEY: process.env.SYNC_KEY,
+  };
+  t.after(() => {
+    for (const [key, value] of Object.entries(previous)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+  });
+  process.env.MSB_LOCAL_SSH_HOST = '';
+  process.env.SYNC_URL = 'https://constructor.invalid/api/sync';
+  process.env.SYNC_KEY = 'fixture-key';
+  t.mock.method(globalThis, 'fetch', async url => {
+    assert.equal(new URL(url).pathname, '/api/ssh/status');
+    return Response.json({ ok: true, vps_ip: '192.0.2.4', keys_count: 1, allowed_ips: [] });
+  });
+  const { handleCallback } = await import('../integration/callbacks.mjs');
+  const edits = [];
+  const bot = { api: {
+    answerCallbackQuery: async () => {},
+    editMessageText: async (_chat, _id, text, options) => edits.push({ text, options }),
+  } };
+  const query = { id: 'q', data: 'settings:ssh', from: { id: 42 }, message: { message_id: 1, chat: { id: 42 } } };
+  const shown = () => edits.at(-1).options.reply_markup.inline_keyboard.flat().map(button => button.callback_data);
+  await handleCallback(bot, query, false);
+  assert.match(edits.at(-1).text, /Ключей: 1/);
+  assert.deepEqual(shown(), ['settings:ssh', 'ext:ssh:local', 'settings:ssh:help', 'settings:extras']);
+  await handleCallback(bot, query, true);
+  assert.ok(shown().includes('settings:ssh:add-key'));
+});
