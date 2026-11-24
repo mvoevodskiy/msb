@@ -12,6 +12,40 @@ import { trackCallbackTask } from '../../../shared/callback-renders.mjs';
 
 const demoTaps = new WeakMap();
 const resuming = new WeakSet();
+const buttonEdits = new WeakMap();
+
+// Telegram delivers a markup snapshot with each tap, before either edit may
+// have completed. Serialize edits and keep successful removals while taps overlap.
+function beginButtonEdit(bot, chatId, msgId) {
+  if (!msgId) return;
+  let messages = buttonEdits.get(bot);
+  if (!messages) {
+    messages = new Map();
+    buttonEdits.set(bot, messages);
+  }
+  const key = `${chatId}:${msgId}`;
+  let edit = messages.get(key);
+  if (!edit) {
+    edit = { users: 0, removed: new Set(), pending: Promise.resolve() };
+    messages.set(key, edit);
+  }
+  edit.users++;
+  return {
+    remove(data, markup) {
+      edit.removed.add(data);
+      edit.pending = edit.pending.then(() => {
+        const inline_keyboard = (markup?.inline_keyboard ?? [])
+          .map(row => row.filter(button => !edit.removed.has(button.callback_data)))
+          .filter(row => row.length > 0);
+        return bot.api.editMessageReplyMarkup(chatId, msgId, { reply_markup: { inline_keyboard } });
+      }).catch(() => {});
+      return edit.pending;
+    },
+    release() {
+      if (--edit.users === 0) messages.delete(key);
+    },
+  };
+}
 
 export function isNoticeCallback(data) {
   return data === 'pause-off' || /^nm:.+$/.test(data);
@@ -26,18 +60,12 @@ export async function handleNoticeRoute({ data, answer, show, bot, ctx, chatId, 
     ...notificationsScreen(preferences, note), replyThreadId: threadId,
   });
   const showSettings = async note => renderSettings(await readNoticeMutes(), note);
-  const removeTappedButton = () => {
-    if (!msgId) return;
-    const inline_keyboard = (message.reply_markup?.inline_keyboard ?? [])
-      .map(row => row.filter(button => button.callback_data !== data))
-      .filter(row => row.length > 0);
-    return bot.api.editMessageReplyMarkup(chatId, msgId, { reply_markup: { inline_keyboard } }).catch(() => {});
-  };
 
   try {
     if (data === 'pause-off') {
       if (resuming.has(bot)) return answer({ text: 'Уже снимаю, подожди' });
       resuming.add(bot);
+      const edit = beginButtonEdit(bot, chatId, msgId);
       await answer({ text: 'Снимаю паузу…' });
       const task = (async () => {
         const result = await resumeFromPauseNotice({
@@ -45,11 +73,14 @@ export async function handleNoticeRoute({ data, answer, show, bot, ctx, chatId, 
           codexAvailable: Boolean(bot[Symbol.for('msb.savedCodexPrompt')]),
           cursorAvailable: Boolean(bot[Symbol.for('msb.savedCursorPrompt')]),
         }, ctx);
-        if (!result.error) await removeTappedButton();
+        if (!result.error) await edit?.remove(data, message?.reply_markup);
         await bot.api.sendMessage(chatId, result.error || result.text, topic).catch(() => {});
       })().catch(() => bot.api.sendMessage(chatId,
         'Не смог снять паузу, нажми ещё раз или напиши «сними паузу».', topic).catch(() => {}))
-        .finally(() => resuming.delete(bot));
+        .finally(() => {
+          edit?.release();
+          resuming.delete(bot);
+        });
       trackCallbackTask(bot, task);
       return;
     }
@@ -92,17 +123,22 @@ export async function handleNoticeRoute({ data, answer, show, bot, ctx, chatId, 
     const kind = data.slice(unmute ? 'nm:on:'.length : 'nm:'.length);
     if (!Object.hasOwn(NOTICE_KINDS, kind)) return answer({ text: 'Не разобрал кнопку' });
     const { name } = NOTICE_KINDS[kind];
-    const changed = await setNoticeMuted(kind, !unmute, now());
-    if (unmute) {
-      await answer({ text: changed ? 'Вернул' : 'Уже включено' });
-      const line = changed ? `Вернул: ${name} снова будет приходить.` : `${name.charAt(0).toUpperCase()}${name.slice(1)} и так приходит.`;
-      return await showSettings(line);
-    }
-    await answer({ text: changed ? 'Запомнил' : 'Уже отключено' });
-    await removeTappedButton();
-    if (changed) {
-      const reply = `Хорошо, запомнил: больше не пришлю ${name}. Вернуть: /settings → 🔕 Отключённые уведомления.`;
-      await bot.api.sendMessage(chatId, reply, topic).catch(() => {});
+    const edit = unmute ? undefined : beginButtonEdit(bot, chatId, msgId);
+    try {
+      const changed = await setNoticeMuted(kind, !unmute, now());
+      if (unmute) {
+        await answer({ text: changed ? 'Вернул' : 'Уже включено' });
+        const line = changed ? `Вернул: ${name} снова будет приходить.` : `${name.charAt(0).toUpperCase()}${name.slice(1)} и так приходит.`;
+        return await showSettings(line);
+      }
+      await answer({ text: changed ? 'Запомнил' : 'Уже отключено' });
+      await edit?.remove(data, message?.reply_markup);
+      if (changed) {
+        const reply = `Хорошо, запомнил: больше не пришлю ${name}. Вернуть: /settings → 🔕 Отключённые уведомления.`;
+        await bot.api.sendMessage(chatId, reply, topic).catch(() => {});
+      }
+    } finally {
+      edit?.release();
     }
   } catch (error) {
     console.error('[msb/notice-mute]', error.code || error.name);
