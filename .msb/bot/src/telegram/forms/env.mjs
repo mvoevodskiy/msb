@@ -12,6 +12,12 @@ import { pendingInputNotice } from '../pending-input.mjs';
 import { escapeHtml } from '../edit.mjs';
 import { protectedEnvNotice } from '../env-protection.mjs';
 
+export function envInputKeyboard({ withSkip = false } = {}) {
+  const keyboard = new InlineKeyboard();
+  if (withSkip) keyboard.text('Пропустить →', 'settings:env:skip-comment').row();
+  return keyboard.text('✖ Отмена', 'settings:env:cancel');
+}
+
 export async function handleEnvValueInput({ kind, ctx, text, pending, chatId }) {
   const key = kind.slice(4);
   if (await refuseProtected({ key, ctx, pending, chatId })) return;
@@ -21,7 +27,7 @@ export async function handleEnvValueInput({ kind, ctx, text, pending, chatId }) 
   const draft = { key, value };
   pending.advance(chatId, `env-comment:${key}`, draft);
   const prompt = await ctx.reply(`Описание для <code>${escapeHtml(key)}</code> (необязательно, видно тебе и агенту):`, {
-    parse_mode:'HTML', reply_markup:new InlineKeyboard().text('Пропустить →','settings:env:skip-comment'),
+    parse_mode: 'HTML', reply_markup: envInputKeyboard({ withSkip: true }),
   });
   if (pending.payload(chatId) === draft) draft.promptMessageId = prompt?.message_id;
   else if (prompt?.message_id) {
@@ -42,7 +48,9 @@ export async function handleEnvNameInput({ ctx, text, pending, chatId }) {
   }
   if (await refuseProtected({ key, ctx, pending, chatId })) return;
   pending.advance(chatId, `env:${key}`);
-  await ctx.reply(`Ок. Пришли значение для <code>${key}</code>.`, { parse_mode: 'HTML' });
+  await ctx.reply(`Ок. Пришли значение для <code>${key}</code>.`, {
+    parse_mode: 'HTML', reply_markup: envInputKeyboard(),
+  });
   return;
 }
 

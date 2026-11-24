@@ -11,6 +11,8 @@ import { agentOptionsReport } from './helpers/agent-options.mjs';
 import { parseClaudeArgv,buildPrompt } from '../../../overlay/bot/ext/adapters/parse-args.mjs';
 const SECRET='fixture-description-only-value-6c86';
 const DESC='Описание <личного> сервиса';
+const cancelButton = { text: '✖ Отмена', callback_data: 'settings:env:cancel' };
+const skipButton = { text: 'Пропустить →', callback_data: 'settings:env:skip-comment' };
 const entry=async(key='CUSTOM_API')=>(await listEnvEntries()).find(r=>r.key===key);
 const stage=async(f,key='CUSTOM_API')=>{
  await f.callback(`settings:env:quick:${key}`);await f.message(SECRET);return f.messages.length;
@@ -21,13 +23,17 @@ const until=async check=>{for(let i=0;i<100;i++){if(check())return;await new Pro
 for(const overlay of [false,true]) for(const origin of ['name','quick']) {
  test(`env description: ${origin}, overlay=${overlay}, waits for description before one atomic save`,async t=>{
   const f=await fixture(t,undefined,{overlay});const state=(await loadState()).state,store=await fs.readFile(f.storeFile,'utf8');
-  if(origin==='name'){await f.callback('settings:env:add');await f.message('CUSTOM_API');}
-  else await f.callback('settings:env:quick:CUSTOM_API');
+  await f.callback(origin === 'name' ? 'settings:env:add' : 'settings:env:quick:CUSTOM_API');
+  assert.deepEqual(f.editOptions.at(-1).reply_markup.inline_keyboard, [[cancelButton]]);
+  if (origin === 'name') {
+   await f.message('CUSTOM_API');
+   assert.deepEqual(f.messageOptions.at(-1).reply_markup.inline_keyboard, [[cancelButton]]);
+  }
   await f.message(SECRET);
   assert.equal((await readEnvMap()).map.has('CUSTOM_API'),false,'value must remain transient until completion');
   assert.equal(process.env.CUSTOM_API,undefined);
   assert.equal(f.messages.at(-1),'Описание для <code>CUSTOM_API</code> (необязательно, видно тебе и агенту):');
-  assert.deepEqual(f.messageOptions.at(-1).reply_markup.inline_keyboard,[[{text:'Пропустить →',callback_data:'settings:env:skip-comment'}]]);
+  assert.deepEqual(f.messageOptions.at(-1).reply_markup.inline_keyboard, [[skipButton], [cancelButton]]);
   const promptId=f.messages.length;await f.message(DESC);
   assert.equal((await readEnvMap()).map.get('CUSTOM_API'),SECRET);
   assert.equal((await entry()).comment,DESC);
@@ -117,6 +123,24 @@ for(const control of ['settings:env','settings:env:cancel','settings:back','/unk
   assert.equal((await readEnvMap()).map.has('CUSTOM_API'),false);
  });
 }
+
+test('env description: visible cancel discards the draft and returns to the env list', async t => {
+ const prompts = [];
+ const f = await fixture(t, async ({ prompt }) => {
+  prompts.push(prompt);
+  return { ok: true, text: 'fixture reply' };
+ });
+ const promptId = await stage(f);
+ const cancel = f.messageOptions.at(-1).reply_markup.inline_keyboard.flat()
+  .find(button => button.callback_data === cancelButton.callback_data);
+ assert.deepEqual(cancel, cancelButton);
+ await f.callback(cancel.callback_data, 42, { messageId: promptId });
+ assert.match(f.edits.at(-1), /Переменные окружения/);
+ await f.message('ordinary task');
+ await until(() => prompts.length === 1);
+ assert.deepEqual(prompts, ['ordinary task']);
+ assert.equal((await readEnvMap()).map.has('CUSTOM_API'), false);
+});
 
 for(const via of ['text','skip'])test(`env description: whole-form deadline applies at comment via ${via}`,async t=>{
  let clock=1_000_000;const f=await fixture(t,undefined,{overlay:false,now:()=>clock});
