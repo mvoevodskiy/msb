@@ -1,6 +1,7 @@
 /**
  * Сбор источников мониторинга (RSS / YouTube RSS / GitHub Atom / TG public / X).
  * Навигация: [Мониторинг](./README.md) → [storage](./store.mjs), [digest](./digest.mjs).
+ * Public Telegram widgets → [telegram-public](./telegram-public.mjs).
  * X handle/username → [source-ref](./source-ref.mjs); merge учитывает снимок строки.
  * Проверки: [source snapshots](../../tests/monitor-source-snapshot.test.mjs),
  * [legacy X](../../tests/monitor-twitter-legacy.test.mjs),
@@ -10,6 +11,7 @@
 import { isDeepStrictEqual } from 'node:util';
 import { loadMonitorConfig, updateMonitorConfig } from './config.mjs';
 import { twitterIdentity } from './source-ref.mjs';
+import { readPublicPosts } from './telegram-public.mjs';
 import { appendItems, itemId, loadMeta, updateMeta } from './store.mjs';
 import { botId } from '../paths.mjs';
 
@@ -245,12 +247,8 @@ async function resolveYoutubeHandle(handle) {
 async function fetchTelegramPublic(username, name) {
   const html = await fetchText(`https://t.me/s/${encodeURIComponent(username)}`);
   const entries = [];
-  const re = /class="tgme_widget_message_date" href="(https:\/\/t\.me\/[^"]+)"[\s\S]*?datetime="([^"]+)"[\s\S]*?class="tgme_widget_message_text[^"]*"[^>]*>([\s\S]*?)<\/div>/gi;
-  let m;
-  while ((m = re.exec(html)) && entries.length < 20) {
-    const url = m[1];
-    const publishedAt = new Date(m[2]).toISOString();
-    const summary = clean(m[3]).slice(0, 500);
+  for (const { url, date: publishedAt, caption } of readPublicPosts(html, username)) {
+    const summary = clean(caption).slice(0, 500);
     entries.push({
       id: itemId('telegram', username, url, url),
       sourceType: 'telegram',
@@ -262,6 +260,7 @@ async function fetchTelegramPublic(username, name) {
       summary,
       externalId: url,
     });
+    if (entries.length === 20) break;
   }
   if (!entries.length) {
     // канал может быть закрытым
