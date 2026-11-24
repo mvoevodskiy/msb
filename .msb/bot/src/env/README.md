@@ -31,6 +31,12 @@ bootstrap MSB/IIA names (profile/root/paths/owner), без запрета обы
 Provider auth обвязки: [ext/env.mjs](../../../../overlay/bot/ext/env.mjs).
 Shared fallback для речи: [media/STT](../media/README.md).
 
+AI provider keys: дополнительные боты **читают** токены из `bots/default/.env`,
+если у себя ключ не задан ([provider-env-inherit](../../shared/provider-env-inherit.mjs)).
+Override в своём `.env` / process сохраняется; CRUD и UI list остаются только
+per-bot. [Контракт](../../tests/reference/parity-env-provider-inherit-contract.txt),
+[проверки](../../tests/provider-env-inherit.test.mjs).
+
 Set/delete и provider writer [ext/env](../../../../overlay/bot/ext/env.mjs)
 используют одну [process queue](../../shared/env-writes.mjs), как old xK.
 Target закреплён до ожидания; весь read/modify/rename/env update — внутри.

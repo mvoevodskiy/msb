@@ -1,0 +1,49 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "msb-project-routing-settings",
+  "title": "MSB project routing settings",
+  "type": "object",
+  "required": ["version", "routing"],
+  "additionalProperties": false,
+  "properties": {
+    "version": { "const": 1 },
+    "routing": {
+      "type": "object",
+      "required": ["default", "types"],
+      "additionalProperties": false,
+      "properties": {
+        "enabled": { "type": "boolean", "default": true, "description": "false — маршрутизация не применяется, файл сохраняется" },
+        "default": { "enum": ["ask", "make", "study", "check", "run"] },
+        "apply": { "enum": ["sticky", "once"], "default": "sticky" },
+        "types": {
+          "type": "object",
+          "required": ["ask", "make", "study", "check", "run"],
+          "additionalProperties": false,
+          "properties": {
+            "ask": { "$ref": "#/$defs/route" },
+            "make": { "$ref": "#/$defs/route" },
+            "study": { "$ref": "#/$defs/route" },
+            "check": { "$ref": "#/$defs/route" },
+            "run": { "$ref": "#/$defs/route" }
+          }
+        },
+        "aliases": {
+          "type": "object",
+          "additionalProperties": { "enum": ["ask", "make", "study", "check", "run"] }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "route": {
+      "type": "object",
+      "required": ["provider"],
+      "additionalProperties": false,
+      "properties": {
+        "provider": { "type": "string", "minLength": 1 },
+        "model": { "type": ["string", "null"] },
+        "effort": { "type": ["string", "null"] }
+      }
+    }
+  }
+}

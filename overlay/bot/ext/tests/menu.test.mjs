@@ -38,9 +38,12 @@ test('authPrompt for openai starts key/url/model wizard', () => {
   assert.equal(prompt.step, 'key');
 });
 
-test('authPrompt for cursor', () => {
+test('authPrompt for cursor is native login, not secret paste', () => {
   const prompt = authPrompt('cursor');
   assert.match(prompt.text, /Cursor/);
+  assert.equal(prompt.nativeLogin, true);
+  assert.match(prompt.text, /Секрет в Telegram не присылай/);
+  assert.doesNotMatch(prompt.text, /Пришли ключ одним сообщением/);
   assert.equal(prompt.keyboard.inline_keyboard[0][0].callback_data, 'settings:auth');
 });
 

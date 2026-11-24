@@ -38,7 +38,8 @@ export async function projectsScreen(state = {}, page = 0, fromMenu = true, env 
     keyboard.text(`${current+1}/${pages}`,'noop');
     if(current<pages-1)keyboard.text('▶️','projects:page:'+(current+1));
   }
-  keyboard.row().text('➕ Новый проект','menu:newproject').row()
+  keyboard.row().text('➕ Новый проект','menu:newproject')
+    .text('🎛 Режим','menu:routing').row()
     .text(fromMenu?'« Назад':'✖ Закрыть',fromMenu?'menu:back':'menu:close');
-  return {text:`📁 <b>Проекты</b> (${names.length}):\n\n<code>${escapeHtml(items.join('\n'))}</code>\n\nПереключить: /project <i>название</i>`,keyboard};
+  return {text:`📁 <b>Проекты</b> (${names.length}):\n\n<code>${escapeHtml(items.join('\n'))}</code>\n\nПереключить: /project <i>название</i>\nРежим задачи: /type`,keyboard};
 }

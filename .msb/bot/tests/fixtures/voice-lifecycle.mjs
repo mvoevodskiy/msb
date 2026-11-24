@@ -11,6 +11,7 @@ import dgram from 'node:dgram';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { syncBuiltinESMExports } from 'node:module';
+import readCliPrompt from '../helpers/read-cli-prompt.cjs';
 
 const scenario = process.argv[2];
 if (!['stop-download', 'stop-stt', 'stop-preview', 'missing-key', 'pending-env', 'non-owner'].includes(scenario)) {
@@ -150,9 +151,8 @@ try {
       call.closed = true; child.stdout.end(); child.stderr.end(); child.emit('close', signal ? null : 0, signal || null);
     };
     child.kill = signal => { report.events.push('cli-aborted'); close(signal); return true; };
-    child.stdin.setEncoding('utf8');
-    child.stdin.on('data', value => { call.prompt += value; });
-    child.stdin.on('end', () => setImmediate(() => {
+    readCliPrompt(child.stdin, args).then(prompt => setImmediate(() => {
+      call.prompt = prompt;
       if (call.closed) return;
       emit({ type: 'system', subtype: 'init', session_id: 'saved-session', model: 'fixture-model' });
       emit({ type: 'result', session_id: 'saved-session', is_error: false, result: 'voice-answer' });

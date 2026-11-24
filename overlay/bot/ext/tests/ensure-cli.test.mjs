@@ -11,6 +11,7 @@ test('enrichPath puts ext-tools and .local/bin first', () => {
   const parts = p.split(path.delimiter);
   assert.equal(parts[0], extToolsBin(home));
   assert.ok(parts.includes(path.join(home, '.local', 'bin')));
+  assert.ok(parts.includes(path.join(home, '.grok', 'bin')));
   assert.ok(parts.includes('/usr/bin'));
 });
 

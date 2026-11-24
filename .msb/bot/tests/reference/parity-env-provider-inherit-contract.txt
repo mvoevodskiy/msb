@@ -1,0 +1,24 @@
+Read-only наследование AI provider keys от основного бота
+
+Владелец 20.11.2026: дополнительные боты читают параметры подключения к
+AI-провайдерам из bots/default/.env, если у себя ключ не задан. Override в
+своём .env / process.env сохраняется. Запись list/set/delete и saveProviderSecret
+остаются только per-bot (решение 08.11, parity-env-scope-decision.txt) — без
+global writer, delete-both, dedupe и копирования секретов при addBot.
+
+Цепочка чтения (shared/provider-env-inherit.mjs):
+  process.env → bots/<current>/.env → bots/default/.env (если id ≠ default и
+  ключ в allowlist) → <profile.root>/.env
+Пустая строка в файле не считается заданной. Не-allowlist ключи (BOT_TOKEN и
+прочие сервисы) не берут default — только bot → root, как раньше.
+
+Allowlist: CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY, MSB_/IIA_ANTHROPIC_API_KEY,
+CURSOR_API_KEY, XAI_API_KEY, CODEX_ACCESS_TOKEN, OPENAI_API_KEY, QWEN_API_KEY,
+DASHSCOPE_API_KEY, OPENAI_COMPAT_API_KEY, OPENAI_COMPAT_BASE_URL.
+
+Потребители: overlay readEnvKey / providerConfigured; Claude hasClaudeAuth,
+spawn env, hasClaudeCreds, isSetupMode, savedPromptProvider.
+
+Проверки: overlay/bot/ext/tests/env.test.mjs (inherit/override/no-BOT_TOKEN),
+.msb/bot/tests/provider-env-inherit.test.mjs (Claude creds peek).
+Откат: удалить shared модуль и вернуть прежний readEnvKey / process-only Claude.

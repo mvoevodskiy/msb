@@ -27,6 +27,7 @@ import { runLocalExtCallback } from '../local-ext.mjs';
 import { handleCallback } from './callbacks.mjs';
 import { handleAuthMessage } from './text-input.mjs';
 import { captureCodexPause } from '../codex-pause-switch.mjs';
+import { registerProjectRouting } from '../apply-project-route.mjs';
 import { EXT_MARKER } from './shared.mjs';
 
 export function installUpdateHook(BotClass, env = process.env) {
@@ -34,6 +35,7 @@ export function installUpdateHook(BotClass, env = process.env) {
   registerCompactProvider(BotClass, env);
   registerSkillsProvider(BotClass, env);
   registerMcpProvider(BotClass, env);
+  registerProjectRouting(BotClass, env);
   BotClass.prototype[Symbol.for('msb.savedCodexPrompt')] = runSavedCodexPrompt;
   BotClass.prototype[Symbol.for('msb.savedCodexPromptReady')] = savedCodexPromptReady;
   BotClass.prototype[Symbol.for('msb.createSavedCodexQuotaReader')] = createSavedCodexQuotaReader;

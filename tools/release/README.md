@@ -37,6 +37,10 @@ guarded puller/sync. Node, Codex CLI и установленные зависи�
 Туда же входит исходный `bootstrap/workspace-seed/`: тест первого знакомства
 сверяет поставляемые шаблон личности и пустую memory, не копируя их в runtime
 или профиль пользователя.
+Проверки общего sleep-маркера запускают
+[Python-писатель](../../usr-local-lib/msb-engine/client_markers.py) и его
+[файловую зависимость](../../usr-local-lib/msb-engine/client_fs.py) из того же
+снимка. Оба файла входят только в `checks/source`.
 Удалённый закрытый bundle не требуется тестам и в артефакт не включается.
 Его содержимое и ссылки закреплены в manifest. Полный baseline выполняется
 в отдельном HOME с профилем msb; отдельный smoke проверяет реальные байты
@@ -117,6 +121,10 @@ Docker подходит для отдельного Linux-сценария, на
 группового SIGINT. Тест отмены проверяет исчезновение PID, поэтому контейнер
 должен использовать init, как целевой Linux использует systemd.
 
+Числовой UID хоста может отсутствовать в образе. Некоторым дочерним фикстурам
+передаётся минимальный env без HOME, и Node в них ищет домашний каталог по UID.
+Для Docker-прогона создай отдельный passwd с этим UID и тестовым HOME.
+
 Проверено: Docker Desktop4.84 / Engine29.6.2, Linux arm64, pinned base Node22.23.2.
 Первый snapshot74241e3:202core+78overlay+15reference+13release PASS (308tests),
 плюс syntax/dependencies/profile/snapshot checks. JAR1 использует Node22.23.4:
@@ -132,11 +140,18 @@ MSB_CHECK_STAGE=/tmp/msb-local-linux
 python3 tools/release/build.py --commit HEAD --output "$MSB_CHECK_STAGE"
 docker build -t msb-local-checks:node22 -f tools/release/Dockerfile "$MSB_CHECK_STAGE/runtime/bot"
 mkdir -p "$MSB_CHECK_STAGE/checks/results" "$MSB_CHECK_STAGE/checks/test-home"
+MSB_CHECK_PASSWD="$MSB_CHECK_STAGE/checks/docker-passwd"
+printf 'root:x:0:0:root:/stage/checks/test-home:/bin/sh\n' > "$MSB_CHECK_PASSWD"
+if [ "$(id -u)" -ne 0 ]; then
+  printf 'msb-check:x:%s:%s:MSB checks:/stage/checks/test-home:/bin/sh\n' \
+    "$(id -u)" "$(id -g)" >> "$MSB_CHECK_PASSWD"
+fi
 ln -s /opt/msb-deps/node_modules "$MSB_CHECK_STAGE/checks/source/.msb/bot/node_modules"
 ln -s /opt/msb-deps/node_modules "$MSB_CHECK_STAGE/checks/source/overlay/bot/node_modules"
 docker run --rm --init --network none --read-only --user "$(id -u):$(id -g)" \
   --tmpfs /tmp:rw,exec,mode=1777 --env PYTHONDONTWRITEBYTECODE=1 \
   --mount "type=bind,src=$MSB_CHECK_STAGE,dst=/stage,readonly" \
+  --mount "type=bind,src=$MSB_CHECK_PASSWD,dst=/etc/passwd,readonly" \
   --mount "type=bind,src=$MSB_CHECK_STAGE/checks/results,dst=/stage/checks/results" \
   --mount "type=bind,src=$MSB_CHECK_STAGE/checks/test-home,dst=/stage/checks/test-home" \
   msb-local-checks:node22 python3 /stage/ops/verify.py \

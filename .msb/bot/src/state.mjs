@@ -1,5 +1,6 @@
 import fs from 'node:fs/promises';
 import {observeOpenClawState} from '../shared/engine-policy.mjs';
+import { resolveClaudeCreds } from '../shared/provider-env-inherit.mjs';
 import { getClaudeModel, cleanClaudeModelId, compareCliVersion } from './agent/models.mjs';
 import { claudeEffortFlag } from './agent/effort.mjs';
 import path from 'node:path';
@@ -14,6 +15,7 @@ import { ensureDir, statePath } from './paths.mjs';
  * [Legacy OC observation](../shared/engine-policy.mjs) is in-memory/read-only; no extra profile fields.
  * Вход: [Telegram](./telegram/bot.mjs), [agent](./agent/turn.mjs); записи только updateState.
  * Путь/profile → [paths](./paths.mjs), env CRUD → [env/store](./env/store.mjs).
+ * Claude keys для доп. ботов: readonly inherit — [provider-env-inherit](../shared/provider-env-inherit.mjs).
  * Отдельные provider IDs/model/effort → [ext store](../../../overlay/bot/ext/store.mjs);
  * переключение бесед → [provider sessions](../../../overlay/bot/ext/provider-sessions.mjs).
  * Effort flag (без записи preference) → [Claude policy](./agent/effort.mjs).
@@ -88,11 +90,8 @@ export function updateState(mutator, env = process.env, {signal} = {}) {
 export function hasClaudeAuth(env = process.env, state = {}) {
   if (state.extAuthBypass) return true;
   if (state.authMode === 'subscription' && state.hasSubscriptionAuth) return true;
-  return !!(
-    env.CLAUDE_CODE_OAUTH_TOKEN?.trim() ||
-    env.MSB_ANTHROPIC_API_KEY?.trim() ||
-    env.ANTHROPIC_API_KEY?.trim()
-  );
+  // Read-only inherit from bots/default for additional bots; no secret copy.
+  return resolveClaudeCreds(env).ok;
 }
 
 export function resolveModel(state = {}) {

@@ -9,7 +9,7 @@ test('history: every provider uses the same bounded journal, finish is idempoten
   const home = await fs.mkdtemp(path.join(os.tmpdir(), 'history-test-'));
   t.after(() => fs.rm(home, { recursive: true, force: true }));
   let clock = Date.parse('2026-11-06T00:00:00Z');
-  for (const provider of ['claude', 'codex', 'cursor', 'qwen']) {
+  for (const provider of ['claude', 'codex', 'cursor', 'grok', 'qwen']) {
     const history = await beginTurnHistory({ input: 'request ' + provider, env: { HOME: home }, now: () => clock });
     history.provider(provider); clock += 2000;
     const done = { status: 'ok', text: 'answer ' + provider, delivered: true, result: { providerId: provider, toolCount: 3 } };
@@ -20,9 +20,9 @@ test('history: every provider uses the same bounded journal, finish is idempoten
   const traces = await read('traces/2026-11-06.jsonl');
   const diary = await read('chat-diary.jsonl');
   const transcripts = await read('transcripts/2026-11-06.jsonl');
-  assert.equal(traces.length, 4); assert.equal(new Set(traces.map(t => t.turnId)).size, 4);
-  assert.equal(diary.length, 4); assert.equal(transcripts.length, 8);
-  assert.deepEqual(traces.map(t => t.providerId), ['claude', 'codex', 'cursor', 'qwen']);
+  assert.equal(traces.length, 5); assert.equal(new Set(traces.map(t => t.turnId)).size, 5);
+  assert.equal(diary.length, 5); assert.equal(transcripts.length, 10);
+  assert.deepEqual(traces.map(t => t.providerId), ['claude', 'codex', 'cursor', 'grok', 'qwen']);
   assert.equal(traces[0].toolCalls, 3);
   assert.ok(traces.slice(1).every(t => !('toolCalls' in t)));
   assert.ok(traces.every(t => t.elapsedMs === 2000 && t.status === 'ok'));

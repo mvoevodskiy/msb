@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { isCursorSessionId, parseCursorJsonOutput } from '../adapters/cursor.mjs';
+import { isCursorSessionId, parseCursorJsonOutput, applyCursorAuthEnv } from '../adapters/cursor.mjs';
 
 test('isCursorSessionId accepts UUID only', () => {
   assert.equal(isCursorSessionId('bf4fd6ef-0ad8-46c3-9486-5422d21d7ac2'), true);
@@ -27,4 +27,19 @@ test('parseCursorJsonOutput reads result + session_id', () => {
 test('parseCursorJsonOutput empty → null', () => {
   assert.equal(parseCursorJsonOutput(''), null);
   assert.equal(parseCursorJsonOutput('not-json'), null);
+});
+
+test('applyCursorAuthEnv drops CURSOR_API_KEY when native login is present', () => {
+  const withNative = applyCursorAuthEnv(
+    { CURSOR_API_KEY: 'stale-key', PATH: '/bin' },
+    { key: 'stale-key', native: true },
+  );
+  assert.equal(withNative.CURSOR_API_KEY, undefined);
+  assert.equal(withNative.PATH, '/bin');
+
+  const keyOnly = applyCursorAuthEnv(
+    { CURSOR_API_KEY: 'from-process', PATH: '/bin' },
+    { key: 'bot-key', native: false },
+  );
+  assert.equal(keyOnly.CURSOR_API_KEY, 'bot-key');
 });

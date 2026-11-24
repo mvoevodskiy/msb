@@ -30,6 +30,52 @@ test('setup-bypass: cursor key sets subscription authMode', async () => {
   assert.equal(st[EXT_AUTH_FLAG], 'cursor');
 });
 
+test('setup-bypass: grok key sets subscription authMode', async () => {
+  const home = await tmpHome();
+  const env = { MSB_BOT_ID: 'default' };
+  await writeEnvKey('XAI_API_KEY', 'xai-test-key-xxxxxxxx', env, home);
+  await setActive('grok', env, home);
+
+  const r = await syncExtAuthGate(env, home);
+  assert.equal(r.changed, true);
+  const st = await readState(env, home);
+  assert.equal(st.authMode, 'subscription');
+  assert.equal(st.hasSubscriptionAuth, true);
+  assert.equal(st[EXT_AUTH_FLAG], 'grok');
+});
+
+test('setup-bypass: native cursor auth without API key sets bypass', async () => {
+  const home = await tmpHome();
+  const env = { HOME: home, MSB_BOT_ID: 'default' };
+  await fs.mkdir(path.join(home, '.config', 'cursor'), { recursive: true });
+  await fs.writeFile(
+    path.join(home, '.config', 'cursor', 'auth.json'),
+    JSON.stringify({ accessToken: 'native-cursor-token' }),
+    { mode: 0o600 },
+  );
+  await setActive('cursor', env, home);
+  const r = await syncExtAuthGate(env, home);
+  assert.equal(r.changed, true);
+  const st = await readState(env, home);
+  assert.equal(st[EXT_AUTH_FLAG], 'cursor');
+});
+
+test('setup-bypass: native grok auth without API key sets bypass', async () => {
+  const home = await tmpHome();
+  const env = { HOME: home, MSB_BOT_ID: 'default' };
+  await fs.mkdir(path.join(home, '.grok'), { recursive: true });
+  await fs.writeFile(
+    path.join(home, '.grok', 'auth.json'),
+    JSON.stringify({ 'https://auth.x.ai::default': { key: 'native-grok-token' } }),
+    { mode: 0o600 },
+  );
+  await setActive('grok', env, home);
+  const r = await syncExtAuthGate(env, home);
+  assert.equal(r.changed, true);
+  const st = await readState(env, home);
+  assert.equal(st[EXT_AUTH_FLAG], 'grok');
+});
+
 test('setup-bypass: switch to bare claude clears bypass', async () => {
   const home = await tmpHome();
   const env = { MSB_BOT_ID: 'default' };

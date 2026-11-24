@@ -308,13 +308,17 @@ test('an unreadable sleep marker is not mistaken for an awake bot', async t => {
 
 test('known removed OpenClaw clears a stale sleep marker; unknown status does not', async t => {
   let turns = 0;
-  const f = await fixture(t, async () => { turns++; return { ok: true, text: 'fixture-answer' }; });
+  const f = await systemWakeFixture(t, async () => { turns++; return { ok: true, text: 'fixture-answer' }; });
   const marker = await sleepMarker();
   const original = fs.readFile;
+  let snapshot = {};
   fs.readFile = async (file, ...args) => String(file) === '/run/msb-engine/state.json'
-    ? JSON.stringify({ at: new Date(Date.now() + 2000).toISOString(),
-      openclaw: { installed: false, enabled: false } }) : original(file, ...args);
+    ? JSON.stringify(snapshot) : original(file, ...args);
   t.after(() => { fs.readFile = original; });
+  assert.equal(await f.bot[Symbol.for('msb.engineSleep')].sleeping(), true);
+  assert.equal(await fs.readFile(marker, 'utf8'), 'fixture');
+  snapshot = { at: new Date(Date.now() + 2000).toISOString(),
+    openclaw: { installed: false, enabled: false } };
   await f.message('продолжение после удаления');
   await until(() => turns === 1, 'the woken turn');
   assert.equal(await fs.stat(marker).then(() => true, () => false), false);
@@ -322,7 +326,7 @@ test('known removed OpenClaw clears a stale sleep marker; unknown status does no
 
 test('an older OpenClaw snapshot cannot cancel a newly written sleep marker', async t => {
   let turns = 0;
-  const f = await fixture(t, async () => { turns++; return { ok: true, text: 'unexpected' }; });
+  const f = await systemWakeFixture(t, async () => { turns++; return { ok: true, text: 'unexpected' }; });
   const marker = await sleepMarker();
   const original = fs.readFile;
   fs.readFile = async (file, ...args) => String(file) === '/run/msb-engine/state.json'
@@ -336,25 +340,25 @@ test('an older OpenClaw snapshot cannot cancel a newly written sleep marker', as
 });
 
 test('auto-wake cannot erase a later sleep written by the Python system component', async t => {
-  const f = await fixture(t);
+  const f = await systemWakeFixture(t);
   const marker = await sleepMarker();
   const old = new Date(Date.now() - 5000);
   await fs.utimes(marker, old, old);
   const snapshotAt = new Date().toISOString();
   const controller = f.bot[Symbol.for('msb.engineSleep')];
-  let release, seen;
+  let release, readingStarted = false;
   const gate = new Promise(resolve => { release = resolve; });
-  const reading = new Promise(resolve => { seen = resolve; });
   const original = fs.readFile;
   fs.readFile = async (file, ...args) => {
     if (String(file) !== '/run/msb-engine/state.json') return original(file, ...args);
-    seen(); await gate;
+    readingStarted = true;
+    await gate;
     return JSON.stringify({ at: snapshotAt,
       openclaw: { installed: false, enabled: false } });
   };
   t.after(() => { fs.readFile = original; release(); });
   const sleepCheck = controller.sleeping();
-  await reading;
+  await until(() => readingStarted, 'the engine snapshot read');
   const script = fileURLToPath(new URL('../../../usr-local-lib/msb-engine/client_markers.py', import.meta.url));
   const code = `
 import importlib.util, sqlite3, sys

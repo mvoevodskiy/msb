@@ -273,7 +273,7 @@ test('saved Cursor prelaunch defers while spend pause is set and runs after resu
 });
 
 
-test('saved Cursor missing key defers if spend pause arrives while credentials are read', async t => {
+test('saved Cursor without login defers if spend pause arrives while credentials are read', async t => {
   const f = await fixture(t, async () => assert.fail('owner turn must not run'),
     { overlay: false, runtimeProfile: 'jar1' });
   process.env.AUTONOMY_ENABLED = '1';
@@ -319,5 +319,5 @@ test('saved Cursor missing key defers if spend pause arrives while credentials a
   await dispatch(() => false);
   const [after] = JSON.parse(await fs.readFile(actionsFile, 'utf8'));
   assert.equal(after.lastStatus, 'error');
-  assert.ok(f.messages.some(message => String(message).includes('CURSOR_API_KEY')));
+  assert.ok(f.messages.some(message => String(message).includes('Нет входа Cursor для фонового хода')));
 });

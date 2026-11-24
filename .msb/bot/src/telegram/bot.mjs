@@ -801,8 +801,28 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       const cursorAvailable = Boolean(bot[Symbol.for('msb.savedCursorPrompt')]);
       const checkSavedCodex = codexAvailable ? bot[Symbol.for('msb.savedCodexPromptReady')] : undefined;
       const checkSavedCursor = cursorAvailable ? bot[Symbol.for('msb.savedCursorPromptReady')] : undefined;
-      const { state } = await loadState();
+      let { state } = await loadState();
       signal.throwIfAborted();
+      let turnPrompt = entry.prompt ?? text;
+      if (!entry.isAutoTurn && !entry.scheduled) {
+        const { admitProjectRouting } = await import('../projects/routing.mjs');
+        const admitted = await admitProjectRouting({ bot, state, text: turnPrompt });
+        if (!admitted.ok) {
+          outcome = 'error';
+          const message = '❌ Маршрут: ' + admitted.error;
+          await progress.stop();
+          if (status) {
+            await ctx.api.editMessageText(chatId, status.message_id, message, {}, presentationSignal(AbortSignal.timeout(15_000)))
+              .then(() => { deliveredText = message; delivered = true; }).catch(() => {});
+          } else {
+            await ctx.reply(message).then(() => { deliveredText = message; delivered = true; }).catch(() => {});
+          }
+          return;
+        }
+        turnPrompt = admitted.prompt;
+        ({ state } = await loadState());
+        signal.throwIfAborted();
+      }
       const paused = Boolean(state.costPaused || entry.forceSpendPaused);
       if (paused && entry.admittedLegacyRuns?.length) {
         await deferClaimedLegacyTimerRuns(entry.admittedLegacyRuns, { signal });
@@ -821,7 +841,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
       if (introPending) { turn.pendingId = introPending.id; introOwned.add(introPending.id); }
       if (!paused) providerStarted = true;
       turn.history = history;
-      let out = paused ? { ok: false, text: SPEND_PAUSED } : await runTurn({ prompt: entry.prompt ?? text, signal,
+      let out = paused ? { ok: false, text: SPEND_PAUSED } : await runTurn({ prompt: turnPrompt, signal,
         ...(!entry.isAutoTurn && !entry.scheduled ? { onSteerReady: handle => {
           if (running.get(chatId) !== turn || (handle && (turn.completed || signal.aborted))) return;
           turn.steer = handle;

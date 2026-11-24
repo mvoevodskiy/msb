@@ -5,7 +5,7 @@
 [Telegram ←](../../../.msb/bot/src/telegram/README.md) ·
 [Исполнение агента ←](../../../.msb/bot/src/agent/README.md)
 
-Обвязка добавляет Codex/Cursor/Qwen, выбор провайдера, native auth, модели и
+Обвязка добавляет Codex/Cursor/Grok Build/Qwen, выбор провайдера, native auth, модели и
 локальный constructor API. Ядро может работать без неё. Вход — [`run.mjs`](../run.mjs),
 который устанавливает PATH-shim и вызывает [`prepare`](integration/startup.mjs) до импорта ядра.
 [`install.mjs`](install.mjs) сохраняет прежние публичные экспорты `prepare` и `installUpdateHook`.
@@ -26,8 +26,9 @@
 | Показать Codex в «Движках» | [`engine-menu.mjs`](engine-menu.mjs): `buildEngineProviderView`, `registerEngineProviderView`; core `enginesScreen` | [core engine-menu](../../../.msb/bot/tests/engine-menu.test.mjs), [core + overlay](tests/reference/engine-menu.test.mjs) |
 | Переключить провайдера из кнопки | [`integration/callbacks.mjs`](integration/callbacks.mjs): `handleCallback`, `ext:conn:set:<id>` | [provider-switch](tests/reference/provider-switch.test.mjs), [engine-menu](tests/reference/engine-menu.test.mjs) |
 | Проверить вход Codex / начать device login | [`auth-wire.mjs`](auth-wire.mjs): `codexLoginStatus`, `startCodexDeviceLogin`; [`integration/native-login.mjs`](integration/native-login.mjs): `connectCodexNative` | [auth-wire](tests/auth-wire.test.mjs), [device login](tests/codex-device-login.test.mjs), [engine-menu](tests/reference/engine-menu.test.mjs) |
+| Native вход Cursor / Grok Build | [`cursor-auth.mjs`](cursor-auth.mjs), [`grok-auth.mjs`](grok-auth.mjs); [`native-login`](integration/native-login.mjs): `connectCursorNative`, `connectGrokNative` | [native-auth-login](tests/native-auth-login.test.mjs), [setup-bypass](tests/setup-bypass.test.mjs) |
 | Убедиться, что CLI установлен | [`ensure-cli.mjs`](ensure-cli.mjs): `ensureProviderCli` | [ensure-cli](tests/ensure-cli.test.mjs) |
-| Сохранить ключ Cursor/Qwen и настроить CLI | [`env.mjs`](env.mjs): `saveProviderSecret`; [`auth-wire.mjs`](auth-wire.mjs): `wireProviderAuth`; [`integration/text-input.mjs`](integration/text-input.mjs): `handleAuthMessage` | [env](tests/env.test.mjs), [auth-wire](tests/auth-wire.test.mjs) |
+| Сохранить ключ Qwen (и запасные API-ключи) | [`env.mjs`](env.mjs): `saveProviderSecret`; [`auth-wire.mjs`](auth-wire.mjs): `wireProviderAuth`; [`integration/text-input.mjs`](integration/text-input.mjs): `handleAuthMessage` | [env](tests/env.test.mjs), [auth-wire](tests/auth-wire.test.mjs) |
 
 Выбор Codex: готовность CLI → проверка нативного входа → обновление
 [состояния](setup-bypass.mjs) → подготовка транспорта стандартного профиля.
@@ -94,7 +95,7 @@ shim; поздняя смена меню не направляет начаты�
 | Codex exec, resume, stream parsing | [`adapters/codex.mjs`](adapters/codex.mjs): `runCodexTurn`, `buildCodexExecArgs`, `parseCodexStdout` | [provider-switch](tests/reference/provider-switch.test.mjs); ограничения ниже |
 | Сохранённый фоновый запрос Codex | [saved-codex](adapters/saved-codex.mjs) → [файловые инструменты](adapters/saved-workspace-tools.mjs) → [проверка путей](adapters/saved-workspace-files.mjs) | [планировщик](../../../.msb/bot/tests/saved-codex-prompt-action.test.mjs), [права на файлы](tests/saved-codex-workspace.test.mjs) |
 | Native Codex config и HTTP transport | [`codex-native.mjs`](codex-native.mjs), [`codex-transport.mjs`](codex-transport.mjs): `ensureCodexStableTransport` | [codex-native](tests/codex-native.test.mjs), [codex-transport](tests/codex-transport.test.mjs) |
-| Cursor / Qwen / OpenAI-compatible | [`adapters/cursor.mjs`](adapters/cursor.mjs), [`adapters/qwen.mjs`](adapters/qwen.mjs), [`adapters/openai.mjs`](adapters/openai.mjs); общие [`run-cli`](adapters/run-cli.mjs), [`stream`](adapters/stream.mjs), [`parse-args`](adapters/parse-args.mjs) | [cursor-adapter](tests/cursor-adapter.test.mjs), [openai-compat](tests/openai-compat.test.mjs), [parse-args](tests/parse-args.test.mjs); отдельного Qwen adapter test нет |
+| Cursor / Grok Build / Qwen / OpenAI-compatible | [`adapters/cursor.mjs`](adapters/cursor.mjs), [`adapters/grok.mjs`](adapters/grok.mjs), [`adapters/qwen.mjs`](adapters/qwen.mjs), [`adapters/openai.mjs`](adapters/openai.mjs); общие [`run-cli`](adapters/run-cli.mjs), [`stream`](adapters/stream.mjs), [`parse-args`](adapters/parse-args.mjs) | [cursor-adapter](tests/cursor-adapter.test.mjs), [grok-adapter](tests/grok-adapter.test.mjs), [openai-compat](tests/openai-compat.test.mjs), [parse-args](tests/parse-args.test.mjs); отдельного Qwen adapter test нет |
 
 При ошибке Codex текущая сессия сохраняется; запрос с инструментами автоматически
 не повторяется в новом thread. Это проверяют [codex-session](tests/codex-session.test.mjs)

@@ -3,7 +3,7 @@
 [← Проект](../README.md) · [Вход ядра](../.msb/bot/src/main.mjs) ·
 [Провайдеры и integration](bot/ext/README.md) · [Release](../tools/release/README.md)
 
-Опциональный слой добавляет Codex/Cursor/Qwen, local SSH constructor routes и
+Опциональный слой добавляет Codex/Cursor/Grok Build/Qwen, local SSH constructor routes и
 интеграцию меню. Чистое ядро может стартовать через `.msb/bot/index.js` без overlay.
 Общий исходный профиль доступен через symlink `bot/shared`; отдельной копии resolver нет.
 

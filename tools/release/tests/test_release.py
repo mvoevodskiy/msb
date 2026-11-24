@@ -43,6 +43,8 @@ class ReleaseTest(unittest.TestCase):
         self.write('overlay/bot/ext/tests/example.test.mjs', '// fixture test\n')
         self.write('bootstrap/workspace-seed/SOUL.md', '# fixture seed identity\n')
         self.write('bootstrap/workspace-seed/memory/.gitkeep', '')
+        self.write('usr-local-lib/msb-engine/client_markers.py', 'from client_fs import open_dir\n')
+        self.write('usr-local-lib/msb-engine/client_fs.py', 'def open_dir(path): pass\n')
         self.write('.msb/bot/vendor/deobfuscated.js', '// inert reference\n')
         self.write('tools/release/build.py', (TOOLS / 'build.py').read_text())
         self.write('tools/release/verify.py', '# fixture operator\n')
@@ -85,9 +87,10 @@ class ReleaseTest(unittest.TestCase):
         self.assertFalse(any(p.name in ['.env', 'MEMORY.md', 'auth.json'] for p in (a / 'runtime').rglob('*')))
         self.assertFalse(any('/tests/' in x for x in expected))
         self.assertFalse((a / 'checks/source/.msb/bot/vendor/deobfuscated.js').exists())
-        for name in ('bootstrap/workspace-seed/SOUL.md', 'bootstrap/workspace-seed/memory/.gitkeep'):
+        for name in ('bootstrap/workspace-seed/SOUL.md', 'bootstrap/workspace-seed/memory/.gitkeep',
+                     'usr-local-lib/msb-engine/client_markers.py', 'usr-local-lib/msb-engine/client_fs.py'):
             self.assertEqual((a / 'checks/source' / name).read_bytes(), (self.repo / name).read_bytes())
-            self.assertFalse((a / 'runtime' / name).exists(), 'seed is test input, not runtime owner data')
+            self.assertFalse((a / 'runtime' / name).exists(), 'fixture input belongs only to checks/source')
 
     def test_dirty_head_is_not_silently_exported(self):
         self.write('.msb/bot/src/main.mjs', 'changed without a commit\n')

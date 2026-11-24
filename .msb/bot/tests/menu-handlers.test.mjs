@@ -340,7 +340,11 @@ test('all baseline menu button routes remain reachable', async (t) => {
   for (const [name, expected] of Object.entries(contract.screens)) {
     // The pinned open-core snapshot exposed NODE_ENV deletion. Old bY55151
     // protects it; this one unsafe action is restored by the env contract.
-    const restored = name === 'envScreen' ? expected.filter(data => data !== 'settings:env:delete:NODE_ENV') : expected;
+    let restored = expected;
+    if (name === 'envScreen') restored = expected.filter(data => data !== 'settings:env:delete:NODE_ENV');
+    if (name === 'settingsScreen') {
+      restored = expected.toSpliced(expected.indexOf('eng:home') + 1, 0, 'settings:routing');
+    }
     const actual = callbacks(await screens[name](screenInput[name] ?? state));
     if (name === 'limitScreen') {
       // Old 52919–52927 restores two missing choices and their original order.
@@ -351,10 +355,12 @@ test('all baseline menu button routes remain reachable', async (t) => {
     }
   }
   for (const [name, expected] of Object.entries(contract.overlay)) {
-    // The OpenAI-compatible provider adds its two routes before the back button.
-    const routes = name === 'buildConnMenu'
-      ? expected.toSpliced(-1, 0, 'ext:conn:set:openai', 'ext:auth:openai')
-      : expected;
+    let routes = expected;
+    if (name === 'buildConnMenu') {
+      routes = expected
+        .toSpliced(expected.indexOf('ext:conn:set:codex'), 0, 'ext:conn:set:grok', 'ext:auth:grok')
+        .toSpliced(-1, 0, 'ext:conn:set:openai', 'ext:auth:openai');
+    }
     assert.deepEqual(callbacks(await overlay[name](process.env, f.home)), routes, name);
   }
 });
@@ -430,8 +436,8 @@ test('switching explicit forms clears incompatible secret input only', async (t)
   assert.match(f.edits.at(-1), /токен Claude/);
   await f.callback('settings:back');
   await f.callback('settings:env:quick:TEST_MENU_TOKEN');
-  await f.callback('ext:auth:cursor');
-  assert.equal(getPendingAuth(42).providerId, 'cursor');
+  await f.callback('ext:auth:qwen');
+  assert.equal(getPendingAuth(42).providerId, 'qwen');
   await f.callback('settings:auth');
   assert.equal(getPendingAuth(42), null);
   await f.message('ordinary task');

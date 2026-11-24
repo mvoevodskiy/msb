@@ -40,6 +40,7 @@ import { handleAutonomyRoute } from './routes/autonomy.mjs';
 import { handleMonitorRoute } from './routes/monitor.mjs';
 import {handleWorkspaceRoute,isMcpReadCallback} from './routes/workspace.mjs';
 import { handleProjectRoute } from './routes/projects.mjs';
+import { handleRoutingRoute } from './routes/routing.mjs';
 import {handleSessionRoute} from './routes/sessions.mjs';
 import {handleSkillRoute,isSkillReadCallback} from './routes/skills.mjs';
 import { handleBootstrapServiceRoute } from './bootstrap-services.mjs';
@@ -49,6 +50,7 @@ const ROUTES = [
   handleSessionRoute,
   handleSkillRoute,
   handleProjectRoute,
+  handleRoutingRoute,
   handleNavigationRoute,
   handleModelRoute,
   handleAgentRoute,
@@ -94,7 +96,7 @@ export async function handleCallback({ bot, cfg, pending, ctx, plan, steerAction
   if (!isModelSelectionCallback(data) && !isPauseConfirmation(data) && !limitConfirmation && !frequencyConfirmation &&
       !removalConfirmation && !rescheduleConfirmation && !legacyTimerConfirmation) await answer();
   if (!chatId) return;
-  if (['menu:back', 'menu:close', 'menu:agent', 'menu:settings', 'settings:back', 'mon:back', 'settings:bots:cancel'].includes(data)) pending.delete(chatId);
+  if (['menu:back', 'menu:close', 'menu:agent', 'menu:settings', 'settings:back', 'mon:back', 'settings:bots:cancel', 'settings:routing:wiz:cancel'].includes(data)) pending.delete(chatId);
   const show = async view => {
     if (!scope.isCurrent()) return;
     const extra = {

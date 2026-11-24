@@ -15,6 +15,7 @@ export function settingsScreen(state, { showEngines = true } = {}) {
   kb.text('🔑 Переменные окружения', 'settings:env').row();
   kb.text('🔌 Подключения', 'settings:auth').row();
   if (showEngines) kb.text('⚙️ Движки', 'eng:home').row();
+  kb.text('🎛 Маршрутизация задач', 'settings:routing').row();
   kb.text('🤖 Мои боты', 'settings:bots').row();
   kb.text('🕐 Часовой пояс', 'settings:tz').row();
   kb.text('🔕 Отключённые уведомления', 'nm:list').row();

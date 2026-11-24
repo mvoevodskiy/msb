@@ -52,6 +52,7 @@ export const HELP_CC = `<b>Как работать</b>
 
 <b>Навигация:</b>
 /projects — создание и выбор проекта
+/type — режим задачи проекта (ask/make/study/check/run)
 /sessions — список сессий
 
 <b>Подключение и доступ:</b>

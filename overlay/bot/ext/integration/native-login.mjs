@@ -1,14 +1,25 @@
 /**
- * Проверка CLI и прежний native login Codex; вход — callback меню, выход — статус и инструкция.
- * Вызывает [auth-wire](../auth-wire.mjs); проверка: [device login](../tests/codex-device-login.test.mjs).
+ * Проверка CLI и native login Codex/Cursor/Grok; вход — callback меню, выход — статус и инструкция.
+ * Codex: [auth-wire](../auth-wire.mjs); Cursor: [cursor-auth](../cursor-auth.mjs);
+ * Grok: [grok-auth](../grok-auth.mjs). Проверки: [device login](../tests/codex-device-login.test.mjs),
+ * [native-auth](../tests/native-auth-login.test.mjs).
  * Навигация: [Обвязка](../README.md).
  */
 import { getProvider } from '../providers.mjs';
 import fs from 'node:fs/promises';
-import { buildConnMenu, switchedText, codexLoginGuide } from '../menu.mjs';
+import { buildConnMenu, switchedText, codexLoginGuide, cursorLoginGuide, grokLoginGuide } from '../menu.mjs';
 import { ensureProviderCli, enrichPath } from '../ensure-cli.mjs';
 import { captureCodexLogin, startCodexDeviceLogin, waitCodexNativeAuth, codexLoginStatus } from '../auth-wire.mjs';
+import {
+  hasNativeCursorAuth, clearNativeCursorAuth, cursorLoginStatus,
+  startCursorBrowserLogin, waitCursorNativeAuth,
+} from '../cursor-auth.mjs';
+import {
+  hasNativeGrokAuth, clearNativeGrokAuth, grokLoginStatus,
+  startGrokDeviceLogin, waitGrokNativeAuth,
+} from '../grok-auth.mjs';
 import { syncExtAuthGate } from '../setup-bypass.mjs';
+import { setActive } from '../store.mjs';
 import { codexHome, hasNativeCodexAuth } from '../codex-native.mjs';
 import { ensureCodexStableTransport } from '../codex-transport.mjs';
 import { editOrReply } from './shared.mjs';
@@ -187,4 +198,204 @@ export async function connectCodexNative(bot, chatId, messageId) {
     .catch(() => {});
   console.error(`${EXT_MARKER} active provider → codex (device login ok)`);
   return true;
+}
+
+async function activateExtProvider(providerId, activateCli = false) {
+  await setActive(providerId);
+  const outcome = await syncExtAuthGate(process.env, undefined, { activateCli });
+  if (outcome.reason?.startsWith('bypass:')) return true;
+  if (outcome.reason === 'select-cli-engine' || outcome.reason === 'noop') return true;
+  return false;
+}
+
+function rejectNativeSelection(bot, chatId, messageId, providerId, title) {
+  return editOrReply(
+    bot,
+    chatId,
+    messageId,
+    `${title} не подтвердил вход. Выбранный движок и сессия сохранены.`,
+    {
+      inline_keyboard: [
+        [{ text: '🔐 Вход', callback_data: `ext:auth:${providerId}` }],
+        [{ text: '« Назад', callback_data: 'settings:conn' }],
+      ],
+    },
+  );
+}
+
+async function showProviderSelection(bot, chatId, messageId, providerId) {
+  const menu = await buildConnMenu();
+  await editOrReply(bot, chatId, messageId, `${switchedText(providerId)}\n\n${menu.text}`, menu.keyboard);
+}
+
+async function finishNativeLogin(bot, chatId, providerId) {
+  const menu = await buildConnMenu();
+  await bot.api
+    .sendMessage(chatId, `${switchedText(providerId)}\n\n${menu.text}`, {
+      parse_mode: 'HTML',
+      reply_markup: menu.keyboard,
+    })
+    .catch(() => {});
+}
+
+/**
+ * Общий цикл: CLI печатает URL(/код) → гид в Telegram → poll native auth.
+ * `force` (кнопка «🔐 Вход») сбрасывает протухшие credentials и всегда запускает login.
+ * @param {{ requireCode?: boolean, force?: boolean, clearAuth?: () => Promise<unknown> }} opts
+ */
+async function runNativeLoginFlow(bot, chatId, messageId, {
+  providerId, title, startLabel, startLogin, waitAuth, hasAuth, guide,
+  requireCode = true, force = false, clearAuth,
+}) {
+  if (!await ensureAndReport(bot, chatId, messageId, providerId)) return false;
+
+  if (!force && await hasAuth()) {
+    const activated = await activateExtProvider(providerId, true);
+    if (!activated) {
+      await rejectNativeSelection(bot, chatId, messageId, providerId, title);
+      return false;
+    }
+    await showProviderSelection(bot, chatId, messageId, providerId);
+    console.error(`${EXT_MARKER} active provider → ${providerId} (native auth)`);
+    return true;
+  }
+
+  if (force && clearAuth) {
+    await editOrReply(bot, chatId, messageId, `⏳ Сбрасываю прежний вход ${title}…`, undefined);
+    try {
+      await clearAuth();
+    } catch (err) {
+      console.error(`${EXT_MARKER} ${providerId} clear auth failed:`, err?.message || err);
+    }
+  }
+
+  await editOrReply(bot, chatId, messageId, startLabel, undefined);
+  let started;
+  try {
+    started = startLogin();
+  } catch (error) {
+    started = { ok: false, error: error.message };
+  }
+  if (!started.ok) {
+    await editOrReply(
+      bot,
+      chatId,
+      null,
+      `❌ Не удалось начать вход ${title}.\n${started.error}\n\nДвижок не переключаю.`,
+      undefined,
+    );
+    return false;
+  }
+
+  let guideSent = false;
+  let guideSending = false;
+  const sendCompleteGuide = async () => {
+    if (guideSent || guideSending) return;
+    const info = started.extract?.() || {};
+    if (!info.url) return;
+    if (requireCode && !info.code) return;
+    guideSending = true;
+    try {
+      await bot.api.sendMessage(chatId, guide(info), { parse_mode: 'HTML' });
+      guideSent = true;
+    } catch {
+      /* retry while pending */
+    } finally {
+      guideSending = false;
+    }
+  };
+  const guideTimer = setInterval(() => { void sendCompleteGuide(); }, 1000);
+  await new Promise((r) => setTimeout(r, 1500));
+  await sendCompleteGuide();
+  if (!guideSent && !guideSending) {
+    const info = started.extract?.() || {};
+    if (!info.url && !(requireCode && info.code)) {
+      await bot.api.sendMessage(chatId, guide(), { parse_mode: 'HTML' }).catch(() => {});
+    }
+  }
+
+  const waited = await waitAuth();
+  clearInterval(guideTimer);
+  try {
+    started.child?.kill('SIGTERM');
+  } catch {
+    /* ignore */
+  }
+
+  if (!waited.ok || !(await hasAuth())) {
+    await bot.api
+      .sendMessage(
+        chatId,
+        `❌ Вход ${title} не подтверждён.\n${waited.error || 'нет native credentials'}\n\nДвижок не переключаю.`,
+      )
+      .catch(() => {});
+    return false;
+  }
+
+  if (!await activateExtProvider(providerId)) {
+    await rejectNativeSelection(bot, chatId, messageId, providerId, title);
+    return false;
+  }
+  await finishNativeLogin(bot, chatId, providerId);
+  console.error(`${EXT_MARKER} active provider → ${providerId} (native login ok)`);
+  return true;
+}
+
+export async function selectCursorNative(bot, chatId, messageId) {
+  if (!await ensureAndReport(bot, chatId, messageId, 'cursor')) return false;
+  const status = await cursorLoginStatus();
+  if (!status.ok) {
+    // Протухший auth.json: сразу повторный вход, а не тупик «не подтвердил».
+    return connectCursorNative(bot, chatId, messageId);
+  }
+  if (!await activateExtProvider('cursor', true)) {
+    await rejectNativeSelection(bot, chatId, messageId, 'cursor', 'Cursor');
+    return false;
+  }
+  await showProviderSelection(bot, chatId, messageId, 'cursor');
+  return true;
+}
+
+export async function connectCursorNative(bot, chatId, messageId) {
+  return runNativeLoginFlow(bot, chatId, messageId, {
+    providerId: 'cursor',
+    title: 'Cursor',
+    startLabel: '⏳ Запускаю штатный вход Cursor (ссылка в браузере)…',
+    startLogin: () => startCursorBrowserLogin(),
+    waitAuth: () => waitCursorNativeAuth({ timeoutMs: 300_000 }),
+    hasAuth: async () => (await cursorLoginStatus()).ok,
+    guide: cursorLoginGuide,
+    requireCode: false,
+    force: true,
+    clearAuth: () => clearNativeCursorAuth(),
+  });
+}
+
+export async function selectGrokNative(bot, chatId, messageId) {
+  if (!await ensureAndReport(bot, chatId, messageId, 'grok')) return false;
+  const status = await grokLoginStatus();
+  if (!status.ok) {
+    return connectGrokNative(bot, chatId, messageId);
+  }
+  if (!await activateExtProvider('grok', true)) {
+    await rejectNativeSelection(bot, chatId, messageId, 'grok', 'Grok Build');
+    return false;
+  }
+  await showProviderSelection(bot, chatId, messageId, 'grok');
+  return true;
+}
+
+export async function connectGrokNative(bot, chatId, messageId) {
+  return runNativeLoginFlow(bot, chatId, messageId, {
+    providerId: 'grok',
+    title: 'Grok Build',
+    startLabel: '⏳ Запускаю штатный вход Grok Build (device code)…',
+    startLogin: () => startGrokDeviceLogin(),
+    waitAuth: () => waitGrokNativeAuth({ timeoutMs: 300_000 }),
+    hasAuth: () => hasNativeGrokAuth(),
+    guide: grokLoginGuide,
+    requireCode: true,
+    force: true,
+    clearAuth: () => clearNativeGrokAuth(),
+  });
 }

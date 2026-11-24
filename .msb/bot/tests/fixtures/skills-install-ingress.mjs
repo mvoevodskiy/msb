@@ -1,5 +1,6 @@
 /** Actual bot -> agent runner -> native protocol double -> writer -> response/journal. No auth/network. */
 import fs from 'node:fs/promises';import path from 'node:path';import os from 'node:os';import cp from 'node:child_process';import {syncBuiltinESMExports} from 'node:module';import {EventEmitter} from 'node:events';import {PassThrough} from 'node:stream';
+import readCliPrompt from '../helpers/read-cli-prompt.cjs';
 const provider=process.argv[2],tmp=os.tmpdir();
 for(const key of Object.keys(process.env))delete process.env[key];
 Object.assign(process.env,{PATH:path.dirname(process.execPath),TMPDIR:tmp});
@@ -9,13 +10,13 @@ cp.spawn=(command,args,options)=>{
  if(command!=='claude' || options.env.HOME!==f?.home)throw Error('Unexpected native process');
  const child=new EventEmitter();child.stdin=new PassThrough();child.stdout=new PassThrough();child.stderr=new PassThrough();child.kill=()=>true;
  const call={provider:options.env.MSB_TURN_PROVIDER,cwd:options.cwd,args,prompt:''};calls.push(call);
- child.stdin.on('data',chunk=>{call.prompt+=chunk;});
- child.stdin.on('finish',()=>queueMicrotask(()=>{
+ readCliPrompt(child.stdin,args).then(prompt=>{
+  call.prompt=prompt;
   const id=provider==='claude'?'fixture-existing-claude':'ext:codex:0199a213-81c0-7800-8aa1-bbab2a035a53';
   child.stdout.write(JSON.stringify({type:'system',subtype:'init',session_id:id,model:'fixture-model',provider_id:provider})+'\n');
   child.stdout.write(JSON.stringify({type:'result',subtype:'success',session_id:id,result:answer,is_error:false})+'\n');
   child.stdout.end();child.stderr.end();child.emit('close',0,null);
- }));return child;
+ });return child;
 };syncBuiltinESMExports();
 try{
  const {fixture}=await import('../helpers/menu-fixture.mjs'),{loadState,saveState}=await import('../../src/state.mjs'),{runAgentTurn}=await import('../../src/agent/turn.mjs');

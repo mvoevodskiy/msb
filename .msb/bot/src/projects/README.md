@@ -28,6 +28,19 @@ result не может восстановить ID из другой папки 
 Это не гарантия native project-instruction загрузки Claude/Codex или полноты всех
 старых глобальных context sources; особенности native CLI проверяются отдельно.
 
+[Routing](routing.mjs) читает `<cwd>/.msb/settings.yaml` (или `.json`): карта режимов
+`ask|make|study|check|run` → provider/model/effort. Нет файла — маршрутизация
+выключена. Режим задаётся явно (`#make`, `/type`, кнопки); смена провайдера
+переиспользует overlay `msb.applyProjectRoute`. Мастер в
+`/settings` → «Маршрутизация задач» пишет файл через [routing-save](./routing-save.mjs);
+агент получает инструкцию из [routing-prompt](./routing-prompt.mjs) в system prompt
+и может настроить тот же файл в диалоге. Схема:
+[settings.schema.json](./settings.schema.json). Проверки:
+[project-routing](../../tests/project-routing.test.mjs),
+[wizard](../../tests/project-routing-wizard.test.mjs),
+[menu](../../tests/project-routing-menu.test.mjs). TDR:
+[project-task-routing](../../../../docs/tdr/project-task-routing.md).
+
 [Restore](restore.mjs) вызывается до polling. Валидный saved project не переписывает
 state/session. Подтверждённый missing возвращает base с fresh conversation;
 ошибка доступа сохраняет выбор для retry. Создаётся project-root CLAUDE symlink,

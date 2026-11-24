@@ -20,6 +20,8 @@ export function applyProjectSelection(state,name) {
   delete state.lastCcUsage;
   delete state.parkedCcSessions;
   delete state.pendingCcSessionStarts;
+  delete state.projectTaskMode;
+  delete state.projectTaskModeOnce;
   state.sessionEpoch = (Number.isSafeInteger(state.sessionEpoch) ? state.sessionEpoch : 0) + 1;
   return state;
 }

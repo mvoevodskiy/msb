@@ -9,7 +9,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import {setTimeout as delay} from 'node:timers/promises';
 import {mcpFixture} from './helpers/mcp-fixture.mjs';
-import {until} from './helpers/reminder-registration-fixture.mjs';
+import {waitForFinalReply} from './helpers/reminder-registration-fixture.mjs';
 import {runAgentTurn} from '../src/agent/turn.mjs';
 import {loadState,saveState} from '../src/state.mjs';
 import {resetCliConversation} from '../src/sessions/selection.mjs';
@@ -207,8 +207,7 @@ test('Telegram queues ordinary OpenClaw text without a Claude login',async t=>{
   await f.message('Проверь обычный ход');
   assert.doesNotMatch(f.messages.join('\n'),/Сначала подключи AI/);
   assert.match((await f.waitForPrompt()).prompt,/Проверь обычный ход/);
-  await until(()=>f.edits.some(text=>text.includes('OpenClaw fixture reply') && text.includes('⏱')),
-    'OpenClaw reply did not reach Telegram');
+  assert.match(await waitForFinalReply(f.messages), /OpenClaw fixture reply/);
   assert.equal((await loadState()).state.ccSessionId,ccSessionId);
 });
 
@@ -228,11 +227,11 @@ test('OpenClaw owner Telegram turn exposes the old journal read without local sc
   const line=JSON.stringify({ts:new Date(Date.now()-60_000).toISOString(),actionId:'oc-journal',name:'Прогон этого бота',status:'ok'})+'\n';
   await fs.writeFile(journal,line);
   await f.message('Покажи историю прогонов');
-  await until(()=>f.edits.some(text=>text.includes('⏱')),'OpenClaw fixture did not finish',10_000);
+  const reply = await waitForFinalReply(f.messages, { timeoutMs: 10_000 });
   const prompt=seen('prompt',await f.calls()).prompt;
   assert.match(prompt,/\[TASK_RUNS\].*\[TASK_RUNS:/s);
   assert.doesNotMatch(prompt,/\[SCHEDULE_TASK\]|\[SET_LIMIT/);
-  assert.ok(f.edits.some(text=>text.includes('Прогон этого бота — 1 прогон')));
+  assert.match(reply, /Прогон этого бота — 1 прогон/);
   assert.equal(process.env.AUTONOMY_MAX_ACTIONS,undefined);
   assert.equal(await fs.readFile(journal,'utf8'),line);
 });
@@ -252,11 +251,11 @@ test('OpenClaw can clean requested historical local rows while retaining its nat
   await fs.writeFile(file,JSON.stringify([local,native,auto]));
   await fs.writeFile(mapFile,map);
   await f.message('Убери завершённые разовые задачи');
-  await until(()=>f.edits.some(text=>text.includes('⏱')),'OpenClaw fixture did not finish',10_000);
+  const reply = await waitForFinalReply(f.messages, { timeoutMs: 10_000 });
   const prompt=seen('prompt',await f.calls()).prompt;
   assert.match(prompt,/\[CANCEL_SPENT\] отдельной строкой/);
   assert.doesNotMatch(prompt,/\[SCHEDULE_TASK\]|\[SET_LIMIT/);
-  assert.match(f.edits.at(-1),/Снёс 1[\s\S]*Не удалось снять: Нативный OpenClaw, Неизвестный старый маршрут/);
+  assert.match(reply,/Снёс 1[\s\S]*Не удалось снять: Нативный OpenClaw, Неизвестный старый маршрут/);
   assert.deepEqual(JSON.parse(await fs.readFile(file,'utf8')),[native,auto]);
   assert.equal(await fs.readFile(mapFile,'utf8'),map);
   assert.deepEqual((await f.calls()).map(row=>row.kind),['sessions','prompt']);
@@ -271,9 +270,9 @@ test('OpenClaw can cancel an explicitly local spent task by name without a nativ
   const file=path.join(actionRoot(),'actions.json');
   await fs.writeFile(file,JSON.stringify([action]));
   await f.message('Отмени старую фоновую задачу');
-  await until(()=>f.edits.some(text=>text.includes('⏱')),'OpenClaw fixture did not finish',10_000);
+  const reply = await waitForFinalReply(f.messages, { timeoutMs: 10_000 });
   assert.match(seen('prompt',await f.calls()).prompt,/\[CANCEL_TASK:/);
-  assert.match(f.edits.at(-1),/Отменил: «Старая разовая»/);
+  assert.match(reply,/Отменил: «Старая разовая»/);
   assert.deepEqual(JSON.parse(await fs.readFile(file,'utf8')),[]);
   assert.deepEqual((await f.calls()).map(row=>row.kind),['sessions','prompt']);
 });
@@ -288,7 +287,7 @@ test('OpenClaw bulk cancellation confirms locally owned rows and preserves uncer
   const before=JSON.stringify([local,native]);
   await fs.writeFile(file,before);
   await f.message('Удали все фоновые задачи');
-  await until(()=>f.edits.some(text=>text.includes('⏱')),'OpenClaw fixture did not finish',10_000);
+  await waitForFinalReply(f.messages, { timeoutMs: 10_000 });
   assert.match(seen('prompt',await f.calls()).prompt,/\[CANCEL_ALL\]/);
   const messageId=f.messages.findIndex(text=>text.startsWith('Снести все фоновые задачи'))+1;
   assert.ok(messageId);
@@ -309,11 +308,11 @@ test('OpenClaw reschedules an explicit local row while preserving ambiguous auto
   const before=JSON.stringify([local,native]);
   await fs.writeFile(file,before);
   await f.message('Перенеси две фоновые задачи');
-  await until(()=>f.edits.some(text=>text.includes('⏱')),'OpenClaw fixture did not finish',10_000);
+  const reply = await waitForFinalReply(f.messages, { timeoutMs: 10_000 });
   assert.match(seen('prompt',await f.calls()).prompt,/\[RESCHEDULE_TASK:/);
   const messageId=f.messages.findIndex(text=>text.startsWith('Перенести фоновую задачу «Локальная»'))+1;
   assert.ok(messageId);
-  assert.match(f.edits.at(-1),/перенос.*недоступен/i);
+  assert.match(reply,/перенос.*недоступен/i);
   assert.equal(await fs.readFile(file,'utf8'),before);
   await f.callback('rs:local',42,{messageId});
   assert.equal(f.callbackAnswers.at(-1)[0].text,'Перенёс');
@@ -332,10 +331,10 @@ test('OpenClaw task text changes only an explicitly local row',async t=>{
   const file=path.join(actionRoot(),'actions.json');
   await fs.writeFile(file,JSON.stringify([local,native]));
   await f.message('Измени текст сохранённых задач');
-  await until(()=>f.edits.some(text=>text.includes('⏱')),'OpenClaw fixture did not finish',10_000);
+  const reply = await waitForFinalReply(f.messages, { timeoutMs: 10_000 });
   assert.match(seen('prompt',await f.calls()).prompt,/\[EDIT_TASK:/);
-  assert.match(f.edits.at(-1),/Готово: у «Локальная» новый текст/);
-  assert.match(f.edits.at(-1),/Изменение текста задачи «Старая автоматическая».*недоступно/);
+  assert.match(reply,/Готово: у «Локальная» новый текст/);
+  assert.match(reply,/Изменение текста задачи «Старая автоматическая».*недоступно/);
   const [updated,retained]=JSON.parse(await fs.readFile(file,'utf8'));
   assert.equal(updated.task.text,'новый текст');
   assert.deepEqual(retained,native);
@@ -349,9 +348,9 @@ test('OpenClaw legacy timer conversation changes the shared local schedule witho
   const file=path.join(actionRoot(),'schedules.json');
   await fs.writeFile(file,JSON.stringify([timer]));
   await f.message('Выключи прежний таймер');
-  await until(()=>f.edits.some(text=>text.includes('⏱')),'OpenClaw fixture did not finish',10_000);
+  const reply = await waitForFinalReply(f.messages, { timeoutMs: 10_000 });
   assert.match(seen('prompt',await f.calls()).prompt,/\[TIMER_OFF:/);
-  assert.match(f.edits.at(-1),/Готово: таймер «Утренний» выключил/);
+  assert.match(reply,/Готово: таймер «Утренний» выключил/);
   assert.deepEqual(JSON.parse(await fs.readFile(file,'utf8')),[{...timer,enabled:false,disabledBy:'owner'}]);
   assert.deepEqual((await f.calls()).map(row=>row.kind),['sessions','prompt']);
 });

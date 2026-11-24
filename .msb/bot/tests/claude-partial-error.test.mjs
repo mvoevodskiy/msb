@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { setTimeout as delay } from 'node:timers/promises';
+import { fileURLToPath } from 'node:url';
 import { fixture } from './helpers/menu-fixture.mjs';
 import { block, payload, skillPath } from './helpers/skills-install-fixture.mjs';
 import { runAgentTurn } from '../src/agent/turn.mjs';
@@ -27,18 +28,19 @@ async function failTurn(t, { partial = false, apiFrame = false } = {}) {
   const config = { sessionId, draft, diagnostic, partial, apiFrame };
   const source = [
     '#!' + process.execPath,
-    'const fs = require("node:fs");',
+    'const readCliPrompt = require(' + JSON.stringify(fileURLToPath(new URL('./helpers/read-cli-prompt.cjs', import.meta.url))) + ');',
     'const c = ' + JSON.stringify(config) + ';',
     'const emit = frame => console.log(JSON.stringify(frame));',
-    'fs.readFileSync(0, "utf8");',
-    'emit({type:"system",subtype:"init",session_id:c.sessionId,model:"claude-sonnet-5-5"});',
-    'if (c.partial) emit({type:"assistant",message:{content:[{type:"text",text:c.draft}],',
-    '  usage:{input_tokens:12000,cache_read_input_tokens:50000,cache_creation_input_tokens:28000}}});',
-    'if (c.apiFrame) emit({type:"assistant",is_api_error_message:true,api_error_status:400,',
-    '  message:{content:[{type:"text",text:c.diagnostic}],usage:{input_tokens:0,output_tokens:0}}});',
-    'emit({type:"result",subtype:"success",is_error:true,result:c.diagnostic,session_id:c.sessionId,',
-    '  usage:{input_tokens:320000,output_tokens:2}});',
-    'process.exitCode = 1;',
+    'readCliPrompt(process.stdin, process.argv.slice(2)).then(() => {',
+    '  emit({type:"system",subtype:"init",session_id:c.sessionId,model:"claude-sonnet-5-5"});',
+    '  if (c.partial) emit({type:"assistant",message:{content:[{type:"text",text:c.draft}],',
+    '    usage:{input_tokens:12000,cache_read_input_tokens:50000,cache_creation_input_tokens:28000}}});',
+    '  if (c.apiFrame) emit({type:"assistant",is_api_error_message:true,api_error_status:400,',
+    '    message:{content:[{type:"text",text:c.diagnostic}],usage:{input_tokens:0,output_tokens:0}}});',
+    '  emit({type:"result",subtype:"success",is_error:true,result:c.diagnostic,session_id:c.sessionId,',
+    '    usage:{input_tokens:320000,output_tokens:2}});',
+    '  process.exitCode = 1;',
+    '});',
   ].join('\n');
   await fs.writeFile(path.join(bin, 'claude'), source, { mode: 0o700 });
   process.env.PATH = [bin, path.dirname(process.execPath), '/usr/bin', '/bin'].join(path.delimiter);
