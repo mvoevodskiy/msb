@@ -1,9 +1,13 @@
 /**
- * Grok Build ACP (`grok agent stdio`) with mid-turn interject when available.
+ * Grok Build ACP with mid-turn interject when available.
+ * Spawn is `grok --no-auto-update agent stdio`: `--no-auto-update` is a
+ * top-level flag, and `stdio` accepts no extra flags. A flag after `stdio`
+ * makes the CLI exit before initialize; the bot then reports "connection closed"
+ * even though settings already show a login.
  * Prefer `_x.ai/interject` (queues into the running turn without cancelling tools).
  * If the method is missing (-32601), fall back to Cursor-style send-now
- * (second `session/prompt`). Ordinary non-steer turns keep [grok.mjs](./grok.mjs) `-p`.
- * RPC → [acp-rpc](./acp-rpc.mjs).
+ * (second `session/prompt`). Ordinary non-steer turns keep [grok.mjs](./grok.mjs) `--single`.
+ * RPC → [acp-rpc](./acp-rpc.mjs). Check: [grok-acp](../tests/grok-acp.test.mjs).
  */
 import { spawn } from 'node:child_process';
 import { isGrokSessionId } from './grok.mjs';
@@ -28,6 +32,7 @@ export async function runGrokAcpTurn({
   const chunks = [];
   // Same as Cursor: ignore transcript replay from session/load.
   let collectText = false;
+  let stderrTail = '';
 
   const beginTurnText = () => {
     chunks.length = 0;
@@ -40,13 +45,27 @@ export async function runGrokAcpTurn({
     try { onSteerReady?.(null); } catch { /* */ }
   };
 
+  const cliDetail = (reason) => {
+    const tail = String(stderrTail)
+      .replace(/\x1b\[[0-9;]*m/g, '')
+      .trim()
+      .split(/\n/)
+      .filter(Boolean)
+      .slice(-3)
+      .join(' | ')
+      .slice(0, 400);
+    if (!tail) return reason;
+    if (reason && tail.toLowerCase().includes(String(reason).toLowerCase())) return tail;
+    return reason ? `${reason}: ${tail}` : tail;
+  };
+
   const finish = (failed = null) => {
     if (terminal) return;
     terminal = true;
     collectText = false;
     invalidate();
     parsedOut.text = chunks.join('').trim();
-    if (failed) parsedOut.turnFailed = failed;
+    if (failed) parsedOut.turnFailed = cliDetail(failed);
     else parsedOut.turnCompleted = true;
     terminalResolve();
   };
@@ -55,11 +74,11 @@ export async function runGrokAcpTurn({
 
   try {
     signal?.throwIfAborted();
-    child = spawn(bin, ['agent', 'stdio', '--no-auto-update'], {
+    child = spawn(bin, ['--no-auto-update', 'agent', 'stdio'], {
       cwd, env: childEnv, stdio: ['pipe', 'pipe', 'pipe'],
     });
     child.stderr.setEncoding('utf8');
-    child.stderr.on('data', () => {});
+    child.stderr.on('data', (chunk) => { stderrTail = (stderrTail + chunk).slice(-2000); });
 
     rpc = createAcpRpc(child, {
       timeoutMs,
