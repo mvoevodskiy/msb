@@ -189,6 +189,38 @@ export function createSqlStore(portal) {
         );
         return result.rows.map(rowTicket);
       },
+      async getBackup(installationId) {
+        const result = await query(
+          `SELECT installation_id, schedule, last_success_at, object_ref, restore_requested_at
+             FROM backup_accounts WHERE installation_id = $1`,
+          [installationId],
+        );
+        return result.rows[0] || null;
+      },
+      async saveBackup({ installationId, schedule, objectRef, lastSuccessAt }) {
+        const result = await query(
+          `INSERT INTO backup_accounts (installation_id, schedule, last_success_at, object_ref)
+           VALUES ($1, $2, $3, $4)
+           ON CONFLICT (installation_id) DO UPDATE
+             SET schedule = EXCLUDED.schedule,
+                 last_success_at = EXCLUDED.last_success_at,
+                 object_ref = EXCLUDED.object_ref,
+                 updated_at = now()
+           RETURNING installation_id, schedule, last_success_at, object_ref, restore_requested_at`,
+          [installationId, schedule, lastSuccessAt, objectRef],
+        );
+        return result.rows[0];
+      },
+      async requestRestore(installationId) {
+        const result = await query(
+          `UPDATE backup_accounts
+              SET restore_requested_at = now(), updated_at = now()
+            WHERE installation_id = $1
+          RETURNING installation_id, schedule, last_success_at, object_ref, restore_requested_at`,
+          [installationId],
+        );
+        return result.rows[0] || null;
+      },
     };
   }
 

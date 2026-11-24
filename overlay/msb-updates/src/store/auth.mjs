@@ -5,6 +5,7 @@ import { ensureDir, id, nowIso, randomToken, readJson, sha256Hex, writeJsonAtomi
 const ALL_SCOPES = new Set([
   'core:read', 'ext:read', 'core:publish', 'ext:publish',
   'install:empty', 'install:ext', 'web:open', 'claim:create',
+  'backup:report',
 ]);
 
 export function createAuthStore(dataDir) {

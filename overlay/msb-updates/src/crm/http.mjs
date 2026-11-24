@@ -118,16 +118,42 @@ export function createCrm(ctx) {
         return true;
       }
     }
-    const cardMatch = url.pathname.match(/^\/crm\/installations\/([^/]+)$/);
-    if (req.method === 'GET' && cardMatch) {
-      const installation = await ctx.clients.getInstallation(decodeURIComponent(cardMatch[1]));
+    const cardMatch = url.pathname.match(/^\/crm\/installations\/([^/]+)(?:\/(restore))?$/);
+    if (cardMatch) {
+      const installationId = decodeURIComponent(cardMatch[1]);
+      const installation = await ctx.clients.getInstallation(installationId);
       const card = publicCard(installation);
       if (!card) {
         sendHtml(res, 404, renderLogin({ error: 'Установка не найдена.' }));
         return true;
       }
-      sendHtml(res, 200, renderCard({ installation: card, csrf: session.csrf }));
-      return true;
+      if (req.method === 'POST' && cardMatch[2] === 'restore') {
+        const form = await readForm(req);
+        if (form.get('csrf') !== session.csrf || !ctx.backups) {
+          sendHtml(res, 403, renderLogin({ error: 'Сессия не подтверждена.' }));
+          return true;
+        }
+        try {
+          await ctx.backups.requestRestore(card.id);
+        } catch (err) {
+          if (err.code !== 'no_backup') throw err;
+          sendHtml(res, 400, renderCard({
+            installation: card,
+            csrf: session.csrf,
+            backup: null,
+            error: 'Копии ещё нет.',
+          }));
+          return true;
+        }
+        res.writeHead(303, { location: `/crm/installations/${encodeURIComponent(card.id)}` });
+        res.end();
+        return true;
+      }
+      if (req.method === 'GET' && !cardMatch[2]) {
+        const backup = ctx.backups ? await ctx.backups.get(card.id) : undefined;
+        sendHtml(res, 200, renderCard({ installation: card, csrf: session.csrf, backup }));
+        return true;
+      }
     }
     if (req.method === 'GET' && url.pathname === '/crm') {
       const installations = (await ctx.clients.listInstallations()).map(publicCard);

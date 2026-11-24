@@ -70,7 +70,7 @@ ${queue}
 </form>`);
 }
 
-export function renderCard({ installation, csrf }) {
+export function renderCard({ installation, csrf, backup, error = '' }) {
   const rows = [
     ['Владелец', ownerLine(installation)],
     ['Установка', installation.id],
@@ -80,11 +80,27 @@ export function renderCard({ installation, csrf }) {
     ['Площадка', installation.provider || ''],
   ];
   const table = rows.map(([label, value]) => `<p><b>${escapeHtml(label)}.</b> ${escapeHtml(value)}</p>`).join('');
+  let copies = '';
+  if (backup !== undefined) {
+    copies = backup
+      ? `<h2>Копии</h2>
+<p>Расписание: ${escapeHtml(backup.schedule || 'не задано')}. Последняя: ${escapeHtml(backup.last_success_at || 'нет')}. Объект: ${escapeHtml(backup.object_ref || 'нет')}.</p>
+${backup.restore_requested_at
+    ? `<p>Восстановление запрошено.</p>`
+    : `<form method="post" action="/crm/installations/${escapeHtml(installation.id)}/restore">
+  <input type="hidden" name="csrf" value="${escapeHtml(csrf)}">
+  <button type="submit">Запросить восстановление</button>
+</form>`}`
+      : '<h2>Копии</h2><p>Копий пока нет.</p>';
+  }
+  const message = error ? `<p class="err">${escapeHtml(error)}</p>` : '';
   return page('Карточка', `<p><a href="/crm">К списку</a></p>
 <h1>${escapeHtml(ownerLine(installation))}</h1>
 ${table}
 <h2>Переписка</h2>
 <p>Переписки пока нет.</p>
+${copies}
+${message}
 <form method="post" action="/crm/logout">
   <input type="hidden" name="csrf" value="${escapeHtml(csrf)}">
   <button type="submit">Выйти</button>

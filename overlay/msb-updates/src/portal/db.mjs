@@ -31,12 +31,18 @@ export async function openPortal(databaseUrl) {
   }
   const { default: pg } = await import('pg');
   const pool = new pg.Pool({ connectionString: url });
+  const client = await pool.connect();
   try {
-    await applySchema((statement) => pool.query(statement), schemaSql);
+    await client.query('SELECT pg_advisory_lock(814201)');
+    await applySchema((statement) => client.query(statement), schemaSql);
+    await client.query('SELECT pg_advisory_unlock(814201)');
   } catch (err) {
+    await client.query('SELECT pg_advisory_unlock(814201)').catch(() => {});
+    client.release();
     await pool.end().catch(() => {});
     throw err;
   }
+  client.release();
   return {
     enabled: true,
     async findGrant(installationId, capability) {

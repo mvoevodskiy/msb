@@ -68,3 +68,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS tickets_one_open_tg
 CREATE UNIQUE INDEX IF NOT EXISTS outbox_operation
   ON outbox (operation_id)
   WHERE operation_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS backup_accounts (
+  installation_id text PRIMARY KEY REFERENCES installations (id),
+  schedule text,
+  last_success_at timestamptz,
+  object_ref text,
+  restore_requested_at timestamptz,
+  updated_at timestamptz NOT NULL DEFAULT now()
+);

@@ -12,6 +12,7 @@ import { createAccess } from '../src/portal/access.mjs';
 import { openPortal } from '../src/portal/db.mjs';
 import { createSqlStore } from '../src/portal/sql-store.mjs';
 import { createTicketService } from '../src/portal/ticket-service.mjs';
+import { createBackupService } from '../src/portal/backups.mjs';
 import { createSupportBot } from '../src/bot/support.mjs';
 import { ensureDir } from '../src/util.mjs';
 
@@ -37,8 +38,9 @@ const access = createAccess({
   findGrant: (installationId, capability) => portal.findGrant(installationId, capability),
 });
 const tickets = portal.enabled ? createTicketService(createSqlStore(portal)) : null;
+const backups = tickets ? createBackupService(tickets.store) : null;
 
-const ctx = { config, auth, releases, intents, worker, clients, secretBox, portal, access, tickets };
+const ctx = { config, auth, releases, intents, worker, clients, secretBox, portal, access, tickets, backups };
 const botApp = createInstallerBot(ctx);
 if (botApp) ctx.botHandleUpdate = botApp.handleUpdate;
 const supportBot = createSupportBot(ctx);

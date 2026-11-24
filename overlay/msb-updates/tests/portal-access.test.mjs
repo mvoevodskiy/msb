@@ -79,7 +79,7 @@ test('portal schema creates the client, ticket and grant tables', async () => {
   const applied = [];
   assert.deepEqual(await applySchema(async (statement) => { applied.push(statement); }, portalSchemaSql()), statements);
   const text = applied.join('\n');
-  for (const table of ['clients', 'installations', 'tickets', 'ticket_messages', 'outbox', 'installation_capabilities']) {
+  for (const table of ['clients', 'installations', 'tickets', 'ticket_messages', 'outbox', 'installation_capabilities', 'backup_accounts']) {
     assert.match(text, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}\\b`));
   }
   assert.match(text, /CREATE TABLE IF NOT EXISTS installation_capabilities\b/);

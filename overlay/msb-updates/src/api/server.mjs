@@ -5,6 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readJsonBody, sendJson } from '../util.mjs';
 import { createCrm } from '../crm/http.mjs';
+import { normalizeBackupReport, publicBackup } from '../portal/backups.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const WEB_ROOT = path.resolve(__dirname, '../../web/public');
@@ -207,6 +208,23 @@ export function createServer(ctx) {
       if (!meta) return sendJson(res, 401, { error: 'unauthorized' });
       const list = await intents.listByUser(meta.tg_user_id);
       return sendJson(res, 200, { intents: list.map(publicIntent) });
+    }
+
+    const backupMatch = pathname.match(/^\/v1\/installations\/([^/]+)\/backup-report$/);
+    if (backupMatch && req.method === 'POST') {
+      if (!meta) return sendJson(res, 401, { error: 'unauthorized' });
+      requireScope(meta, 'backup:report');
+      if (!ctx.backups) return sendJson(res, 503, { error: 'portal_unavailable' });
+      const installation = await ctx.clients.getInstallation(decodeURIComponent(backupMatch[1]));
+      if (!installation) return sendJson(res, 404, { error: 'not found' });
+      if (Number(installation.owner_tg_user_id) !== Number(meta.tg_user_id)) {
+        return sendJson(res, 403, { error: 'forbidden' });
+      }
+      const decision = await ctx.access.allow(installation, 'backup');
+      if (!decision.allowed) return sendJson(res, 403, { error: 'capability_denied' });
+      const report = normalizeBackupReport(await readJsonBody(req));
+      const saved = await ctx.backups.report({ installation, ...report });
+      return sendJson(res, 200, { backup: publicBackup(saved) });
     }
 
     sendJson(res, 404, { error: 'not found' });

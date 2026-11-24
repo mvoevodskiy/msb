@@ -15,6 +15,7 @@ export function createMemoryStore() {
     tickets: [],
     messages: [],
     outbox: [],
+    backups: [],
   };
   let chain = Promise.resolve();
 
@@ -129,6 +130,32 @@ export function createMemoryStore() {
       },
       async listOpen() {
         return state.tickets.filter((item) => item.status === 'open').map(copy);
+      },
+      async getBackup(installationId) {
+        return copy(state.backups.find((item) => item.installation_id === installationId) || null);
+      },
+      async saveBackup({ installationId, schedule, objectRef, lastSuccessAt }) {
+        let row = state.backups.find((item) => item.installation_id === installationId);
+        if (!row) {
+          row = {
+            installation_id: installationId,
+            schedule: null,
+            last_success_at: null,
+            object_ref: null,
+            restore_requested_at: null,
+          };
+          state.backups.push(row);
+        }
+        row.schedule = schedule;
+        row.last_success_at = lastSuccessAt;
+        row.object_ref = objectRef;
+        return copy(row);
+      },
+      async requestRestore(installationId) {
+        const row = state.backups.find((item) => item.installation_id === installationId);
+        if (!row) return null;
+        row.restore_requested_at = new Date().toISOString();
+        return copy(row);
       },
     };
   }
