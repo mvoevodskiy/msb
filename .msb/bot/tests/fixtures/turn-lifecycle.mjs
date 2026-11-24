@@ -6,6 +6,7 @@ import cp from 'node:child_process';
 import { syncBuiltinESMExports } from 'node:module';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
+import readCliPrompt from '../helpers/read-cli-prompt.cjs';
 
 const scenario = process.argv[2];
 const partialStop = ['claude-stop-partial', 'claude-reply-stop-partial'].includes(scenario);
@@ -129,9 +130,8 @@ try {
       if (!has(`cli-abort:${number}`)) report.events.push(`cli-abort:${number}`);
       return true; // Closing is deliberately controlled independently from abort.
     };
-    child.stdin.setEncoding('utf8');
-    child.stdin.on('data', (text) => { record.prompt += text; });
-    child.stdin.on('end', () => {
+    readCliPrompt(child.stdin, args).then(prompt => {
+      record.prompt = prompt;
       emit({ type: 'system', subtype: 'provider', provider_id: record.provider });
       emit({ type: 'system', subtype: 'init', session_id: nativeId, model: 'fixture-model' });
       report.events.push(`cli-init:${number}`);

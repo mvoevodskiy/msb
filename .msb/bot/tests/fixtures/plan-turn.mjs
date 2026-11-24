@@ -6,6 +6,7 @@ import cp from 'node:child_process';
 import { EventEmitter } from 'node:events';
 import { PassThrough } from 'node:stream';
 import { syncBuiltinESMExports } from 'node:module';
+import readCliPrompt from '../helpers/read-cli-prompt.cjs';
 const provider = process.argv[2];
 const calls = [], cleanups = [];
 const sessionId = provider === 'claude' ? 'claude-plan-fixture' : 'ext:codex:0199a213-81c0-7800-8aa1-bbab2a035a53';
@@ -16,8 +17,8 @@ cp.spawn = (command, args, options) => {
   const child = new EventEmitter();
   child.stdin = new PassThrough(); child.stdout = new PassThrough(); child.stderr = new PassThrough(); child.kill = () => true;
   const call = { args, provider: options.env.MSB_TURN_PROVIDER, prompt: '' }; calls.push(call);
-  child.stdin.on('data', value => { call.prompt += value; });
-  child.stdin.on('finish', () => queueMicrotask(() => {
+  readCliPrompt(child.stdin, args).then(prompt => {
+    call.prompt = prompt;
     const text = calls.length === 1 ? 'Согласуем план.\n[КНОПКИ: plan]' : 'Продолжение завершено';
     for (const event of [
       { type: 'system', subtype: 'provider', provider_id: provider },
@@ -26,7 +27,7 @@ cp.spawn = (command, args, options) => {
       { type: 'result', subtype: 'success', session_id: sessionId, result: text, is_error: false, usage: { input_tokens: 20, output_tokens: 5 } },
     ]) child.stdout.write(JSON.stringify(event) + '\n');
     child.stdout.end(); child.stderr.end(); child.emit('close', 0, null);
-  }));
+  });
   return child;
 };
 syncBuiltinESMExports();

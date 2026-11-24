@@ -6,6 +6,7 @@ import {syncBuiltinESMExports} from 'node:module';
 import {EventEmitter} from 'node:events';
 import {PassThrough} from 'node:stream';
 import {fileURLToPath,pathToFileURL} from 'node:url';
+import readCliPrompt from '../helpers/read-cli-prompt.cjs';
 const [provider,scenario]=process.argv.slice(2),source=process.env.FIXTURE_SESSION_SOURCE_ROOT || fileURLToPath(new URL('../../../../',import.meta.url));
 if(!['claude','codex'].includes(provider)||!['resume','preparing','existing','same-id','same-first','provider-first','after-reset','after-project'].includes(scenario))throw Error('Unknown resume fixture');
 const load=relative=>import(pathToFileURL(path.join(source,relative)));
@@ -46,7 +47,7 @@ try{
   call.systemPrompt=args[args.indexOf('--append-system-prompt')+1] || '';
   call.respond=id=>{if(call.closed)return;call.closed=true;child.stdout.write(JSON.stringify({type:'system',subtype:'init',session_id:id,provider_id:call.provider,model:'fixture-model'})+'\n');child.stdout.write(JSON.stringify({type:'result',subtype:'success',session_id:id,is_error:false,result:'fixture-resumed'})+'\n');child.stdout.end();child.stderr.end();child.emit('close',0,null);};
   child.kill=()=>{if(!call.closed){call.closed=true;child.stdout.end();child.stderr.end();child.emit('close',null,'SIGINT');}return true;};
-  child.stdin.on('finish',()=>{call.ready=true;});calls.push(call);return child;
+  readCliPrompt(child.stdin,args).then(()=>{call.ready=true;});calls.push(call);return child;
  };syncBuiltinESMExports();
  const switchTo=p=>updateState(s=>{switchProviderSession(s,currentSessionProvider(s),p);s.extAuthBypass=p;return s;});
  let held=false;
