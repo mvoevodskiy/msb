@@ -91,12 +91,17 @@ ${BLANK}`,
   };
 }
 
-export function notificationsScreen() {
+export function notificationsScreen({ labels = [], complete = true } = {}) {
+  const lines = ['<b>🔕 Отключённые уведомления</b>', '', 'Сохранённые настройки прежнего ядра.'];
+  if (labels.length) {
+    lines.push(...labels.map(label => `• ${escapeHtml(label)}`));
+  } else if (complete) {
+    lines.push('Ничего не отключено.');
+  }
+  if (!complete) lines.push('Часть настроек не удалось прочитать.');
+  lines.push(BLANK);
   return {
-    text: `<b>🔕 Отключённые уведомления</b>
-
-Этот экран пока не читает список отключённых уведомлений.
-${BLANK}`,
+    text: lines.join('\n'),
     keyboard: new InlineKeyboard().text('« Назад', 'settings:back'),
   };
 }
