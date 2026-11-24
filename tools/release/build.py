@@ -18,7 +18,11 @@ SINGLE = {
     'tools/release/profiles/jar1.json': 'bot/runtime-profile.json',
 }
 TREES = {'.msb/bot/src/': 'bot/src/', '.msb/bot/shared/': 'bot/shared/', 'overlay/bot/ext/': 'bot/ext/'}
-CHECKS = ('.msb/bot/tests/', 'overlay/bot/ext/tests/', 'bootstrap/workspace-seed/')
+CHECK_TREES = ('.msb/bot/tests/', 'overlay/bot/ext/tests/', 'bootstrap/workspace-seed/', 'tools/release/tests/')
+CHECK_FILES = {
+    'usr-local-lib/msb-engine/client_markers.py',
+    'usr-local-lib/msb-engine/client_fs.py',
+}
 
 def git(repo, *args):
     return subprocess.check_output(['git', '-C', str(repo), *args])
@@ -63,7 +67,7 @@ def build(repo, ref, output):
     files, sources, tooling, seen = [], [], [], set()
     for source, mode, kind, oid in tracked(repo, commit):
         target = runtime_target(source)
-        test_source = source.startswith(CHECKS) or source.startswith('tools/release/tests/')
+        test_source = source in CHECK_FILES or source.startswith(CHECK_TREES)
         shared_link = source == 'overlay/bot/shared'
         tool_source = source.startswith('tools/release/') and source.endswith(('.py', '.mjs')) and '/tests/' not in source
         if not (target or test_source or shared_link or tool_source):
