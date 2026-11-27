@@ -1,11 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Collector } from '../../src/collector/collect.ts';
 import { SNAPSHOT_SCHEMA, type Snapshot } from '../../src/shared/types.ts';
-import type { ExecResult } from '../../src/collector/util.ts';
+import { shortHash, type ExecResult } from '../../src/collector/util.ts';
 import { FIX, NOW, fakeExec, fixtureConfig } from './helpers.ts';
 
 function collector(exec = fakeExec(), cfg = fixtureConfig()) {
@@ -106,6 +106,49 @@ test('службы: необязательная без юнита скрыта,
     ['down', 'failed', null, false],
   ]);
   assert.deepEqual(s.platform, { total: 2, ok: 1, failed: 1 });
+});
+
+test('совпавшие исходные ID задач двух ботов и таймера ведут в свои карточки', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'pult-task-owners-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const createdAt = '2026-10-29T10:00:00.000Z';
+  const id = 'conv-prompt-' + createdAt;
+  for (const [bot, cron, name] of [
+    ['alpha', '0 * * * *', 'Задача Альфы'],
+    ['beta', '5 * * * *', 'Задача Беты'],
+  ]) {
+    const dir = join(root, bot);
+    mkdirSync(join(dir, 'autonomy'), { recursive: true });
+    const actions = [{ id, name, createdAt, trigger: { kind: 'cron', cron }, task: { kind: 'prompt' } }];
+    if (bot === 'alpha') actions.push({
+      id: 'unique-action', name: 'Отдельная задача', createdAt,
+      trigger: { kind: 'cron', cron: '15 * * * *' }, task: { kind: 'prompt' },
+    });
+    writeFileSync(join(dir, 'actions.json'), JSON.stringify(actions));
+    writeFileSync(join(dir, 'autonomy/runs.jsonl'), JSON.stringify({
+      ts: '2026-10-29T10:30:00.000Z', actionId: id, kind: 'prompt', status: 'error',
+    }) + '\n');
+  }
+  const base = fixtureConfig();
+  const s = await collector(fakeExec(), fixtureConfig({
+    botsRoot: root, bots: base.bots.slice(0, 2),
+    timers: [{ ...base.timers.find(t => t.id === 'backup')!, id }],
+  })).collect();
+  const cards = new Map(s.tasks.map(task => [task.id, task]));
+  assert.equal(cards.size, s.tasks.length);
+  assert.equal(s.tasks.find(task => task.name === 'Отдельная задача')?.id, shortHash('unique-action'));
+  for (const [name, bot] of [
+    ['Задача Альфы', 'alpha'], ['Задача Беты', 'beta'], ['Резервная копия', 'server'],
+  ]) {
+    const link = s.upcoming.find(run => run.name === name);
+    assert.equal(cards.get(link?.taskId ?? '')?.bot, bot);
+  }
+  const warnings = s.attention.filter(a => a.key.startsWith('task:') && a.key.endsWith(':error'));
+  assert.equal(new Set(warnings.map(a => a.key)).size, 2);
+  for (const warning of warnings) {
+    const card = cards.get(warning.link?.id ?? '');
+    assert.ok(card && warning.text.includes(card.name));
+  }
 });
 
 test('проекты, вопросы, подписка, остатки, ближайшие запуски', async () => {

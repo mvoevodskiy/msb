@@ -12,7 +12,7 @@ import { SNAPSHOT_SCHEMA, type Balance, type Bot, type ServerState, type Service
 import { listBots, type PultConfig } from '../shared/config.ts';
 import { expandHome, openAsks, readAsks, readProjects } from '../shared/registry.ts';
 import { analyze, type ServiceStatus, type TaskFindings } from './analyze.ts';
-import { execCmd, iso, type Exec, Problems, readJsonFile, utcDay } from './util.ts';
+import { execCmd, iso, type Exec, Problems, readJsonFile, shortHash, utcDay } from './util.ts';
 import { parseBootMs, readServer, type CpuSample } from './sources/system.ts';
 import { journalRuns, prop, serverTimeZone, showUnits, unitHealth, type Props, type UnitHealth } from './sources/systemd.ts';
 import { cleanTaskName, readDaily, readBotData, type BotData, type RateLimitInfo, type TraceRec, type TranscriptRec } from './sources/journal.ts';
@@ -130,7 +130,7 @@ export class Collector {
 
     // ---- боты и их задачи ----
     const bots: Bot[] = [];
-    const botTasks: { task: Task; findings: Finding[]; repo: string | null }[] = [];
+    const botTasks: { task: Task; findings: Finding[]; repo: string | null; idSource: string }[] = [];
     const usageResult = await problems.guardAsync('Расход Codex', () => this.codexUsage.collect(
       cfg.bots.map(b => ({ id: b.id, directory: join(cfg.botsRoot, b.id) })), tz, now), null);
     if (usageResult?.failed) problems.add('Расход Codex', new Error('Не удалось получить статистику Codex'));
@@ -149,7 +149,7 @@ export class Collector {
           continue;
         }
         const built = problems.guard(`задача бота «${b.name}»`, () => buildTask(a, data.runs, { botId: b.id, botName: b.name, config: cfg, now, problems }), null);
-        if (built) botTasks.push(built);
+        if (built) botTasks.push({ ...built, idSource: JSON.stringify(['action', b.id, a.id]) });
       }
 
       const procs = h.controlGroup && bootMs !== null && (h.state === 'active' || h.state === 'reloading')
@@ -184,14 +184,23 @@ export class Collector {
     const timerTasks = cfg.timers.map((t, i) => {
       const statusData = t.statusFile ? problems.guard(`таймер «${t.name}»: файл состояния`, () => readJsonFile(t.statusFile!), null) : null;
       const botName = t.bot === 'server' ? 'Сервер' : cfg.bots.find(b => b.id === t.bot)?.name ?? t.bot;
-      return buildTimerTask({
+      const timer = buildTimerTask({
         cfg: t, botName, timer: units.get(t.timer), service: units.get(t.service), journal: journals[i], statusData,
         serverTz: this.serverTz, displayTz: tz, missedRunsWarn: cfg.thresholds.missedRunsWarn, now,
       });
+      return { ...timer, idSource: JSON.stringify(['timer', t.id]) };
     });
 
-    // самый дорогой фон за сутки — одна задача на весь сервер
     const all = [...botTasks, ...timerTasks];
+    // Ссылки расписания и предупреждений строятся после разрешения совпадений.
+    // У задач без совпадений остаются прежние ссылки.
+    const idCounts = new Map<string, number>();
+    for (const { task } of all) idCounts.set(task.id, (idCounts.get(task.id) ?? 0) + 1);
+    for (const { task, idSource } of all) {
+      if ((idCounts.get(task.id) ?? 0) > 1) task.id += '-' + shortHash(idSource);
+    }
+
+    // самый дорогой фон за сутки — одна задача на весь сервер
     const priciest = all.reduce<(typeof all)[number] | null>((m, t) => (!m || t.task.stats24h.tokens > m.task.stats24h.tokens ? t : m), null);
     if (priciest && priciest.task.stats24h.tokens > cfg.thresholds.expensiveTaskTokens24h) {
       priciest.findings.push(expensiveFinding(priciest.task.stats24h.tokens));
