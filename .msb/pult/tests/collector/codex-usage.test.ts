@@ -54,7 +54,7 @@ test('a fully metered saved prompt needs no native session graph', async t => {
   assert.equal(mixed.usage.get('other')?.incomplete, true);
 });
 
-test('an absent background journal warns only when completed prompt work is recorded', async t => {
+test('an absent or empty background journal warns only when completed prompt work is recorded', async t => {
   const root = await mkdtemp(join(tmpdir(), 'pult-codex-empty-journal-'));
   t.after(() => rm(root, { recursive: true, force: true }));
   assert.equal((await readSavedCodexUsage(root)).partial, false);
@@ -70,9 +70,17 @@ test('an absent background journal warns only when completed prompt work is reco
   ]));
   assert.equal((await readSavedCodexUsage(root)).partial, false);
   assert.equal((await reader.collect(bots, 'UTC', new Date(when))).usage.get('default')?.incomplete, false);
+  await mkdir(join(root, 'autonomy'));
+  const journal = join(root, 'autonomy/runs.jsonl');
+  await writeFile(journal, '');
+  assert.equal((await readSavedCodexUsage(root)).partial, false);
+  await rm(journal);
   await writeFile(join(root, 'actions.json'), JSON.stringify([
     { task: { kind: 'prompt' }, lastRunAt: when, lastStatus: 'ok', lastOutcome: 'ok' },
   ]));
+  assert.equal((await readSavedCodexUsage(root)).partial, true);
+  assert.equal((await reader.collect(bots, 'UTC', new Date(when))).usage.get('default')?.incomplete, true);
+  await writeFile(journal, '');
   assert.equal((await readSavedCodexUsage(root)).partial, true);
   assert.equal((await reader.collect(bots, 'UTC', new Date(when))).usage.get('default')?.incomplete, true);
 });

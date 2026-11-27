@@ -149,7 +149,10 @@ export async function readSavedCodexUsage(directory: string): Promise<SavedUsage
   let stat;
   try { stat = fstatSync(fd); } catch { closeSync(fd); throw new Error('Не удалось проверить журнал фоновых задач'); }
   if (!stat.isFile()) { closeSync(fd); throw new Error('Журнал фоновых задач не является файлом'); }
-  if (!stat.size) { closeSync(fd); return { rows: [], unknown: [], partial: false, hasCodex: false }; }
+  if (!stat.size) {
+    closeSync(fd);
+    return { rows: [], unknown: [], partial: missingSavedJournalIsPartial(directory), hasCodex: false };
+  }
   const start = Math.max(0, stat.size - 128 * 1024 * 1024);
   const rows = new Map<string, SavedUsageRow | null>();
   const unknown: string[] = [];
