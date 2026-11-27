@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Collector } from '../../src/collector/collect.ts';
@@ -221,6 +221,30 @@ test('новые и удалённые каталоги ботов учитыв�
   rmSync(join(root, 'beta'), { recursive: true });
   const third = await c.collect();
   assert.deepEqual(third.bots.map(b => b.id), ['alpha', 'gamma']);
+});
+
+test('недоступный каталог ботов отмечается без потери последнего списка', async t => {
+  const parent = mkdtempSync(join(tmpdir(), 'pult-bots-unavailable-'));
+  t.after(() => rmSync(parent, { recursive: true, force: true }));
+  const root = join(parent, 'bots');
+  const moved = join(parent, 'offline');
+  for (const id of ['alpha', 'beta']) mkdirSync(join(root, id), { recursive: true });
+  const c = collector(fakeExec(), fixtureConfig({
+    botsRoot: root, bots: fixtureConfig().bots.slice(0, 1), timers: [],
+  }));
+
+  assert.deepEqual((await c.collect()).bots.map(b => b.id), ['alpha', 'beta']);
+  renameSync(root, moved);
+  const unavailable = await c.collect();
+  assert.deepEqual(unavailable.bots.map(b => b.id), ['alpha', 'beta']);
+  assert.ok(unavailable.sourceErrors.some(e => e.source === 'каталог ботов'));
+  assert.ok(unavailable.attention.some(a => a.key === 'source:каталог ботов'));
+
+  renameSync(moved, root);
+  rmSync(join(root, 'beta'), { recursive: true });
+  const restored = await c.collect();
+  assert.deepEqual(restored.bots.map(b => b.id), ['alpha']);
+  assert.ok(!restored.sourceErrors.some(e => e.source === 'каталог ботов'));
 });
 
 test('процессор: второй тик считает по разнице с первым', async () => {

@@ -173,7 +173,12 @@ async function check(asJson: boolean, env: NodeJS.ProcessEnv): Promise<number> {
   let cfg: PultConfig | null = null;
   try {
     const config = loadConfig();
-    cfg = { ...config, bots: listBots(config) };
+    cfg = config;
+    try {
+      cfg = { ...config, bots: listBots(config) };
+    } catch (e) {
+      add(false, 'каталог ботов', scrub(firstLine((e as Error).message)));
+    }
     add(true, 'конфиг', `${configPath(env)}: ботов ${cfg.bots.length}, служб ${cfg.services.length}, таймеров ${cfg.timers.length}`);
   } catch (e) {
     add(false, 'конфиг', e instanceof ConfigError ? e.message.replace(/\n\s*-\s*/g, '; ') : (e as Error).message);

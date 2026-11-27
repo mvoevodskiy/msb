@@ -9,7 +9,7 @@ import { CodexQuota, readCodexLimits } from './sources/codex-quota.ts';
 import { CodexUsageReader } from './sources/codex-usage.ts';
 import { performance } from 'node:perf_hooks';
 import { SNAPSHOT_SCHEMA, type Balance, type Bot, type ServerState, type Service, type Snapshot, type Subscription, type Task } from '../shared/types.ts';
-import { listBots, type PultConfig } from '../shared/config.ts';
+import { listBots, type BotConfig, type PultConfig } from '../shared/config.ts';
 import { expandHome, openAsks, readAsks, readProjects } from '../shared/registry.ts';
 import { analyze, type ServiceStatus, type TaskFindings } from './analyze.ts';
 import { execCmd, iso, type Exec, Problems, readJsonFile, shortHash, utcDay } from './util.ts';
@@ -52,6 +52,7 @@ const health = (h: UnitHealth) => ({ state: h.state, since: h.since, restarts: h
 
 export class Collector {
   private readonly config: PultConfig;
+  private botInventory: BotConfig[];
   private readonly procRoot: string;
   private readonly cgroupRoot: string;
   private readonly diskPath: string;
@@ -69,6 +70,7 @@ export class Collector {
 
   constructor(config: PultConfig, opts: CollectorOptions = {}) {
     this.config = config;
+    this.botInventory = config.bots;
     const quotaEnv = opts.env ?? process.env;
     const profileBin = join(dirname(config.botsRoot), 'ext-tools/bin/codex');
     const binary = quotaEnv.PULT_CODEX_BIN || (existsSync(profileBin) ? profileBin : 'codex');
@@ -100,9 +102,10 @@ export class Collector {
     const t0 = performance.now();
     const now = this.clock();
     const nowMs = now.getTime();
-    const cfg = { ...this.config, bots: listBots(this.config) };
-    const tz = cfg.timezone;
     const problems = new Problems();
+    this.botInventory = problems.guard('каталог ботов', () => listBots(this.config), this.botInventory);
+    const cfg = { ...this.config, bots: this.botInventory };
+    const tz = cfg.timezone;
     const git = new GitCache(this.exec);
 
     // ---- параллельно: процессор, systemd, журналы таймеров, Deepgram ----

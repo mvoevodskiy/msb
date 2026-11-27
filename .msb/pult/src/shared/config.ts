@@ -30,14 +30,9 @@ export function botUnitName(id: string): string {
  */
 export function discoverExtraBots(botsRoot: string, configured: BotConfig[]): BotConfig[] {
   const known = new Set(configured.map(b => b.id));
-  let dirs: string[] = [];
-  try {
-    dirs = readdirSync(botsRoot, { withFileTypes: true })
-      .filter(d => d.isDirectory() && !d.name.startsWith('.') && /^[A-Za-z0-9_-]+$/.test(d.name))
-      .map(d => d.name);
-  } catch {
-    return [];
-  }
+  const dirs = readdirSync(botsRoot, { withFileTypes: true })
+    .filter(d => d.isDirectory() && !d.name.startsWith('.') && /^[A-Za-z0-9_-]+$/.test(d.name))
+    .map(d => d.name);
   return dirs.filter(id => !known.has(id)).map(id => ({
     id,
     name: KNOWN_BOT_NAMES[id] ?? id,
