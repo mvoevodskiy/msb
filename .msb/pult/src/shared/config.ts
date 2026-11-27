@@ -46,6 +46,11 @@ export function discoverExtraBots(botsRoot: string, configured: BotConfig[]): Bo
   }));
 }
 
+/** Снимок объявленных и найденных на диске ботов для одного прохода сборщика. */
+export function listBots(config: Pick<PultConfig, 'botsRoot' | 'bots'>): BotConfig[] {
+  return [...config.bots, ...discoverExtraBots(config.botsRoot, config.bots)];
+}
+
 export interface BotConfig {
   id: string;
   name: string;
@@ -106,6 +111,7 @@ export interface PultConfig {
   timezone: string;
   intervalSec: number;
   botsRoot: string;
+  /** Только явно объявленные боты. Рабочий список собирает listBots. */
   bots: BotConfig[];
   services: ServiceConfig[];
   /** Служебные юниты платформы ботов — в снимок идут только счётчики. */
@@ -330,10 +336,8 @@ export function validateConfig(data: unknown, source = 'pult.config.json'): Pult
     const n = c.problems.length;
     throw new ConfigError(`Конфиг ${source}: ${n} ${plural(n, 'ошибка', 'ошибки', 'ошибок')}`, c.problems);
   }
-  const root = expandHome(botsRoot);
-  const allBots = [...bots, ...discoverExtraBots(root, bots)];
   return {
-    host, timezone, intervalSec, botsRoot: root, bots: allBots, services, platformUnits, timers, taskRules,
+    host, timezone, intervalSec, botsRoot: expandHome(botsRoot), bots, services, platformUnits, timers, taskRules,
     registry, balances, thresholds,
   };
 }

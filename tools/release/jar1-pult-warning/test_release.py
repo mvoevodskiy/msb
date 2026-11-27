@@ -33,18 +33,18 @@ class ReleaseContract(unittest.TestCase):
         deploy.validate_manifest(m)
         deploy.validate_report(report(m), m, 'f' * 64)
 
-    def test_patch_requires_existing_collector_or_ui_targets_and_matching_proof(self):
+    def test_patch_allows_collector_config_and_ui_targets_with_matching_proof(self):
         m = manifest()
         m.update(scope=deploy.PATCH_SCOPE, base_commit='d' * 40)
-        name = 'src/ui/view-overview.js'
-        m['pult_files'].append({'root': 'pult', 'relative': name, 'source': '.msb/pult/' + name,
-                                'before_sha256': 'a' * 64, 'after_sha256': 'b' * 64})
-        m['pult_baseline_inventory'].append({'relative': name, 'sha256': 'a' * 64})
+        for name in ('src/shared/config.ts', 'src/ui/view-overview.js'):
+            m['pult_files'].append({'root': 'pult', 'relative': name, 'source': '.msb/pult/' + name,
+                                    'before_sha256': 'a' * 64, 'after_sha256': 'b' * 64})
+            m['pult_baseline_inventory'].append({'relative': name, 'sha256': 'a' * 64})
         deploy.validate_manifest(m)
         deploy.validate_report(report(m), m, 'f' * 64)
         stale_proof = {**report(m), 'scope': deploy.SCOPE}
         with self.assertRaises(RuntimeError): deploy.validate_report(stale_proof, m, 'f' * 64)
-        for target in ('src/collector/../server/app.ts', 'src/server/app.ts', 'config/pult.config.json'):
+        for target in ('src/collector/../server/app.ts', 'src/server/app.ts', 'src/shared/registry.ts', 'config/pult.config.json'):
             invalid = copy.deepcopy(m)
             invalid['pult_files'][-1].update(relative=target, source='.msb/pult/' + target)
             invalid['pult_files'].sort(key=lambda row: row['relative'])

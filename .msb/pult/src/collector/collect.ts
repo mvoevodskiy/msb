@@ -9,7 +9,7 @@ import { CodexQuota, readCodexLimits } from './sources/codex-quota.ts';
 import { CodexUsageReader } from './sources/codex-usage.ts';
 import { performance } from 'node:perf_hooks';
 import { SNAPSHOT_SCHEMA, type Balance, type Bot, type ServerState, type Service, type Snapshot, type Subscription, type Task } from '../shared/types.ts';
-import type { PultConfig } from '../shared/config.ts';
+import { listBots, type PultConfig } from '../shared/config.ts';
 import { expandHome, openAsks, readAsks, readProjects } from '../shared/registry.ts';
 import { analyze, type ServiceStatus, type TaskFindings } from './analyze.ts';
 import { execCmd, iso, type Exec, Problems, readJsonFile, utcDay } from './util.ts';
@@ -100,7 +100,7 @@ export class Collector {
     const t0 = performance.now();
     const now = this.clock();
     const nowMs = now.getTime();
-    const cfg = this.config;
+    const cfg = { ...this.config, bots: listBots(this.config) };
     const tz = cfg.timezone;
     const problems = new Problems();
     const git = new GitCache(this.exec);

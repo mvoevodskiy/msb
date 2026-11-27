@@ -4,7 +4,7 @@
 import { readFileSync, statSync } from 'node:fs';
 import { join } from 'node:path';
 import type { Snapshot } from '../shared/types.ts';
-import { ConfigError, configPath, loadConfig, type PultConfig } from '../shared/config.ts';
+import { ConfigError, configPath, listBots, loadConfig, type PultConfig } from '../shared/config.ts';
 import { readAsks, readProjects } from '../shared/registry.ts';
 import { clip, fmtMb, fmtNumber, plural } from '../shared/format.ts';
 import { Collector } from './collect.ts';
@@ -172,7 +172,8 @@ async function check(asJson: boolean, env: NodeJS.ProcessEnv): Promise<number> {
 
   let cfg: PultConfig | null = null;
   try {
-    cfg = loadConfig();
+    const config = loadConfig();
+    cfg = { ...config, bots: listBots(config) };
     add(true, 'конфиг', `${configPath(env)}: ботов ${cfg.bots.length}, служб ${cfg.services.length}, таймеров ${cfg.timers.length}`);
   } catch (e) {
     add(false, 'конфиг', e instanceof ConfigError ? e.message.replace(/\n\s*-\s*/g, '; ') : (e as Error).message);

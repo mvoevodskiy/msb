@@ -1,5 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Collector } from '../../src/collector/collect.ts';
 import { SNAPSHOT_SCHEMA, type Snapshot } from '../../src/shared/types.ts';
@@ -151,6 +153,31 @@ test('падение источника не роняет снимок: нет s
   assert.ok(s.tasks.length >= 5);
   assert.equal(s.balances.find(b => b.id === 'deepgram')?.value, 'нет данных');
   assert.ok(s.attention.some(a => a.key === 'source:systemd'));
+});
+
+test('новые и удалённые каталоги ботов учитываются на следующем тике', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'pult-bot-inventory-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  for (const id of ['alpha', 'beta']) mkdirSync(join(root, id));
+  const c = collector(fakeExec(), fixtureConfig({
+    botsRoot: root,
+    bots: [{ id: 'alpha', name: 'Альфа', unit: 'msb-bot@alpha.service', projects: ['Демо'] }],
+    timers: [],
+  }));
+
+  const first = await c.collect();
+  assert.deepEqual(first.bots.map(b => b.id), ['alpha', 'beta']);
+  assert.equal(first.bots[0].name, 'Альфа');
+
+  mkdirSync(join(root, 'gamma'));
+  const second = await c.collect();
+  assert.deepEqual(second.bots.map(b => b.id), ['alpha', 'beta', 'gamma']);
+  assert.equal(second.bots[2].service.state, 'failed');
+  assert.ok(second.attention.some(a => a.key === 'bot:gamma:down'));
+
+  rmSync(join(root, 'beta'), { recursive: true });
+  const third = await c.collect();
+  assert.deepEqual(third.bots.map(b => b.id), ['alpha', 'gamma']);
 });
 
 test('процессор: второй тик считает по разнице с первым', async () => {

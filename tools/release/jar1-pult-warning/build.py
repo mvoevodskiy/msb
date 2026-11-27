@@ -36,9 +36,9 @@ def build(repo, commit, stage, patch_base=None):
     changed = sorted(p.removeprefix('.msb/pult/') for p in git(repo, 'diff', '--name-only', base, commit,
         '--', '.msb/pult/src', '.msb/pult/config', '.msb/pult/package.json', '.msb/pult/package-lock.json').decode().splitlines())
     if patch_base:
-        if not changed or any(not name.startswith(('src/collector/', 'src/ui/')) or
+        if not changed or any((name != 'src/shared/config.ts' and not name.startswith(('src/collector/', 'src/ui/'))) or
                               Path(name).suffix not in ('.ts', '.js', '.css', '.html', '.json') for name in changed):
-            raise ValueError('Expected changes limited to existing Pult collector or UI files')
+            raise ValueError('Expected changes limited to existing Pult collector files, its config reader, or UI files')
     elif set(changed) != set(FILES):
         raise ValueError('Unexpected Pult runtime changes: ' + repr(sorted(set(changed) ^ set(FILES))))
     stage.mkdir(mode=0o755, parents=False, exist_ok=False)

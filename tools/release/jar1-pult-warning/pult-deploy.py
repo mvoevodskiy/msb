@@ -44,7 +44,8 @@ def validate_manifest(manifest):
     if scope == SCOPE and names != FILES:
         raise RuntimeError('Unexpected Pult usage warning payload')
     if scope == PATCH_SCOPE and (not names or names != tuple(sorted(set(names))) or any(
-        not name.startswith(('src/collector/', 'src/ui/')) or '..' in Path(name).parts or
+        (name != 'src/shared/config.ts' and not name.startswith(('src/collector/', 'src/ui/'))) or
+        '..' in Path(name).parts or
         not re.fullmatch(r'[a-z0-9_-]+(?:/[a-z0-9_.-]+)*\.(?:ts|js|css|html|json)', name)
         for name in names
     )):
