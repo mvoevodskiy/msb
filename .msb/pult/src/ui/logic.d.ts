@@ -57,6 +57,7 @@ export function overviewSummary(s: Snapshot, now: number): OverviewSummary;
 export function nextDigestAt(now: number, hour?: number): number;
 export interface UpcomingRow { at: number; name: string; taskId: string | null; digest: boolean }
 export function upcomingRows(s: Snapshot, notify: SnapshotResponse['notify'] | null | undefined, now: number): UpcomingRow[];
+export function taskScheduleUnavailable(s: Snapshot): boolean;
 export function botNowInfo(bot: Bot, s: Snapshot, now: number): { status: string; busy: boolean; level: DotLevel; about: string; sub: string };
 export function botsServiceLine(bots: Bot[]): string;
 export function subscriptionInfo(sub: Subscription | null, now: number): { text: string; level: 'warn' | 'crit' | null; stale: boolean } | null;

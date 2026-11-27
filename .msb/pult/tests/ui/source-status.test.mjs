@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { viewOverview } from '../../src/ui/view-overview.js';
 import { viewProjects } from '../../src/ui/view-projects.js';
+import { viewTasks } from '../../src/ui/view-tasks.js';
 
 class Element {
   children = [];
@@ -49,4 +50,22 @@ test('a failed project registry read is distinct from a successful empty registr
     assert.match(view.text(), /Не удалось прочитать реестр проектов/);
     assert.doesNotMatch(view.text(), /Проектов нет/);
   }
+});
+
+test('an unreadable task schedule is distinct from a successful empty schedule', () => {
+  const view = s => viewTasks({ s: { ...quiet, ...s }, now, route: { query: {} } }).text();
+  const upcoming = s => overview(s).region('Дальше по расписанию').text();
+  const empty = { tasks: [], upcoming: [], tasksHidden: 0, sourceErrors: [] };
+  assert.match(view(empty), /Фоновых задач нет/);
+  assert.match(upcoming(empty), /ничего не запланировано/);
+
+  for (const source of ['бот «Пример»: фоновые задачи', 'задача бота «Пример»', 'systemd']) {
+    const failed = { ...empty, sourceErrors: [{ source, message: 'unavailable' }] };
+    assert.match(view(failed), /Не удалось прочитать расписание/);
+    assert.doesNotMatch(view(failed), /Фоновых задач нет/);
+    assert.match(upcoming(failed), /Не удалось прочитать расписание/);
+    assert.doesNotMatch(upcoming(failed), /ничего не запланировано/);
+  }
+  const unrelated = { ...empty, sourceErrors: [{ source: 'Расход Codex', message: 'unavailable' }] };
+  assert.match(view(unrelated), /Фоновых задач нет/);
 });

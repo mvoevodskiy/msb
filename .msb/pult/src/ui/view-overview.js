@@ -4,7 +4,7 @@ import { h, sr } from './dom.js';
 import { pageTitle, secTitle, empty, levelDot, legend, meter, fold, LEVEL_WORD } from './parts.js';
 import { spark, dayStrip } from './charts.js';
 import {
-  overviewSummary, fmtSpan, fmtWhen, toMs, attentionHref, attentionLinkLabel, botNowInfo, botLabel, upcomingRows,
+  overviewSummary, fmtSpan, fmtWhen, toMs, attentionHref, attentionLinkLabel, botNowInfo, botLabel, upcomingRows, taskScheduleUnavailable,
   projectLevel, projectRegistryUnavailable, subscriptionInfo, balanceInfo, fmtPct, gbNum, NBSP, count, buildHash, seriesOf,
 } from './logic.js';
 
@@ -121,6 +121,11 @@ function upcomingSec(ctx) {
   const { s, now } = ctx;
   const rows = upcomingRows(s, ctx.resp.notify, now);
   if (!rows.length) {
+    if (taskScheduleUnavailable(s)) {
+      return fold([h('span', null, h('strong', null, 'Ближайшие'), ' · нет данных')],
+        [empty('Не удалось прочитать расписание')],
+        { open: true, class: 'fold sec sec-next', label: 'Дальше по расписанию' });
+    }
     return fold(
       [h('span', null, h('strong', null, 'Ближайшие'), ' · ничего не запланировано')],
       [empty('Ничего не запланировано')],

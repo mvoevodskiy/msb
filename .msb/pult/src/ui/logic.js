@@ -280,6 +280,12 @@ export function botShortName(botId, bots, fallback) {
 
 const TAB_WORD = { server: 'сервер', tasks: 'фоновые задачи', bots: 'боты', projects: 'проекты', overview: 'общее' };
 
+/** Ошибки источников расписания из collector/collect.ts и sources/journal.ts. */
+export function taskScheduleUnavailable(s) {
+  return s.sourceErrors.some(({ source }) => source === 'systemd' ||
+    source.startsWith('задача бота «') || /^бот «.*»: фоновые задачи$/u.test(source));
+}
+
 /** Сводка для трёх плиток обзора. */
 export function overviewSummary(s, now) {
   const longestSec = s.asks.length ? Math.max(...s.asks.map((a) => (now - toMs(a.since)) / 1000)) : 0;
