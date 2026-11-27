@@ -4,8 +4,10 @@
  * raw code opaque; ordinary fenced/inline code keeps literal HTML tags.
  * Caller [bot](./bot.mjs); prepared [views](./view-delivery.mjs) use only pure exports.
  * Saved-prompt digests: [prompt-delivery](../autonomy/prompt-delivery.mjs).
+ * Native Codex measurements: [context](../agent/context.mjs).
  * [Response checks](../../tests/response-delivery.test.mjs), [plan checks](../../tests/plan-handoff.test.mjs).
  */
+import { isProviderSession } from '../../shared/session-starts.mjs';
 import { parsePlanResponse, planKeyboard } from './plan.mjs';
 import { presentationSignal } from './presentation-api.mjs';
 
@@ -149,7 +151,7 @@ export function formatTurnFooter({ elapsedMs, costUsd, context } = {}) {
   const limit = context?.contextWindow;
   if (Number.isSafeInteger(used) && used >= 0 && Number.isSafeInteger(limit) && limit > 0) {
     const percent = Math.max(0, Math.min(100, Math.round(used / limit * 100)));
-    if (percent >= 5) {
+    if (percent >= 5 || isProviderSession(context.sessionId, 'codex')) {
       const dots = percent <= 20 ? '○○○' : percent <= 40 ? '●○○' : percent <= 60 ? '●●○' : '●●●';
       parts.push(`${dots} ${percent}%`);
     }
