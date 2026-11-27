@@ -5,7 +5,7 @@ import { pageTitle, secTitle, empty, levelDot, legend, meter, fold, LEVEL_WORD }
 import { spark, dayStrip } from './charts.js';
 import {
   overviewSummary, fmtSpan, fmtWhen, toMs, attentionHref, attentionLinkLabel, botNowInfo, botLabel, upcomingRows,
-  projectLevel, subscriptionInfo, balanceInfo, fmtPct, gbNum, NBSP, count, buildHash, seriesOf,
+  projectLevel, projectRegistryUnavailable, subscriptionInfo, balanceInfo, fmtPct, gbNum, NBSP, count, buildHash, seriesOf,
 } from './logic.js';
 
 export function viewOverview(ctx) {
@@ -145,7 +145,11 @@ function upcomingSec(ctx) {
 
 function projectsSec(s) {
   const sec = h('section', { class: 'sec sec-proj', 'aria-labelledby': 'ov-proj' }, secTitle('Проекты', 'ov-proj'));
-  if (!s.projects.length) { sec.append(empty('Проектов нет', 'Боты ещё не завели карточки проектов.')); return sec; }
+  if (!s.projects.length) {
+    sec.append(projectRegistryUnavailable(s) ? empty('Не удалось прочитать реестр проектов')
+      : empty('Проектов нет', 'Боты ещё не завели карточки проектов.'));
+    return sec;
+  }
   // Скан: точка · имя · справа только красный счётчик asks.
   const sorted = [...s.projects].sort((a, b) => (b.asks.length - a.asks.length) || a.name.localeCompare(b.name, 'ru'));
   sec.append(h('ul', { class: 'kv2' }, sorted.map((p) => {

@@ -2,14 +2,18 @@
 
 import { h } from './dom.js';
 import { pageTitle, empty, levelDot, fold } from './parts.js';
-import { projectLevel, projectServicesParts, count, fmtWhen } from './logic.js';
+import { projectLevel, projectRegistryUnavailable, projectServicesParts, count, fmtWhen } from './logic.js';
 
 const LEVEL_CLS = { crit: 'red', serious: 'orange', warn: 'amber', off: 'muted' };
 
 export function viewProjects(ctx) {
   const { s, now } = ctx;
   const root = h('div', { class: 'projects' }, pageTitle('Проекты'));
-  if (!s.projects.length) { root.append(empty('Проектов нет', 'Боты заводят карточки командой pult project …')); return root; }
+  if (!s.projects.length) {
+    root.append(projectRegistryUnavailable(s) ? empty('Не удалось прочитать реестр проектов')
+      : empty('Проектов нет', 'Боты заводят карточки командой pult project …'));
+    return root;
+  }
 
   const sorted = [...s.projects].sort((a, b) => {
     const aa = a.asks.length ? 1 : 0, bb = b.asks.length ? 1 : 0;

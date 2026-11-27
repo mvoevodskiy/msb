@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { viewOverview } from '../../src/ui/view-overview.js';
+import { viewProjects } from '../../src/ui/view-projects.js';
 
 class Element {
   children = [];
@@ -37,4 +38,15 @@ test('an unreadable Codex subscription is not marked healthy alongside a known b
   assert.match(unavailable, /Codex · подписка\s+нет данных/);
   assert.doesNotMatch(unavailable, /все в норме/);
   assert.match(unavailable, /Другой сервис/);
+});
+
+test('a failed project registry read is distinct from a successful empty registry', () => {
+  const empty = { projects: [], sourceErrors: [] };
+  const bad = { projects: [], sourceErrors: [{ source: 'реестр проектов', message: 'invalid JSON' }] };
+  assert.match(overview(empty).text(), /Проектов нет/);
+  assert.match(viewProjects({ s: empty, now }).text(), /Проектов нет/);
+  for (const view of [overview(bad), viewProjects({ s: bad, now })]) {
+    assert.match(view.text(), /Не удалось прочитать реестр проектов/);
+    assert.doesNotMatch(view.text(), /Проектов нет/);
+  }
 });

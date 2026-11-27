@@ -61,6 +61,7 @@ export function botNowInfo(bot: Bot, s: Snapshot, now: number): { status: string
 export function botsServiceLine(bots: Bot[]): string;
 export function subscriptionInfo(sub: Subscription | null, now: number): { text: string; level: 'warn' | 'crit' | null; stale: boolean } | null;
 export function balanceInfo(b: Balance, now: number): { text: string; level: 'warn' | null; stale: boolean; checked: string | null };
+export function projectRegistryUnavailable(s: Snapshot): boolean;
 export function projectLevel(p: Project): DotLevel;
 export function projectServicesParts(p: Project, services: Service[]): { text: string; level: DotLevel | null }[];
 

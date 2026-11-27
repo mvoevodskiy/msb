@@ -410,6 +410,11 @@ export function balanceInfo(b, now) {
   return { text: bits.join(' · '), level: b.ok === false ? 'warn' : null, stale: !!b.stale, checked: b.checkedAt ? fmtWhen(b.checkedAt, now) : null };
 }
 
+/** Сборщик отличает пустой реестр от ошибки его чтения (collector/collect.ts). */
+export function projectRegistryUnavailable(s) {
+  return s.sourceErrors.some(({ source }) => source === 'реестр проектов');
+}
+
 /** Уровень точки проекта и слово для неё. */
 export function projectLevel(p) {
   if (p.status === 'ok') return 'good';
