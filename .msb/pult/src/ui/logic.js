@@ -778,8 +778,10 @@ export function serviceRows(s) {
 /** Строка про служебные процессы платформы. */
 export function platformLine(p) {
   if (!p || p.total === 0) return null;
-  if (p.failed === 0) return { text: `Ещё ${count(p.total, 'служебный процесс', 'служебных процесса', 'служебных процессов')} платформы ботов — в норме`, level: null };
-  return { text: `Служебные процессы платформы ботов: в норме ${p.ok} из ${p.total}, ${p.failed} — ${plural(p.failed, 'упал', 'упали', 'упали')}`, level: 'crit' };
+  if (p.ok === p.total && p.failed === 0) return { text: `Ещё ${count(p.total, 'служебный процесс', 'служебных процесса', 'служебных процессов')} платформы ботов — в норме`, level: null };
+  const text = `Служебные процессы платформы ботов: в норме ${p.ok} из ${p.total}`;
+  if (p.failed === 0) return { text, level: null };
+  return { text: `${text}, ${p.failed} — ${plural(p.failed, 'упал', 'упали', 'упали')}`, level: 'crit' };
 }
 
 // ---------- Графики: оси, ряды ----------
