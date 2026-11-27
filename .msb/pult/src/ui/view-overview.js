@@ -202,13 +202,20 @@ function serverSec(ctx) {
 function subsSec(s, now) {
   const rows = [];
   const problems = [];
-  for (const quota of s.subscriptions ?? (s.subscription ? [s.subscription] : [])) {
+  const subscriptions = s.subscriptions ?? (s.subscription ? [s.subscription] : []);
+  for (const quota of subscriptions) {
     const sub = subscriptionInfo(quota, now);
     if (!sub) continue;
     const li = h('li', null, h('span', { class: 'k' }, quota.providerId === 'codex' ? 'Codex · подписка' : quota.providerId === 'claude' ? 'Claude · подписка' : 'Окно подписки'),
       h('span', { class: `v ${sub.stale ? 'muted' : sub.level === 'crit' ? 'red' : sub.level === 'warn' ? 'amber' : 'ink2'}` }, sub.text));
     rows.push(li);
     if (sub.stale || sub.level === 'crit' || sub.level === 'warn') problems.push(li);
+  }
+  if (!subscriptions.some(quota => quota.providerId === 'codex') &&
+      s.sourceErrors.some(({ source }) => source === 'подписка Codex')) {
+    const li = h('li', null, h('span', { class: 'k' }, 'Codex · подписка'), h('span', { class: 'v muted' }, 'нет данных'));
+    rows.push(li);
+    problems.push(li);
   }
   for (const b of s.balances) {
     const bi = balanceInfo(b, now);
