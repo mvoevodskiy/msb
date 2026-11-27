@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install the verified Pult collector-only update with the existing atomic transaction."""
+"""Install verified Pult collector and static UI updates using the atomic transaction."""
 import argparse
 import fcntl
 import hashlib
@@ -9,10 +9,12 @@ import os
 from pathlib import Path
 import re
 import signal
+import socket
 import stat
 
 BASE = 'a19689e080a6bb2be212ded5fe53eca54df82d26'
 SCOPE = 'pult-usage-warning-v1'
+PATCH_SCOPE = 'pult-collector-ui-patch-v1'
 FILES = ('src/collector/sources/codex-usage-data.ts', 'src/collector/sources/codex-usage.ts')
 CCUSAGE_SHA256 = '7ddd309d8f4d1c2c007647f43c300a8261acbe9e5cb355e70cc428f0f419f8d2'
 EXCLUDED_TESTS = [
@@ -30,13 +32,25 @@ def valid_hash(value):
 
 
 def validate_manifest(manifest):
-    if manifest.get('schema') != 1 or manifest.get('scope') != SCOPE or manifest.get('base_commit') != BASE or \
+    scope = manifest.get('scope')
+    base = manifest.get('base_commit', '')
+    if manifest.get('schema') != 1 or scope not in (SCOPE, PATCH_SCOPE) or \
+       not re.fullmatch(r'[0-9a-f]{40}', base) or (scope == SCOPE and base != BASE) or \
        not re.fullmatch(r'[0-9a-f]{40}', manifest.get('source_commit', '')) or \
        manifest.get('ccusage_binary_sha256') != CCUSAGE_SHA256:
         raise RuntimeError('Wrong Pult release identity')
     files = manifest.get('pult_files', [])
+    names = tuple(item.get('relative', '') for item in files)
+    if scope == SCOPE and names != FILES:
+        raise RuntimeError('Unexpected Pult usage warning payload')
+    if scope == PATCH_SCOPE and (not names or names != tuple(sorted(set(names))) or any(
+        not name.startswith(('src/collector/', 'src/ui/')) or '..' in Path(name).parts or
+        not re.fullmatch(r'[a-z0-9_-]+(?:/[a-z0-9_.-]+)*\.(?:ts|js|css|html|json)', name)
+        for name in names
+    )):
+        raise RuntimeError('Unexpected collector/UI target')
     if [(item.get('root'), item.get('relative'), item.get('source')) for item in files] != \
-       [('pult', name, '.msb/pult/' + name) for name in FILES]:
+       [('pult', name, '.msb/pult/' + name) for name in names]:
         raise RuntimeError('Unexpected Pult payload')
     if any(not valid_hash(item.get(key)) for item in files for key in ('before_sha256', 'after_sha256')):
         raise RuntimeError('Invalid Pult file hash')
@@ -50,7 +64,7 @@ def validate_manifest(manifest):
 
 def validate_report(report, manifest, manifest_sha):
     checks = report.get('checks', [])
-    if not report.get('passed') or report.get('scope') != SCOPE or \
+    if not report.get('passed') or report.get('scope') != manifest.get('scope') or \
        report.get('source_commit') != manifest['source_commit'] or report.get('manifest_sha256') != manifest_sha or \
        report.get('source_archive_sha256') != manifest.get('source_archive_sha256') or \
        report.get('excluded_tests') != EXCLUDED_TESTS or \
@@ -83,7 +97,7 @@ def trusted(stage, relative):
 
 def load(stage, manifest_sha, report_sha):
     stage = Path(stage).absolute()
-    if os.geteuid() != 0 or stage.parent != Path('/var/tmp') or stage.is_symlink() or \
+    if os.geteuid() != 0 or socket.gethostname() != 'VM-422100' or stage.parent != Path('/var/tmp') or stage.is_symlink() or \
        Path(__file__).resolve(strict=True) != stage / 'pult-deploy.py':
         raise RuntimeError('Unexpected Pult release context')
     st = stage.lstat()
@@ -116,7 +130,7 @@ def load(stage, manifest_sha, report_sha):
         return result
     base = module('pult_warning_atomic', 'deploy_base.py')
     pult = module('pult_warning_transaction', 'pult_base.py')
-    pult.FILES = FILES
+    pult.FILES = tuple(item['relative'] for item in manifest['pult_files'])
     return stage, manifest, base, pult
 
 
@@ -143,7 +157,7 @@ def main():
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         if args.plan:
             pult.check(stage, manifest, base)
-            print(json.dumps({'plan': 'pult-only', 'files': len(FILES)}))
+            print(json.dumps({'plan': 'pult-only', 'files': [item['relative'] for item in manifest['pult_files']]}))
         elif args.apply:
             pult.check(stage, manifest, base)
             backup.mkdir(mode=0o700, exist_ok=False)

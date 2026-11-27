@@ -92,8 +92,7 @@ def verify(stage, home, tmp_dir, host_netns):
     env = {'HOME': str(home), 'TMPDIR': str(tmp_dir), 'PATH': '/usr/local/bin:/usr/bin:/bin',
            'LANG': 'C.UTF-8', 'PULT_TEST_CCUSAGE': str(binary), 'PYTHONDONTWRITEBYTECODE': '1'}
     node = Path(shutil.which('node', path=env['PATH'])).resolve()
-    tests = sorted(str(p) for p in (pult / 'tests').rglob('*.test.ts'))
-    tests += [str(pult / 'tests/ui/bot-usage.test.mjs')]
+    tests = sorted(str(p) for p in (pult / 'tests').rglob('*.test.*') if p.suffix in ('.ts', '.mjs'))
     skip = '^(?:' + '|'.join(re.escape(name) for name in EXCLUDED_TESTS) + ')$'
     checks = [
         command('typecheck', [str(node), str(pult / 'node_modules/typescript/bin/tsc'), '-p', str(pult / 'tsconfig.json')], pult, env, results),
