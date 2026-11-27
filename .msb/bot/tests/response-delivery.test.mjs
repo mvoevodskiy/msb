@@ -59,10 +59,25 @@ test('footer omits unknown/zero telemetry, hides small context and clamps 100%',
     assert.doesNotMatch(formatTurnFooter({ elapsedMs: 0, costUsd }), /\$/);
   }
   assert.match(formatTurnFooter({ elapsedMs: 1000, costUsd: 0.001 }), /\$0\.001/);
-  assert.doesNotMatch(formatTurnFooter({ elapsedMs: 1000, context: { contextTokens: 4, contextWindow: 100 } }), /%/);
+  assert.doesNotMatch(formatTurnFooter({
+    elapsedMs: 1000, context: { sessionId: '11111111-1111-4111-8111-111111111111', contextTokens: 4, contextWindow: 100 },
+  }), /%/);
   assert.match(formatTurnFooter({ elapsedMs: 1000, context: { contextTokens: 5, contextWindow: 100 } }), /○○○ 5%/);
   assert.match(formatTurnFooter({ elapsedMs: 1000, context: { contextTokens: 900, contextWindow: 100 } }), /●●● 100%/);
   assert.doesNotMatch(formatTurnFooter({ elapsedMs: 1000, context: { contextTokens: 10, contextWindow: 0 } }), /%/);
+});
+
+test('Codex reply includes its measured context below five percent', async () => {
+  const { ctx, calls } = fixture();
+  const context = {
+    sessionId: 'ext:codex:11111111-1111-4111-8111-111111111111',
+    contextTokens: 19000,
+    contextWindow: 475000,
+  };
+  await deliverTurnResponse(ctx, 101, 'Готово', { elapsedMs: 1500, context });
+  assert.equal(calls.at(-1).text, 'Готово\n\n<blockquote>⏱ 1.5s · ○○○ 4%</blockquote>');
+  assert.match(formatTurnFooter({ elapsedMs: 1000, context: { ...context, contextTokens: 0 } }), /○○○ 0%/);
+  assert.doesNotMatch(formatTurnFooter({ elapsedMs: 1000, context: { ...context, contextWindow: 0 } }), /%/);
 });
 
 test('HTML and common Markdown preserve text and escape unsupported or unsafe markup', () => {
