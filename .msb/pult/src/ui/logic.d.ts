@@ -39,6 +39,7 @@ export const RANGE_LABEL: Record<Range, string>;
 export interface Route { name: 'overview' | 'bots' | 'tasks' | 'task' | 'projects' | 'server' | 'notfound'; tab: Tab | null; id: string | null; query: Record<string, string> }
 export function parseRoute(hash: string): Route;
 export function buildHash(tab: Tab, id?: string | null, query?: Record<string, string | null | undefined> | null): string;
+export function taskByRouteId(tasks: Task[], id: string | null): Task | undefined;
 export function validRange(r: unknown, def?: Range): Range;
 export function attentionHref(link: { tab: Tab; id?: string } | null | undefined): string;
 export function attentionLinkLabel(link: { tab: Tab; id?: string } | null | undefined): string;

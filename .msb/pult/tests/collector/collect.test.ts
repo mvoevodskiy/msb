@@ -136,7 +136,7 @@ test('совпавшие исходные ID задач двух ботов и �
   })).collect();
   const cards = new Map(s.tasks.map(task => [task.id, task]));
   assert.equal(cards.size, s.tasks.length);
-  assert.equal(s.tasks.find(task => task.name === 'Отдельная задача')?.id, shortHash('unique-action'));
+  assert.equal(s.tasks.find(task => task.name === 'Отдельная задача')?.id, shortHash('unique-action') + '-' + shortHash(JSON.stringify(['action', 'alpha', 'unique-action'])));
   for (const [name, bot] of [
     ['Задача Альфы', 'alpha'], ['Задача Беты', 'beta'], ['Резервная копия', 'server'],
   ]) {
@@ -149,6 +149,35 @@ test('совпавшие исходные ID задач двух ботов и �
     const card = cards.get(warning.link?.id ?? '');
     assert.ok(card && warning.text.includes(card.name));
   }
+});
+
+test('адреса задач не меняются при появлении и удалении профиля с тем же исходным ID', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'pult-stable-task-ids-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const addBot = (bot: string) => {
+    mkdirSync(join(root, bot));
+    writeFileSync(join(root, bot, 'actions.json'), JSON.stringify([{
+      id: 'same-action', name: bot, createdAt: '2026-10-29T10:00:00.000Z',
+      trigger: { kind: 'cron', cron: '0 * * * *' }, task: { kind: 'prompt' },
+    }]));
+  };
+  addBot('alpha');
+  const cfg = fixtureConfig({ botsRoot: root, bots: fixtureConfig().bots.slice(0, 1), timers: [] });
+  const c = collector(fakeExec(), cfg);
+  const first = await c.collect();
+  const alphaId = first.upcoming.find(row => row.name === 'alpha')!.taskId;
+
+  addBot('beta');
+  const second = await c.collect();
+  assert.equal(second.tasks.find(task => task.id === alphaId)?.bot, 'alpha');
+  const betaId = second.upcoming.find(row => row.name === 'beta')!.taskId;
+  assert.notEqual(alphaId, betaId);
+  assert.equal((await collector(fakeExec(), cfg).collect()).tasks.find(task => task.id === betaId)?.bot, 'beta');
+
+  rmSync(join(root, 'beta'), { recursive: true });
+  const third = await c.collect();
+  assert.equal(third.tasks.find(task => task.id === alphaId)?.bot, 'alpha');
+  assert.equal(third.tasks.some(task => task.id === betaId), false);
 });
 
 test('проекты, вопросы, подписка, остатки, ближайшие запуски', async () => {

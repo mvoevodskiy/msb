@@ -6,7 +6,7 @@ import { runBars } from './charts.js';
 import {
   splitTasks, botFilters, filterTasks, taskSubtitle, lastRunText, nextRunText, stripSummary, dayCells, slotsSummary,
   rangeStats, RANGE_LABEL, RANGE_MS, RANGES, validRange, buildHash, fmtTokens, fmtWhen, fmtDur, fmtDateTime, RUN_WORD,
-  taskKpis, taskParams, taskCron, observations, groupedLastRuns, runOutcome, count, toMs, plural, medianStep, taskScheduleUnavailable,
+  taskKpis, taskParams, taskCron, observations, groupedLastRuns, runOutcome, count, toMs, plural, medianStep, taskScheduleUnavailable, taskByRouteId,
 } from './logic.js';
 
 const STRIP_LEGEND = [
@@ -155,7 +155,7 @@ function wireRowClicks(tbody) {
 
 export function viewTask(ctx) {
   const { s, now, route } = ctx;
-  const t = s.tasks.find((x) => x.id === route.id);
+  const t = taskByRouteId(s.tasks, route.id);
   const crumb = h('nav', { class: 'crumb', 'aria-label': 'Где я' }, h('a', { href: '#/tasks', 'data-fkey': 'crumb' }, 'Задачи'), ' ›');
   if (!t) {
     return h('div', { class: 'task' }, crumb, pageTitle('Задача больше не активна'),

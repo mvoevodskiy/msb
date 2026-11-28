@@ -9,7 +9,7 @@ import { viewTasks, viewTask } from './view-tasks.js';
 import { viewProjects } from './view-projects.js';
 import { viewServer } from './view-server.js';
 import { pageTitle, empty } from './parts.js';
-import { parseRoute, serverNow, currentAgeSec, headerStatus, staleBanner, fmtWhen, validRange } from './logic.js';
+import { parseRoute, serverNow, currentAgeSec, headerStatus, staleBanner, fmtWhen, validRange, buildHash, taskByRouteId } from './logic.js';
 
 const POLL_MS = 30_000;
 const HISTORY_TTL_MS = 5 * 60_000;
@@ -190,6 +190,12 @@ function buildView() {
 }
 
 function render(reason) {
+  const tasks = st.resp?.snapshot?.tasks;
+  const task = st.route.name === 'task' && tasks ? taskByRouteId(tasks, st.route.id) : undefined;
+  if (task && task.id !== st.route.id) {
+    st.route = { ...st.route, id: task.id };
+    window.history.replaceState(window.history.state, '', buildHash('tasks', task.id, st.route.query));
+  }
   const active = document.activeElement;
   const fkey = active && active !== document.body ? active.getAttribute('data-fkey') : null;
   clearActive();
@@ -204,7 +210,7 @@ function render(reason) {
   }
   $main.replaceChildren(view);
   drawCharts();
-  const title = st.route.name === 'task' ? (st.resp?.snapshot?.tasks.find((t) => t.id === st.route.id)?.name ?? TITLES.task) : TITLES[st.route.name];
+  const title = st.route.name === 'task' ? (task?.name ?? TITLES.task) : TITLES[st.route.name];
   const asks = st.resp?.snapshot?.asks?.length ?? 0;
   document.title = `${asks ? `(${asks}) ` : ''}${title} — Пульт`;
   if (reason === 'route') {

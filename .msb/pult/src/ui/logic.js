@@ -211,6 +211,13 @@ export function buildHash(tab, id, query) {
   return h;
 }
 
+/** Короткий адрес старого снимка открывается только при единственном совпадении. */
+export function taskByRouteId(tasks, id) {
+  if (!/^[0-9a-f]{10}$/.test(id)) return tasks.find(t => t.id === id);
+  const matches = tasks.filter(t => t.id === id || t.id.startsWith(id + '-'));
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
 export const validRange = (r, def = '24h') => (RANGES.includes(r) ? r : def);
 
 /** Куда ведёт ссылка из «Требует внимания». */

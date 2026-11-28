@@ -133,7 +133,7 @@ export class Collector {
 
     // ---- боты и их задачи ----
     const bots: Bot[] = [];
-    const botTasks: { task: Task; findings: Finding[]; repo: string | null; idSource: string }[] = [];
+    const botTasks: { task: Task; findings: Finding[]; repo: string | null }[] = [];
     const usageResult = await problems.guardAsync('Расход Codex', () => this.codexUsage.collect(
       cfg.bots.map(b => ({ id: b.id, directory: join(cfg.botsRoot, b.id) })), tz, now), null);
     if (usageResult?.failed) problems.add('Расход Codex', new Error('Не удалось получить статистику Codex'));
@@ -152,7 +152,10 @@ export class Collector {
           continue;
         }
         const built = problems.guard(`задача бота «${b.name}»`, () => buildTask(a, data.runs, { botId: b.id, botName: b.name, config: cfg, now, problems }), null);
-        if (built) botTasks.push({ ...built, idSource: JSON.stringify(['action', b.id, a.id]) });
+        if (built) {
+          built.task.id += '-' + shortHash(JSON.stringify(['action', b.id, a.id]));
+          botTasks.push(built);
+        }
       }
 
       const procs = h.controlGroup && bootMs !== null && (h.state === 'active' || h.state === 'reloading')
@@ -191,18 +194,11 @@ export class Collector {
         cfg: t, botName, timer: units.get(t.timer), service: units.get(t.service), journal: journals[i], statusData,
         serverTz: this.serverTz, displayTz: tz, missedRunsWarn: cfg.thresholds.missedRunsWarn, now,
       });
-      return { ...timer, idSource: JSON.stringify(['timer', t.id]) };
+      timer.task.id += '-' + shortHash(JSON.stringify(['timer', t.id]));
+      return timer;
     });
 
     const all = [...botTasks, ...timerTasks];
-    // Ссылки расписания и предупреждений строятся после разрешения совпадений.
-    // У задач без совпадений остаются прежние ссылки.
-    const idCounts = new Map<string, number>();
-    for (const { task } of all) idCounts.set(task.id, (idCounts.get(task.id) ?? 0) + 1);
-    for (const { task, idSource } of all) {
-      if ((idCounts.get(task.id) ?? 0) > 1) task.id += '-' + shortHash(idSource);
-    }
-
     // самый дорогой фон за сутки — одна задача на весь сервер
     const priciest = all.reduce<(typeof all)[number] | null>((m, t) => (!m || t.task.stats24h.tokens > m.task.stats24h.tokens ? t : m), null);
     if (priciest && priciest.task.stats24h.tokens > cfg.thresholds.expensiveTaskTokens24h) {
