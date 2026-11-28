@@ -1,14 +1,16 @@
 # Выборочный релиз JAR1 от 28.11.2026
 
-Вход — принятый манифест UX `jar1-ux-40e1d25/manifest.json` и Git-коммит
-выборочной ветки. Сборщик применяет к инвентарю принятую UX-дельту и
-установленный footer hotfix, сверяет базовые файлы бота, движка и bin с Git
-и запечатывает ровно перечисленные изменения в существующих каталогах бота.
+Выпуск ссылок в HTML-дайджесте собран из `38db7dd` поверх установленного
+`e2b5183`. Сборщик принимает манифест и исходный отчёт об изолированных
+тестах установки `e2b5183`. Он сверяет базовый инвентарь и упаковывает
+четыре изменённых файла бота. Для повторной сборки укажи проверенный коммит.
 
 ```sh
 python3 tools/release/jar1-parity-2026-11-28/build.py \
-  --repo "$PWD" --commit "$(git rev-parse HEAD)" \
-  --prior-manifest /path/to/jar1-ux-40e1d25/manifest.json --stage /path/to/new-stage
+  --repo "$PWD" --commit 38db7dda6bb521b0875c734ea9f3b32974ad36ba \
+  --prior-manifest /var/tmp/jar1-pr6-bot-e2b5183/manifest.json \
+  --prior-proof /var/tmp/jar1-pr6-bot-e2b5183/proof.json \
+  --stage /path/to/new-stage
 ```
 
 Для изолированной проверки оператор помещает stage под `/var/tmp` на JAR1,
