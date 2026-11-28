@@ -47,6 +47,9 @@ FILES = ADDED + (
 TOOLS = {
     'build.py': ROOT + 'build.py',
     'verify.py': ROOT + 'verify.py',
+    'deploy.py': ROOT + 'deploy.py',
+    'fleet.py': ROOT + 'fleet.py',
+    'deploy_ux.py': UX + 'deploy.py',
     'verify_ux.py': UX + 'verify.py',
     'launcher.py': ATTACHMENT + 'launcher.py',
     'source_guard.py': ATTACHMENT + 'verify.py',
