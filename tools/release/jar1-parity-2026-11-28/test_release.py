@@ -9,20 +9,35 @@ import verify
 
 
 class ParityReleaseTests(unittest.TestCase):
-    def test_accepted_delta_and_footer_become_the_before_inventory(self):
-        old = {'root': 'bot', 'relative': build.FOOTER, 'sha256': build.FOOTER_BEFORE}
+    def test_accepted_delta_becomes_the_before_inventory(self):
+        rows = [{'root': 'bot', 'relative': f'src/{index}.mjs', 'sha256': '1' * 64}
+                for index in range(342)]
+        rows.extend({'root': root, 'relative': str(index), 'sha256': '1' * 64}
+                    for root, size in (('bin', 1), ('engine', 11)) for index in range(size))
+        existing = rows[0]
         new = {'root': 'bot', 'relative': 'src/addition.mjs'}
-        prior = {'source_commit': build.UX_COMMIT, 'scope': 'jar1-ux-v1',
-                 'baseline_inventory': [old], 'support_files': [],
-                 'files': [{**new, 'before_sha256': None, 'after_sha256': '2' * 64}]}
+        prior = {'source_commit': build.BASE_COMMIT, 'scope': 'jar1-parity-2026-11-28-v1',
+                 'baseline_inventory': rows, 'support_files': list(range(6)),
+                 'files': [{**new, 'before_sha256': None, 'after_sha256': '2' * 64},
+                           {**existing, 'before_sha256': '1' * 64, 'after_sha256': '3' * 64}]}
         raw = json.dumps(prior).encode()
         with patch.object(build, 'BASE_MANIFEST', build.sha(raw)):
-            rows, support = build.installed_inventory(raw)
-            self.assertEqual(rows, [{**old, 'sha256': build.FOOTER_INSTALLED},
-                                    {**new, 'sha256': '2' * 64}])
-            self.assertEqual(support, [])
+            result, support = build.installed_inventory(raw)
+            self.assertEqual(result, [{**existing, 'sha256': '3' * 64}, *rows[1:],
+                                      {**new, 'sha256': '2' * 64}])
+            self.assertEqual(support, prior['support_files'])
             with self.assertRaisesRegex(ValueError, 'hash mismatch'):
                 build.installed_inventory(raw + b'\n')
+
+    def test_proof_is_pinned_to_the_accepted_snapshot(self):
+        prior = {'source_commit': build.BASE_COMMIT, 'scope': 'jar1-parity-2026-11-28-v1',
+                 'source_archive_sha256': 'a' * 64}
+        raw = json.dumps(prior).encode()
+        proof = json.dumps({**prior, 'passed': True, 'manifest_sha256': build.sha(raw)}).encode()
+        with patch.object(build, 'BASE_MANIFEST', build.sha(raw)), patch.object(build, 'BASE_PROOF', build.sha(proof)):
+            build.check_prior_proof(raw, proof)
+            with self.assertRaisesRegex(ValueError, 'hash mismatch'):
+                build.check_prior_proof(raw, proof + b'\n')
 
     def test_payload_and_archived_operator_bytes_are_bound(self):
         name = 'src/fixture.mjs'

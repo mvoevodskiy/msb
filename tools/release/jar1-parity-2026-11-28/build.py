@@ -1,49 +1,27 @@
 #!/usr/bin/env python3
-"""Seal only the selected fixes against the accepted JAR1 bot inventory."""
+"""Seal the digest link fix against the accepted two-bot JAR1 release."""
 import argparse
 import hashlib
 import json
 from pathlib import Path
 import subprocess
 
-SCOPE = 'jar1-parity-2026-11-28-v1'
-UX_COMMIT = '40e1d25b7bbce810307e65e4556a885fec353ca1'
-BASE_COMMIT = '80f5418fc565720b02a1eb00cbab168032d360d2'
-BASE_MANIFEST = '3f81f513a710ab2cf6b13e63e734f2c30a2b80836e8571c8d71394362e2b7c72'
-FOOTER = 'src/telegram/response.mjs'
-FOOTER_BEFORE = '5780f76c64c655739a91f59a735e90fada26d94dd9657870d9fd4bf2420e499c'
-FOOTER_INSTALLED = '8dbd70938eff173d3d17bc8734ce7d54362102d4b14b30194360b7feac579e65'
+SCOPE = 'jar1-digest-links-2026-11-28-v1'
+BASE_COMMIT = 'e2b5183b525084d763b888a7190bb5e1ff8a21b3'
+BASE_MANIFEST = 'f561c2b106804db161d1e08f847ffcb633fce09a656253dcc45ff700c2a18c96'
+BASE_PROOF = '814791dcd86b117ea651c1872ca0ada2d47d5d827d01648f64e9c7add3a31a4b'
 ROOT = 'tools/release/jar1-parity-2026-11-28/'
 UX = 'tools/release/jar1-ux/'
 ATTACHMENT = 'tools/release/jar1-attachment-delivery/'
 AUDIT = 'tools/release/jar1-audit-2026-11-20/'
-ADDED = (
-    'src/autonomy/pause-notice-text.mjs',
-    'src/autonomy/pause-notice.mjs',
-    'src/monitor/telegram-public.mjs',
-    'src/notification-demo.mjs',
-    'src/telegram/routes/notifications.mjs',
-)
-FILES = ADDED + (
-    'src/autonomy/README.md',
-    'src/autonomy/owner-pause.mjs',
-    'src/autonomy/reminder-dispatch.mjs',
-    'src/monitor/README.md',
+ADDED = ()
+FILES = (
     'src/monitor/digest.mjs',
-    'src/monitor/poll.mjs',
-    'src/monitor/store.mjs',
-    'src/notification-mutes.mjs',
-    'src/telegram/README.md',
-    'src/telegram/attachments.mjs',
-    'src/telegram/auth.mjs',
-    'src/telegram/batch.mjs',
     'src/telegram/bot.mjs',
-    'src/telegram/pause-markers.mjs',
-    'src/telegram/router.mjs',
     'src/telegram/routes/monitor.mjs',
-    'src/telegram/routes/settings.mjs',
-    'src/telegram/screens/settings.mjs',
+    'src/monitor/README.md',
 )
+REGRESSION = '.msb/bot/tests/monitor-digest-delivery.test.mjs'
 TOOLS = {
     'build.py': ROOT + 'build.py',
     'verify.py': ROOT + 'verify.py',
@@ -71,10 +49,10 @@ def git(repo, *args):
 
 def installed_inventory(raw):
     if sha(raw) != BASE_MANIFEST:
-        raise ValueError('Accepted UX manifest hash mismatch')
+        raise ValueError('Accepted parity manifest hash mismatch')
     prior = json.loads(raw)
-    if prior['source_commit'] != UX_COMMIT or prior['scope'] != 'jar1-ux-v1':
-        raise ValueError('Unexpected installed UX release')
+    if prior['source_commit'] != BASE_COMMIT or prior['scope'] != 'jar1-parity-2026-11-28-v1':
+        raise ValueError('Unexpected installed parity release')
     rows = prior['baseline_inventory']
     inventory = {(row['root'], row['relative']): dict(row) for row in rows}
     if len(inventory) != len(rows):
@@ -84,14 +62,13 @@ def installed_inventory(raw):
         key = row['root'], row['relative']
         current = inventory.get(key, {})
         if key in applied or current.get('sha256') != row['before_sha256']:
-            raise ValueError('Unexpected accepted UX delta')
+            raise ValueError('Unexpected accepted parity delta')
         applied.add(key)
         inventory[key] = {'root': row['root'], 'relative': row['relative'],
                           'sha256': row['after_sha256']}
-    footer = inventory['bot', FOOTER]
-    if footer['sha256'] != FOOTER_BEFORE:
-        raise ValueError('Unexpected accepted footer before hotfix')
-    footer['sha256'] = FOOTER_INSTALLED
+    by_root = {root: sum(key[0] == root for key in inventory) for root in ('bot', 'bin', 'engine')}
+    if by_root != {'bot': 343, 'bin': 1, 'engine': 11} or len(inventory) != 355 or len(prior['support_files']) != 6:
+        raise ValueError('Unexpected accepted parity inventory counts')
     return list(inventory.values()), prior['support_files']
 
 
@@ -106,7 +83,16 @@ def source_path(root, relative):
     raise ValueError('Unknown installed path')
 
 
-def build(repo, commit, stage, prior_manifest):
+def check_prior_proof(raw, proof_raw):
+    if sha(proof_raw) != BASE_PROOF:
+        raise ValueError('Accepted prior proof hash mismatch')
+    prior, proof = json.loads(raw), json.loads(proof_raw)
+    if proof.get('passed') is not True or proof.get('manifest_sha256') != BASE_MANIFEST or any(
+            proof.get(key) != prior[key] for key in ('scope', 'source_commit', 'source_archive_sha256')):
+        raise ValueError('Accepted prior proof does not describe the starting release')
+
+
+def build(repo, commit, stage, prior_manifest, prior_proof):
     repo, stage = Path(repo).resolve(), Path(stage).absolute()
     commit = git(repo, 'rev-parse', '--verify', commit + '^{commit}').decode().strip()
     git(repo, 'merge-base', '--is-ancestor', BASE_COMMIT, commit)
@@ -114,13 +100,20 @@ def build(repo, commit, stage, prior_manifest):
         raise ValueError('Builder is not from the candidate')
     raw = Path(prior_manifest).read_bytes()
     baseline, support = installed_inventory(raw)
+    check_prior_proof(raw, Path(prior_proof).read_bytes())
+    prior = json.loads(raw)
     before = {(row['root'], row['relative']): row['sha256'] for row in baseline}
     selected = {source_path('bot', name) for name in FILES}
-    changed = git(repo, 'diff', '--name-only', '--no-renames', BASE_COMMIT, commit, '--',
-                  '.msb', 'overlay/bot', 'usr-local-bin', 'usr-local-lib',
-                  ':!.msb/bot/tests', ':!overlay/bot/ext/tests').decode().splitlines()
-    if set(changed) != selected:
-        raise ValueError('Runtime delta differs from parity allowlist: ' + repr(sorted(set(changed) ^ selected)))
+    tooling = {ROOT + name for name in ('build.py', 'test_release.py')}
+    required = selected | tooling | {REGRESSION}
+    changed = set(git(repo, 'diff', '--name-only', '--no-renames', BASE_COMMIT, commit,
+                      '--').decode().splitlines())
+    if changed != required:
+        raise ValueError('Candidate differs from digest link allowlist: ' + repr(sorted(changed ^ required)))
+    for path in selected | {REGRESSION}:
+        fields = git(repo, 'ls-tree', commit, '--', path).split()
+        if fields[:2] not in ([b'100644', b'blob'], [b'100755', b'blob']):
+            raise ValueError('Candidate path is not a regular file: ' + path)
     for (root, relative), expected in before.items():
         path = source_path(root, relative)
         ref = BASE_COMMIT if path in selected else commit
@@ -155,7 +148,10 @@ def build(repo, commit, stage, prior_manifest):
     for name, source in TOOLS.items():
         content = git(repo, 'show', f'{commit}:{source}')
         (stage / name).write_bytes(content)
-        hashes[name.removesuffix('.py') + '_sha256'] = sha(content)
+        key = name.removesuffix('.py') + '_sha256'
+        hashes[key] = sha(content)
+        if name != 'build.py' and hashes[key] != prior[key]:
+            raise ValueError('Previously accepted operator changed: ' + name)
     manifest = {'schema': 1, 'scope': SCOPE, 'source_commit': commit, 'base_commit': BASE_COMMIT,
                 'prior_sha256': BASE_MANIFEST, 'baseline_inventory': baseline,
                 'support_files': support, 'files': files, 'source_archive_sha256': sha(archive), **hashes}
@@ -166,7 +162,7 @@ def build(repo, commit, stage, prior_manifest):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__)
-    for argument in ('repo', 'commit', 'stage', 'prior-manifest'):
+    for argument in ('repo', 'commit', 'stage', 'prior-manifest', 'prior-proof'):
         parser.add_argument('--' + argument, required=True)
     args = parser.parse_args()
-    print(json.dumps(build(args.repo, args.commit, args.stage, args.prior_manifest)))
+    print(json.dumps(build(args.repo, args.commit, args.stage, args.prior_manifest, args.prior_proof)))
