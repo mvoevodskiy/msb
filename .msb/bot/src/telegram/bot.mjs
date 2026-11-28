@@ -376,7 +376,7 @@ export function createBot(cfg, { bot = new Bot(cfg.botToken), runTurn = runAgent
   bot.command('digest', async (ctx) => {
     const { buildDigestText, deliverDigest } = await import('../monitor/digest.mjs');
     const dig = await buildDigestText();
-    await deliverDigest(dig.text,
+    await deliverDigest(dig,
       text => ctx.reply(text, { parse_mode: 'HTML' }),
       file => ctx.replyWithDocument(file));
   });
