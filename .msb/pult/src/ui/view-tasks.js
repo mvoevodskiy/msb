@@ -6,7 +6,7 @@ import { runBars } from './charts.js';
 import {
   splitTasks, botFilters, filterTasks, taskSubtitle, lastRunText, nextRunText, stripSummary, dayCells, slotsSummary,
   rangeStats, RANGE_LABEL, RANGE_MS, RANGES, validRange, buildHash, fmtTokens, fmtWhen, fmtDur, fmtDateTime, RUN_WORD,
-  taskKpis, taskParams, taskCron, observations, groupedLastRuns, runOutcome, count, toMs, plural, medianStep,
+  taskKpis, taskParams, taskCron, observations, groupedLastRuns, runOutcome, count, toMs, plural, medianStep, taskScheduleUnavailable, taskByRouteId,
 } from './logic.js';
 
 const STRIP_LEGEND = [
@@ -83,7 +83,8 @@ export function viewTasks(ctx) {
       seg('Период', RANGES.map((r) => ({ key: r, label: RANGE_LABEL[r], href: buildHash('tasks', null, q({ range: r === '24h' ? null : r })) })), range, 'tr'))));
 
   if (!s.tasks.length) {
-    root.append(empty('Фоновых задач нет', s.tasksHidden ? `Активных нет; выключенных и отработавших — ${s.tasksHidden}.` : 'Ни у ботов, ни у сервера нет активных фоновых задач.'));
+    root.append(taskScheduleUnavailable(s) ? empty('Не удалось прочитать расписание')
+      : empty('Фоновых задач нет', s.tasksHidden ? `Активных нет; выключенных и отработавших — ${s.tasksHidden}.` : 'Ни у ботов, ни у сервера нет активных фоновых задач.'));
     return root;
   }
   const list = filterTasks(s.tasks, botKey);
@@ -154,7 +155,7 @@ function wireRowClicks(tbody) {
 
 export function viewTask(ctx) {
   const { s, now, route } = ctx;
-  const t = s.tasks.find((x) => x.id === route.id);
+  const t = taskByRouteId(s.tasks, route.id);
   const crumb = h('nav', { class: 'crumb', 'aria-label': 'Где я' }, h('a', { href: '#/tasks', 'data-fkey': 'crumb' }, 'Задачи'), ' ›');
   if (!t) {
     return h('div', { class: 'task' }, crumb, pageTitle('Задача больше не активна'),

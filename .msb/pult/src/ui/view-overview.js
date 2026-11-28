@@ -4,8 +4,8 @@ import { h, sr } from './dom.js';
 import { pageTitle, secTitle, empty, levelDot, legend, meter, fold, LEVEL_WORD } from './parts.js';
 import { spark, dayStrip } from './charts.js';
 import {
-  overviewSummary, fmtSpan, fmtWhen, toMs, attentionHref, attentionLinkLabel, botNowInfo, botLabel, upcomingRows,
-  projectLevel, subscriptionInfo, balanceInfo, fmtPct, gbNum, NBSP, count, buildHash, seriesOf,
+  overviewSummary, fmtSpan, fmtWhen, toMs, attentionHref, attentionLinkLabel, botNowInfo, botLabel, upcomingRows, taskScheduleUnavailable,
+  projectLevel, projectRegistryUnavailable, subscriptionInfo, balanceInfo, fmtPct, gbNum, NBSP, count, buildHash, seriesOf,
 } from './logic.js';
 
 export function viewOverview(ctx) {
@@ -120,7 +120,8 @@ function botsSec(ctx) {
 function upcomingSec(ctx) {
   const { s, now } = ctx;
   const rows = upcomingRows(s, ctx.resp.notify, now);
-  if (!rows.length) {
+  const unavailable = !s.upcoming.length && taskScheduleUnavailable(s);
+  if (!rows.length && !unavailable) {
     return fold(
       [h('span', null, h('strong', null, 'Ближайшие'), ' · ничего не запланировано')],
       [empty('Ничего не запланировано')],
@@ -128,24 +129,28 @@ function upcomingSec(ctx) {
     );
   }
   const show = rows.slice(0, 3);
-  const body = [
-    h('ul', { class: 'kv2 left' }, show.map((r) => h('li', null,
+  const body = unavailable ? [empty('Не удалось прочитать расписание')] : [];
+  if (show.length) body.push(h('ul', { class: 'kv2 left' }, show.map((r) => h('li', null,
       h('span', { class: 'k num' }, fmtWhen(r.at, now)),
       r.taskId && s.tasks.some((t) => t.id === r.taskId)
         ? h('a', { class: 'v ink2 plain', href: buildHash('tasks', r.taskId), 'data-fkey': `up:${r.taskId}:${r.at}` }, r.name)
-        : h('span', { class: 'v ink2' }, r.name)))),
-  ];
+        : h('span', { class: 'v ink2' }, r.name)))));
   if (rows.length > 3) body.push(h('p', { class: 'more' }, h('a', { class: 'plain', href: '#/tasks' }, `ещё ${rows.length - 3} на Задачах ›`)));
   return fold(
-    [h('span', null, h('strong', null, 'Ближайшие'), ' · ', count(rows.length, 'по расписанию', 'по расписанию', 'по расписанию'))],
+    [h('span', null, h('strong', null, 'Ближайшие'), ' · ',
+      unavailable ? 'нет данных' : count(rows.length, 'по расписанию', 'по расписанию', 'по расписанию'))],
     body,
-    { class: 'fold sec sec-next', label: 'Дальше по расписанию' },
+    { open: unavailable, class: 'fold sec sec-next', label: 'Дальше по расписанию' },
   );
 }
 
 function projectsSec(s) {
   const sec = h('section', { class: 'sec sec-proj', 'aria-labelledby': 'ov-proj' }, secTitle('Проекты', 'ov-proj'));
-  if (!s.projects.length) { sec.append(empty('Проектов нет', 'Боты ещё не завели карточки проектов.')); return sec; }
+  if (!s.projects.length) {
+    sec.append(projectRegistryUnavailable(s) ? empty('Не удалось прочитать реестр проектов')
+      : empty('Проектов нет', 'Боты ещё не завели карточки проектов.'));
+    return sec;
+  }
   // Скан: точка · имя · справа только красный счётчик asks.
   const sorted = [...s.projects].sort((a, b) => (b.asks.length - a.asks.length) || a.name.localeCompare(b.name, 'ru'));
   sec.append(h('ul', { class: 'kv2' }, sorted.map((p) => {
@@ -202,13 +207,20 @@ function serverSec(ctx) {
 function subsSec(s, now) {
   const rows = [];
   const problems = [];
-  for (const quota of s.subscriptions ?? (s.subscription ? [s.subscription] : [])) {
+  const subscriptions = s.subscriptions ?? (s.subscription ? [s.subscription] : []);
+  for (const quota of subscriptions) {
     const sub = subscriptionInfo(quota, now);
     if (!sub) continue;
     const li = h('li', null, h('span', { class: 'k' }, quota.providerId === 'codex' ? 'Codex · подписка' : quota.providerId === 'claude' ? 'Claude · подписка' : 'Окно подписки'),
       h('span', { class: `v ${sub.stale ? 'muted' : sub.level === 'crit' ? 'red' : sub.level === 'warn' ? 'amber' : 'ink2'}` }, sub.text));
     rows.push(li);
     if (sub.stale || sub.level === 'crit' || sub.level === 'warn') problems.push(li);
+  }
+  if (!subscriptions.some(quota => quota.providerId === 'codex') &&
+      s.sourceErrors.some(({ source }) => source === 'подписка Codex')) {
+    const li = h('li', null, h('span', { class: 'k' }, 'Codex · подписка'), h('span', { class: 'v muted' }, 'нет данных'));
+    rows.push(li);
+    problems.push(li);
   }
   for (const b of s.balances) {
     const bi = balanceInfo(b, now);

@@ -450,6 +450,9 @@ describe('сервер', () => {
   });
   test('служебные процессы платформы и уровни служб', () => {
     assert.equal(n(L.platformLine(S.platform)!.text), 'Ещё 5 служебных процессов платформы ботов — в норме');
+    assert.deepEqual(L.platformLine({ total: 3, ok: 0, failed: 0 }), {
+      text: 'Служебные процессы платформы ботов: в норме 0 из 3', level: null,
+    });
     assert.equal(L.platformLine({ total: 5, ok: 3, failed: 2 })!.level, 'crit');
     assert.equal(L.platformLine({ total: 0, ok: 0, failed: 0 }), null);
     assert.equal(L.serviceLevel('active'), 'good');

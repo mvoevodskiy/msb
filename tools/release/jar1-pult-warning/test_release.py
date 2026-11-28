@@ -19,7 +19,7 @@ def manifest():
 
 
 def report(m):
-    return {'scope': deploy.SCOPE, 'source_commit': m['source_commit'], 'manifest_sha256': 'f' * 64,
+    return {'scope': m['scope'], 'source_commit': m['source_commit'], 'manifest_sha256': 'f' * 64,
             'source_archive_sha256': m['source_archive_sha256'], 'environment': {'node_sha256': 'a' * 64},
             'excluded_tests': deploy.EXCLUDED_TESTS,
             'checks': [{'suite': 'typecheck', 'passed': 1, 'exit_code': 0},
@@ -32,6 +32,24 @@ class ReleaseContract(unittest.TestCase):
         m = manifest()
         deploy.validate_manifest(m)
         deploy.validate_report(report(m), m, 'f' * 64)
+
+    def test_patch_allows_collector_config_and_ui_targets_with_matching_proof(self):
+        m = manifest()
+        m.update(scope=deploy.PATCH_SCOPE, base_commit='d' * 40)
+        for name in ('src/shared/config.ts', 'src/ui/view-overview.js'):
+            m['pult_files'].append({'root': 'pult', 'relative': name, 'source': '.msb/pult/' + name,
+                                    'before_sha256': 'a' * 64, 'after_sha256': 'b' * 64})
+            m['pult_baseline_inventory'].append({'relative': name, 'sha256': 'a' * 64})
+        deploy.validate_manifest(m)
+        deploy.validate_report(report(m), m, 'f' * 64)
+        stale_proof = {**report(m), 'scope': deploy.SCOPE}
+        with self.assertRaises(RuntimeError): deploy.validate_report(stale_proof, m, 'f' * 64)
+        for target in ('src/collector/../server/app.ts', 'src/server/app.ts', 'src/shared/registry.ts', 'config/pult.config.json'):
+            invalid = copy.deepcopy(m)
+            invalid['pult_files'][-1].update(relative=target, source='.msb/pult/' + target)
+            invalid['pult_files'].sort(key=lambda row: row['relative'])
+            invalid['pult_baseline_inventory'][-1]['relative'] = target
+            with self.assertRaises(RuntimeError): deploy.validate_manifest(invalid)
 
     def test_unexpected_file_and_baseline_drift_are_rejected(self):
         for mutate in (lambda m: m['pult_files'].append(m['pult_files'][0]),

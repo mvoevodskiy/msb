@@ -9,10 +9,10 @@ import { CodexQuota, readCodexLimits } from './sources/codex-quota.ts';
 import { CodexUsageReader } from './sources/codex-usage.ts';
 import { performance } from 'node:perf_hooks';
 import { SNAPSHOT_SCHEMA, type Balance, type Bot, type ServerState, type Service, type Snapshot, type Subscription, type Task } from '../shared/types.ts';
-import type { PultConfig } from '../shared/config.ts';
+import { listBots, type BotConfig, type PultConfig } from '../shared/config.ts';
 import { expandHome, openAsks, readAsks, readProjects } from '../shared/registry.ts';
 import { analyze, type ServiceStatus, type TaskFindings } from './analyze.ts';
-import { execCmd, iso, type Exec, Problems, readJsonFile, utcDay } from './util.ts';
+import { execCmd, iso, type Exec, Problems, readJsonFile, shortHash, utcDay } from './util.ts';
 import { parseBootMs, readServer, type CpuSample } from './sources/system.ts';
 import { journalRuns, prop, serverTimeZone, showUnits, unitHealth, type Props, type UnitHealth } from './sources/systemd.ts';
 import { cleanTaskName, readDaily, readBotData, type BotData, type RateLimitInfo, type TraceRec, type TranscriptRec } from './sources/journal.ts';
@@ -52,6 +52,7 @@ const health = (h: UnitHealth) => ({ state: h.state, since: h.since, restarts: h
 
 export class Collector {
   private readonly config: PultConfig;
+  private botInventory: BotConfig[];
   private readonly procRoot: string;
   private readonly cgroupRoot: string;
   private readonly diskPath: string;
@@ -69,6 +70,7 @@ export class Collector {
 
   constructor(config: PultConfig, opts: CollectorOptions = {}) {
     this.config = config;
+    this.botInventory = config.bots;
     const quotaEnv = opts.env ?? process.env;
     const profileBin = join(dirname(config.botsRoot), 'ext-tools/bin/codex');
     const binary = quotaEnv.PULT_CODEX_BIN || (existsSync(profileBin) ? profileBin : 'codex');
@@ -100,9 +102,10 @@ export class Collector {
     const t0 = performance.now();
     const now = this.clock();
     const nowMs = now.getTime();
-    const cfg = this.config;
-    const tz = cfg.timezone;
     const problems = new Problems();
+    this.botInventory = problems.guard('каталог ботов', () => listBots(this.config), this.botInventory);
+    const cfg = { ...this.config, bots: this.botInventory };
+    const tz = cfg.timezone;
     const git = new GitCache(this.exec);
 
     // ---- параллельно: процессор, systemd, журналы таймеров, Deepgram ----
@@ -149,7 +152,10 @@ export class Collector {
           continue;
         }
         const built = problems.guard(`задача бота «${b.name}»`, () => buildTask(a, data.runs, { botId: b.id, botName: b.name, config: cfg, now, problems }), null);
-        if (built) botTasks.push(built);
+        if (built) {
+          built.task.id += '-' + shortHash(JSON.stringify(['action', b.id, a.id]));
+          botTasks.push(built);
+        }
       }
 
       const procs = h.controlGroup && bootMs !== null && (h.state === 'active' || h.state === 'reloading')
@@ -184,14 +190,16 @@ export class Collector {
     const timerTasks = cfg.timers.map((t, i) => {
       const statusData = t.statusFile ? problems.guard(`таймер «${t.name}»: файл состояния`, () => readJsonFile(t.statusFile!), null) : null;
       const botName = t.bot === 'server' ? 'Сервер' : cfg.bots.find(b => b.id === t.bot)?.name ?? t.bot;
-      return buildTimerTask({
+      const timer = buildTimerTask({
         cfg: t, botName, timer: units.get(t.timer), service: units.get(t.service), journal: journals[i], statusData,
         serverTz: this.serverTz, displayTz: tz, missedRunsWarn: cfg.thresholds.missedRunsWarn, now,
       });
+      timer.task.id += '-' + shortHash(JSON.stringify(['timer', t.id]));
+      return timer;
     });
 
-    // самый дорогой фон за сутки — одна задача на весь сервер
     const all = [...botTasks, ...timerTasks];
+    // самый дорогой фон за сутки — одна задача на весь сервер
     const priciest = all.reduce<(typeof all)[number] | null>((m, t) => (!m || t.task.stats24h.tokens > m.task.stats24h.tokens ? t : m), null);
     if (priciest && priciest.task.stats24h.tokens > cfg.thresholds.expensiveTaskTokens24h) {
       priciest.findings.push(expensiveFinding(priciest.task.stats24h.tokens));

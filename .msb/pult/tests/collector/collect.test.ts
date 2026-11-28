@@ -1,9 +1,11 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdirSync, mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Collector } from '../../src/collector/collect.ts';
 import { SNAPSHOT_SCHEMA, type Snapshot } from '../../src/shared/types.ts';
-import type { ExecResult } from '../../src/collector/util.ts';
+import { shortHash, type ExecResult } from '../../src/collector/util.ts';
 import { FIX, NOW, fakeExec, fixtureConfig } from './helpers.ts';
 
 function collector(exec = fakeExec(), cfg = fixtureConfig()) {
@@ -106,6 +108,78 @@ test('службы: необязательная без юнита скрыта,
   assert.deepEqual(s.platform, { total: 2, ok: 1, failed: 1 });
 });
 
+test('совпавшие исходные ID задач двух ботов и таймера ведут в свои карточки', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'pult-task-owners-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const createdAt = '2026-10-29T10:00:00.000Z';
+  const id = 'conv-prompt-' + createdAt;
+  for (const [bot, cron, name] of [
+    ['alpha', '0 * * * *', 'Задача Альфы'],
+    ['beta', '5 * * * *', 'Задача Беты'],
+  ]) {
+    const dir = join(root, bot);
+    mkdirSync(join(dir, 'autonomy'), { recursive: true });
+    const actions = [{ id, name, createdAt, trigger: { kind: 'cron', cron }, task: { kind: 'prompt' } }];
+    if (bot === 'alpha') actions.push({
+      id: 'unique-action', name: 'Отдельная задача', createdAt,
+      trigger: { kind: 'cron', cron: '15 * * * *' }, task: { kind: 'prompt' },
+    });
+    writeFileSync(join(dir, 'actions.json'), JSON.stringify(actions));
+    writeFileSync(join(dir, 'autonomy/runs.jsonl'), JSON.stringify({
+      ts: '2026-10-29T10:30:00.000Z', actionId: id, kind: 'prompt', status: 'error',
+    }) + '\n');
+  }
+  const base = fixtureConfig();
+  const s = await collector(fakeExec(), fixtureConfig({
+    botsRoot: root, bots: base.bots.slice(0, 2),
+    timers: [{ ...base.timers.find(t => t.id === 'backup')!, id }],
+  })).collect();
+  const cards = new Map(s.tasks.map(task => [task.id, task]));
+  assert.equal(cards.size, s.tasks.length);
+  assert.equal(s.tasks.find(task => task.name === 'Отдельная задача')?.id, shortHash('unique-action') + '-' + shortHash(JSON.stringify(['action', 'alpha', 'unique-action'])));
+  for (const [name, bot] of [
+    ['Задача Альфы', 'alpha'], ['Задача Беты', 'beta'], ['Резервная копия', 'server'],
+  ]) {
+    const link = s.upcoming.find(run => run.name === name);
+    assert.equal(cards.get(link?.taskId ?? '')?.bot, bot);
+  }
+  const warnings = s.attention.filter(a => a.key.startsWith('task:') && a.key.endsWith(':error'));
+  assert.equal(new Set(warnings.map(a => a.key)).size, 2);
+  for (const warning of warnings) {
+    const card = cards.get(warning.link?.id ?? '');
+    assert.ok(card && warning.text.includes(card.name));
+  }
+});
+
+test('адреса задач не меняются при появлении и удалении профиля с тем же исходным ID', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'pult-stable-task-ids-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const addBot = (bot: string) => {
+    mkdirSync(join(root, bot));
+    writeFileSync(join(root, bot, 'actions.json'), JSON.stringify([{
+      id: 'same-action', name: bot, createdAt: '2026-10-29T10:00:00.000Z',
+      trigger: { kind: 'cron', cron: '0 * * * *' }, task: { kind: 'prompt' },
+    }]));
+  };
+  addBot('alpha');
+  const cfg = fixtureConfig({ botsRoot: root, bots: fixtureConfig().bots.slice(0, 1), timers: [] });
+  const c = collector(fakeExec(), cfg);
+  const first = await c.collect();
+  const alphaId = first.upcoming.find(row => row.name === 'alpha')!.taskId;
+
+  addBot('beta');
+  const second = await c.collect();
+  assert.equal(second.tasks.find(task => task.id === alphaId)?.bot, 'alpha');
+  const betaId = second.upcoming.find(row => row.name === 'beta')!.taskId;
+  assert.notEqual(alphaId, betaId);
+  assert.equal((await collector(fakeExec(), cfg).collect()).tasks.find(task => task.id === betaId)?.bot, 'beta');
+
+  rmSync(join(root, 'beta'), { recursive: true });
+  const third = await c.collect();
+  assert.equal(third.tasks.find(task => task.id === alphaId)?.bot, 'alpha');
+  assert.equal(third.tasks.some(task => task.id === betaId), false);
+});
+
 test('проекты, вопросы, подписка, остатки, ближайшие запуски', async () => {
   const s = await snapshot();
   assert.deepEqual(s.projects.map(p => p.id), ['tools', 'demo']);
@@ -151,6 +225,55 @@ test('падение источника не роняет снимок: нет s
   assert.ok(s.tasks.length >= 5);
   assert.equal(s.balances.find(b => b.id === 'deepgram')?.value, 'нет данных');
   assert.ok(s.attention.some(a => a.key === 'source:systemd'));
+});
+
+test('новые и удалённые каталоги ботов учитываются на следующем тике', async t => {
+  const root = mkdtempSync(join(tmpdir(), 'pult-bot-inventory-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  for (const id of ['alpha', 'beta']) mkdirSync(join(root, id));
+  const c = collector(fakeExec(), fixtureConfig({
+    botsRoot: root,
+    bots: [{ id: 'alpha', name: 'Альфа', unit: 'msb-bot@alpha.service', projects: ['Демо'] }],
+    timers: [],
+  }));
+
+  const first = await c.collect();
+  assert.deepEqual(first.bots.map(b => b.id), ['alpha', 'beta']);
+  assert.equal(first.bots[0].name, 'Альфа');
+
+  mkdirSync(join(root, 'gamma'));
+  const second = await c.collect();
+  assert.deepEqual(second.bots.map(b => b.id), ['alpha', 'beta', 'gamma']);
+  assert.equal(second.bots[2].service.state, 'failed');
+  assert.ok(second.attention.some(a => a.key === 'bot:gamma:down'));
+
+  rmSync(join(root, 'beta'), { recursive: true });
+  const third = await c.collect();
+  assert.deepEqual(third.bots.map(b => b.id), ['alpha', 'gamma']);
+});
+
+test('недоступный каталог ботов отмечается без потери последнего списка', async t => {
+  const parent = mkdtempSync(join(tmpdir(), 'pult-bots-unavailable-'));
+  t.after(() => rmSync(parent, { recursive: true, force: true }));
+  const root = join(parent, 'bots');
+  const moved = join(parent, 'offline');
+  for (const id of ['alpha', 'beta']) mkdirSync(join(root, id), { recursive: true });
+  const c = collector(fakeExec(), fixtureConfig({
+    botsRoot: root, bots: fixtureConfig().bots.slice(0, 1), timers: [],
+  }));
+
+  assert.deepEqual((await c.collect()).bots.map(b => b.id), ['alpha', 'beta']);
+  renameSync(root, moved);
+  const unavailable = await c.collect();
+  assert.deepEqual(unavailable.bots.map(b => b.id), ['alpha', 'beta']);
+  assert.ok(unavailable.sourceErrors.some(e => e.source === 'каталог ботов'));
+  assert.ok(unavailable.attention.some(a => a.key === 'source:каталог ботов'));
+
+  renameSync(moved, root);
+  rmSync(join(root, 'beta'), { recursive: true });
+  const restored = await c.collect();
+  assert.deepEqual(restored.bots.map(b => b.id), ['alpha']);
+  assert.ok(!restored.sourceErrors.some(e => e.source === 'каталог ботов'));
 });
 
 test('процессор: второй тик считает по разнице с первым', async () => {

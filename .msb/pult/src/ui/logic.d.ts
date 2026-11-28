@@ -39,6 +39,7 @@ export const RANGE_LABEL: Record<Range, string>;
 export interface Route { name: 'overview' | 'bots' | 'tasks' | 'task' | 'projects' | 'server' | 'notfound'; tab: Tab | null; id: string | null; query: Record<string, string> }
 export function parseRoute(hash: string): Route;
 export function buildHash(tab: Tab, id?: string | null, query?: Record<string, string | null | undefined> | null): string;
+export function taskByRouteId(tasks: Task[], id: string | null): Task | undefined;
 export function validRange(r: unknown, def?: Range): Range;
 export function attentionHref(link: { tab: Tab; id?: string } | null | undefined): string;
 export function attentionLinkLabel(link: { tab: Tab; id?: string } | null | undefined): string;
@@ -57,10 +58,12 @@ export function overviewSummary(s: Snapshot, now: number): OverviewSummary;
 export function nextDigestAt(now: number, hour?: number): number;
 export interface UpcomingRow { at: number; name: string; taskId: string | null; digest: boolean }
 export function upcomingRows(s: Snapshot, notify: SnapshotResponse['notify'] | null | undefined, now: number): UpcomingRow[];
+export function taskScheduleUnavailable(s: Snapshot): boolean;
 export function botNowInfo(bot: Bot, s: Snapshot, now: number): { status: string; busy: boolean; level: DotLevel; about: string; sub: string };
 export function botsServiceLine(bots: Bot[]): string;
 export function subscriptionInfo(sub: Subscription | null, now: number): { text: string; level: 'warn' | 'crit' | null; stale: boolean } | null;
 export function balanceInfo(b: Balance, now: number): { text: string; level: 'warn' | null; stale: boolean; checked: string | null };
+export function projectRegistryUnavailable(s: Snapshot): boolean;
 export function projectLevel(p: Project): DotLevel;
 export function projectServicesParts(p: Project, services: Service[]): { text: string; level: DotLevel | null }[];
 
