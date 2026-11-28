@@ -120,12 +120,8 @@ function botsSec(ctx) {
 function upcomingSec(ctx) {
   const { s, now } = ctx;
   const rows = upcomingRows(s, ctx.resp.notify, now);
-  if (!rows.length) {
-    if (taskScheduleUnavailable(s)) {
-      return fold([h('span', null, h('strong', null, 'Ближайшие'), ' · нет данных')],
-        [empty('Не удалось прочитать расписание')],
-        { open: true, class: 'fold sec sec-next', label: 'Дальше по расписанию' });
-    }
+  const unavailable = !s.upcoming.length && taskScheduleUnavailable(s);
+  if (!rows.length && !unavailable) {
     return fold(
       [h('span', null, h('strong', null, 'Ближайшие'), ' · ничего не запланировано')],
       [empty('Ничего не запланировано')],
@@ -133,18 +129,18 @@ function upcomingSec(ctx) {
     );
   }
   const show = rows.slice(0, 3);
-  const body = [
-    h('ul', { class: 'kv2 left' }, show.map((r) => h('li', null,
+  const body = unavailable ? [empty('Не удалось прочитать расписание')] : [];
+  if (show.length) body.push(h('ul', { class: 'kv2 left' }, show.map((r) => h('li', null,
       h('span', { class: 'k num' }, fmtWhen(r.at, now)),
       r.taskId && s.tasks.some((t) => t.id === r.taskId)
         ? h('a', { class: 'v ink2 plain', href: buildHash('tasks', r.taskId), 'data-fkey': `up:${r.taskId}:${r.at}` }, r.name)
-        : h('span', { class: 'v ink2' }, r.name)))),
-  ];
+        : h('span', { class: 'v ink2' }, r.name)))));
   if (rows.length > 3) body.push(h('p', { class: 'more' }, h('a', { class: 'plain', href: '#/tasks' }, `ещё ${rows.length - 3} на Задачах ›`)));
   return fold(
-    [h('span', null, h('strong', null, 'Ближайшие'), ' · ', count(rows.length, 'по расписанию', 'по расписанию', 'по расписанию'))],
+    [h('span', null, h('strong', null, 'Ближайшие'), ' · ',
+      unavailable ? 'нет данных' : count(rows.length, 'по расписанию', 'по расписанию', 'по расписанию'))],
     body,
-    { class: 'fold sec sec-next', label: 'Дальше по расписанию' },
+    { open: unavailable, class: 'fold sec sec-next', label: 'Дальше по расписанию' },
   );
 }
 

@@ -25,7 +25,7 @@ globalThis.Node = Element;
 globalThis.document = { createElement: tag => Object.assign(new Element(), { tag }) };
 const quiet = JSON.parse(readFileSync(new URL('../fixtures/ui/snapshot-quiet.json', import.meta.url), 'utf8'));
 const now = Date.parse(quiet.collectedAt);
-const overview = changes => viewOverview({ s: { ...quiet, ...changes }, now, resp: {}, chart: () => null, history: () => ({}) });
+const overview = (changes, notify) => viewOverview({ s: { ...quiet, ...changes }, now, resp: { notify }, chart: () => null, history: () => ({}) });
 
 test('an unreadable Codex subscription is not marked healthy alongside a known balance', () => {
   const snapshot = { subscription: null, subscriptions: [], balances: [{ name: 'Другой сервис', value: '50', ok: true }] };
@@ -54,17 +54,20 @@ test('a failed project registry read is distinct from a successful empty registr
 
 test('an unreadable task schedule is distinct from a successful empty schedule', () => {
   const view = s => viewTasks({ s: { ...quiet, ...s }, now, route: { query: {} } }).text();
-  const upcoming = s => overview(s).region('Дальше по расписанию').text();
+  const upcoming = (s, notify) => overview(s, notify).region('Дальше по расписанию').text();
   const empty = { tasks: [], upcoming: [], tasksHidden: 0, sourceErrors: [] };
   assert.match(view(empty), /Фоновых задач нет/);
   assert.match(upcoming(empty), /ничего не запланировано/);
 
-  for (const source of ['бот «Пример»: фоновые задачи', 'задача бота «Пример»', 'systemd']) {
+  for (const source of ['бот «Пример»: фоновые задачи', 'задача бота «Пример»', 'systemd', 'каталог ботов']) {
     const failed = { ...empty, sourceErrors: [{ source, message: 'unavailable' }] };
     assert.match(view(failed), /Не удалось прочитать расписание/);
     assert.doesNotMatch(view(failed), /Фоновых задач нет/);
     assert.match(upcoming(failed), /Не удалось прочитать расписание/);
     assert.doesNotMatch(upcoming(failed), /ничего не запланировано/);
+    const withDigest = upcoming(failed, { configured: true });
+    assert.match(withDigest, /Не удалось прочитать расписание/);
+    assert.match(withDigest, /Сводка пульта/);
   }
   const unrelated = { ...empty, sourceErrors: [{ source: 'Расход Codex', message: 'unavailable' }] };
   assert.match(view(unrelated), /Фоновых задач нет/);

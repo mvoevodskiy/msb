@@ -289,7 +289,7 @@ const TAB_WORD = { server: 'сервер', tasks: 'фоновые задачи',
 
 /** Ошибки источников расписания из collector/collect.ts и sources/journal.ts. */
 export function taskScheduleUnavailable(s) {
-  return s.sourceErrors.some(({ source }) => source === 'systemd' ||
+  return s.sourceErrors.some(({ source }) => source === 'systemd' || source === 'каталог ботов' ||
     source.startsWith('задача бота «') || /^бот «.*»: фоновые задачи$/u.test(source));
 }
 
