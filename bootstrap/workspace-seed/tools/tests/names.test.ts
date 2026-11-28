@@ -320,7 +320,7 @@ test('WHOIS не ответил — «не удалось проверить» �
 // ---------- Telegram ----------
 
 test('правила имён Telegram', () => {
-  for (const ok of ['acme', 'a2345', 'a_b_c1', `a${'b'.repeat(31)}`]) assert.equal(telegramProblem(ok), undefined, ok);
+  for (const ok of ['acme5', 'a2345', 'a_b_c1', `a${'b'.repeat(31)}`]) assert.equal(telegramProblem(ok), undefined, ok);
   const bad: Array<[string, RegExp]> = [
     ['abcd', /от 5 до 32/],
     [`a${'b'.repeat(32)}`, /от 5 до 32/],
@@ -474,16 +474,16 @@ test('run: при многих именах и зонах в сети не бо�
 test('таблица по-русски: имена — столбцы (по 4 в блоке), пояснения сгруппированы, итог', async () => {
   const w = whoisFake((_, q) => (q === 'yandex.ru' ? TCI_TAKEN : TCI_FREE));
   const net = web((url) => (url.host === 't.me' ? { body: url.pathname === '/yandex' ? TME_TAKEN : TME_ABSENT } : { status: 302, headers: { location: '/?query=x' } }));
-  const out = await run(['yandex', 'acme', 'bravo', 'charlie', 'delta', '--zones', 'ru,рф', '--social', 'tg'], deps({ whois: w.whois, fetch: net.fetch }));
+  const out = await run(['yandex', 'acme5', 'bravo', 'charlie', 'delta', '--zones', 'ru,рф', '--social', 'tg'], deps({ whois: w.whois, fetch: net.fetch }));
   const lines = out.split('\n');
   assert.equal(lines[0], 'Свободны ли имена: 2 зоны, Telegram');
-  assert.match(out, /^ +yandex +acme +bravo +charlie$/m);
+  assert.match(out, /^ +yandex +acme5 +bravo +charlie$/m);
   assert.match(out, /^\.ru +занят +свободен +свободен +свободен$/m);
   assert.match(out, /^ +delta$/m);
   assert.match(out, /^Telegram +занято +скорее свободно/m);
-  assert.match(out, /^ {2}yandex, acme, bravo, charlie, delta · \.рф: в \.рф — только кириллица$/m);
+  assert.match(out, /^ {2}yandex, acme5, bravo, charlie, delta · \.рф: в \.рф — только кириллица$/m);
   assert.match(out, /^ {2}yandex · Telegram: «Tom & Jerry»$/m);
-  assert.match(out, /^Полностью свободно: acme, bravo, charlie, delta$/m);
+  assert.match(out, /^Полностью свободно: acme5, bravo, charlie, delta$/m);
   assert.match(out, /не гарантия покупки/);
   assert.match(out, /Скорее свободно/);
 });
@@ -507,7 +507,7 @@ test('коды выхода: всё не удалось — 1; хоть что-�
 
 test('--json — массив объектов по именам', async () => {
   const w = whoisFake(() => TCI_FREE);
-  const out = await json(['ZapCita', '@acme', '--zones', 'ru'], deps({ whois: w.whois }));
+  const out = await json(['AcMe', '@acme', '--zones', 'ru'], deps({ whois: w.whois }));
   assert.deepEqual(out, [
     { name: 'acme', fullyFree: true, checks: [{ target: 'ru', kind: 'domain', domain: 'acme.ru', status: 'free', label: 'свободен', source: 'whois.tcinet.ru' }] },
   ]);
