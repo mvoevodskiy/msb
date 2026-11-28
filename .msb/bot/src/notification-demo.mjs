@@ -1,12 +1,12 @@
 /**
  * Owner-triggered old notice examples with the same mute controls as real sends.
  * Uses synthetic balance/provider values and reads only local pause/monitor state.
- * [Telegram callback](../telegram/routes/notifications.mjs),
- * [handler checks](../../tests/notification-settings.test.mjs).
+ * [Telegram callback](./telegram/routes/notifications.mjs),
+ * [handler checks](../tests/notification-settings.test.mjs).
  */
-import { loadMonitorConfig } from '../monitor/config.mjs';
-import { formatPauseNotice, PAUSE_OFF_BUTTON, readPauseNoticeSnapshot } from '../autonomy/pause-notice-text.mjs';
-import { NOTICE_KINDS, isNoticeMuted, noticeMuteKeyboard } from '../notification-mutes.mjs';
+import { loadMonitorConfig } from './monitor/config.mjs';
+import { formatPauseNotice, PAUSE_OFF_BUTTON, readPauseNoticeSnapshot } from './autonomy/pause-notice-text.mjs';
+import { NOTICE_KINDS, isNoticeMuted, noticeMuteKeyboard } from './notification-mutes.mjs';
 
 export const DEMO_TOO_SOON = 'Примеры только что ушли, подожди 10 секунд';
 

@@ -1,10 +1,10 @@
 /**
  * Owner-only notification preferences and examples.
  * [Callback ACK and rendering](../router.mjs), [preferences](../../notification-mutes.mjs),
- * [demo messages](../../notifications/demo.mjs), [handler tests](../../../tests/notification-settings.test.mjs).
+ * [demo messages](../../notification-demo.mjs), [handler tests](../../../tests/notification-settings.test.mjs).
  */
 import { NOTICE_KINDS, readNoticeMutes, setNoticeMuted } from '../../notification-mutes.mjs';
-import { DEMO_TOO_SOON, sendNoticeDemos } from '../../notifications/demo.mjs';
+import { DEMO_TOO_SOON, sendNoticeDemos } from '../../notification-demo.mjs';
 import { notificationsScreen } from '../screens/settings.mjs';
 import { resumeFromPauseNotice } from '../pause-markers.mjs';
 import { UNHANDLED } from './shared.mjs';
