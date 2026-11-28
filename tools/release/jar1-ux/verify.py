@@ -177,16 +177,17 @@ def native_check(source, env, node, binary):
     return check
 
 
-def release_check(source, env):
+def release_check(source, env, directory='tools/release/jar1-ux'):
     code, output = run([sys.executable, '-B', '-m', 'unittest', 'discover', '-s',
-                        'tools/release/jar1-ux', '-p', 'test_*.py', '-v'], source, env, 120)
+                        directory, '-p', 'test_*.py', '-v'], source, env, 120)
     count = re.search(r'^Ran (\d+) tests? in ', output, re.MULTILINE)
     if code or not count or int(count[1]) <= 0 or not re.search(r'^OK$', output, re.MULTILINE):
         raise VerificationError(f'operator tests did not all pass (exit {code}, ran {count[1] if count else "unknown"})')
     return passed_check('release', int(count[1]))
 
 
-def verify(stage, home, tmp_dir, host_netns, dependencies=DEPENDENCIES):
+def verify(stage, home, tmp_dir, host_netns, dependencies=DEPENDENCIES, *,
+           scope=SCOPE, required_core=(), extra_release_suite=None):
     stage, home, tmp_dir = (Path(value).resolve() for value in (stage, home, tmp_dir))
     if home != Path('/tmp/msb-attachment-home') or not home.is_dir() or tmp_dir != Path('/tmp'):
         raise VerificationError('Unexpected isolated HOME or temporary directory')
@@ -196,7 +197,7 @@ def verify(stage, home, tmp_dir, host_netns, dependencies=DEPENDENCIES):
     manifest_path = stage / 'manifest.json'
     manifest_raw = manifest_path.read_bytes()
     manifest = json.loads(manifest_raw)
-    if manifest.get('scope') != SCOPE or not re.fullmatch(r'[0-9a-f]{40}', manifest.get('source_commit', '')):
+    if manifest.get('scope') != scope or not re.fullmatch(r'[0-9a-f]{40}', manifest.get('source_commit', '')):
         raise VerificationError('Unexpected release manifest identity')
     source = stage / 'source'
     source_guard = load_module(stage, 'source_guard')
@@ -219,8 +220,14 @@ def verify(stage, home, tmp_dir, host_netns, dependencies=DEPENDENCIES):
                 check = native_check(source, env, node, base.NATIVE_BINARY)
             elif name == 'release':
                 check = release_check(source, env)
+                if extra_release_suite:
+                    extra = release_check(source, env, extra_release_suite)
+                    check = passed_check(name, check['passed'] + extra['passed'])
             else:
-                check = node_suite(name, test_files(source, TEST_ROOTS[name]), source, env, node)
+                files = test_files(source, TEST_ROOTS[name])
+                if name == 'core' and not set(required_core).issubset(files):
+                    raise VerificationError('Required scoped regression tests are missing')
+                check = node_suite(name, files, source, env, node)
             checks.append(check)
         except VerificationError as error:
             failures.append(f'{name}: {error}')
@@ -242,7 +249,7 @@ def verify(stage, home, tmp_dir, host_netns, dependencies=DEPENDENCIES):
         raise VerificationError('\n'.join(failures))
 
     return {
-        'scope': SCOPE, 'source_commit': manifest['source_commit'],
+        'scope': scope, 'source_commit': manifest['source_commit'],
         'manifest_sha256': hashlib.sha256(manifest_raw).hexdigest(),
         'source_archive_sha256': manifest['source_archive_sha256'],
         'environment': environment,
