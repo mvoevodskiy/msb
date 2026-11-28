@@ -1,4 +1,14 @@
 services:
+  portal-db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: portal
+      POSTGRES_PASSWORD: portal
+      POSTGRES_DB: portal
+    volumes:
+      - portal-db:/var/lib/postgresql/data
+
   msb-updates:
     build:
       context: ..
@@ -14,8 +24,15 @@ services:
       PORT: "8787"
       MSB_UPDATES_DATA: /data
       BOT_MODE: webhook
+      PORTAL_DATABASE_URL: postgres://portal:portal@portal-db:5432/portal
+      ACCESS_POLICY: open
+    depends_on:
+      - portal-db
     volumes:
       - ../data-runtime:/data
       - ../:/app:ro
     # для SSH с хаба на бот-серверы нужен исходящий доступ; host network проще на LAN
     # network_mode: host
+
+volumes:
+  portal-db:

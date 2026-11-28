@@ -10,6 +10,8 @@ export function storePaths(dataDir) {
     users: path.join(dataDir, 'auth', 'users'),
     webLinks: path.join(dataDir, 'auth', 'web-links'),
     intents: path.join(dataDir, 'intents'),
+    clients: path.join(dataDir, 'clients'),
+    installations: path.join(dataDir, 'installations'),
     ssh: path.join(dataDir, 'ssh'),
     sshPrivate: path.join(dataDir, 'ssh', 'hub_install'),
     sshPublic: path.join(dataDir, 'ssh', 'hub_install.pub'),

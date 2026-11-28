@@ -1,0 +1,169 @@
+// HTTP CRM. Вход: cookie сессии и записи клиентов Установщика.
+// Выход: HTML. Чужой путь не обрабатывает.
+// Токены площадки в страницу не попадают. Проверка: tests/crm.test.mjs.
+
+import { passwordsMatch, createSessionStore } from './session.mjs';
+import { publicCard, renderCard, renderList, renderLogin, renderTicket } from './render.mjs';
+import { readBody } from '../util.mjs';
+import { randomUUID } from 'node:crypto';
+
+function sendHtml(res, status, html, headers = {}) {
+  const payload = Buffer.from(html);
+  res.writeHead(status, {
+    'content-type': 'text/html; charset=utf-8',
+    'content-length': payload.length,
+    'cache-control': 'no-store',
+    ...headers,
+  });
+  res.end(payload);
+}
+
+async function readForm(req) {
+  const raw = await readBody(req);
+  return new URLSearchParams(raw.toString('utf8'));
+}
+
+function replyError(code) {
+  if (code === 'REVISION_CONFLICT') return 'Обращение изменилось. Обновите страницу.';
+  if (code === 'IDEMPOTENCY_CONFLICT') return 'Этот ответ уже отправлялся с другим текстом.';
+  if (code === 'PREVIOUS_UNRESOLVED') return 'Прошлая отправка не подтверждена.';
+  if (code === 'ticket_closed') return 'Обращение закрыто.';
+  if (code === 'empty_text') return 'Напишите текст ответа.';
+  return 'Ответ не поставлен в очередь.';
+}
+
+export function createCrm(ctx) {
+  const sessions = createSessionStore();
+  const secure = String(ctx.config.baseUrl || '').startsWith('https://');
+
+  async function handle(req, res, url) {
+    if (!url.pathname.startsWith('/crm')) return false;
+    if (!ctx.config.crmPassword) {
+      sendHtml(res, 404, renderLogin({ error: 'CRM выключена.' }));
+      return true;
+    }
+    if (req.method === 'POST' && url.pathname === '/crm/login') {
+      const form = await readForm(req);
+      if (!passwordsMatch(ctx.config.crmPassword, form.get('password') || '')) {
+        sendHtml(res, 401, renderLogin({ error: 'Пароль не подошёл.' }));
+        return true;
+      }
+      const session = sessions.issue();
+      res.setHeader('Set-Cookie', sessions.cookie(session.id, { secure }));
+      res.writeHead(303, { location: '/crm' });
+      res.end();
+      return true;
+    }
+    const session = sessions.get(req);
+    if (req.method === 'POST' && url.pathname === '/crm/logout') {
+      const form = await readForm(req);
+      if (!session || form.get('csrf') !== session.csrf) {
+        sendHtml(res, 403, renderLogin({ error: 'Сессия не подтверждена.' }));
+        return true;
+      }
+      sessions.revoke(req);
+      res.setHeader('Set-Cookie', sessions.cookie('', { secure, maxAge: 0 }));
+      res.writeHead(303, { location: '/crm' });
+      res.end();
+      return true;
+    }
+    if (!session) {
+      sendHtml(res, 200, renderLogin());
+      return true;
+    }
+    const ticketMatch = url.pathname.match(/^\/crm\/tickets\/([^/]+)(?:\/(reply|close))?$/);
+    if (ticketMatch && ctx.tickets) {
+      const ticketId = decodeURIComponent(ticketMatch[1]);
+      if (req.method === 'POST' && ticketMatch[2]) {
+        const form = await readForm(req);
+        if (form.get('csrf') !== session.csrf) {
+          sendHtml(res, 403, renderLogin({ error: 'Сессия не подтверждена.' }));
+          return true;
+        }
+        try {
+          if (ticketMatch[2] === 'close') await ctx.tickets.close(ticketId);
+          else {
+            await ctx.tickets.reply({
+              ticketId,
+              operationId: form.get('operation_id') || '',
+              text: form.get('text') || '',
+              expectedRevision: form.get('expected_revision'),
+            });
+          }
+        } catch (err) {
+          const ticket = await ctx.tickets.get(ticketId);
+          if (!ticket) {
+            sendHtml(res, 404, renderLogin({ error: 'Обращение не найдено.' }));
+            return true;
+          }
+          sendHtml(res, err.code === 'REVISION_CONFLICT' ? 409 : 400, renderTicket({
+            ticket,
+            csrf: session.csrf,
+            operationId: randomUUID(),
+            error: replyError(err.code),
+          }));
+          return true;
+        }
+        res.writeHead(303, { location: `/crm/tickets/${encodeURIComponent(ticketId)}` });
+        res.end();
+        return true;
+      }
+      if (req.method === 'GET' && !ticketMatch[2]) {
+        const ticket = await ctx.tickets.get(ticketId);
+        if (!ticket) {
+          sendHtml(res, 404, renderLogin({ error: 'Обращение не найдено.' }));
+          return true;
+        }
+        sendHtml(res, 200, renderTicket({ ticket, csrf: session.csrf, operationId: randomUUID() }));
+        return true;
+      }
+    }
+    const cardMatch = url.pathname.match(/^\/crm\/installations\/([^/]+)(?:\/(restore))?$/);
+    if (cardMatch) {
+      const installationId = decodeURIComponent(cardMatch[1]);
+      const installation = await ctx.clients.getInstallation(installationId);
+      const card = publicCard(installation);
+      if (!card) {
+        sendHtml(res, 404, renderLogin({ error: 'Установка не найдена.' }));
+        return true;
+      }
+      if (req.method === 'POST' && cardMatch[2] === 'restore') {
+        const form = await readForm(req);
+        if (form.get('csrf') !== session.csrf || !ctx.backups) {
+          sendHtml(res, 403, renderLogin({ error: 'Сессия не подтверждена.' }));
+          return true;
+        }
+        try {
+          await ctx.backups.requestRestore(card.id);
+        } catch (err) {
+          if (err.code !== 'no_backup') throw err;
+          sendHtml(res, 400, renderCard({
+            installation: card,
+            csrf: session.csrf,
+            backup: null,
+            error: 'Копии ещё нет.',
+          }));
+          return true;
+        }
+        res.writeHead(303, { location: `/crm/installations/${encodeURIComponent(card.id)}` });
+        res.end();
+        return true;
+      }
+      if (req.method === 'GET' && !cardMatch[2]) {
+        const backup = ctx.backups ? await ctx.backups.get(card.id) : undefined;
+        sendHtml(res, 200, renderCard({ installation: card, csrf: session.csrf, backup }));
+        return true;
+      }
+    }
+    if (req.method === 'GET' && url.pathname === '/crm') {
+      const installations = (await ctx.clients.listInstallations()).map(publicCard);
+      const tickets = ctx.tickets ? await ctx.tickets.listOpen() : null;
+      sendHtml(res, 200, renderList({ installations, csrf: session.csrf, tickets }));
+      return true;
+    }
+    sendHtml(res, 404, renderLogin({ error: 'Страница не найдена.' }));
+    return true;
+  }
+
+  return handle;
+}
