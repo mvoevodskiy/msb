@@ -17,26 +17,40 @@ export async function buildDigestText(env = process.env) {
   if (!items.length) {
     return { empty: true, text: 'За последние сутки новых материалов нет.' };
   }
+  return { empty: false, text: formatDigest(items, esc), count: items.length, items };
+}
+
+function formatDigest(items, formatUrl) {
   const lines = [`📨 <b>Дайджест</b> · ${items.length} материалов`, ''];
   for (const it of items) {
     const when = (it.publishedAt || '').slice(0, 16).replace('T', ' ');
     lines.push(`• <b>${esc(it.sourceName || it.sourceType)}</b> · ${esc(when)}`);
     lines.push(`  ${esc(it.title)}`);
-    if (it.url) lines.push(`  ${esc(it.url)}`);
+    if (it.url) lines.push(`  ${formatUrl(it.url)}`);
     lines.push('');
   }
-  return { empty: false, text: lines.join('\n'), count: items.length };
+  return lines.join('\n');
 }
 
-export function deliverDigest(text, sendMessage, sendDocument) {
+function articleLink(value) {
+  const label = esc(value);
+  let url;
+  try { url = new URL(value); } catch { return label; }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return label;
+  const href = esc(url.href).replaceAll('"', '&quot;');
+  return `<a href="${href}">${label}</a>`;
+}
+
+export function deliverDigest(digest, sendMessage, sendDocument) {
+  const text = typeof digest === 'string' ? digest : digest.text;
   if (visibleHtmlLength(text) <= 4096) return sendMessage(text);
 
-  // A single upload keeps the complete digest together if scheduled delivery retries.
-  // All material fields were escaped by buildDigestText before adding the fixed markup.
+  // Use stored article URLs for links. Headlines and other feed text are display-only.
+  const body = digest.items ? formatDigest(digest.items, articleLink) : text;
   const document = `<!doctype html>
 <html lang="ru">
 <head><meta charset="utf-8"><title>Дайджест</title></head>
-<body><div style="white-space: pre-wrap; overflow-wrap: anywhere">${text}</div></body>
+<body><div style="white-space: pre-wrap; overflow-wrap: anywhere">${body}</div></body>
 </html>`;
   return sendDocument(new InputFile(Buffer.from(document, 'utf8'), 'digest.html'));
 }
@@ -64,7 +78,7 @@ export async function maybeSendDigest({ api, adminId, force = false, env = proce
     const dig = await buildDigestText(env);
     if (dig.empty && !force) return { sent: false, reason: 'empty' };
 
-    await deliverDigest(dig.text,
+    await deliverDigest(dig,
       text => api.sendMessage(adminId, text, { parse_mode: 'HTML', link_preview_options: { is_disabled: true } }),
       file => api.sendDocument(adminId, file));
     meta.lastDigestAt = now.toISOString();

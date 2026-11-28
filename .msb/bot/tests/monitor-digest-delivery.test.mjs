@@ -21,7 +21,7 @@ function visibleText(html) {
   return html.replace(/<\/?b>/g, '').replace(/&(?:amp|lt|gt);/g, entity => entities[entity]);
 }
 
-async function fixture(t, titles) {
+async function fixture(t, titles, urls = titles.map((_, i) => `https://fixture.invalid/${i}?x=1&y=2`)) {
   const root = await mkdtemp(join(tmpdir(), 'msb-digest-delivery-'));
   const previous = { MSB_RUNTIME_ROOT: process.env.MSB_RUNTIME_ROOT, MSB_BOT_ID: process.env.MSB_BOT_ID };
   process.env.MSB_RUNTIME_ROOT = root;
@@ -40,7 +40,7 @@ async function fixture(t, titles) {
   await saveState({ timezone: 'UTC' });
   await appendItems(titles.map((title, i) => ({
     id: String(i), title, sourceType: 'rss', sourceName: 'News & updates',
-    url: `https://fixture.invalid/${i}?x=1&y=2`, publishedAt: new Date(Date.now() - i * 60_000).toISOString(),
+    url: urls[i], publishedAt: new Date(Date.now() - i * 60_000).toISOString(),
   })));
 
   const messages = [], files = [], fileOptions = [], views = [];
@@ -60,17 +60,20 @@ async function fixture(t, titles) {
     },
   };
   return {
-    api, messages, files, fileOptions, views,
+    api, messages, files, fileOptions, views, urls,
     manual: threadId => handleMonitorRoute({ data: 'digest:now', chatId: chat, bot: { api },
       ctx: { callbackQuery: { message: { message_thread_id: threadId } } }, show: view => views.push(view) }),
     scheduled: () => maybeSendDigest({ api, adminId: chat, log() {} }),
   };
 }
 
-function assertDocument(document, digest) {
+function assertDocument(document, digest, expectedUrls) {
   assert.match(document, /<!doctype html>/i);
   assert.ok(document.includes('<meta charset="utf-8">'));
-  assert.ok(document.includes(digest.text), 'the full formatted digest is in the document');
+  const anchors = /<a href="([^"]*)">([^<]*)<\/a>/g;
+  const targets = Array.from(document.matchAll(anchors), match => match[1].replaceAll('&amp;', '&'));
+  assert.deepEqual(targets, expectedUrls, 'links follow exactly the selected materials in order');
+  assert.ok(document.replace(anchors, '$2').includes(digest.text), 'all visible fields retain their formatting');
 }
 
 test('25 articles remain in order in one document for both manual and scheduled delivery', async t => {
@@ -89,7 +92,22 @@ test('25 articles remain in order in one document for both manual and scheduled 
   assert.deepEqual(f.messages, []);
   assert.equal(f.files.length, 2);
   assert.deepEqual(f.fileOptions, [{ message_thread_id: 55 }, undefined]);
-  for (const doc of f.files) assertDocument(doc, digest);
+  for (const doc of f.files) assertDocument(doc, digest, f.urls);
+});
+
+test('document anchors use only the article HTTP(S) URL, including its query and fragment', async t => {
+  const title = 'References https://other.invalid/title <А> & Б. '.repeat(95);
+  const f = await fixture(t, [title, 'HTTP article', 'Archived URL', 'Missing URL', 'Relative URL'], [
+    'https://fixture.invalid/отчёт?q="часть"&page=2#итог', 'http://fixture.invalid/item?x=1&y=2',
+    'mailto:desk@fixture.invalid', undefined, '../archive',
+  ]);
+  const digest = await buildDigestText();
+  await f.manual();
+  assert.equal(f.files.length, 1);
+  assertDocument(f.files[0], digest, [
+    new URL('https://fixture.invalid/отчёт?q="часть"&page=2#итог').href, f.urls[1],
+  ]);
+  assert.ok(f.files[0].includes('>https://fixture.invalid/отчёт?q="часть"&amp;page=2#итог</a>'));
 });
 
 test('a digest at the after-entities limit stays one HTML chat message', async t => {
@@ -108,6 +126,7 @@ test('a digest at the after-entities limit stays one HTML chat message', async t
     { text: digest.text, options: { parse_mode: 'HTML', link_preview_options: { is_disabled: true } } },
   ]);
   assert.deepEqual(f.files, []);
+  assert.ok(!f.messages[0].text.includes('<a '));
 });
 
 test('a single giant article is retried as one document and marked only after success', async t => {
@@ -125,11 +144,11 @@ test('a single giant article is retried as one document and marked only after su
   assert.deepEqual(await f.scheduled(), { sent: true, count: 1 });
   assert.equal((await loadMeta()).lastDigestAt, now);
   assert.equal(f.files.length, 1);
-  assertDocument(f.files[0], digest);
+  assertDocument(f.files[0], digest, f.urls);
   assert.ok(!f.files[0].includes('<script>'));
   await f.manual();
   assert.equal(f.files.length, 2);
-  assertDocument(f.files[1], digest);
+  assertDocument(f.files[1], digest, f.urls);
 });
 
 test('/digest delivers a long digest to the invoking topic as one document', async t => {
@@ -158,5 +177,5 @@ test('/digest delivers a long digest to the invoking topic as one document', asy
     [['sendDocument', chat, 9]]);
   assert.equal((await loadMeta()).lastDigestAt, null);
   assert.equal(f.files.length, 1);
-  assertDocument(f.files[0], digest);
+  assertDocument(f.files[0], digest, f.urls);
 });

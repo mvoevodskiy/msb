@@ -65,7 +65,7 @@ export async function handleMonitorRoute({ data, show, pending, chatId, bot, ctx
     const dig = await buildDigestText();
     const threadId = ctx?.callbackQuery?.message?.message_thread_id;
     const topic = threadId ? { message_thread_id: threadId } : {};
-    await deliverDigest(dig.text,
+    await deliverDigest(dig,
       text => bot.api.sendMessage(chatId, text, { parse_mode: 'HTML', ...topic }),
       file => bot.api.sendDocument(chatId, file, topic));
     return show(await monitorDigestScreen());
